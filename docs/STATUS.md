@@ -106,8 +106,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Intended branch: `main`.
 - Latest pushed implementation checkpoint: `422f282` (`feat: add persistence boundary`).
-- Latest pushed documentation checkpoint: `08ba19f` (`docs: record sprint 1.2 persistence checkpoint`).
-- Local `main` and `origin/main` are synchronized at `08ba19f`; no unrelated changes are present.
+- Latest pushed documentation checkpoint: `0f21406` (`docs: start sprint 1.3 event processing`).
+- Local `main` and `origin/main` are synchronized at `0f21406`; no unrelated changes are present.
 
 ## Next task
 
