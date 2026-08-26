@@ -23,12 +23,12 @@ Codex must execute this roadmap in order unless a task is externally blocked and
 
 ### Sprint 0.2 — Quality and CI
 
-- [ ] Configure ruff/formatter and static typing.
-- [ ] Configure pytest coverage structure.
-- [ ] Configure frontend lint/typecheck/unit tests.
-- [ ] Add GitHub Actions for backend, frontend, migration checks and secret scanning.
-- [ ] Add structured logging/correlation ID baseline.
-- [ ] Add configuration loader with validation and safe mode defaults.
+- [x] Configure ruff/formatter and static typing.
+- [x] Configure pytest coverage structure.
+- [x] Configure frontend lint/typecheck/unit tests.
+- [x] Add GitHub Actions for backend, frontend, migration checks and secret scanning.
+- [x] Add structured logging/correlation ID baseline.
+- [x] Add configuration loader with validation and safe mode defaults.
 
 **Gate P0:** `make verify` (or equivalent) passes keylessly in CI/local; modes default to analysis+paper only.
 
