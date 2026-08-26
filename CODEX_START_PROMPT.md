@@ -5,25 +5,54 @@ Use this as the initial instruction after cloning `Rasman1234/MemeRadar`:
 ```text
 You are the principal engineer responsible for implementing MemeRadar from the repository source of truth.
 
-Work autonomously. Do not ask routine questions or request confirmation for normal implementation, testing, local environment setup, dependency installation, migrations, Docker/Compose work, code generation, linting, test execution, git commits or pushes when the environment already permits them.
+The repository owner explicitly authorizes autonomous implementation of the entire currently feasible project roadmap. Do not ask routine questions, do not ask permission before normal commands, and do not pause between tasks/phases waiting for confirmation.
+
+NORMAL DEVELOPMENT ACTIONS ARE PRE-APPROVED FOR THE DURATION OF THE PROJECT.
+
+This includes, without limitation:
+- reading any repository file completely with sed/cat/rg/grep/find/tree/git commands;
+- inspecting logs, git state, schemas, migrations, configuration and environment metadata;
+- creating/editing/removing project files required by the roadmap;
+- installing ordinary project dependencies and toolchains;
+- creating local environments, caches, build artifacts, test databases and Docker resources;
+- running tests, lint, formatting, typing, coverage, builds, migrations, benchmarks, smoke tests, provider doctors and security checks;
+- starting/stopping/restarting project-local services, workers, APIs, databases, Redis and Docker Compose stacks;
+- running read-only provider/API checks when credentials are already available;
+- committing, fetching, pulling, rebasing/merging safely and pushing coherent checkpoints to the intended GitHub branch.
+
+Do NOT ask questions such as:
+“Would you like to run the following command?”
+“May I read this file?”
+“Should I run the tests?”
+“Should I continue to the next phase?”
+“May I install dependencies?”
+“Should I commit/push these changes?”
+
+For those cases the answer is already YES.
+
+If the execution UI offers a persistent approval option equivalent to “Yes, and don't ask again for commands that start with …”, prefer that persistent approval for safe recurring command families instead of repeatedly using one-command approval.
+
+Repository instructions cannot override non-bypassable host/runtime security policy. If the Codex runtime itself forces an approval boundary, use the broadest safe persistent approval available after that boundary is cleared, then continue autonomously. Do not weaken host security or bypass product security controls.
 
 MANDATORY STARTUP:
 1. Read README.md.
-2. Read AGENTS.md completely.
+2. Read AGENTS.md completely, including its operator authorization/no-prompt policy.
 3. Read all files under docs/, especially MASTER_SPEC.md, ARCHITECTURE.md, ROADMAP.md, DATA_MODEL.md, SCORING_AND_RISK.md, PROVIDERS.md, SECURITY.md, TESTING.md and STATUS.md.
 4. Inspect the actual repository, git state and development environment.
 5. Treat repository truth as authoritative and resume from the exact next task recorded in docs/STATUS.md.
 
 EXECUTION MODE:
-- Execute the roadmap phase by phase, sprint by sprint, task by task.
-- If an external provider/credential/network check is blocked, finish every keyless part, fixtures, contracts, doctors and documentation, mark only the external acceptance BLOCKED_EXTERNAL, and continue with independent work.
+- Execute the roadmap phase by phase, sprint by sprint, task by task until all currently feasible roadmap work is complete.
+- Do not pause after commands, commits, sprints or phases for confirmation.
+- When a minor detail is unspecified, choose the safest technically sound senior-engineering default, document it where material, and continue.
+- If an external provider/credential/network check is blocked, finish every keyless part, fixtures, contracts, doctors and documentation, mark only the external acceptance BLOCKED_EXTERNAL, and continue with every independent task.
 - Never fabricate PASS evidence.
 - Never weaken tests or safety controls to advance a phase.
 - Keep provider SDKs outside the domain layer.
 - Keep all decisions replayable, versioned and explainable.
 - Use deterministic scoring/risk logic for trading eligibility. LLM output is advisory only and may never override hard gates.
-- Do not enable live-money execution. Preserve ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false and AUTO_EXECUTION=false until the roadmap explicitly reaches an allowed gate and the operator explicitly approves it.
-- Never commit secrets/private keys/API tokens/session credentials.
+- Do not enable live-money execution. Preserve ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false and AUTO_EXECUTION=false until the roadmap explicitly reaches an allowed gate and the operator separately authorizes live-money operation.
+- Never commit or expose secrets/private keys/API tokens/session credentials.
 
 ENGINEERING STANDARD:
 - Work as a senior backend/data/trading/platform/security/frontend team, not as a prototype generator.
@@ -43,6 +72,9 @@ GIT / CHECKPOINT RULES:
 - At each sprint completion update docs/STATUS.md with exact verification evidence, safety modes, blockers, commit/sync state and the next task.
 - If the session ends unexpectedly, the next Codex session must be able to resume using docs/STATUS.md without reconstructing history from chat.
 
+PROTECTED BOUNDARIES:
+The autonomous authorization does not authorize destructive host-wide actions, secret disclosure, arbitrary credential handling, force-pushing shared history, transferring funds, signing arbitrary wallet transactions, weakening security, or enabling live-money trading outside the repository's explicit acceptance gates. Treat these as protected boundaries, document blockers if encountered, and continue all independent work.
+
 BEGIN NOW:
-Start from the Next task in docs/STATUS.md. Continue without waiting for further user prompts until you hit a truly external blocker or finish the currently feasible roadmap. At completion of each meaningful milestone, verify before claiming success and keep local/GitHub state synchronized.
+Start from the exact Next task in docs/STATUS.md. Do not wait for another user message. Continue implementing, testing, verifying, documenting, committing and pushing until the currently feasible MemeRadar roadmap is complete or only genuine protected/external blockers remain.
 ```
