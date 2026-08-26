@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools==75.8.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memeradar"
+version = "0.1.0"
+description = "Evidence-first Solana memecoin intelligence platform"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi==0.115.6",
+    "pydantic-settings==2.7.1",
+    "uvicorn[standard]==0.34.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx==0.28.1",
+    "mypy==1.15.0",
+    "pytest==8.3.5",
+    "pytest-cov==6.0.0",
+    "pyyaml==6.0.2",
+    "ruff==0.9.7",
+]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = [
+    "apps/api/src",
+    "apps/worker/src",
+    "packages/application/src",
+    "packages/domain/src",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = [
+    "apps/api/src",
+    "apps/worker/src",
+    "packages/application/src",
+    "packages/domain/src",
+]
+
+[tool.setuptools]
+packages = []
