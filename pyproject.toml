@@ -51,6 +51,7 @@ src = [
     "packages/application/src",
     "packages/domain/src",
     "packages/persistence/src",
+    "packages/providers/src",
     "packages/telemetry/src",
 ]
 
@@ -66,6 +67,7 @@ files = [
     "packages/application/src",
     "packages/domain/src",
     "packages/persistence/src",
+    "packages/providers/src",
     "packages/telemetry/src",
 ]
 

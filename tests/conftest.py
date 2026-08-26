@@ -8,6 +8,7 @@ sys.path.insert(0, str(ROOT))
 for source_root in (
     ROOT / "packages" / "application" / "src",
     ROOT / "packages" / "domain" / "src",
+    ROOT / "packages" / "providers" / "src",
     ROOT / "packages" / "persistence" / "src",
     ROOT / "packages" / "telemetry" / "src",
     ROOT / "apps" / "api" / "src",
