@@ -111,8 +111,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Intended branch: `main`.
 - Latest pushed implementation checkpoint: `81a701a` (`feat: add internal event processing`).
-- Latest pushed documentation checkpoint before this update: `dbca0f0` (`docs: record sprint 1.3 sync state`).
-- This status/roadmap update is the next documentation checkpoint; local `main` and `origin/main` were synchronized at `81a701a` before it, with no unrelated changes present.
+- Latest pushed documentation checkpoint: `96798a9` (`docs: complete sprint 1.3 checkpoint`).
+- Local `main` and `origin/main` are synchronized at `96798a9`; no unrelated changes are present.
 
 ## Next task
 
