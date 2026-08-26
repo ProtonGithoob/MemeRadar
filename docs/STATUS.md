@@ -124,8 +124,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Intended branch: `main`.
 - Latest pushed implementation checkpoint: `49a2df8` (`build: package provider framework in runtimes`).
-- Latest pushed documentation checkpoint before this update: `0a0941d` (`docs: start sprint 2.1 provider framework`).
-- This Sprint 2.1 completion update is the next documentation checkpoint; local `main` and `origin/main` were synchronized at `49a2df8` before it, with no unrelated changes present.
+- Latest pushed documentation checkpoint: `583f45f` (`docs: complete sprint 2.1 provider framework`).
+- Local `main` and `origin/main` are synchronized at `583f45f`; no unrelated changes are present.
 
 ## Next task
 
