@@ -1,8 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from memeradar_application.config import Settings
 from memeradar_api.main import create_app
+from memeradar_application.config import Settings
 
 
 def test_settings_default_to_safe_operating_modes():

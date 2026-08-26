@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 import logging
 import signal
+from collections.abc import Awaitable, Callable
 
 from memeradar_application.config import Settings
-
 
 LOGGER = logging.getLogger(__name__)
 Sleep = Callable[[float], Awaitable[None]]

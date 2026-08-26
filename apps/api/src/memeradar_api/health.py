@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
-from typing import Any, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter
@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 from memeradar_application.config import Settings
 
 from . import __version__
-
 
 DependencyProbe = Callable[[str | None, int, float], Awaitable[str]]
 

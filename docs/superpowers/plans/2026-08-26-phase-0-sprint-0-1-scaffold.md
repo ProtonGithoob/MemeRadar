@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the domain/provider boundary visible from the first package layout. The FastAPI API and async worker are separate entrypoints, while the Next.js web app consumes the API over an environment-configured base URL. PostgreSQL and Redis are local Compose dependencies, but readiness reports them as optional until a later persistence sprint makes them business-critical.
 
-**Tech Stack:** Python 3.12-compatible FastAPI/Pydantic/Uvicorn, pytest, Ruff, mypy; Next.js 15 with React 19 and TypeScript; PostgreSQL 16; Redis 7; Docker Compose.
+**Tech Stack:** Python 3.12-compatible FastAPI/Pydantic/Uvicorn, pytest, Ruff, mypy; Next.js 16.3.3 with React 19 and TypeScript; PostgreSQL 16; Redis 7; Docker Compose.
 
 **Spec:** `README.md`, `docs/MASTER_SPEC.md`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md` Sprint 0.1, `docs/SECURITY.md`, `docs/TESTING.md`.
 
@@ -71,7 +71,8 @@ def test_runtime_packages_are_importable():
 
 **Files:**
 - Create: `apps/worker/src/memeradar_worker/main.py`, `tests/unit/test_worker_entrypoint.py`
-- Create: `apps/web/package.json`, `apps/web/package-lock.json`, `apps/web/tsconfig.json`, `apps/web/next.config.ts`, `apps/web/next-env.d.ts`
+- Create: `apps/worker/src/memeradar_worker/__main__.py`
+- Create: `apps/web/package.json`, `apps/web/package-lock.json`, `apps/web/tsconfig.json`, `apps/web/next.config.ts`, `apps/web/next-env.d.ts`, `apps/web/eslint.config.mjs`
 - Create: `apps/web/src/app/layout.tsx`, `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`
 
 **Interfaces:**
@@ -90,6 +91,7 @@ def test_runtime_packages_are_importable():
 **Files:**
 - Create: `infra/docker/api.Dockerfile`, `infra/docker/worker.Dockerfile`, `infra/docker/web.Dockerfile`
 - Create: `infra/compose/docker-compose.yml`, `infra/compose/.dockerignore`
+- Create: `.dockerignore`
 - Create: `tests/smoke/test_compose_contract.py`
 
 **Interfaces:**
@@ -106,9 +108,9 @@ def test_runtime_packages_are_importable():
 ### Task 5: Developer commands and sprint evidence
 
 **Files:**
-- Create: `Makefile`, `scripts/doctor.py`, `.github/workflows/ci.yml`
+- Create: `Makefile`, `scripts/__init__.py`, `scripts/doctor.py`, `scripts/secret_scan.py`, `.github/workflows/ci.yml`
 - Modify: `docs/STATUS.md`
-- Test: `tests/unit/test_doctor.py`
+- Test: `tests/unit/test_doctor.py`, `tests/unit/test_secret_scan.py`
 
 **Interfaces:**
 - Make targets: `bootstrap`, `lint`, `typecheck`, `test`, `verify`, `up`, `down`, `migrate`, `doctor`.
