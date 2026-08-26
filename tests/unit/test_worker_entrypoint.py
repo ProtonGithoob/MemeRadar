@@ -18,3 +18,9 @@ def test_worker_stops_after_stop_event_is_set():
         return sleep_calls
 
     assert asyncio.run(exercise()) == 1
+
+
+def test_worker_package_exposes_a_module_entrypoint():
+    from memeradar_worker import __main__ as entrypoint
+
+    assert callable(entrypoint.main)

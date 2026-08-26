@@ -1,0 +1,98 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: memeradar
+      POSTGRES_USER: memeradar
+      POSTGRES_PASSWORD: memeradar_local_only
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memeradar -d memeradar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    environment:
+      APP_ENV: development
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
+      DATABASE_URL: postgresql://memeradar:memeradar_local_only@postgres:5432/memeradar
+      REDIS_URL: redis://redis:6379/0
+      REQUIRE_DATABASE_FOR_READINESS: "true"
+      REQUIRE_REDIS_FOR_READINESS: "true"
+      ANALYSIS_ONLY: "true"
+      PAPER_TRADING: "true"
+      MANUAL_EXECUTION: "false"
+      AUTO_EXECUTION: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/worker.Dockerfile
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql://memeradar:memeradar_local_only@postgres:5432/memeradar
+      REDIS_URL: redis://redis:6379/0
+      REQUIRE_DATABASE_FOR_READINESS: "true"
+      REQUIRE_REDIS_FOR_READINESS: "true"
+      ANALYSIS_ONLY: "true"
+      PAPER_TRADING: "true"
+      MANUAL_EXECUTION: "false"
+      AUTO_EXECUTION: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
