@@ -10,14 +10,14 @@ Codex must execute this roadmap in order unless a task is externally blocked and
 
 ### Sprint 0.1 — Scaffold
 
-- [ ] Create Python workspace/package layout from README.
-- [ ] Create FastAPI app and worker entrypoints.
-- [ ] Create Next.js/TypeScript web app.
-- [ ] Add pinned dependency management and lockfiles.
-- [ ] Add `.env.example`, `.gitignore`, editor/tool configs.
-- [ ] Add Dockerfiles and local Docker Compose for API, worker, web, Postgres, Redis.
-- [ ] Add make/task commands: bootstrap, lint, typecheck, test, verify, up, down, migrate, doctor.
-- [ ] Implement `/health/live` and `/health/ready` with honest dependency state.
+- [x] Create Python workspace/package layout from README.
+- [x] Create FastAPI app and worker entrypoints.
+- [x] Create Next.js/TypeScript web app.
+- [x] Add pinned dependency management and lockfiles.
+- [x] Add `.env.example`, `.gitignore`, editor/tool configs.
+- [x] Add Dockerfiles and local Docker Compose for API, worker, web, Postgres, Redis.
+- [x] Add make/task commands: bootstrap, lint, typecheck, test, verify, up, down, migrate, doctor.
+- [x] Implement `/health/live` and `/health/ready` with honest dependency state.
 
 **Acceptance:** fresh clone can bootstrap locally; API/worker/web start; no secret required; smoke tests pass.
 
