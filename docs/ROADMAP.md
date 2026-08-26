@@ -58,10 +58,10 @@ Codex must execute this roadmap in order unless a task is externally blocked and
 
 ### Sprint 1.3 — Internal Event Processing
 
-- [ ] Implement event dispatcher/worker contract.
-- [ ] Implement persisted event/outbox processing with retries/dead-letter semantics.
-- [ ] Add duplicate and out-of-order event tests.
-- [ ] Add event-processing telemetry.
+- [x] Implement event dispatcher/worker contract.
+- [x] Implement persisted event/outbox processing with retries/dead-letter semantics.
+- [x] Add duplicate and out-of-order event tests.
+- [x] Add event-processing telemetry.
 
 **Gate P1:** deterministic domain tests + Postgres integration + replay of a synthetic candidate lifecycle pass.
 

@@ -4,14 +4,14 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`SPRINT_1_3_IN_PROGRESS`
+`SPRINT_1_3_COMPLETE_GATE_P1_NEXT_SPRINT_2_1`
 
-Phase 0 and Phase 1 / Sprints 1.1 and 1.2 are implemented and locally verified. The repository now has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request telemetry, CI configuration, provider-independent replayable domain primitives and a durable SQLAlchemy/Postgres persistence boundary. No provider integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. The repository now has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, CI configuration, provider-independent replayable domain primitives, a durable SQLAlchemy/Postgres persistence boundary and an at-least-once internal event/outbox processor. No provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
-- Completed: `Phase 1 / Sprint 1.2 — Persistence`
-- In progress: `Phase 1 / Sprint 1.3 — Internal Event Processing`
+- Completed: `Phase 1 / Sprint 1.3 — Internal Event Processing`
+- Next: `Phase 2 / Sprint 2.1 — Provider Framework`
 
 ## Current operating policy
 
@@ -50,31 +50,36 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Candidate aggregate rehydration and atomic domain-event/outbox enqueue seam with deterministic duplicate handling.
 - [x] Opt-in Postgres repository integration fixture and reversible migration smoke path.
 - [x] Roadmap checkboxes reconciled for Sprint 1.2.
+- [x] Provider-independent event dispatcher with deterministic event-time ordering, equivalent dedupe and conflicting-key rejection.
+- [x] Leased Postgres outbox processing with durable delivery, deterministic retries, lease recovery and terminal dead-letter state.
+- [x] Safe event-processing telemetry with allowlisted outcome, event identity, attempt and latency fields; handler exception text is never persisted or logged.
+- [x] Duplicate, out-of-order, retry, lease-expiry, dead-letter, persistence idempotency-conflict and synthetic candidate lifecycle replay tests.
+- [x] Reversible migration `0002_outbox_processing` and migration-head/metadata parity checks.
+- [x] Roadmap checkboxes reconciled for Sprint 1.3.
 
 ## Current sprint progress
 
-- Sprint 1.3 plan recorded in `docs/superpowers/plans/2026-08-27-phase-1-sprint-1-3-event-processing.md`.
-- Current subtask: add dispatcher/outbox retry contract tests, then implement the smallest provider-independent processing seam.
+- Sprint 1.3 plan recorded in `docs/superpowers/plans/2026-08-27-phase-1-sprint-1-3-event-processing.md` and completed.
+- Gate P1 evidence: deterministic domain/dispatcher tests, three Postgres outbox integration tests, persisted processor delivery, lease recovery/dead-letter behavior and synthetic candidate lifecycle replay all pass.
+- Current subtask: begin Phase 2 / Sprint 2.1 by defining provider ports and keyless provider resilience/fixture contracts from `docs/PROVIDERS.md`.
 
 ## Verification evidence
 
 All commands below were run in the current checkout on 2026-08-27.
 
-- `.venv/bin/pytest tests/unit/test_domain_models.py tests/unit/test_persistence_contract.py tests/unit/test_migration_contract.py -q` — `20 passed`; domain, metadata, migration-head and import-boundary contracts pass.
-- `.venv/bin/pytest tests/integration/test_persistence_postgres.py -q` with the local Compose Postgres URL — `1 passed`; candidate/state-transition round-trip and outbox dedupe pass.
-- `.venv/bin/ruff check apps packages tests scripts infra/alembic/env.py infra/alembic/versions/0001_initial.py` — `All checks passed!`; Ruff format check reports all files formatted.
-- `.venv/bin/mypy` — `Success: no issues found in 23 source files`.
-- `make verify` — exit `0`; Ruff, mypy, `45 passed, 1 skipped`, total branch-aware coverage `76%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
-- `make integration-test` with an explicitly configured local Postgres URL — `1 passed`.
-- `alembic downgrade base && alembic upgrade head` against local Compose Postgres — exit `0`; reversible migration cycle passed.
-- `alembic check` against local Compose Postgres — exit `0`; `No new upgrade operations detected.`
-- `make migrate` with an explicitly configured local Postgres URL — exit `0`.
-- `make frontend-build` — exit `0`; Next.js 16.3.3 produced static `/` and `/_not-found` routes.
+- `.venv/bin/pytest tests/unit/test_event_processing.py tests/unit/test_telemetry.py tests/unit/test_persistence_contract.py tests/unit/test_migration_contract.py -q` — `18 passed` before the final synthetic replay/idempotency additions; the final full gate below includes those additions.
+- `.venv/bin/pytest tests/unit/test_event_processing.py -q` — `7 passed`; dispatcher ordering/dedupe/conflict, synthetic candidate replay, retry/backoff, dead-letter redaction and worker cancellation pass.
+- `MEMERADAR_TEST_DATABASE_URL`-configured `.venv/bin/pytest tests/integration/test_persistence_postgres.py -q` — `3 passed`; candidate persistence/idempotency conflict, lease recovery/dead-letter and transactional processor delivery pass.
+- `make verify` — exit `0`; Ruff, mypy (`25 source files`), `54 passed, 3 skipped`, total branch-aware coverage `74%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
+- `.venv/bin/mypy` — `Success: no issues found in 25 source files`.
+- `alembic downgrade base && alembic upgrade head && alembic check` against local Compose Postgres — exit `0`; reversible migration cycle passed and `No new upgrade operations detected.`
+- `scripts/check_migrations.py` — exit `0`; `{"heads": ["0002_outbox_processing"], "table_count": 13}`.
+- `make integration-test` with the local Compose Postgres URL — exit `0`; `3 passed`.
 - `npm audit --omit=dev` — `found 0 vulnerabilities`.
 - `docker compose -f infra/compose/docker-compose.yml config --quiet` — exit `0`.
-- `docker compose -f infra/compose/docker-compose.yml up -d --build api worker` — exit `0`; rebuilt images copy the persistence package and both services started.
-- `docker compose -f infra/compose/docker-compose.yml exec -T api python -c 'import memeradar_persistence; ...'` — `persistence_import_ok 13`.
-- Compose status — API healthy, Postgres healthy, Redis healthy, web running and worker running after the persistence image rebuild.
+- `docker compose -f infra/compose/docker-compose.yml up -d --build api worker` — exit `0`; rebuilt API/worker images include the event-processing, persistence and telemetry packages.
+- Compose runtime import probe — `worker_event_processing_import_ok`; application event processing, `SqlAlchemyOutboxStore` and structured event telemetry import in the worker image.
+- Compose status — API healthy, Postgres healthy, Redis healthy, web running and worker running after the event-processing image rebuild.
 - `GET http://127.0.0.1:8000/health/live` — `{"status":"alive","service":"api","version":"0.1.0"}`.
 - `GET http://127.0.0.1:8000/health/ready` — HTTP `200`; database and Redis both reported `required: true, state: reachable` inside Compose.
 - `GET http://127.0.0.1:3000` — page contains `MemeRadar`, `ANALYSIS ONLY` and `PAPER TRADING`.
@@ -87,28 +92,28 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 ## External provider acceptance
 
-- Phase 0 and Sprint 1.1 provider acceptance: `NOT_APPLICABLE` — no provider credentials are required for the completed foundation/domain work.
+- Phase 0 and Phase 1 provider acceptance: `NOT_APPLICABLE` — no provider credentials are required for the completed foundation/domain work.
 - Helius/RPC, Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 - No external blocker is known for Sprint 1.3. Provider phases will use fixtures/contracts first and report live checks separately as `PASS`, `BLOCKED_EXTERNAL` or `FAIL`.
 
 ## Blockers
 
-- No current implementation blocker; Sprint 1.3 is in progress from the recorded plan and subtask above.
+- No current implementation blocker. Live provider acceptance is intentionally not run until the provider framework and adapter doctor tasks are implemented; unavailable credentials/network will be isolated as `BLOCKED_EXTERNAL` if encountered.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
 
 - `packages/persistence` contains the provider-independent SQLAlchemy 2 async models, candidate/outbox repositories and explicit unit-of-work boundary.
-- `infra/alembic/versions/0001_initial.py` creates the 13 core Phase 1 tables represented by the current metadata; social, wallet, extended market, research and execution tables remain later roadmap extensions.
-- Local Postgres upgrade/downgrade/upgrade and repository integration checks pass. The API and worker images include the persistence package, but the current API/worker composition still does not write business state automatically.
+- `infra/alembic/versions/0001_initial.py` creates the 13 core Phase 1 tables represented by the current metadata; `0002_outbox_processing.py` adds leased processing/dead-letter columns and indexes. Social, wallet, extended market, research and execution tables remain later roadmap extensions.
+- Local Postgres upgrade/downgrade/upgrade, migration parity and repository integration checks pass. The API and worker images include the persistence and event-processing packages, but the current API/worker composition still does not write business state automatically.
 
 ## Git state
 
 - Intended branch: `main`.
-- Latest pushed implementation checkpoint: `422f282` (`feat: add persistence boundary`).
-- Latest pushed documentation checkpoint: `0f21406` (`docs: start sprint 1.3 event processing`).
-- Local `main` and `origin/main` are synchronized at `0f21406`; no unrelated changes are present.
+- Latest pushed implementation checkpoint: `81a701a` (`feat: add internal event processing`).
+- Latest pushed documentation checkpoint before this update: `dbca0f0` (`docs: record sprint 1.3 sync state`).
+- This status/roadmap update is the next documentation checkpoint; local `main` and `origin/main` were synchronized at `81a701a` before it, with no unrelated changes present.
 
 ## Next task
 
-Continue `Phase 1 / Sprint 1.3 — Internal Event Processing`: add dispatcher/outbox retry contract tests, implement persisted event/outbox retries and dead-letter semantics, duplicate/out-of-order handling and event-processing telemetry. Preserve all four safety modes.
+Begin `Phase 2 / Sprint 2.1 — Provider Framework`: define provider ports from `docs/PROVIDERS.md`, implement keyless timeout/retry/jitter/rate-limit/circuit-breaker primitives, provider health/quota/freshness models, fixture recording/redaction/fakes and normalized adapter contract tests. Preserve all four safety modes.
