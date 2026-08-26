@@ -44,6 +44,7 @@ src = [
     "apps/worker/src",
     "packages/application/src",
     "packages/domain/src",
+    "packages/telemetry/src",
 ]
 
 [tool.ruff.lint]
@@ -57,6 +58,7 @@ files = [
     "apps/worker/src",
     "packages/application/src",
     "packages/domain/src",
+    "packages/telemetry/src",
 ]
 
 [tool.setuptools]
