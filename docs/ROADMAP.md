@@ -49,12 +49,12 @@ Codex must execute this roadmap in order unless a task is externally blocked and
 
 ### Sprint 1.2 — Persistence
 
-- [ ] Implement SQLAlchemy models/repositories/UoW.
-- [ ] Add initial Alembic migration for entities in `DATA_MODEL.md`.
-- [ ] Add unique/idempotency constraints and indexes.
-- [ ] Implement outbox table/publisher abstraction.
-- [ ] Add repository integration tests against Postgres.
-- [ ] Add migration upgrade/downgrade smoke tests.
+- [x] Implement SQLAlchemy models/repositories/UoW.
+- [x] Add initial Alembic migration for entities in `DATA_MODEL.md`.
+- [x] Add unique/idempotency constraints and indexes.
+- [x] Implement outbox table/publisher abstraction.
+- [x] Add repository integration tests against Postgres.
+- [x] Add migration upgrade/downgrade smoke tests.
 
 ### Sprint 1.3 — Internal Event Processing
 
