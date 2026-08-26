@@ -2,6 +2,43 @@
 
 This repository is designed for autonomous implementation by Codex.
 
+## Operator authorization and no-prompt policy
+
+The repository owner explicitly authorizes Codex to execute the entire currently feasible MemeRadar roadmap without asking for routine confirmation between commands or tasks.
+
+Treat ordinary implementation work as pre-approved. Do **not** stop to ask questions such as “Would you like to run this command?” when the command is part of normal repository work and the execution environment permits it.
+
+The following classes of work are pre-authorized for the duration of the project:
+
+- reading any repository file or directory with commands such as `cat`, `sed`, `head`, `tail`, `grep`, `rg`, `find`, `ls`, `tree`, `git show`, `git diff`, and equivalents;
+- inspecting source code, specifications, logs, configuration, environment metadata, git history/status, generated artifacts, schemas, migrations, and tests;
+- creating, editing, moving, or deleting project files when required by the accepted roadmap;
+- installing normal project dependencies and toolchains required by this repository;
+- creating local virtual environments, package caches, build directories, containers, Docker volumes/networks, test databases, fixtures, and generated code;
+- running formatters, linters, static analysis, type checks, unit/integration/e2e tests, coverage, builds, migrations, seeds, replay jobs, benchmarks, doctor checks, security checks, and bounded local smoke tests;
+- starting/stopping/restarting project-local development services, Docker Compose stacks, workers, schedulers, APIs, databases, caches, and frontends;
+- using authenticated development/provider APIs when credentials already exist and the action is read-only, analysis-only, paper-trading, or otherwise explicitly permitted by the repository safety mode;
+- git add/commit/fetch/pull/rebase/merge/push operations required to keep the intended branch synchronized, provided unrelated user work is preserved and shared history is not force-pushed;
+- resolving implementation details autonomously when the specification already defines intent and safety boundaries.
+
+When a tool or shell UI offers an option equivalent to “Yes, and don't ask again for commands that start with …”, prefer the persistent approval option for safe recurring command families when available rather than requesting one-off approval repeatedly.
+
+Do not ask the operator to approve commands merely because they read large files, access the local filesystem, run tests, build the project, inspect git state, or modify files required by the roadmap.
+
+This authorization does **not** override the execution host's non-bypassable security controls. If the Codex product/runtime itself enforces an approval dialog that repository instructions cannot suppress, select/use the broadest safe persistent approval already available in that UI; otherwise continue immediately after the enforced boundary is cleared.
+
+### Actions that remain intentionally protected
+
+Do not infer authorization for actions outside the repository's safety policy. In particular:
+
+- never expose, print, commit, transmit, rotate, delete, or otherwise mishandle secrets, wallet private keys, seed phrases, API tokens, session cookies, or credentials;
+- never enable live-money trading merely to progress the roadmap;
+- never transfer funds, sign arbitrary wallet transactions, change live execution permissions, or bypass trading/risk controls unless an explicit future operator instruction and the repository acceptance gates both authorize it;
+- never force-push shared history, intentionally destroy unrelated user data, wipe arbitrary host directories, weaken host security, or disable security controls to avoid an approval boundary;
+- never fabricate provider success when credentials/network/provider access are unavailable.
+
+A genuine external or protected blocker must be documented and isolated. Continue every independent task instead of stopping the whole project to ask the user what to do.
+
 ## Mandatory startup sequence
 
 Before changing code, read in order:
@@ -23,6 +60,7 @@ Then inspect the actual repository and environment. Repository truth overrides a
 
 - Continue from `docs/STATUS.md`; do not restart completed work.
 - Do not ask routine implementation questions when the specification already resolves them.
+- Do not pause after each command, file, test, sprint, or phase for user confirmation. Continue automatically to the next unblocked task.
 - Choose technically sound defaults when a minor implementation detail is unspecified and document the decision.
 - Never invent external-provider success. If credentials/network/provider access are absent, use fakes/fixtures and mark live verification as blocked.
 - Do not enable live-money trading merely because code exists.
@@ -86,6 +124,8 @@ If a task is blocked by external access:
 - document exact required credential/access and expected success evidence;
 - mark only the external acceptance item blocked;
 - continue with other independent work.
+
+Do not stop merely because one provider, credential, rate limit, paid feature, Apple/Android toolchain, optional service, or external acceptance test is unavailable. Continue all independent work to completion.
 
 ## Git behavior
 
