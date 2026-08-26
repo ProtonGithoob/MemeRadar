@@ -21,7 +21,7 @@ typecheck:
 	$(PYTHON) -m mypy
 
 test:
-	$(PYTHON) -m pytest -q
+	$(PYTHON) -m pytest -q --cov=apps --cov=packages --cov-report=term-missing
 
 frontend-lint:
 	npm --prefix $(WEB_DIR) run lint

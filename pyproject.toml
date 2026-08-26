@@ -27,6 +27,15 @@ dev = [
 addopts = "--strict-config --strict-markers"
 testpaths = ["tests"]
 
+[tool.coverage.run]
+branch = true
+source = ["apps", "packages"]
+omit = ["tests/*", "scripts/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
