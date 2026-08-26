@@ -1,12 +1,14 @@
 """Replayable internal events and stable explanation codes."""
 
+import hashlib
+import json
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from .common import ensure_ordered_timestamps, require_text
+from .common import ensure_ordered_timestamps, freeze_mapping, require_text
 
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_.-]{0,63}$")
 
@@ -56,6 +58,14 @@ def normalize_reason_codes(
     return tuple(normalized)
 
 
+def _canonicalize(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _canonicalize(item) for key, item in value.items()}
+    if isinstance(value, tuple | list):
+        return [_canonicalize(item) for item in value]
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class EventEnvelope:
     """Common internal event envelope with deterministic replay metadata."""
@@ -81,7 +91,8 @@ class EventEnvelope:
             self.observed_at,
             self.ingested_at,
         )
-        assert occurred is not None
+        if occurred is None:
+            raise ValueError("occurred_at is required")
         object.__setattr__(self, "occurred_at", occurred)
         object.__setattr__(self, "observed_at", observed)
         object.__setattr__(self, "ingested_at", ingested)
@@ -113,7 +124,7 @@ class EventEnvelope:
                 "idempotency_key",
                 require_text(self.idempotency_key, "idempotency_key"),
             )
-        object.__setattr__(self, "payload", dict(self.payload))
+        object.__setattr__(self, "payload", freeze_mapping(self.payload, "payload"))
         object.__setattr__(
             self,
             "reason_codes",
@@ -124,4 +135,33 @@ class EventEnvelope:
     def dedupe_key(self) -> str:
         """Return the supplied idempotency key or the immutable event ID."""
 
-        return self.idempotency_key or str(self.id)
+        if self.idempotency_key is not None:
+            return self.idempotency_key
+        material = {
+            "aggregate_id": str(self.aggregate_id),
+            "aggregate_type": self.aggregate_type,
+            "causation_id": str(self.causation_id) if self.causation_id else None,
+            "correlation_id": self.correlation_id,
+            "ingested_at": self.ingested_at.isoformat(),
+            "kind": self.kind,
+            "observed_at": self.observed_at.isoformat(),
+            "payload": self.payload,
+            "producer": self.producer,
+            "reason_codes": [
+                {
+                    "code": reason.code,
+                    "detail": reason.detail,
+                    "evidence_refs": reason.evidence_refs,
+                }
+                for reason in self.reason_codes
+            ],
+            "schema_version": self.schema_version,
+            "occurred_at": self.occurred_at.isoformat(),
+        }
+        canonical = json.dumps(
+            _canonicalize(material),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        return f"event:{hashlib.sha256(canonical.encode()).hexdigest()}"

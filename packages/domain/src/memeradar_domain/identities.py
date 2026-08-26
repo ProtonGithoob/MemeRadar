@@ -49,9 +49,7 @@ class TokenIdentity:
 
     def __post_init__(self) -> None:
         chain = (
-            self.chain.value
-            if isinstance(self.chain, Chain)
-            else require_text(self.chain, "chain")
+            self.chain.value if isinstance(self.chain, Chain) else require_text(self.chain, "chain")
         )
         try:
             normalized_chain = Chain(chain.lower())

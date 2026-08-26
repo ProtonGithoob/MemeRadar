@@ -14,6 +14,7 @@ from memeradar_domain import (
     Candidate,
     CandidateState,
     EventEnvelope,
+    ExitSignal,
     FeatureSnapshot,
     Freshness,
     IdempotencyConflict,
@@ -29,6 +30,7 @@ from memeradar_domain import (
     RiskAssessment,
     RiskDisposition,
     ScoreSnapshot,
+    StateTransition,
     TokenIdentity,
 )
 
@@ -102,18 +104,31 @@ def test_candidate_lifecycle_accepts_the_documented_path() -> None:
     )
 
     for index, state in enumerate(steps, start=1):
+        decision_refs = {}
+        if state is CandidateState.ENTRY_READY:
+            decision_refs = {
+                "score_snapshot_id": uuid4(),
+                "risk_assessment_id": uuid4(),
+                "evidence_refs": ("feature:entry-1", "risk:entry-1"),
+            }
         transition = candidate.transition(
             state,
             reason_codes=reason(f"STATE_{state.value}"),
             occurred_at=NOW + timedelta(seconds=index),
             correlation_id="corr-domain-test",
             idempotency_key=f"transition-{index}",
+            **decision_refs,
         )
         assert transition.from_state != transition.to_state
         assert transition.to_state == state
 
     assert candidate.state is CandidateState.CLOSED
     assert len(candidate.transitions) == len(steps)
+
+    with pytest.raises(AttributeError):
+        candidate.state = CandidateState.OPEN  # type: ignore[misc]
+    with pytest.raises(AttributeError):
+        candidate.transitions.append(candidate.transitions[-1])  # type: ignore[attr-defined]
 
 
 def test_candidate_rejects_invalid_transition_and_missing_reason() -> None:
@@ -149,6 +164,36 @@ def test_candidate_rejects_invalid_transition_and_missing_reason() -> None:
             occurred_at=NOW,
             correlation_id="corr-domain-test",
             idempotency_key="watch-old",
+        )
+
+
+def test_entry_ready_requires_decision_references() -> None:
+    candidate = make_candidate()
+    candidate.transition(
+        CandidateState.ENRICHING,
+        reason_codes=reason(),
+        occurred_at=NOW + timedelta(seconds=1),
+        correlation_id="corr-domain-test",
+    )
+    candidate.transition(
+        CandidateState.WATCH,
+        reason_codes=reason(),
+        occurred_at=NOW + timedelta(seconds=2),
+        correlation_id="corr-domain-test",
+    )
+    candidate.transition(
+        CandidateState.STRONG_SETUP,
+        reason_codes=reason(),
+        occurred_at=NOW + timedelta(seconds=3),
+        correlation_id="corr-domain-test",
+    )
+
+    with pytest.raises(ValueError, match="score_snapshot_id and risk_assessment_id"):
+        candidate.transition(
+            CandidateState.ENTRY_READY,
+            reason_codes=reason("ENTRY_GATE"),
+            occurred_at=NOW + timedelta(seconds=4),
+            correlation_id="corr-domain-test",
         )
 
 
@@ -231,12 +276,28 @@ def test_event_envelope_and_provenance_preserve_timestamp_order() -> None:
         producer="fixture.market",
         payload={"observation_id": str(observation.id)},
         reason_codes=reason("OBSERVED"),
-        idempotency_key="observation-event-1",
     )
 
-    assert event.dedupe_key == "observation-event-1"
+    assert event.dedupe_key.startswith("event:")
     assert observation.provenance.provider == "fixture"
     assert observation.normalized_payload["liquidity"] == Decimal("1000")
+
+    equivalent_event = EventEnvelope(
+        kind=event.kind,
+        aggregate_type=event.aggregate_type,
+        aggregate_id=event.aggregate_id,
+        occurred_at=event.occurred_at,
+        observed_at=event.observed_at,
+        ingested_at=event.ingested_at,
+        correlation_id=event.correlation_id,
+        producer=event.producer,
+        payload=event.payload,
+        reason_codes=event.reason_codes,
+    )
+    assert equivalent_event.dedupe_key == event.dedupe_key
+
+    with pytest.raises(TypeError):
+        event.payload["new_value"] = "must fail"  # type: ignore[index]
 
     with pytest.raises(ValueError, match="timezone-aware"):
         Freshness(as_of=datetime(2026, 8, 27), expires_at=NOW + timedelta(minutes=1))
@@ -289,6 +350,7 @@ def test_feature_risk_and_score_snapshots_keep_explainability_and_fail_closed() 
         penalties={"wash_trading": Decimal("2")},
         evidence_refs=("observation:feature-1",),
         reason_codes=reason("RISK_PASSED"),
+        confidence=Decimal("0.95"),
         config_hash="sha256:config",
         critical_evidence_state=QualityState.FRESH,
     )
@@ -323,9 +385,28 @@ def test_feature_risk_and_score_snapshots_keep_explainability_and_fail_closed() 
         penalties={},
         evidence_refs=(),
         reason_codes=reason("RISK_UNKNOWN"),
+        confidence=Decimal("0"),
         config_hash="sha256:config",
         critical_evidence_state=QualityState.UNKNOWN,
     ).execution_eligible(NOW)
+
+    assert not RiskAssessment(
+        candidate_id=candidate.id,
+        as_of=NOW,
+        expires_at=NOW + timedelta(minutes=5),
+        risk_version="risk-v1",
+        disposition=RiskDisposition.PASS,
+        hard_blocks=(),
+        warnings=(),
+        penalties={},
+        evidence_refs=(),
+        reason_codes=reason("RISK_WITHOUT_EVIDENCE"),
+        confidence=Decimal("0.95"),
+        config_hash="sha256:config",
+    ).execution_eligible(NOW)
+
+    with pytest.raises(TypeError):
+        score.components["new_component"] = Decimal("1")  # type: ignore[index]
 
 
 def test_decision_values_reject_out_of_range_numbers() -> None:
@@ -377,6 +458,17 @@ def test_alert_delivery_and_paper_position_lifecycle_are_typed() -> None:
     assert alert.delivered_at == NOW + timedelta(seconds=1)
     assert alert.reason_codes == reason("SCORE_THRESHOLD_REACHED")
 
+    with pytest.raises(ValueError, match="delivered_at"):
+        Alert(
+            type=AlertType.NEW_WATCH,
+            severity=AlertSeverity.INFO,
+            payload={},
+            dedupe_key="invalid-alert",
+            requested_at=NOW,
+            state=AlertState.REQUESTED,
+            delivered_at=NOW + timedelta(seconds=1),
+        )
+
     position = Position(
         portfolio_id=uuid4(),
         token_id=uuid4(),
@@ -385,8 +477,19 @@ def test_alert_delivery_and_paper_position_lifecycle_are_typed() -> None:
         average_entry=Decimal("1.25"),
         opened_at=NOW,
         state=PositionState.OPEN,
+        entry_decision_ref=uuid4(),
     )
     position.mark_price(Decimal("1.50"))
+    signal = ExitSignal(
+        position_id=position.id,
+        occurred_at=NOW + timedelta(seconds=30),
+        severity=AlertSeverity.WARNING,
+        action="REDUCE",
+        reason_codes=reason("LIQUIDITY_DECAY"),
+        evidence_refs=("observation:liquidity-1",),
+        version="exit-v1",
+    )
+    position.signal_exit(signal)
     position.close(
         closed_at=NOW + timedelta(minutes=1),
         average_exit=Decimal("1.40"),
@@ -398,3 +501,27 @@ def test_alert_delivery_and_paper_position_lifecycle_are_typed() -> None:
     assert position.state is PositionState.CLOSED
     assert position.closed_at == NOW + timedelta(minutes=1)
     assert position.realized_pnl == Decimal("1.50")
+
+    with pytest.raises(ValueError, match="opened_at"):
+        Position(
+            portfolio_id=uuid4(),
+            token_id=uuid4(),
+            mode=PositionMode.PAPER,
+            quantity=Decimal("1"),
+            average_entry=Decimal("1"),
+            state=PositionState.CLOSED,
+            average_exit=Decimal("1"),
+        )
+
+
+def test_state_transition_value_object_rejects_bypassed_edges() -> None:
+    with pytest.raises(InvalidTransition, match="not allowed"):
+        StateTransition(
+            candidate_id=uuid4(),
+            from_state=CandidateState.DISCOVERED,
+            to_state=CandidateState.WATCH,
+            reason_codes=reason(),
+            occurred_at=NOW,
+            correlation_id="corr-domain-test",
+            idempotency_key="invalid-edge",
+        )

@@ -1,8 +1,9 @@
 """Small validation helpers shared by the provider-independent domain models."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from types import MappingProxyType
 
 
 def require_text(value: str, field: str, *, max_length: int = 256) -> str:
@@ -82,3 +83,22 @@ def normalize_texts(
         if item not in normalized:
             normalized.append(item)
     return tuple(normalized)
+
+
+def freeze_value(value: object) -> object:
+    """Recursively freeze JSON-shaped values used by immutable domain records."""
+
+    if isinstance(value, Mapping):
+        return MappingProxyType({str(key): freeze_value(item) for key, item in value.items()})
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return tuple(freeze_value(item) for item in value)
+    return value
+
+
+def freeze_mapping(values: Mapping[str, object], field: str) -> Mapping[str, object]:
+    """Copy and recursively freeze a string-keyed mapping."""
+
+    normalized = {
+        require_text(key, f"{field} key"): freeze_value(value) for key, value in values.items()
+    }
+    return MappingProxyType(normalized)

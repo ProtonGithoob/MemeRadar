@@ -7,7 +7,14 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID, uuid4
 
-from .common import ensure_utc, require_text, to_decimal
+from .common import (
+    bounded_decimal,
+    ensure_utc,
+    freeze_mapping,
+    normalize_texts,
+    require_text,
+    to_decimal,
+)
 from .events import ReasonCode, normalize_reason_codes
 
 
@@ -66,7 +73,7 @@ class Alert:
         self.severity = AlertSeverity(self.severity)
         self.requested_at = ensure_utc(self.requested_at, "requested_at")
         self.dedupe_key = require_text(self.dedupe_key, "dedupe_key")
-        self.payload = dict(self.payload)
+        self.payload = freeze_mapping(self.payload, "payload")
         self.state = AlertState(self.state)
         self.reason_codes = normalize_reason_codes(self.reason_codes)
         if self.attempts < 0:
@@ -77,12 +84,21 @@ class Alert:
                 raise ValueError("delivered_at must not precede requested_at")
         if self.state is AlertState.DELIVERED and self.delivered_at is None:
             raise ValueError("delivered alerts require delivered_at")
+        if self.state is AlertState.DELIVERED and self.attempts < 1:
+            raise ValueError("delivered alerts require at least one attempt")
+        if self.state is AlertState.REQUESTED and self.delivered_at is not None:
+            raise ValueError("requested alerts cannot have delivered_at")
+        if (
+            self.state in {AlertState.FAILED, AlertState.SUPPRESSED}
+            and self.delivered_at is not None
+        ):
+            raise ValueError("undelivered alerts cannot have delivered_at")
 
     def mark_delivered(self, delivered_at: datetime) -> None:
         """Record a successful delivery exactly once."""
 
-        if self.state is AlertState.DELIVERED:
-            raise ValueError("alert is already delivered")
+        if self.state not in {AlertState.REQUESTED, AlertState.FAILED}:
+            raise ValueError("only requested or failed alerts can be delivered")
         normalized_time = ensure_utc(delivered_at, "delivered_at")
         if normalized_time < self.requested_at:
             raise ValueError("delivered_at must not precede requested_at")
@@ -93,10 +109,56 @@ class Alert:
     def mark_failed(self) -> None:
         """Record a failed attempt without losing the dedupe identity."""
 
-        if self.state is AlertState.DELIVERED:
-            raise ValueError("delivered alerts cannot fail")
+        if self.state not in {AlertState.REQUESTED, AlertState.FAILED}:
+            raise ValueError("only requested or failed alerts can fail")
         self.attempts += 1
         self.state = AlertState.FAILED
+
+
+@dataclass(frozen=True, slots=True)
+class ExitSignal:
+    """Versioned, evidence-bearing recommendation to reduce or close a position."""
+
+    position_id: UUID
+    occurred_at: datetime
+    severity: AlertSeverity
+    action: str
+    reason_codes: tuple[ReasonCode, ...]
+    evidence_refs: tuple[str, ...]
+    version: str
+    score_before: Decimal | None = None
+    score_after: Decimal | None = None
+    id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "occurred_at", ensure_utc(self.occurred_at, "occurred_at"))
+        object.__setattr__(self, "severity", AlertSeverity(self.severity))
+        object.__setattr__(self, "action", require_text(self.action, "action").upper())
+        object.__setattr__(
+            self,
+            "reason_codes",
+            normalize_reason_codes(self.reason_codes, required=True),
+        )
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(self.evidence_refs, "evidence_refs"),
+        )
+        if not self.evidence_refs:
+            raise ValueError("evidence_refs must contain at least one reference")
+        object.__setattr__(self, "version", require_text(self.version, "version"))
+        if self.score_before is not None:
+            object.__setattr__(
+                self,
+                "score_before",
+                bounded_decimal(self.score_before, "score_before", Decimal("0"), Decimal("100")),
+            )
+        if self.score_after is not None:
+            object.__setattr__(
+                self,
+                "score_after",
+                bounded_decimal(self.score_after, "score_after", Decimal("0"), Decimal("100")),
+            )
 
 
 class PositionMode(str, Enum):
@@ -135,6 +197,7 @@ class Position:
     mae: Decimal = Decimal("0")
     entry_decision_ref: UUID | None = None
     exit_decision_ref: UUID | None = None
+    exit_signal_id: UUID | None = None
 
     def __post_init__(self) -> None:
         self.mode = PositionMode(self.mode)
@@ -147,8 +210,10 @@ class Position:
             raise ValueError("average_entry must be positive")
         if self.opened_at is not None:
             self.opened_at = ensure_utc(self.opened_at, "opened_at")
-        if self.state is PositionState.OPEN and self.opened_at is None:
-            raise ValueError("open positions require opened_at")
+        if self.state is not PositionState.PENDING and self.opened_at is None:
+            raise ValueError("non-pending positions require opened_at")
+        if self.state is not PositionState.PENDING and self.entry_decision_ref is None:
+            raise ValueError("non-pending positions require entry_decision_ref")
         self.realized_pnl = to_decimal(self.realized_pnl, "realized_pnl")
         self.mfe = to_decimal(self.mfe, "mfe")
         self.mae = to_decimal(self.mae, "mae")
@@ -166,6 +231,8 @@ class Position:
             self.closed_at = ensure_utc(self.closed_at, "closed_at")
             if self.opened_at is not None and self.closed_at < self.opened_at:
                 raise ValueError("closed_at must not precede opened_at")
+        if self.state is PositionState.EXIT_SIGNALLED and self.exit_signal_id is None:
+            raise ValueError("exit-signalled positions require exit_signal_id")
         if self.state is PositionState.CLOSED and (
             self.closed_at is None or self.average_exit is None
         ):
@@ -185,11 +252,16 @@ class Position:
         self.mfe = max(self.mfe, move)
         self.mae = min(self.mae, move)
 
-    def signal_exit(self) -> None:
+    def signal_exit(self, signal: ExitSignal) -> None:
         """Move an open position to an explainable exit-signal state."""
 
         if self.state is not PositionState.OPEN:
             raise ValueError("only open positions can be exit-signalled")
+        if signal.position_id != self.id:
+            raise ValueError("exit signal belongs to another position")
+        if self.opened_at is not None and signal.occurred_at < self.opened_at:
+            raise ValueError("exit signal occurred_at must not precede opened_at")
+        self.exit_signal_id = signal.id
         self.state = PositionState.EXIT_SIGNALLED
 
     def close(

@@ -8,8 +8,11 @@ version = "0.1.0"
 description = "Evidence-first Solana memecoin intelligence platform"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+    "alembic==1.14.1",
+    "asyncpg==0.30.0",
     "fastapi==0.115.6",
     "pydantic-settings==2.7.1",
+    "SQLAlchemy==2.0.37",
     "uvicorn[standard]==0.34.0",
 ]
 
@@ -26,6 +29,9 @@ dev = [
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
 testpaths = ["tests"]
+markers = [
+    "integration: requires an explicitly configured local integration database",
+]
 
 [tool.coverage.run]
 branch = true
@@ -44,6 +50,7 @@ src = [
     "apps/worker/src",
     "packages/application/src",
     "packages/domain/src",
+    "packages/persistence/src",
     "packages/telemetry/src",
 ]
 
@@ -58,6 +65,7 @@ files = [
     "apps/worker/src",
     "packages/application/src",
     "packages/domain/src",
+    "packages/persistence/src",
     "packages/telemetry/src",
 ]
 

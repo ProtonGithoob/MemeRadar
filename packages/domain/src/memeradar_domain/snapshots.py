@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID, uuid4
 
-from .common import bounded_decimal, ensure_utc, normalize_texts, require_text
+from .common import bounded_decimal, ensure_utc, freeze_mapping, normalize_texts, require_text
 from .events import ReasonCode, normalize_reason_codes
 from .evidence import Freshness, Provenance, QualityState
 
@@ -72,7 +72,7 @@ class FeatureSnapshot:
         normalized_values = _normalize_mapping(self.values, "values")
         if not normalized_values:
             raise ValueError("values must contain at least one feature")
-        object.__setattr__(self, "values", normalized_values)
+        object.__setattr__(self, "values", freeze_mapping(normalized_values, "values"))
         object.__setattr__(self, "provenance", tuple(self.provenance))
         if any(not isinstance(source, Provenance) for source in self.provenance):
             raise TypeError("provenance must contain Provenance values")
@@ -111,8 +111,9 @@ class RiskAssessment:
     penalties: Mapping[str, object]
     evidence_refs: tuple[str, ...]
     reason_codes: tuple[ReasonCode, ...]
+    confidence: Decimal
     config_hash: str
-    critical_evidence_state: QualityState = QualityState.FRESH
+    critical_evidence_state: QualityState = QualityState.UNKNOWN
     id: UUID = field(default_factory=uuid4)
 
     def __post_init__(self) -> None:
@@ -126,7 +127,11 @@ class RiskAssessment:
         object.__setattr__(self, "disposition", RiskDisposition(self.disposition))
         object.__setattr__(self, "hard_blocks", normalize_texts(self.hard_blocks, "hard_blocks"))
         object.__setattr__(self, "warnings", normalize_texts(self.warnings, "warnings"))
-        object.__setattr__(self, "penalties", _normalize_penalties(self.penalties))
+        object.__setattr__(
+            self,
+            "penalties",
+            freeze_mapping(_normalize_penalties(self.penalties), "penalties"),
+        )
         object.__setattr__(
             self,
             "evidence_refs",
@@ -136,6 +141,11 @@ class RiskAssessment:
             self,
             "reason_codes",
             normalize_reason_codes(self.reason_codes, required=True),
+        )
+        object.__setattr__(
+            self,
+            "confidence",
+            bounded_decimal(self.confidence, "confidence", Decimal("0"), Decimal("1")),
         )
         object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
         object.__setattr__(
@@ -160,6 +170,8 @@ class RiskAssessment:
         return (
             self.disposition is RiskDisposition.PASS
             and not self.hard_blocks
+            and bool(self.evidence_refs)
+            and self.confidence > 0
             and self.critical_evidence_state is QualityState.FRESH
             and self.freshness.is_fresh(at)
         )
@@ -210,8 +222,16 @@ class ScoreSnapshot:
                 Decimal("0"),
                 Decimal("100"),
             )
-        object.__setattr__(self, "components", normalized_components)
-        object.__setattr__(self, "penalties", _normalize_penalties(self.penalties))
+        object.__setattr__(
+            self,
+            "components",
+            freeze_mapping(normalized_components, "components"),
+        )
+        object.__setattr__(
+            self,
+            "penalties",
+            freeze_mapping(_normalize_penalties(self.penalties), "penalties"),
+        )
         object.__setattr__(
             self,
             "reason_codes",

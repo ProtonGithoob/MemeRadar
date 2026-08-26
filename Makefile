@@ -7,7 +7,7 @@ COMPOSE_FILE ?= infra/compose/docker-compose.yml
 COMPOSE ?= docker compose -f $(COMPOSE_FILE)
 
 .PHONY: bootstrap lint typecheck test frontend-lint frontend-typecheck frontend-test \
-	frontend-build compose-config secret-scan verify up down migrate doctor
+	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor
 
 bootstrap:
 	python3 -m venv .venv
@@ -41,7 +41,17 @@ compose-config:
 secret-scan:
 	$(PYTHON) scripts/secret_scan.py
 
-verify: lint typecheck test frontend-lint frontend-typecheck frontend-test compose-config secret-scan
+migration-check:
+	$(PYTHON) scripts/check_migrations.py
+
+integration-test:
+	@if [[ -n "$${MEMERADAR_TEST_DATABASE_URL:-}" ]]; then \
+		$(PYTHON) -m pytest tests/integration -q; \
+	else \
+		echo "MEMERADAR_TEST_DATABASE_URL not configured; integration tests skipped."; \
+	fi
+
+verify: lint typecheck test frontend-lint frontend-typecheck frontend-test compose-config secret-scan migration-check
 
 up:
 	$(COMPOSE) up -d
@@ -51,9 +61,13 @@ down:
 
 migrate:
 	@if [[ -f alembic.ini ]]; then \
-		$(PYTHON) -m alembic upgrade head; \
+		if [[ -n "$${MEMERADAR_DATABASE_URL:-}" || -n "$${DATABASE_URL:-}" ]]; then \
+			$(PYTHON) -m alembic -c alembic.ini upgrade head; \
+		else \
+			echo "Migration files present; no database URL configured; runtime migration skipped."; \
+		fi; \
 	else \
-		echo "No migrations configured; persistence begins in Phase 1."; \
+		echo "No migrations configured."; \
 	fi
 
 doctor:

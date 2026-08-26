@@ -30,7 +30,7 @@ jobs:
       - name: Test
         run: python -m pytest -q --cov=apps --cov=packages --cov-report=term-missing
       - name: Migration check
-        run: make migrate PYTHON=python3
+        run: make migration-check PYTHON=python3
 
   frontend:
     name: Frontend quality
