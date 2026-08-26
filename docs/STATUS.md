@@ -4,14 +4,14 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`SPRINT_1_2_COMPLETE_NEXT_SPRINT_1_3`
+`SPRINT_1_3_IN_PROGRESS`
 
 Phase 0 and Phase 1 / Sprints 1.1 and 1.2 are implemented and locally verified. The repository now has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request telemetry, CI configuration, provider-independent replayable domain primitives and a durable SQLAlchemy/Postgres persistence boundary. No provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
 - Completed: `Phase 1 / Sprint 1.2 — Persistence`
-- Next: `Phase 1 / Sprint 1.3 — Internal Event Processing`
+- In progress: `Phase 1 / Sprint 1.3 — Internal Event Processing`
 
 ## Current operating policy
 
@@ -51,6 +51,11 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Opt-in Postgres repository integration fixture and reversible migration smoke path.
 - [x] Roadmap checkboxes reconciled for Sprint 1.2.
 
+## Current sprint progress
+
+- Sprint 1.3 plan recorded in `docs/superpowers/plans/2026-08-27-phase-1-sprint-1-3-event-processing.md`.
+- Current subtask: add dispatcher/outbox retry contract tests, then implement the smallest provider-independent processing seam.
+
 ## Verification evidence
 
 All commands below were run in the current checkout on 2026-08-27.
@@ -84,11 +89,11 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Phase 0 and Sprint 1.1 provider acceptance: `NOT_APPLICABLE` — no provider credentials are required for the completed foundation/domain work.
 - Helius/RPC, Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
-- No external blocker prevents Sprint 1.3. Provider phases will use fixtures/contracts first and report live checks separately as `PASS`, `BLOCKED_EXTERNAL` or `FAIL`.
+- No external blocker is known for Sprint 1.3. Provider phases will use fixtures/contracts first and report live checks separately as `PASS`, `BLOCKED_EXTERNAL` or `FAIL`.
 
 ## Blockers
 
-- No current implementation blocker for Sprint 1.2 completion or the start of Sprint 1.3.
+- No current implementation blocker; Sprint 1.3 is in progress from the recorded plan and subtask above.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -106,4 +111,4 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 ## Next task
 
-Start `Phase 1 / Sprint 1.3 — Internal Event Processing` in `docs/ROADMAP.md`: implement the provider-independent event dispatcher/worker contract, persisted event/outbox retries and dead-letter semantics, duplicate/out-of-order tests and event-processing telemetry. Preserve all four safety modes.
+Continue `Phase 1 / Sprint 1.3 — Internal Event Processing`: add dispatcher/outbox retry contract tests, implement persisted event/outbox retries and dead-letter semantics, duplicate/out-of-order handling and event-processing telemetry. Preserve all four safety modes.
