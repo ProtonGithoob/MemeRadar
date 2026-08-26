@@ -20,7 +20,17 @@ _SECRET_ASSIGNMENT = re.compile(
     r"(?i)(\b(?:api[_-]?key|token|password|secret|private[_-]?key)\b\s*[:=]\s*)[^\s,;]+"
 )
 _FORMATTER_HANDLER_MARKER = "_memeradar_json_handler"
-_SAFE_EXTRA_FIELDS = ("http_method", "path", "status_code", "duration_ms")
+_SAFE_EXTRA_FIELDS = (
+    "http_method",
+    "path",
+    "status_code",
+    "duration_ms",
+    "event_processing_outcome",
+    "event_id",
+    "event_kind",
+    "attempts",
+    "error_class",
+)
 
 
 def correlation_id() -> str | None:

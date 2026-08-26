@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import replace
-from datetime import UTC, datetime
-from uuid import UUID
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from memeradar_application.event_processing import OutboxMessage
 from memeradar_domain import (
     Candidate,
     CandidateState,
@@ -25,6 +27,10 @@ from memeradar_domain import (
 from memeradar_domain.common import ensure_utc, require_text
 
 from .models import (
+    OUTBOX_DEAD_LETTER,
+    OUTBOX_DELIVERED,
+    OUTBOX_PENDING,
+    OUTBOX_PROCESSING,
     CandidateRow,
     DomainEventRow,
     OutboxRow,
@@ -32,6 +38,10 @@ from .models import (
     TokenRow,
 )
 from .serialization import json_safe, reason_codes_from_json, reason_codes_to_json
+
+
+class OutboxLeaseLost(RuntimeError):
+    """Raised when a delivery update no longer owns the row lease."""
 
 
 def _row_reason_codes(value: object) -> tuple[ReasonCode, ...]:
@@ -77,6 +87,46 @@ def _outbox_idempotency_key(side_effect_kind: str, event_key: str) -> str:
         return value
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
     return f"{side_effect_kind}:sha256:{digest}"
+
+
+def _event_matches_row(event: EventEnvelope, row: DomainEventRow) -> bool:
+    """Compare logical event content while ignoring transport-generated event IDs."""
+
+    return (
+        row.kind == event.kind
+        and row.schema_version == event.schema_version
+        and row.aggregate_type == event.aggregate_type
+        and row.aggregate_id == str(event.aggregate_id)
+        and row.occurred_at == event.occurred_at
+        and row.observed_at == event.observed_at
+        and row.ingested_at == event.ingested_at
+        and row.correlation_id == event.correlation_id
+        and row.causation_id == event.causation_id
+        and row.producer == event.producer
+        and row.payload == json_safe(event.payload)
+        and row.idempotency_key == event.dedupe_key
+        and row.reason_codes == reason_codes_to_json(event.reason_codes)
+    )
+
+
+def _transition_matches_row(transition: StateTransition, row: StateTransitionRow) -> bool:
+    """Compare every persisted transition field before accepting an idempotent replay."""
+
+    return (
+        row.id == transition.id
+        and row.from_state == transition.from_state.value
+        and row.to_state == transition.to_state.value
+        and row.reason_codes == reason_codes_to_json(transition.reason_codes)
+        and row.score_snapshot_id == transition.score_snapshot_id
+        and row.risk_assessment_id == transition.risk_assessment_id
+        and row.occurred_at == transition.occurred_at
+        and row.correlation_id == transition.correlation_id
+        and row.idempotency_key == transition.idempotency_key
+        and row.version == transition.version
+        and row.config_hash == transition.config_hash
+        and row.confidence == transition.confidence
+        and row.evidence_refs == list(transition.evidence_refs)
+    )
 
 
 class CandidateRepository:
@@ -135,7 +185,7 @@ class CandidateRepository:
         for transition in candidate.transitions:
             existing = existing_transitions.get(transition.idempotency_key)
             if existing is not None:
-                if existing.id != transition.id:
+                if not _transition_matches_row(transition, existing):
                     raise IdempotencyConflict(
                         f"persisted transition key {transition.idempotency_key!r} conflicts"
                     )
@@ -184,7 +234,10 @@ class CandidateRepository:
             rejection_reason=_row_reason_codes(row.rejection_reason),
             pools=pools,
         )
-        for transition_row in sorted(row.transitions, key=lambda item: item.occurred_at):
+        for transition_row in sorted(
+            row.transitions,
+            key=lambda item: (item.occurred_at, str(item.id)),
+        ):
             if CandidateState(transition_row.from_state) is not candidate.state:
                 raise ValueError("persisted transition history is not sequential")
             applied = candidate.transition(
@@ -221,17 +274,14 @@ class OutboxRepository:
     ) -> OutboxRow:
         normalized_side_effect = require_text(side_effect_kind, "side_effect_kind", max_length=64)
         idempotency_key = _outbox_idempotency_key(normalized_side_effect, event.dedupe_key)
-        existing_outbox = await self._session.scalar(
-            select(OutboxRow).where(OutboxRow.idempotency_key == idempotency_key)
-        )
-        if existing_outbox is not None:
-            return existing_outbox
-
         event_row = await self._session.scalar(
             select(DomainEventRow).where(DomainEventRow.idempotency_key == event.dedupe_key)
         )
+        row_by_id = await self._session.get(DomainEventRow, event.id)
+        if event_row is not None and row_by_id is not None and event_row.id != row_by_id.id:
+            raise IdempotencyConflict(f"event ID {event.id} conflicts with its idempotency key")
         if event_row is None:
-            event_row = await self._session.get(DomainEventRow, event.id)
+            event_row = row_by_id
         if event_row is None:
             event_row = DomainEventRow(
                 id=event.id,
@@ -251,6 +301,21 @@ class OutboxRepository:
             )
             self._session.add(event_row)
             await self._session.flush()
+        elif not _event_matches_row(event, event_row):
+            raise IdempotencyConflict(
+                f"event key {event.dedupe_key!r} conflicts with persisted content"
+            )
+
+        existing_outbox = await self._session.scalar(
+            select(OutboxRow).where(OutboxRow.idempotency_key == idempotency_key)
+        )
+        if existing_outbox is not None:
+            if existing_outbox.event_id != event_row.id:
+                raise IdempotencyConflict(
+                    f"outbox key {idempotency_key!r} conflicts with its event reference"
+                )
+            return existing_outbox
+
         normalized_available_at = (
             event.ingested_at if available_at is None else ensure_utc(available_at, "available_at")
         )
@@ -269,3 +334,140 @@ class OutboxRepository:
         self._session.add(outbox_row)
         await self._session.flush()
         return outbox_row
+
+    async def claim_ready(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+        lease_seconds: int,
+    ) -> tuple[OutboxMessage, ...]:
+        """Claim ready messages using row locks and an expiring lease."""
+
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        if not 1 <= lease_seconds <= 86400:
+            raise ValueError("lease_seconds must be between 1 and 86400")
+        normalized_now = ensure_utc(now, "now")
+        statement = (
+            select(OutboxRow)
+            .where(
+                OutboxRow.delivered_at.is_(None),
+                OutboxRow.dead_lettered_at.is_(None),
+                OutboxRow.available_at <= normalized_now,
+                or_(
+                    OutboxRow.status == OUTBOX_PENDING,
+                    and_(
+                        OutboxRow.status == OUTBOX_PROCESSING,
+                        or_(
+                            OutboxRow.lease_expires_at.is_(None),
+                            OutboxRow.lease_expires_at <= normalized_now,
+                        ),
+                    ),
+                ),
+            )
+            .options(selectinload(OutboxRow.event))
+            .order_by(OutboxRow.available_at, OutboxRow.created_at, OutboxRow.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        rows = (await self._session.scalars(statement)).all()
+        claimed: list[OutboxMessage] = []
+        lease_expires_at = normalized_now + timedelta(seconds=lease_seconds)
+        for row in rows:
+            lease_token = uuid4().hex
+            row.status = OUTBOX_PROCESSING
+            row.claim_token = lease_token
+            row.lease_expires_at = lease_expires_at
+            claimed.append(_outbox_message(row, lease_token))
+        await self._session.flush()
+        return tuple(claimed)
+
+    async def mark_delivered(
+        self,
+        message_id: UUID,
+        *,
+        lease_token: str,
+        delivered_at: datetime,
+    ) -> None:
+        row = await self._leased_row(message_id, lease_token)
+        row.status = OUTBOX_DELIVERED
+        row.delivered_at = ensure_utc(delivered_at, "delivered_at")
+        row.claim_token = None
+        row.lease_expires_at = None
+        await self._session.flush()
+
+    async def mark_retry(
+        self,
+        message_id: UUID,
+        *,
+        lease_token: str,
+        attempts: int,
+        available_at: datetime,
+        error_metadata: Mapping[str, object],
+    ) -> None:
+        row = await self._leased_row(message_id, lease_token)
+        if attempts <= row.attempts:
+            raise ValueError("retry attempts must increase monotonically")
+        row.status = OUTBOX_PENDING
+        row.attempts = attempts
+        row.available_at = ensure_utc(available_at, "available_at")
+        row.error_metadata = json_safe(error_metadata)
+        row.claim_token = None
+        row.lease_expires_at = None
+        await self._session.flush()
+
+    async def mark_dead_letter(
+        self,
+        message_id: UUID,
+        *,
+        lease_token: str,
+        attempts: int,
+        dead_lettered_at: datetime,
+        error_metadata: Mapping[str, object],
+    ) -> None:
+        row = await self._leased_row(message_id, lease_token)
+        if attempts <= row.attempts:
+            raise ValueError("dead-letter attempts must increase monotonically")
+        row.status = OUTBOX_DEAD_LETTER
+        row.attempts = attempts
+        row.dead_lettered_at = ensure_utc(dead_lettered_at, "dead_lettered_at")
+        row.error_metadata = json_safe(error_metadata)
+        row.claim_token = None
+        row.lease_expires_at = None
+        await self._session.flush()
+
+    async def _leased_row(self, message_id: UUID, lease_token: str) -> OutboxRow:
+        row = await self._session.get(OutboxRow, message_id)
+        if row is None or row.status != OUTBOX_PROCESSING or row.claim_token != lease_token:
+            raise OutboxLeaseLost(f"outbox lease is not held for {message_id}")
+        return row
+
+
+def _outbox_message(row: OutboxRow, lease_token: str) -> OutboxMessage:
+    event_row = row.event
+    if event_row is None:
+        raise ValueError("outbox row is missing its domain event")
+    event = EventEnvelope(
+        id=event_row.id,
+        kind=event_row.kind,
+        schema_version=event_row.schema_version,
+        aggregate_type=event_row.aggregate_type,
+        aggregate_id=event_row.aggregate_id,
+        occurred_at=event_row.occurred_at,
+        observed_at=event_row.observed_at,
+        ingested_at=event_row.ingested_at,
+        correlation_id=event_row.correlation_id,
+        causation_id=event_row.causation_id,
+        producer=event_row.producer,
+        payload=event_row.payload,
+        idempotency_key=event_row.idempotency_key,
+        reason_codes=_row_reason_codes(event_row.reason_codes),
+    )
+    return OutboxMessage(
+        id=row.id,
+        event=event,
+        attempts=row.attempts,
+        available_at=row.available_at,
+        lease_token=lease_token,
+    )

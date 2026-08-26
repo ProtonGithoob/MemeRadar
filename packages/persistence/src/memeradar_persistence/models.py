@@ -26,6 +26,12 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+OUTBOX_PENDING = "PENDING"
+OUTBOX_PROCESSING = "PROCESSING"
+OUTBOX_DELIVERED = "DELIVERED"
+OUTBOX_DEAD_LETTER = "DEAD_LETTER"
+
+
 class Base(DeclarativeBase):
     """Declarative base kept inside the persistence package."""
 
@@ -354,6 +360,7 @@ class OutboxRow(Base):
     __table_args__ = (
         UniqueConstraint("idempotency_key", name="uq_outbox_idempotency_key"),
         Index("ix_outbox_available", "available_at", "delivered_at"),
+        Index("ix_outbox_processing", "status", "available_at", "lease_expires_at"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -369,6 +376,14 @@ class OutboxRow(Base):
     available_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=OUTBOX_PENDING, server_default=OUTBOX_PENDING
+    )
+    claim_token: Mapped[str | None] = mapped_column(String(64))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+    event: Mapped[DomainEventRow | None] = relationship()

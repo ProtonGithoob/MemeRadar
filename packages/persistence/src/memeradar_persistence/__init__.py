@@ -1,6 +1,10 @@
 """Persistence boundary for SQLAlchemy models, repositories and transactions."""
 
 from .models import (
+    OUTBOX_DEAD_LETTER,
+    OUTBOX_DELIVERED,
+    OUTBOX_PENDING,
+    OUTBOX_PROCESSING,
     AlertRow,
     Base,
     CandidateRow,
@@ -16,8 +20,8 @@ from .models import (
     StateTransitionRow,
     TokenRow,
 )
-from .repositories import CandidateRepository, OutboxRepository
-from .uow import SqlAlchemyUnitOfWork, create_database_engine
+from .repositories import CandidateRepository, OutboxLeaseLost, OutboxRepository
+from .uow import SqlAlchemyOutboxStore, SqlAlchemyUnitOfWork, create_database_engine
 
 __all__ = [
     "AlertRow",
@@ -28,12 +32,18 @@ __all__ = [
     "FeatureSnapshotRow",
     "ObservationRow",
     "OutboxRepository",
+    "OutboxLeaseLost",
     "OutboxRow",
+    "OUTBOX_DEAD_LETTER",
+    "OUTBOX_DELIVERED",
+    "OUTBOX_PENDING",
+    "OUTBOX_PROCESSING",
     "PoolRow",
     "PortfolioRow",
     "PositionRow",
     "RiskAssessmentRow",
     "ScoreSnapshotRow",
+    "SqlAlchemyOutboxStore",
     "SqlAlchemyUnitOfWork",
     "StateTransitionRow",
     "TokenRow",

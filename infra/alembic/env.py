@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 ROOT = Path(__file__).resolve().parents[2]
 for source_root in (
+    ROOT / "packages" / "application" / "src",
     ROOT / "packages" / "domain" / "src",
     ROOT / "packages" / "persistence" / "src",
 ):

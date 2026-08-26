@@ -19,5 +19,5 @@ def test_migration_check_reports_one_initial_head() -> None:
 
     assert result.returncode == 0, result.stderr
     report = json.loads(result.stdout)
-    assert report["heads"] == ["0001_initial"]
+    assert report["heads"] == ["0002_outbox_processing"]
     assert report["table_count"] == 13

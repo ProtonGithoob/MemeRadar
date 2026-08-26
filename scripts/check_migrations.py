@@ -12,6 +12,7 @@ from alembic.script import ScriptDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "packages" / "domain" / "src"))
+sys.path.insert(0, str(ROOT / "packages" / "application" / "src"))
 sys.path.insert(0, str(ROOT / "packages" / "persistence" / "src"))
 
 from memeradar_persistence import Base  # noqa: E402
@@ -39,8 +40,8 @@ def main() -> int:
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0001_initial"]:
-        print("migration_error: expected exactly one 0001_initial head", file=sys.stderr)
+    if heads != ["0002_outbox_processing"]:
+        print("migration_error: expected exactly one 0002_outbox_processing head", file=sys.stderr)
         return 1
     if metadata_tables != expected_tables:
         print("migration_error: metadata table set does not match core schema", file=sys.stderr)

@@ -67,7 +67,20 @@ def test_query_indexes_cover_candidate_ordering_observation_windows_and_outbox()
         "ix_observations_kind_occurred_at",
         "ix_observations_token_kind_occurred",
         "ix_outbox_available",
+        "ix_outbox_processing",
     } <= indexes
+
+
+def test_outbox_processing_columns_support_leases_and_dead_letters() -> None:
+    columns = Base.metadata.tables["outbox"].c
+
+    assert {
+        "status",
+        "claim_token",
+        "lease_expires_at",
+        "dead_lettered_at",
+    } <= {column.name for column in columns}
+    assert columns["status"].nullable is False
 
 
 def test_domain_source_has_no_persistence_or_framework_imports() -> None:

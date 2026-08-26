@@ -2,19 +2,32 @@
 
 import asyncio
 import os
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
-from memeradar_domain import Candidate, EventEnvelope, ReasonCode, TokenIdentity
+from memeradar_application.event_processing import (
+    EventDispatcher,
+    OutboxProcessor,
+    ProcessingResult,
+)
+from memeradar_domain import (
+    Candidate,
+    EventEnvelope,
+    IdempotencyConflict,
+    ReasonCode,
+    TokenIdentity,
+)
 from memeradar_persistence import (
     CandidateRow,
     DomainEventRow,
     OutboxRow,
     PoolRow,
+    SqlAlchemyOutboxStore,
     SqlAlchemyUnitOfWork,
     StateTransitionRow,
     TokenRow,
@@ -91,6 +104,11 @@ async def _exercise_postgres(database_url: str) -> None:
                 event,
                 side_effect_kind="candidate-index",
             )
+            with pytest.raises(IdempotencyConflict):
+                await unit_of_work.outbox.enqueue(
+                    replace(event, payload={"candidate_id": str(candidate_id), "changed": True}),
+                    side_effect_kind="candidate-index",
+                )
             await unit_of_work.commit()
 
             assert first_outbox.id == second_outbox.id
@@ -121,4 +139,156 @@ async def _exercise_postgres(database_url: str) -> None:
             await connection.execute(delete(CandidateRow).where(CandidateRow.id == candidate_id))
             await connection.execute(delete(PoolRow).where(PoolRow.token_id == token_id))
             await connection.execute(delete(TokenRow).where(TokenRow.id == token_id))
+        await engine.dispose()
+
+
+def test_outbox_lease_recovery_and_dead_letter() -> None:
+    database_url = os.environ.get("MEMERADAR_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("MEMERADAR_TEST_DATABASE_URL is not configured")
+
+    asyncio.run(_exercise_outbox_lifecycle(database_url))
+
+
+async def _exercise_outbox_lifecycle(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    event_id = uuid4()
+    event = EventEnvelope(
+        id=event_id,
+        kind="OutboxLifecycleFixture",
+        aggregate_type="fixture",
+        aggregate_id="outbox-lifecycle",
+        occurred_at=NOW,
+        observed_at=NOW,
+        ingested_at=NOW,
+        correlation_id="outbox-lifecycle-correlation",
+        producer="fixture.integration",
+        payload={"event_id": str(event_id)},
+        idempotency_key=f"outbox-lifecycle-{event_id}",
+    )
+
+    try:
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            await unit_of_work.outbox.enqueue(event, side_effect_kind="lifecycle")
+            await unit_of_work.commit()
+
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            first_claim = await unit_of_work.outbox.claim_ready(
+                now=NOW,
+                limit=1,
+                lease_seconds=30,
+            )
+            assert len(first_claim) == 1
+            first_token = first_claim[0].lease_token
+            await unit_of_work.commit()
+
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            recovered = await unit_of_work.outbox.claim_ready(
+                now=NOW + timedelta(seconds=31),
+                limit=1,
+                lease_seconds=30,
+            )
+            assert len(recovered) == 1
+            assert recovered[0].lease_token != first_token
+            await unit_of_work.outbox.mark_retry(
+                recovered[0].id,
+                lease_token=recovered[0].lease_token,
+                attempts=1,
+                available_at=NOW + timedelta(seconds=40),
+                error_metadata={"error_class": "FixtureError", "reason_code": "FIXTURE_RETRY"},
+            )
+            await unit_of_work.commit()
+
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            assert (
+                await unit_of_work.outbox.claim_ready(
+                    now=NOW + timedelta(seconds=39),
+                    limit=1,
+                    lease_seconds=30,
+                )
+                == ()
+            )
+            dead_letter_claim = await unit_of_work.outbox.claim_ready(
+                now=NOW + timedelta(seconds=40),
+                limit=1,
+                lease_seconds=30,
+            )
+            assert len(dead_letter_claim) == 1
+            await unit_of_work.outbox.mark_dead_letter(
+                dead_letter_claim[0].id,
+                lease_token=dead_letter_claim[0].lease_token,
+                attempts=2,
+                dead_lettered_at=NOW + timedelta(seconds=40),
+                error_metadata={"error_class": "FixtureError", "reason_code": "FIXTURE_DEAD"},
+            )
+            await unit_of_work.commit()
+
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            assert (
+                await unit_of_work.outbox.claim_ready(
+                    now=NOW + timedelta(seconds=41),
+                    limit=1,
+                    lease_seconds=30,
+                )
+                == ()
+            )
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(delete(OutboxRow).where(OutboxRow.event_id == event_id))
+            await connection.execute(delete(DomainEventRow).where(DomainEventRow.id == event_id))
+        await engine.dispose()
+
+
+def test_persisted_processor_delivers_through_transactional_store() -> None:
+    database_url = os.environ.get("MEMERADAR_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("MEMERADAR_TEST_DATABASE_URL is not configured")
+
+    asyncio.run(_exercise_persisted_processor(database_url))
+
+
+async def _exercise_persisted_processor(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    event_id = uuid4()
+    event = EventEnvelope(
+        id=event_id,
+        kind="ProcessorFixture",
+        aggregate_type="fixture",
+        aggregate_id="processor-fixture",
+        occurred_at=NOW,
+        observed_at=NOW,
+        ingested_at=NOW,
+        correlation_id="processor-correlation",
+        producer="fixture.integration",
+        payload={"event_id": str(event_id)},
+        idempotency_key=f"processor-fixture-{event_id}",
+    )
+    seen: list[UUID] = []
+
+    async def handler(received: EventEnvelope) -> None:
+        seen.append(received.id)
+
+    try:
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            outbox_row = await unit_of_work.outbox.enqueue(event, side_effect_kind="processor")
+            await unit_of_work.commit()
+
+        processor = OutboxProcessor(
+            SqlAlchemyOutboxStore(engine),
+            EventDispatcher({"ProcessorFixture": handler}),
+            clock=lambda: NOW,
+        )
+        result = await processor.process_once(now=NOW)
+
+        assert result == ProcessingResult(claimed=1, delivered=1)
+        assert seen == [event_id]
+        async with engine.connect() as connection:
+            status = await connection.scalar(
+                select(OutboxRow.status).where(OutboxRow.id == outbox_row.id)
+            )
+        assert status == "DELIVERED"
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(delete(OutboxRow).where(OutboxRow.event_id == event_id))
+            await connection.execute(delete(DomainEventRow).where(DomainEventRow.id == event_id))
         await engine.dispose()
