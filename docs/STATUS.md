@@ -4,14 +4,14 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`SPRINT_1_3_COMPLETE_GATE_P1_NEXT_SPRINT_2_1`
+`SPRINT_2_1_IN_PROGRESS`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. The repository now has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, CI configuration, provider-independent replayable domain primitives, a durable SQLAlchemy/Postgres persistence boundary and an at-least-once internal event/outbox processor. No provider integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprint 2.1 is now in progress from its committed plan. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, CI configuration, provider-independent replayable domain primitives, a durable SQLAlchemy/Postgres persistence boundary and an at-least-once internal event/outbox processor. No provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
 - Completed: `Phase 1 / Sprint 1.3 — Internal Event Processing`
-- Next: `Phase 2 / Sprint 2.1 — Provider Framework`
+- In progress: `Phase 2 / Sprint 2.1 — Provider Framework`
 
 ## Current operating policy
 
@@ -56,12 +56,13 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Duplicate, out-of-order, retry, lease-expiry, dead-letter, persistence idempotency-conflict and synthetic candidate lifecycle replay tests.
 - [x] Reversible migration `0002_outbox_processing` and migration-head/metadata parity checks.
 - [x] Roadmap checkboxes reconciled for Sprint 1.3.
+- [x] Sprint 2.1 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-1-provider-framework.md`.
 
 ## Current sprint progress
 
 - Sprint 1.3 plan recorded in `docs/superpowers/plans/2026-08-27-phase-1-sprint-1-3-event-processing.md` and completed.
 - Gate P1 evidence: deterministic domain/dispatcher tests, three Postgres outbox integration tests, persisted processor delivery, lease recovery/dead-letter behavior and synthetic candidate lifecycle replay all pass.
-- Current subtask: begin Phase 2 / Sprint 2.1 by defining provider ports and keyless provider resilience/fixture contracts from `docs/PROVIDERS.md`.
+- Current subtask: define all application-facing provider ports, then implement keyless transport resilience, provider health/freshness/quota models and fixture/fake contracts from `docs/PROVIDERS.md`.
 
 ## Verification evidence
 
@@ -94,11 +95,11 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Phase 0 and Phase 1 provider acceptance: `NOT_APPLICABLE` — no provider credentials are required for the completed foundation/domain work.
 - Helius/RPC, Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
-- No external blocker is known for Sprint 1.3. Provider phases will use fixtures/contracts first and report live checks separately as `PASS`, `BLOCKED_EXTERNAL` or `FAIL`.
+- No external blocker is known for Sprint 2.1. Provider phases will use fixtures/contracts first and report live checks separately as `PASS`, `BLOCKED_EXTERNAL` or `FAIL`.
 
 ## Blockers
 
-- No current implementation blocker. Live provider acceptance is intentionally not run until the provider framework and adapter doctor tasks are implemented; unavailable credentials/network will be isolated as `BLOCKED_EXTERNAL` if encountered.
+- No current implementation blocker. Live provider acceptance is intentionally not run until provider adapters and their doctor tasks are implemented; unavailable credentials/network will be isolated as `BLOCKED_EXTERNAL` if encountered.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -111,8 +112,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Intended branch: `main`.
 - Latest pushed implementation checkpoint: `81a701a` (`feat: add internal event processing`).
-- Latest pushed documentation checkpoint: `96798a9` (`docs: complete sprint 1.3 checkpoint`).
-- Local `main` and `origin/main` are synchronized at `96798a9`; no unrelated changes are present.
+- Latest pushed documentation checkpoint before this update: `e3c899d` (`docs: synchronize sprint 1.3 status`).
+- This plan/status update is the next documentation checkpoint; local `main` and `origin/main` were synchronized at `e3c899d` before it, with no unrelated changes present.
 
 ## Next task
 
