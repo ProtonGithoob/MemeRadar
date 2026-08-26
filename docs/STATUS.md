@@ -4,14 +4,14 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`SPRINT_2_1_COMPLETE_NEXT_SPRINT_2_2`
+`SPRINT_2_2_IN_PROGRESS`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprint 2.1 is complete and its provider-independent framework is locally verified. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprint 2.1 is complete and its provider-independent framework is locally verified. Phase 2 / Sprint 2.2 is now in progress from its committed plan. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
 - Completed: `Phase 2 / Sprint 2.1 — Provider Framework`
-- Next: `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`
+- In progress: `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`
 
 ## Current operating policy
 
@@ -62,6 +62,7 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Provider health, quota and freshness projection with UNKNOWN/STALE fail-closed distinctions and safe error classes.
 - [x] Recursive fixture redaction, deterministic JSON export, fake provider failures and normalized discovery/market adapter contracts.
 - [x] Roadmap checkboxes reconciled for Sprint 2.1.
+- [x] Sprint 2.2 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-2-helius-solana-read-layer.md`.
 
 ## Current sprint progress
 
@@ -69,7 +70,8 @@ The configuration loader rejects attempts to override these protected values.
 - Gate P1 evidence: deterministic domain/dispatcher tests, three Postgres outbox integration tests, persisted processor delivery, lease recovery/dead-letter behavior and synthetic candidate lifecycle replay all pass.
 - Sprint 2.1 plan recorded in `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-1-provider-framework.md` and completed.
 - Sprint 2.1 gate evidence: all documented provider ports are typed and async; keyless transport, health, fixture/fake and normalized adapter contract tests pass; API/worker runtime imports pass in rebuilt Compose images.
-- Current subtask: begin Phase 2 / Sprint 2.2 with the Helius/RPC read-only adapter, fixture parser and provider doctor, preserving the separate live-acceptance boundary.
+- Sprint 2.2 plan recorded in `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-2-helius-solana-read-layer.md`.
+- Current subtask: implement the Helius/RPC read-only adapter normalization and fixture contracts, then add the WebSocket/webhook seam and key-safe provider doctor.
 
 ## Verification evidence
 
@@ -124,9 +126,9 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Intended branch: `main`.
 - Latest pushed implementation checkpoint: `49a2df8` (`build: package provider framework in runtimes`).
-- Latest pushed documentation checkpoint: `583f45f` (`docs: complete sprint 2.1 provider framework`).
-- Local `main` and `origin/main` are synchronized at `583f45f`; no unrelated changes are present.
+- Latest pushed documentation checkpoint: `bac6cb3` (`docs: synchronize sprint 2.1 status`).
+- This Sprint 2.2 start update is the next documentation checkpoint; local `main` and `origin/main` were synchronized at `bac6cb3` before it, with no unrelated changes present.
 
 ## Next task
 
-Begin `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`: implement the Helius/RPC token/account/transaction enrichment adapter, WebSocket/webhook seam, token-program and authority normalization, fixture-based contracts and a key-safe provider doctor. Run live read-only acceptance only when credentials/network permit; otherwise mark only that acceptance `BLOCKED_EXTERNAL`. Preserve all four safety modes.
+Continue `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`: implement the Helius/RPC token/account/transaction enrichment adapter, WebSocket/webhook seam, token-program and authority normalization, fixture-based contracts and a key-safe provider doctor. Run live read-only acceptance only when credentials/network permit; otherwise mark only that acceptance `BLOCKED_EXTERNAL`. Preserve all four safety modes.
