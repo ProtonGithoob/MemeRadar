@@ -33,11 +33,11 @@
 - Define `CandidateDiscoveryPort`, `MarketDataPort`, `OnChainPort`, `RiskDataPort`, `SocialDataPort`, `NarrativePort`, `QuotePort`, `ExecutionPort` and `NotificationPort` as async application-facing protocols.
 - Normalized read results carry `Observation`/`Provenance` or typed immutable records with source IDs and ordered timestamps; quote/execution records contain no signing secret.
 
-- [ ] **Step 1: Write failing contract tests** for all nine ports, request bounds, normalized observation provenance and safe quote/execution result fields.
-- [ ] **Step 2: Run `pytest tests/unit/test_provider_contracts.py -q` and confirm the missing-module failure.**
-- [ ] **Step 3: Implement the immutable request/result records and async `Protocol` signatures.**
-- [ ] **Step 4: Run the focused tests, Ruff and mypy.**
-- [ ] **Step 5: Commit `feat: define provider application ports`.**
+- [x] **Step 1: Write failing contract tests** for all nine ports, request bounds, normalized observation provenance and safe quote/execution result fields.
+- [x] **Step 2: Run `pytest tests/unit/test_provider_contracts.py -q` and confirm the missing-module failure.**
+- [x] **Step 3: Implement the immutable request/result records and async `Protocol` signatures.**
+- [x] **Step 4: Run the focused tests, Ruff and mypy.**
+- [x] **Step 5: Commit `feat: define provider application ports`.**
 
 ### Task 2: Deterministic transport resilience primitives
 
@@ -53,11 +53,11 @@
 - `CircuitBreaker` implements closed/open/half-open transitions with a failure threshold and recovery window.
 - `ProviderTransport.execute(operation, ...)` composes timeout, rate-limit, retry and circuit behavior around an async callback.
 
-- [ ] **Step 1: Write failing tests** for timeout validation, retryable vs non-retryable errors, bounded jitter, rate-limit waiting, circuit opening/recovery and cancellation propagation.
-- [ ] **Step 2: Run the focused transport tests and verify the expected missing-symbol failures.**
-- [ ] **Step 3: Implement the smallest callback-based asyncio primitives with injected clock/sleeper/random source.**
-- [ ] **Step 4: Run focused tests plus Ruff/mypy and add no HTTP/WebSocket SDK coupling.**
-- [ ] **Step 5: Commit `feat: add provider transport resilience`.**
+- [x] **Step 1: Write failing tests** for timeout validation, retryable vs non-retryable errors, bounded jitter, rate-limit waiting, circuit opening/recovery and cancellation propagation.
+- [x] **Step 2: Run the focused transport tests and verify the expected missing-symbol failures.**
+- [x] **Step 3: Implement the smallest callback-based asyncio primitives with injected clock/sleeper/random source.**
+- [x] **Step 4: Run focused tests plus Ruff/mypy and add no HTTP/WebSocket SDK coupling.**
+- [x] **Step 5: Commit `feat: add provider transport resilience`.**
 
 ### Task 3: Provider health, quota and freshness model
 
@@ -70,11 +70,11 @@
 - Health records preserve provider/capability, check time, bounded latency, redacted error class, quota/reset metadata and domain `QualityState` freshness.
 - `ProviderHealthTracker` records successes/failures and computes health without treating missing data as healthy.
 
-- [ ] **Step 1: Write failing tests** for health-state transitions, unknown/stale freshness, quota reset, latency bounds and error-class redaction.
-- [ ] **Step 2: Run the focused tests and verify they fail because the model is absent.**
-- [ ] **Step 3: Implement validated health/quota/freshness records and an in-memory tracker.**
-- [ ] **Step 4: Run focused tests, Ruff and mypy.**
-- [ ] **Step 5: Commit `feat: model provider health and freshness`.**
+- [x] **Step 1: Write failing tests** for health-state transitions, unknown/stale freshness, quota reset, latency bounds and error-class redaction.
+- [x] **Step 2: Run the focused tests and verify they fail because the model is absent.**
+- [x] **Step 3: Implement validated health/quota/freshness records and an in-memory tracker.**
+- [x] **Step 4: Run focused tests, Ruff and mypy.**
+- [x] **Step 5: Commit `feat: model provider health and freshness`.**
 
 ### Task 4: Safe fixture recorder, redactor and fake provider seam
 
@@ -91,11 +91,11 @@
 - `FakeProvider` returns configured normalized fixtures or typed failures and records bounded calls for contract tests.
 - Contract fixtures prove fake adapter outputs preserve canonical identities, provenance, timestamp ordering and quality state.
 
-- [ ] **Step 1: Write failing redaction, deterministic export and normalized fake-provider contract tests.**
-- [ ] **Step 2: Run focused tests and confirm the absent fixture/fake symbols fail.**
-- [ ] **Step 3: Implement recursive redaction, fixture metadata/recording and the generic fake provider.**
-- [ ] **Step 4: Add synthetic discovery/market/on-chain fixtures that contain no credentials and run contract tests.**
-- [ ] **Step 5: Run secret scan, focused tests, Ruff and mypy; commit `feat: add provider fixtures and fakes`.**
+- [x] **Step 1: Write failing redaction, deterministic export and normalized fake-provider contract tests.**
+- [x] **Step 2: Run focused tests and confirm the absent fixture/fake symbols fail.**
+- [x] **Step 3: Implement recursive redaction, fixture metadata/recording and the generic fake provider.**
+- [x] **Step 4: Add synthetic discovery/market/on-chain fixtures that contain no credentials and run contract tests.**
+- [x] **Step 5: Run secret scan, focused tests, Ruff and mypy; commit `feat: add provider fixtures and fakes`.**
 
 ### Task 5: Package/runtime contracts and Sprint 2.1 gate
 
@@ -108,8 +108,8 @@
 - Modify: `docs/ROADMAP.md`
 - Modify: `docs/STATUS.md`
 
-- [ ] **Step 1: Add package-copy/import smoke tests and verify both Compose Python images include provider framework code.**
-- [ ] **Step 2: Run `make verify`, provider-focused tests, migration checks and bounded Compose runtime imports.**
-- [ ] **Step 3: Run `make doctor`; record provider live checks as `NOT_RUN` unless a key-safe, read-only doctor exists and succeeds.**
-- [ ] **Step 4: Reconcile Sprint 2.1 checkboxes/status with exact test results, blockers, provider acceptance and safety modes.**
-- [ ] **Step 5: Commit and push the Sprint 2.1 checkpoint; record the exact next task `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`.**
+- [x] **Step 1: Add package-copy/import smoke tests and verify both Compose Python images include provider framework code.**
+- [x] **Step 2: Run `make verify`, provider-focused tests, migration checks and bounded Compose runtime imports.**
+- [x] **Step 3: Run `make doctor`; record provider live checks as `NOT_RUN` unless a key-safe, read-only doctor exists and succeeds.**
+- [x] **Step 4: Reconcile Sprint 2.1 checkboxes/status with exact test results, blockers, provider acceptance and safety modes.**
+- [x] **Step 5: Commit and push the Sprint 2.1 checkpoint; record the exact next task `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`.**

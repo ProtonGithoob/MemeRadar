@@ -73,11 +73,11 @@ Codex must execute this roadmap in order unless a task is externally blocked and
 
 ### Sprint 2.1 — Provider Framework
 
-- [ ] Define all provider ports in `PROVIDERS.md`.
-- [ ] Implement common HTTP/WebSocket timeout, retry, jitter, rate-limit and circuit-breaker primitives.
-- [ ] Implement provider health/quota/freshness model.
-- [ ] Implement fixture recorder/redactor and fake providers.
-- [ ] Add contract tests proving adapters map into normalized domain models.
+- [x] Define all provider ports in `PROVIDERS.md`.
+- [x] Implement common HTTP/WebSocket timeout, retry, jitter, rate-limit and circuit-breaker primitives.
+- [x] Implement provider health/quota/freshness model.
+- [x] Implement fixture recorder/redactor and fake providers.
+- [x] Add contract tests proving adapters map into normalized domain models.
 
 ### Sprint 2.2 — Helius / Solana Read Layer
 

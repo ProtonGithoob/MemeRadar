@@ -64,6 +64,24 @@ Output: strict schema containing narrative, novelty, organic/promo assessment, s
 - delivery receipt/error classification;
 - no domain state changes inside adapter.
 
+## Implemented application contract surface
+
+Sprint 2.1 defines the provider ports in `packages/application/src/memeradar_application/provider_contracts.py`. The protocols are application-facing and asynchronous; provider SDKs and transport response types remain outside the domain package.
+
+| Port | Normalized request/result contract |
+|---|---|
+| `CandidateDiscoveryPort` | `DiscoveryRequest` -> `DiscoveryCandidate` values with `TokenIdentity`, optional `PoolIdentity`, source ID, event timestamps and `Provenance` |
+| `MarketDataPort` | `MarketDataRequest` -> provider-independent domain `Observation` values |
+| `OnChainPort` | `OnChainRequest` -> provider-independent domain `Observation` values |
+| `RiskDataPort` | `RiskDataRequest` -> `RiskFinding` values preserving `QualityState.UNKNOWN` |
+| `SocialDataPort` | `SocialDataRequest` -> `SocialMention` values with author/post identity, timestamps, metrics and provenance |
+| `NarrativePort` | bounded `NarrativeInput` -> strict `NarrativeSnapshot`; output is advisory evidence only |
+| `QuotePort` | `QuoteRequest` -> `QuoteSnapshot` with route, impact, freshness and provenance; no signing side effect |
+| `ExecutionPort` | `ExecutionRequest` -> unsigned `ExecutionPlan`, `ExecutionReceipt` and reconciliation; live submission remains policy-gated and unused |
+| `NotificationPort` | `NotificationRequest` -> `DeliveryReceipt`; adapters do not mutate domain state |
+
+Shared request contexts carry a bounded correlation ID and optional deadline. The keyless provider framework in `packages/providers/src/memeradar_providers/` supplies callback-based transport resilience, health/quota/freshness projections, recursively redacted fixture recording and deterministic fake responses. These seams are tested without provider credentials; live acceptance remains a separate adapter-phase concern.
+
 ## Adapter requirements
 
 Every network adapter must implement:
