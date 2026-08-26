@@ -43,9 +43,13 @@ def test_dockerfiles_keep_runtime_entrypoints_explicit():
     assert "COPY packages/telemetry/src ./packages/telemetry/src" in api_dockerfile
     assert "/app/packages/persistence/src" in api_dockerfile
     assert "COPY packages/persistence/src ./packages/persistence/src" in api_dockerfile
+    assert "/app/packages/providers/src" in api_dockerfile
+    assert "COPY packages/providers/src ./packages/providers/src" in api_dockerfile
     assert '"python", "-m", "memeradar_worker"' in worker_dockerfile
     assert "/app/packages/persistence/src" in worker_dockerfile
     assert "COPY packages/persistence/src ./packages/persistence/src" in worker_dockerfile
     assert "/app/packages/telemetry/src" in worker_dockerfile
     assert "COPY packages/telemetry/src ./packages/telemetry/src" in worker_dockerfile
+    assert "/app/packages/providers/src" in worker_dockerfile
+    assert "COPY packages/providers/src ./packages/providers/src" in worker_dockerfile
     assert '"npm", "run", "dev"' in web_dockerfile
