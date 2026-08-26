@@ -40,12 +40,12 @@ Codex must execute this roadmap in order unless a task is externally blocked and
 
 ### Sprint 1.1 — Domain Model
 
-- [ ] Implement candidate/token/pool identities and lifecycle state machine.
-- [ ] Implement event envelope and reason-code model.
-- [ ] Implement observation provenance/freshness value objects.
-- [ ] Implement feature snapshot model.
-- [ ] Implement risk assessment, score snapshot, alert and position models.
-- [ ] Unit-test valid/invalid state transitions and idempotency.
+- [x] Implement candidate/token/pool identities and lifecycle state machine.
+- [x] Implement event envelope and reason-code model.
+- [x] Implement observation provenance/freshness value objects.
+- [x] Implement feature snapshot model.
+- [x] Implement risk assessment, score snapshot, alert and position models.
+- [x] Unit-test valid/invalid state transitions and idempotency.
 
 ### Sprint 1.2 — Persistence
 

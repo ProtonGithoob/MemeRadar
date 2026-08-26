@@ -4,14 +4,14 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`P0_LOCAL_GATE_PASS_NEXT_PHASE_1_SPRINT_1_1`
+`SPRINT_1_1_COMPLETE_NEXT_SPRINT_1_2`
 
-Phase 0 / Sprints 0.1 and 0.2 are implemented and locally verified. The repository now has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request telemetry and CI configuration. No provider integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprint 1.1 are implemented and locally verified. The repository now has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request telemetry, CI configuration and provider-independent replayable domain primitives. No provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
-- Completed: `Phase 0 / Sprint 0.2 — Quality and CI`
-- Next: `Phase 1 / Sprint 1.1 — Domain Model`
+- Completed: `Phase 1 / Sprint 1.1 — Domain Model`
+- Next: `Phase 1 / Sprint 1.2 — Persistence`
 
 ## Current operating policy
 
@@ -38,15 +38,21 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Correlation-aware JSON request logging with bounded incoming-ID validation and redaction.
 - [x] API image regression fix ensuring the telemetry package is present at runtime.
 - [x] Roadmap checkboxes reconciled for Sprints 0.1 and 0.2.
+- [x] Canonical Solana token/pool identities with validated base58 public-key addresses.
+- [x] Candidate lifecycle aggregate with explicit allow-listed transitions, reason codes and idempotent replay behavior.
+- [x] Event envelope, observation provenance and freshness quality states preserving occurred/observed/ingested timestamps.
+- [x] Versioned feature, risk, score, alert and position models with confidence, penalties, evidence references and config hashes.
+- [x] Fail-closed risk execution-eligibility predicate for stale, unknown, warned or blocked evidence.
+- [x] Roadmap checkboxes reconciled for Sprint 1.1.
 
 ## Verification evidence
 
 All commands below were run in the current checkout on 2026-08-27.
 
-- `.venv/bin/pytest tests/smoke/test_compose_contract.py -q` — `3 passed` after the API telemetry-image regression fix.
+- `.venv/bin/pytest tests/unit/test_domain_models.py -q` — `13 passed`, including canonical identity, timestamp/freshness, lifecycle and idempotency contracts.
 - `.venv/bin/ruff check apps packages tests scripts` — `All checks passed!`.
-- `.venv/bin/mypy` — `Success: no issues found in 11 source files`.
-- `make verify` — exit `0`; Ruff, mypy, `25 passed`, total branch-aware coverage `83%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config and secret scan all completed.
+- `.venv/bin/mypy` — `Success: no issues found in 18 source files`.
+- `make verify` — exit `0`; Ruff, mypy, `38 passed`, total branch-aware coverage `83%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config and secret scan all completed.
 - `make frontend-build` — exit `0`; Next.js 16.3.3 produced static `/` and `/_not-found` routes.
 - `npm audit --omit=dev` — `found 0 vulnerabilities`.
 - `docker compose -f infra/compose/docker-compose.yml config --quiet` — exit `0`.
@@ -65,26 +71,26 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 ## External provider acceptance
 
-- Phase 0 provider acceptance: `NOT_APPLICABLE` — no provider credentials are required for the completed foundation sprints.
+- Phase 0 and Sprint 1.1 provider acceptance: `NOT_APPLICABLE` — no provider credentials are required for the completed foundation/domain work.
 - Helius/RPC, Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
-- No external blocker prevents Phase 1. Provider phases will use fixtures/contracts first and report live checks separately as `PASS`, `BLOCKED_EXTERNAL` or `FAIL`.
+- No external blocker prevents Sprint 1.2. Provider phases will use fixtures/contracts first and report live checks separately as `PASS`, `BLOCKED_EXTERNAL` or `FAIL`.
 
 ## Blockers
 
-- No current implementation blocker for Phase 0 completion or the start of Phase 1.
+- No current implementation blocker for Sprint 1.1 completion or the start of Sprint 1.2.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
 
-- No database models or migrations exist yet; persistence is scheduled for Phase 1.
+- Domain models now exist, but no SQLAlchemy persistence models or migrations exist yet; those are scheduled for Sprint 1.2.
 - Compose provisions local Postgres/Redis only for readiness and future development. No business state is written by the current API or worker.
 
 ## Git state
 
 - Intended branch: `main`.
-- Latest pushed implementation checkpoint: `2344b79` (`fix: include telemetry in api image`).
-- Local `main` and `origin/main` were synchronized at `2344b79` before this documentation update; no unrelated changes are present.
+- Latest pushed implementation checkpoint: `1d93c95` (`feat: add provider-independent domain models`).
+- Local `main` and `origin/main` were synchronized at `1d93c95` before this documentation update; no unrelated changes are present.
 
 ## Next task
 
-Start `Phase 1 / Sprint 1.1 — Domain Model` in `docs/ROADMAP.md`: implement provider-independent identities, lifecycle transitions, event/reason-code and provenance/freshness models, feature/risk/score/alert/position snapshots, then add deterministic transition and idempotency tests. Preserve all four safety modes.
+Start `Phase 1 / Sprint 1.2 — Persistence` in `docs/ROADMAP.md`: implement SQLAlchemy models, aggregate repositories and unit-of-work boundaries, then add the initial Alembic migration, uniqueness/idempotency constraints and Postgres integration/migration smoke tests. Preserve all four safety modes.
