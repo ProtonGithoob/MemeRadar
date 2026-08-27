@@ -1,0 +1,11 @@
+{
+  "venue": "meteora",
+  "event_type": "dlmm_pool_created",
+  "source_id": "meteora-fixture-1",
+  "occurred_at": 1787828370,
+  "data": {
+    "token_mint": "So11111111111111111111111111111111111111112",
+    "pool": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "quoteTokenAddress": "Vote111111111111111111111111111111111111111"
+  }
+}

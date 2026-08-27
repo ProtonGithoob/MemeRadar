@@ -1,0 +1,12 @@
+{
+  "venue": "pump.fun",
+  "event_type": "token_created",
+  "event_id": "pump-fun-fixture-1",
+  "occurred_at": "2026-08-27T10:59:00Z",
+  "data": {
+    "mint": "So11111111111111111111111111111111111111112",
+    "token_program": "spl-token",
+    "name": "Pump Fixture",
+    "symbol": "PUMP"
+  }
+}

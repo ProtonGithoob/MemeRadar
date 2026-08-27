@@ -1,0 +1,11 @@
+{
+  "venue": "pumpswap",
+  "type": "pool_created",
+  "event_id": "pumpswap-fixture-1",
+  "occurred_at": 1787828340,
+  "data": {
+    "baseToken": {"address": "So11111111111111111111111111111111111111112"},
+    "poolAddress": "11111111111111111111111111111111",
+    "quoteMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+  }
+}
