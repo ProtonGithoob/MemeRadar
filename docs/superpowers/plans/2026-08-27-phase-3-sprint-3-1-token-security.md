@@ -28,7 +28,8 @@
 **Files:**
 - Create: packages/application/src/memeradar_application/token_security.py
 - Create: tests/unit/test_token_security.py
-- Modify: packages/application/src/memeradar_application/__init__.py only if a public export is needed
+- Modify: packages/providers/src/memeradar_providers/helius.py to preserve normalized Token-2022 extension names
+- Modify: tests/unit/test_helius_normalization.py to cover extension normalization
 
 **Interfaces:**
 - Consumes: TokenIdentity, Observation, QualityState, Provenance, ReasonCode, RiskAssessment, RiskFinding, and RiskSeverity.
@@ -41,7 +42,7 @@
 .venv/bin/pytest tests/unit/test_token_security.py -q
 ~~~
 
-- [ ] **Step 3: Add the minimal evaluator.** Parse only the normalized onchain.token_metadata payload; recognize spl-token-2022, preserve supported extension metadata as explainable values, make malformed or conflicting critical evidence fail closed, and calculate bounded confidence/penalties/reason codes deterministically. Treat third-party BLOCK findings as uncorroborated warnings and provider verification as an informational finding.
+- [ ] **Step 3: Add the minimal evaluator and extend the Helius normalized observation.** Parse only the normalized onchain.token_metadata payload; recognize spl-token-2022, preserve supported extension metadata as explainable values, make malformed or conflicting critical evidence fail closed, and calculate bounded confidence/penalties/reason codes deterministically. Treat third-party BLOCK findings as uncorroborated warnings and provider verification as an informational finding. Helius will retain extension names in the normalized payload without importing application policy.
 - [ ] **Step 4: Add freshness, Token-2022 and verification regression tests.** Assert stale evidence is UNKNOWN and ineligible, Token-2022 is retained without an automatic endorsement or bypass, malformed extension metadata is not silently accepted, severe RugCheck findings do not become sole-authority hard blocks, and verification never changes eligibility.
 - [ ] **Step 5: Run the unit suite, Ruff and mypy for the touched packages.**
 
@@ -66,6 +67,7 @@ git push origin main
 - Create: fixtures/providers/rugcheck/summary_safe.json
 - Create: fixtures/providers/rugcheck/summary_risks.json
 - Create: fixtures/providers/rugcheck/README.md
+- Modify: packages/providers/src/memeradar_providers/helius.py and tests/unit/test_helius_normalization.py as described in Task 1
 
 **Interfaces:**
 - Consumes: RiskDataPort, RiskDataRequest, RiskFinding, RiskSeverity, ProviderRequestContext, TokenIdentity, ProviderTransport, and existing classified provider errors.
