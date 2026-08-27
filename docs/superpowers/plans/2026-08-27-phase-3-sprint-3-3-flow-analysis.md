@@ -29,19 +29,19 @@
 - Produces `FlowAnalyzer.analyze_liquidity(token, observations, now, config_hash) -> LiquiditySnapshot`.
 - Produces `FlowAnalyzer.analyze(token, observations, now, config_hash, quotes=()) -> OrganicFlowScore`.
 
-- [ ] **Step 1: Write failing unit tests for liquidity and flow normalization.** Cover liquidity/depth extraction, previous-snapshot change, bounded Decimal values, summary trade fallback, provenance and missing/stale/invalid states.
-- [ ] **Step 2: Run the focused tests and confirm they fail because the module is absent.**
-- [ ] **Step 3: Implement immutable models and deterministic liquidity analysis.** Select the latest matching market observation, compare it with the previous same-token market snapshot, retain nullable depth/change metrics, enforce the evidence TTL and fail closed on malformed or critical missing data.
-- [ ] **Step 4: Add failing organic-flow tests.** Cover unique-maker counts, transaction/maker ratio, repeated-size ratio, reciprocal/circular flow detection, rapid buy/sell round trips, optional sell quotes, high impact penalties, explainable evidence and score bounds.
-- [ ] **Step 5: Implement bounded flow heuristics and scoring.** Accept allow-listed normalized trade/market kinds and field aliases, cap rows and size groups, calculate deterministic penalties/reason codes, keep quote freshness separate, and return an advisory `OrganicFlowScore` that has no execution authority.
-- [ ] **Step 6: Run the full flow-analysis unit suite plus Ruff and mypy.**
+- [x] **Step 1: Write failing unit tests for liquidity and flow normalization.** Cover liquidity/depth extraction, previous-snapshot change, bounded Decimal values, summary trade fallback, provenance and missing/stale/invalid states.
+- [x] **Step 2: Run the focused tests and confirm they fail because the module is absent.**
+- [x] **Step 3: Implement immutable models and deterministic liquidity analysis.** Select the latest matching market observation, compare it with the previous same-token market snapshot, retain nullable depth/change metrics, enforce the evidence TTL and fail closed on malformed or critical missing data.
+- [x] **Step 4: Add failing organic-flow tests.** Cover unique-maker counts, transaction/maker ratio, repeated-size ratio, reciprocal/circular flow detection, rapid buy/sell round trips, optional sell quotes, high impact penalties, explainable evidence and score bounds.
+- [x] **Step 5: Implement bounded flow heuristics and scoring.** Accept allow-listed normalized trade/market kinds and field aliases, cap rows and size groups, calculate deterministic penalties/reason codes, keep quote freshness separate, and return an advisory `OrganicFlowScore` that has no execution authority.
+- [x] **Step 6: Run the full flow-analysis unit suite plus Ruff and mypy.**
 
 ```bash
 ./.venv/bin/pytest tests/unit/test_flow_analysis.py -q
 make lint typecheck
 ```
 
-- [ ] **Step 7: Commit the application checkpoint.**
+- [x] **Step 7: Commit the application checkpoint.**
 
 ```bash
 git add packages/application/src/memeradar_application/flow_analysis.py tests/unit/test_flow_analysis.py
