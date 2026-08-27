@@ -191,6 +191,7 @@ def test_social_velocity_uses_bounded_windows_unique_authors_and_penalties() -> 
     assert result.duplicate_ratio == Decimal("0.5")
     assert result.spam_ratio == Decimal("0.25")
     assert result.coordination_ratio == Decimal("0.5")
+    assert result.bot_heuristic_ratio == Decimal("0.5")
     assert result.engagement_quality is not None
     assert result.penalties["duplicate"] > Decimal("0")
     assert result.penalties["spam"] > Decimal("0")

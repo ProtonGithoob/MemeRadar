@@ -379,6 +379,12 @@ class AuthorTrustScore:
     def freshness(self) -> Freshness:
         return Freshness(self.as_of, self.expires_at, self.quality_state)
 
+    @property
+    def bot_heuristic_ratio(self) -> Decimal:
+        """Return the bounded burst/coordination heuristic ratio."""
+
+        return self.coordination_ratio
+
     def execution_eligible(self, at: datetime) -> bool:
         """Author trust is advisory and never authorizes execution."""
 
@@ -597,6 +603,12 @@ class SocialVelocityScore:
     def velocity_15m(self) -> int:
         return self.window_counts["15m"]
 
+    @property
+    def bot_heuristic_ratio(self) -> Decimal:
+        """Return the bounded burst/coordination heuristic ratio."""
+
+        return self.coordination_ratio
+
     def execution_eligible(self, at: datetime) -> bool:
         """Social velocity is corroborating evidence, never execution authority."""
 
@@ -778,8 +790,9 @@ def _analyze_mentions(
         else:
             event_mentions.append(mention)
         try:
-            for field_name in (*_ENGAGEMENT_FIELDS, "impression_count", "spam_probability"):
+            for field_name in (*_ENGAGEMENT_FIELDS, "impression_count"):
                 _metric_decimal(mention, field_name)
+            _metric_ratio(mention, "spam_probability")
         except ValueError:
             invalid_metric_sources.add(source_id)
             quality_by_source[source_id] = QualityState.INVALID
@@ -1001,6 +1014,7 @@ class AuthorTrustScorer:
                 reasons.append("SOCIAL_SPAM_HEURISTIC")
             if coordination_ratio > 0:
                 reasons.append("COORDINATED_PROMOTION_SUSPECTED")
+                reasons.append("BOT_LIKE_BURST_HEURISTIC")
             author_source_ids = {
                 mention.provenance.source_id for mention in author_mentions
             }
@@ -1171,6 +1185,7 @@ class SocialVelocityScorer:
                 reasons.append("SOCIAL_SPAM_HEURISTIC")
             if coordination_ratio > 0:
                 reasons.append("COORDINATED_PROMOTION_SUSPECTED")
+                reasons.append("BOT_LIKE_BURST_HEURISTIC")
             if analysis.future_sources & source_ids:
                 reasons.append("FUTURE_SOCIAL_MENTION_EXCLUDED")
             if quality is not QualityState.FRESH:

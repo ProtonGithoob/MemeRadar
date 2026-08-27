@@ -1,0 +1,35 @@
+{
+  "token": {
+    "mint_address": "So11111111111111111111111111111111111111112"
+  },
+  "mentions": [
+    {
+      "source_id": "mention-stale",
+      "author_id": "author-stale",
+      "posted_at": "2026-08-27T19:30:00Z",
+      "observed_at": "2026-08-27T19:40:00Z",
+      "ingested_at": "2026-08-27T19:40:00Z",
+      "text_fingerprint": "sha256:fixture-stale",
+      "referenced_ticker": "MEME",
+      "metrics": {
+        "like_count": 50,
+        "impression_count": 100
+      },
+      "quality_state": "FRESH"
+    },
+    {
+      "source_id": "mention-future",
+      "author_id": "author-future",
+      "posted_at": "2026-08-27T20:01:00Z",
+      "observed_at": "2026-08-27T20:02:00Z",
+      "ingested_at": "2026-08-27T20:02:00Z",
+      "text_fingerprint": "sha256:fixture-future",
+      "referenced_ticker": "MEME",
+      "metrics": {
+        "like_count": 100,
+        "impression_count": 100
+      },
+      "quality_state": "FRESH"
+    }
+  ]
+}

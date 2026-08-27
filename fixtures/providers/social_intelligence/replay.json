@@ -1,0 +1,99 @@
+{
+  "token": {
+    "mint_address": "So11111111111111111111111111111111111111112"
+  },
+  "registry": {
+    "trusted_author_ids": [
+      "author-trusted"
+    ],
+    "kol_author_ids": [
+      "author-kol"
+    ],
+    "blocked_author_ids": [
+      "author-blocked"
+    ],
+    "entries": [
+      {
+        "author_id": "author-entry",
+        "tier": "TRUSTED",
+        "label": "fixture explicit author"
+      }
+    ]
+  },
+  "mentions": [
+    {
+      "source_id": "mention-kol",
+      "author_id": "author-kol",
+      "posted_at": "2026-08-27T19:59:50Z",
+      "observed_at": "2026-08-27T20:00:00Z",
+      "ingested_at": "2026-08-27T20:00:00Z",
+      "text_fingerprint": "sha256:fixture-copied-promotion",
+      "duplicate_cluster": "copy:sha256:fixture-copied-promotion",
+      "referenced_ticker": "MEME",
+      "metrics": {
+        "like_count": 20,
+        "impression_count": 1000
+      },
+      "quality_state": "FRESH"
+    },
+    {
+      "source_id": "mention-trusted",
+      "author_id": "author-trusted",
+      "posted_at": "2026-08-27T19:59:45Z",
+      "observed_at": "2026-08-27T20:00:00Z",
+      "ingested_at": "2026-08-27T20:00:00Z",
+      "text_fingerprint": "sha256:fixture-copied-promotion",
+      "duplicate_cluster": "copy:sha256:fixture-copied-promotion",
+      "referenced_ticker": "MEME",
+      "metrics": {
+        "like_count": 10,
+        "impression_count": 1000
+      },
+      "quality_state": "FRESH"
+    },
+    {
+      "source_id": "mention-unknown",
+      "author_id": "author-unknown",
+      "posted_at": "2026-08-27T19:57:00Z",
+      "observed_at": "2026-08-27T20:00:00Z",
+      "ingested_at": "2026-08-27T20:00:00Z",
+      "text_fingerprint": "sha256:fixture-original",
+      "referenced_ticker": "MEME",
+      "metrics": {
+        "like_count": 5,
+        "impression_count": 100
+      },
+      "quality_state": "FRESH"
+    },
+    {
+      "source_id": "mention-blocked",
+      "author_id": "author-blocked",
+      "posted_at": "2026-08-27T19:50:00Z",
+      "observed_at": "2026-08-27T20:00:00Z",
+      "ingested_at": "2026-08-27T20:00:00Z",
+      "text_fingerprint": "sha256:fixture-spam",
+      "referenced_ticker": "MEME",
+      "metrics": {
+        "like_count": 100,
+        "impression_count": 100,
+        "spam_probability": "0.9"
+      },
+      "quality_state": "FRESH"
+    },
+    {
+      "source_id": "mention-kol",
+      "author_id": "author-kol",
+      "posted_at": "2026-08-27T19:59:50Z",
+      "observed_at": "2026-08-27T20:00:00Z",
+      "ingested_at": "2026-08-27T20:00:00Z",
+      "text_fingerprint": "sha256:fixture-copied-promotion",
+      "duplicate_cluster": "copy:sha256:fixture-copied-promotion",
+      "referenced_ticker": "MEME",
+      "metrics": {
+        "like_count": 20,
+        "impression_count": 1000
+      },
+      "quality_state": "FRESH"
+    }
+  ]
+}

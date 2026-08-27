@@ -224,6 +224,39 @@ def test_social_provider_and_doctor_are_explicit_and_keyless():
     assert "AUTO_EXECUTION=false" in env_example
 
 
+def test_social_intelligence_replay_seam_is_packaged_and_safe():
+    from memeradar_application.social_intelligence import (
+        AuthorTrustScorer,
+        SocialAuthorRegistry,
+        SocialVelocityScorer,
+    )
+
+    assert AuthorTrustScorer
+    assert SocialAuthorRegistry
+    assert SocialVelocityScorer
+    intelligence_fixture_dir = ROOT / "fixtures" / "providers" / "social_intelligence"
+    assert (intelligence_fixture_dir / "README.md").is_file()
+    assert (intelligence_fixture_dir / "replay.json").is_file()
+    assert (intelligence_fixture_dir / "future_stale.json").is_file()
+    source = (
+        ROOT
+        / "packages"
+        / "application"
+        / "src"
+        / "memeradar_application"
+        / "social_intelligence.py"
+    ).read_text()
+    assert "memeradar_providers" not in source
+    assert "ANALYSIS_ONLY=true" in (ROOT / ".env.example").read_text()
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
+
+
 def test_birdeye_market_layer_and_doctor_are_explicit_and_keyless():
     from memeradar_providers.birdeye import (
         BIRDEYE_CHAIN,
