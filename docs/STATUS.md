@@ -366,7 +366,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 5.2 application checkpoint: `13b4f01` (`feat: add social trust and velocity scoring`).
 - Latest pushed Sprint 5.2 fixture/contract checkpoint: `92b62f0` (`test: add social intelligence replay contracts`).
 - Latest pushed Sprint 5.2 deterministic test correction: `17818ed` (`test: freeze Helius schema test clock`).
-- Sprint 5.2 documentation checkpoint: pending this synchronization.
+- Latest pushed Sprint 5.2 documentation checkpoint: `f39d100` (`docs: complete Sprint 5.2 social intelligence checkpoint`).
 - Sprint 5.2 status synchronization: pending this synchronization.
 
 ## Next task
