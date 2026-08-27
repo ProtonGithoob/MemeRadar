@@ -292,6 +292,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 4.2 plan checkpoint: `7172772` (`docs: plan Sprint 4.2 smart wallet score`).
 - Latest pushed Sprint 4.2 application checkpoint: `8f644cb` (`feat: add versioned smart wallet scoring`).
 - Latest pushed Sprint 4.2 fixture/contract checkpoint: `d281496` (`test: add smart wallet score replay contracts`).
+- Latest pushed Sprint 4.2 documentation checkpoint: `79583d9` (`docs: complete Sprint 4.2 smart wallet score checkpoint`); this status synchronization records the exact keyless gate and Compose runtime evidence above.
 
 ## Next task
 
