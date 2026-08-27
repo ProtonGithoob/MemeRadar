@@ -174,7 +174,11 @@ def test_malformed_rpc_response_is_a_classified_schema_failure() -> None:
         return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1})
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    adapter = HeliusRpcAdapter("https://fixture.helius.example/rpc", client=client)
+    adapter = HeliusRpcAdapter(
+        "https://fixture.helius.example/rpc",
+        client=client,
+        clock=lambda: NOW,
+    )
 
     try:
         with pytest.raises(ProviderSchemaError):
