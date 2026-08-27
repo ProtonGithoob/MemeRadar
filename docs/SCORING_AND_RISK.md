@@ -136,6 +136,32 @@ size buckets. `FRESH`, `STALE`, `UNKNOWN`, `CONFLICTED` and `INVALID` remain
 distinct; any non-fresh critical market/trade state yields a zero-confidence,
 non-fresh advisory result and cannot make any execution path eligible.
 
+### Sprint 4.1 wallet-tracking rules
+
+`WalletTrackingAnalyzer` consumes only normalized, allow-listed wallet
+activity and rug-outcome observations plus an explicit bounded tracked-wallet
+registry. Registry labels and tiers are configuration/evidence, not a score
+computed from the current activity batch; the analyzer never promotes a
+wallet to Tier A and a blocked/inactive wallet cannot be analyzed.
+
+BUY/SELL activity requires a canonical wallet and token, positive quantity and
+distinct occurred/observed/ingested timestamps. Equivalent duplicate source
+deliveries are idempotent; conflicting source IDs are rejected. Position
+reconstruction sorts by occurred time and consumes FIFO lots. A matched slice
+gets realized PnL only when both its cost basis and proceeds are known from a
+quote amount or positive effective price. Unmatched sells, missing financial
+values, stale/unknown/conflicted/invalid activity and over-bound lots remain
+explicit reason-coded evidence and make the aggregate non-fresh or nullable.
+
+Token age is measured from an explicitly supplied creation timestamp to the
+first entry; an entry before creation is invalid and missing creation time is
+unknown. Hold duration is retained per matched FIFO slice and summarized by
+the median. Rug exposure requires a valid fresh normalized rug outcome after
+entry; missing risk evidence is `UNKNOWN`, never a clean result. The snapshot
+retains provenance, source references, confidence, expiry, quality state and
+config hash, and its execution-eligibility predicate is always false. These
+are inputs for the later SmartWalletScore, not a live-money permission.
+
 ## 5. Initial penalties
 
 Illustrative v1 penalty classes, calibrated later:

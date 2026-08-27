@@ -150,6 +150,12 @@ Append-oriented normalized observations.
 - creator_relation flags
 - first_seen_at
 
+Sprint 4.1's warm-path registry is represented by provider-independent
+`TrackedWallet` entries before persistence. The address is canonical Solana
+base58, the label/labels and tier are explicit operator/configuration data,
+and inactive or blocked entries cannot contribute activity. Registry entries
+are bounded and idempotent; a conflicting duplicate address is rejected.
+
 ### wallet_activities
 - id
 - wallet_id
@@ -161,6 +167,25 @@ Append-oriented normalized observations.
 - effective_price nullable
 - pool/venue
 - observation_id
+
+The application `WalletActivity` normalizes allow-listed wallet activity
+observations into BUY/SELL records. It preserves `occurred_at`, `observed_at`
+and `ingested_at` separately, keeps the source `Provenance` and quality state,
+and deduplicates equivalent source deliveries. Quantity is always positive;
+quote amount and effective price are nullable rather than defaulted to zero.
+Unknown wallets, malformed identities, conflicting source IDs and over-bound
+activity batches fail closed.
+
+`WalletTrackingAnalyzer` reconstructs each watched wallet/token position using
+FIFO lots. Only matched slices with known buy cost and sell proceeds produce
+realized PnL; open cost basis and aggregate realized PnL remain nullable when
+financial evidence is incomplete or an unmatched sell exists. Every matched
+slice retains both trade source references, hold seconds and reason codes.
+Token age at the first entry is nullable unless a valid token creation
+timestamp is supplied. Rug exposure is `true` only for a valid fresh
+post-entry rug outcome; missing, stale, conflicted or invalid risk evidence
+remains nullable and non-fresh. The warm-path snapshot is explainability data
+only and has no execution authority.
 
 ### wallet_performance_snapshots
 - id
@@ -179,6 +204,14 @@ Append-oriented normalized observations.
 - tier
 - confidence
 - scoring_version
+
+The Sprint 4.1 snapshot is a warm-path precursor to this persisted performance
+table. It records wallet label/tier, buy/sell and matched counts, open quantity,
+unmatched sell quantity, FIFO round trips, realized PnL, median hold duration,
+token age, rug exposure, confidence, expiry, quality state, provenance,
+reason codes and config/version metadata. Physical wallet migrations remain a
+later persistence task; no schema migration is required for this keyless
+application checkpoint.
 
 ### wallet_graph_edges
 - id

@@ -186,6 +186,36 @@ classification and the absence of credential-shaped fields. Live market/quote
 acceptance remains a separate provider gate and is not claimed by these
 keyless contracts.
 
+## Wallet tracking and activity reconstruction
+
+Sprint 4.1 adds the provider-independent `WalletTrackingAnalyzer` in
+`packages/application/src/memeradar_application/wallet_tracking.py`. Provider
+adapters may normalize chain activity into `wallet.activity`, `wallet.trade`,
+`wallet.swap` or the other allow-listed wallet activity kinds, and may provide
+`risk.rug_event`/`risk.token_outcome` observations. Provider SDK types,
+transport clients and persistence models do not cross this application seam.
+
+The explicit `TrackedWalletRegistry` validates canonical addresses, labels and
+operator-supplied tiers, bounds entries, rejects conflicting duplicate
+registrations and excludes inactive/blocked wallets. Activity normalization
+preserves source provenance and all three event timestamps, deduplicates
+equivalent source deliveries and rejects unknown wallets or conflicting source
+IDs. It accepts BUY/SELL aliases, positive quantities and nullable quote/price
+fields without inventing financial values.
+
+The analyzer reconstructs watched positions with bounded FIFO lots. It emits
+round-trip evidence, open quantity/cost basis, conservative realized PnL,
+hold duration, token age at entry, rug exposure, quality state, expiry,
+reason codes and evidence references. Unknown, stale, conflicted, invalid,
+unmatched or incomplete evidence remains visible and fail-closed. The result
+is advisory only and cannot quote, sign, submit or alter any operating mode.
+
+Synthetic registry/activity/risk fixtures and replay contracts are stored under
+`fixtures/providers/wallet_tracking/`. They contain no credentials. Live wallet
+activity and rug-outcome acceptance remains `BLOCKED_EXTERNAL` until a
+configured read-only chain/risk provider is available; keyless replay is not
+substituted for live-provider success.
+
 ## Adapter requirements
 
 Every network adapter must implement:

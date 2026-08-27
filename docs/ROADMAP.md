@@ -164,10 +164,17 @@ and the flow result has no execution authority. Live provider acceptance is
 
 ### Sprint 4.1 — Wallet Tracking
 
-- [ ] Create tracked-wallet registry and labels/tiers.
-- [ ] Ingest buys/sells for watched wallets.
-- [ ] Reconstruct realized positions/PnL conservatively.
-- [ ] Track token age at entry, hold duration and rug exposure.
+- [x] Create tracked-wallet registry and labels/tiers.
+- [x] Ingest buys/sells for watched wallets.
+- [x] Reconstruct realized positions/PnL conservatively.
+- [x] Track token age at entry, hold duration and rug exposure.
+
+Sprint 4.1 keyless state: complete. The bounded provider-independent registry,
+activity normalizer and FIFO reconstruction replay deterministically from
+credential-free fixtures. Unknown/stale/conflicted/invalid evidence remains
+nullable or non-fresh, and the result has no execution authority. Live wallet
+activity/rug-outcome acceptance remains `BLOCKED_EXTERNAL` without configured
+read-only provider access.
 
 ### Sprint 4.2 — SmartWalletScore
 
