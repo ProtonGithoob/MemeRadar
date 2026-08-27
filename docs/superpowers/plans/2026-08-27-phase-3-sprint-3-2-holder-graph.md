@@ -36,24 +36,24 @@
 - Produces: HolderGraphAnalyzer.build_wallet_graph(token, observations, seed_addresses, now, config_hash) -> WalletGraphSnapshot.
 - Produces: HolderGraphAnalyzer.cluster_concentration(snapshot, graph, now, config_hash) -> ClusterConcentration.
 
-- [ ] **Step 1: Write failing unit tests for holder normalization and address classification.** Cover top1/top5/top10 derivation from bounded percentage rows, Decimal range validation, creator/pool/program/system classification, exclusion from concentration, and preservation of excluded-address audit records.
-- [ ] **Step 2: Run the focused tests and confirm they fail because the module is absent.**
+- [x] **Step 1: Write failing unit tests for holder normalization and address classification.** Cover top1/top5/top10 derivation from bounded percentage rows, Decimal range validation, creator/pool/program/system classification, exclusion from concentration, and preservation of excluded-address audit records.
+- [x] **Step 2: Run the focused tests and confirm they fail because the module is absent.**
 
 ~~~bash
 .venv/bin/pytest tests/unit/test_holder_graph.py -q
 ~~~
 
-- [ ] **Step 3: Implement immutable models and deterministic holder analysis.** Consume market.holder_data observations, validate the token/mint and provenance, enforce the configured freshness TTL, derive concentrations from descending effective holder percentages, use a provider top10 summary only when the normalized row set is incomplete, and return UNKNOWN/STALE/INVALID states with reason codes instead of fabricating complete values.
-- [ ] **Step 4: Add failing graph/cluster tests.** Cover bounded depth and maximum edges, direct funding relation classification, duplicate-edge aggregation, stable evidence references, shared-funder clustering, and concentration-after-clustering that is greater than or equal to raw top-holder concentration.
-- [ ] **Step 5: Implement the bounded graph and clustering algorithms.** Accept only allow-listed normalized transfer/funding observation kinds and field aliases, seed traversal from creator/top-holder addresses, omit known excluded system/program/pool nodes, aggregate duplicate edges without losing source references, use union-find for connected holder clusters, and emit explainable reason codes for every cluster/edge.
-- [ ] **Step 6: Run the full holder/graph unit suite plus Ruff and mypy.**
+- [x] **Step 3: Implement immutable models and deterministic holder analysis.** Consume market.holder_data observations, validate the token/mint and provenance, enforce the configured freshness TTL, derive concentrations from descending effective holder percentages, use a provider top10 summary only when the normalized row set is incomplete, and return UNKNOWN/STALE/INVALID states with reason codes instead of fabricating complete values.
+- [x] **Step 4: Add failing graph/cluster tests.** Cover bounded depth and maximum edges, direct funding relation classification, duplicate-edge aggregation, stable evidence references, shared-funder clustering, and concentration-after-clustering that is greater than or equal to raw top-holder concentration.
+- [x] **Step 5: Implement the bounded graph and clustering algorithms.** Accept only allow-listed normalized transfer/funding observation kinds and field aliases, seed traversal from creator/top-holder addresses, omit known excluded system/program/pool nodes, aggregate duplicate edges without losing source references, use union-find for connected holder clusters, and emit explainable reason codes for every cluster/edge.
+- [x] **Step 6: Run the full holder/graph unit suite plus Ruff and mypy.**
 
 ~~~bash
 .venv/bin/pytest tests/unit/test_holder_graph.py -q
 make lint typecheck
 ~~~
 
-- [ ] **Step 7: Commit the application checkpoint.**
+- [x] **Step 7: Commit the application checkpoint.**
 
 ~~~bash
 git add packages/application/src/memeradar_application/holder_graph.py tests/unit/test_holder_graph.py
