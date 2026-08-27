@@ -8,7 +8,7 @@ COMPOSE ?= docker compose -f $(COMPOSE_FILE)
 
 .PHONY: bootstrap lint typecheck test frontend-lint frontend-typecheck frontend-test \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
-	provider-doctor
+	provider-doctor birdeye-doctor
 
 bootstrap:
 	python3 -m venv .venv
@@ -76,3 +76,6 @@ doctor:
 
 provider-doctor:
 	$(PYTHON) scripts/provider_doctor.py
+
+birdeye-doctor:
+	$(PYTHON) scripts/birdeye_doctor.py
