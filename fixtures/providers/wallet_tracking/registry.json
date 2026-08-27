@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "wallets": [
+    {
+      "address": "11111111111111111111111111111112",
+      "label": "early accumulator",
+      "labels": ["early", "accumulator"],
+      "tier": "TIER_A",
+      "active": true,
+      "first_seen_at": "2026-08-26T12:00:00+00:00",
+      "evidence_refs": ["registry:wallet-a"]
+    },
+    {
+      "address": "11111111111111111111111111111113",
+      "label": "candidate momentum wallet",
+      "labels": ["candidate", "momentum"],
+      "tier": "CANDIDATE",
+      "active": true,
+      "first_seen_at": "2026-08-26T12:05:00+00:00",
+      "evidence_refs": ["registry:wallet-b"]
+    }
+  ]
+}

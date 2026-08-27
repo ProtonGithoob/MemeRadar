@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "events": [
+    {
+      "kind": "risk.rug_event",
+      "source_id": "risk:token-outcome-1",
+      "rugged": true,
+      "occurred_at": "2026-08-27T15:59:50+00:00",
+      "observed_at": "2026-08-27T15:59:55+00:00",
+      "ingested_at": "2026-08-27T15:59:56+00:00"
+    }
+  ]
+}

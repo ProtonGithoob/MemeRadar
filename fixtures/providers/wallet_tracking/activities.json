@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "events": [
+    {
+      "kind": "wallet.activity",
+      "source_id": "activity:a-buy-1",
+      "wallet_address": "11111111111111111111111111111112",
+      "action": "BUY",
+      "quantity": "10",
+      "quote_amount": "10",
+      "occurred_at": "2026-08-27T15:56:00+00:00",
+      "observed_at": "2026-08-27T15:56:10+00:00",
+      "ingested_at": "2026-08-27T15:56:11+00:00"
+    },
+    {
+      "kind": "wallet.activity",
+      "source_id": "activity:a-buy-1",
+      "wallet_address": "11111111111111111111111111111112",
+      "action": "bought",
+      "quantity": "10",
+      "quote_amount": "10",
+      "occurred_at": "2026-08-27T15:56:00+00:00",
+      "observed_at": "2026-08-27T15:56:10+00:00",
+      "ingested_at": "2026-08-27T15:56:11+00:00"
+    },
+    {
+      "kind": "wallet.activity",
+      "source_id": "activity:a-buy-2",
+      "wallet_address": "11111111111111111111111111111112",
+      "action": "BUY",
+      "quantity": "5",
+      "quote_amount": "10",
+      "occurred_at": "2026-08-27T15:57:00+00:00",
+      "observed_at": "2026-08-27T15:57:10+00:00",
+      "ingested_at": "2026-08-27T15:57:11+00:00"
+    },
+    {
+      "kind": "wallet.activity",
+      "source_id": "activity:a-sell-1",
+      "wallet_address": "11111111111111111111111111111112",
+      "action": "SELL",
+      "quantity": "12",
+      "quote_amount": "18",
+      "occurred_at": "2026-08-27T15:59:00+00:00",
+      "observed_at": "2026-08-27T15:59:10+00:00",
+      "ingested_at": "2026-08-27T15:59:11+00:00"
+    },
+    {
+      "kind": "wallet.activity",
+      "source_id": "activity:b-buy-1",
+      "wallet_address": "11111111111111111111111111111113",
+      "action": "BUY",
+      "quantity": "3",
+      "price": "2",
+      "occurred_at": "2026-08-27T15:57:30+00:00",
+      "observed_at": "2026-08-27T15:57:40+00:00",
+      "ingested_at": "2026-08-27T15:57:41+00:00"
+    },
+    {
+      "kind": "wallet.activity",
+      "source_id": "activity:b-sell-1",
+      "wallet_address": "11111111111111111111111111111113",
+      "action": "SELL",
+      "quantity": "3",
+      "quote_amount": "9",
+      "occurred_at": "2026-08-27T15:59:20+00:00",
+      "observed_at": "2026-08-27T15:59:30+00:00",
+      "ingested_at": "2026-08-27T15:59:31+00:00"
+    },
+    {
+      "kind": "wallet.activity",
+      "source_id": "activity:b-sell-unmatched",
+      "wallet_address": "11111111111111111111111111111113",
+      "action": "SELL",
+      "quantity": "1",
+      "quote_amount": "1",
+      "occurred_at": "2026-08-27T15:59:40+00:00",
+      "observed_at": "2026-08-27T15:59:45+00:00",
+      "ingested_at": "2026-08-27T15:59:46+00:00"
+    }
+  ]
+}
