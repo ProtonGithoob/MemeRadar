@@ -4,9 +4,9 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`PHASE_5_SPRINT_5_2_COMPLETE_NEXT_SPRINT_5_3`
+`PHASE_5_SPRINT_5_3_IN_PROGRESS`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3 and Phase 5 / Sprints 5.1 and 5.2 are complete for their keyless implementation and replay gates; live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3 and Phase 5 / Sprints 5.1 and 5.2 are complete for their keyless implementation and replay gates. Phase 5 / Sprint 5.3 has an in-progress keyless narrative implementation slice; its final documentation reconciliation and Gate P5 remain pending. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
@@ -19,7 +19,8 @@ Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verif
 - Completed: `Phase 4 / Sprint 4.3 — Confluence` (keyless portion)
 - Completed: `Phase 5 / Sprint 5.1 — Social Provider Seam` (keyless portion)
 - Completed: `Phase 5 / Sprint 5.2 — Author Trust and Social Velocity` (keyless portion)
-- Next: `Phase 5 / Sprint 5.3 — Narrative LLM`
+- In progress: `Phase 5 / Sprint 5.3 — Narrative LLM` (keyless implementation slice)
+- Next: finish the remaining Sprint 5.3 implementation, documentation reconciliation and Gate P5 verification; live narrative acceptance remains externally blocked unless safe read-only provider configuration becomes available.
 
 ## Current operating policy
 
@@ -160,6 +161,8 @@ The configuration loader rejects attempts to override these protected values.
 - Sprint 5.1 gate evidence: social adapter/doctor unit tests, deterministic health/search fixture replay, credential-free contracts, conflicting-duplicate and unsafe URL handling, provider-independence checks and Compose safe-mode/runtime imports pass; social evidence remains advisory and has no execution authority.
 - Sprint 5.2 plan evidence: the implementation plan defines explicit author registry/list policy, 1m/5m/15m velocity and unique-author windows, engagement quality, duplicate/spam/coordination penalties, trust/velocity scores with confidence, copied-text bot-like heuristics, fixtures, fail-closed evidence handling and the final quality gate.
 - Sprint 5.2 gate evidence: deterministic author registry/scorer unit tests, redacted replay fixtures, future/stale fail-closed contracts, credential/provider-independence checks, safe-mode assertions and rebuilt Compose runtime imports pass; social intelligence remains advisory and has no execution authority.
+- Sprint 5.3 plan recorded at `docs/superpowers/plans/2026-08-27-phase-5-sprint-5-3-narrative-llm.md` and pushed as `2c21b4b`; the sprint remains in progress.
+- Sprint 5.3 in-progress keyless slice adds strict provider-neutral narrative input/output contracts, bounded sanitization and advisory gateway behavior, deterministic fixture and generic REST seams, a key-safe narrative doctor, replay fixtures, contract/unit tests and Compose safe-mode coverage. Final documentation reconciliation and Gate P5 evidence remain pending.
 
 ## Verification evidence
 
@@ -233,6 +236,12 @@ All commands below were run in the current checkout on 2026-08-27.
 - Compose Sprint 5.2 runtime probes — worker `social_intelligence_worker_runtime_import_ok AuthorTrustScorer SocialVelocityScorer`; API `social_intelligence_api_runtime_import_ok AuthorTrustScorer SocialVelocityScorer`; both asserted all four protected mode values. Compose API, Postgres and Redis were healthy, and web/worker were running.
 - `./.venv/bin/python scripts/secret_scan.py` after Sprint 5.2 — exit `0`; social intelligence fixtures, code and documentation contain no tracked secret material.
 - `./.venv/bin/python scripts/check_migrations.py` after Sprint 5.2 — exit `0`; `{"heads": ["0002_outbox_processing"], "table_count": 13}`.
+- `.venv/bin/pytest tests/unit/test_narrative.py tests/unit/test_narrative_provider.py tests/unit/test_narrative_doctor.py tests/contract/test_phase5_sprint5_3.py tests/unit/test_provider_contracts.py tests/smoke/test_compose_contract.py -q` — `36 passed`; the current Sprint 5.3 keyless narrative contracts, sanitization, fallback/cache behavior, fixture/REST seam, doctor, provider contracts and safe-mode smoke checks pass.
+- `make lint` — exit `0`; Ruff passed for all applications, packages, tests and scripts after the current Sprint 5.3 slice.
+- `make typecheck` — exit `0`; mypy reported `Success: no issues found in 48 source files` after the current Sprint 5.3 slice.
+- `make secret-scan` — exit `0`; the current narrative implementation, doctor, fixtures and documentation contain no tracked secret material.
+- `make narrative-doctor` with no narrative configuration — exit `2` as expected; report status `BLOCKED_EXTERNAL`, reason `CONFIGURATION_MISSING`, `api_url`/`api_key` presence only, model defaulted, no network/auth/schema check and all four protected modes preserved.
+- `git diff --check` — exit `0`; the saved in-progress Sprint 5.3 working-tree patch has no whitespace errors.
 - `make doctor` after Sprint 5.1 — exit `0`; local dependencies are `not_required`, external provider checks are `not_run`, and `analysis_only=true`, `paper_trading=true`, `manual_execution=false`, `auto_execution=false` are reported.
 - `make social-doctor` with no social configuration — exit `2` as expected; report status `BLOCKED_EXTERNAL`, reason `CONFIGURATION_MISSING`, configuration presence only, all four protected modes and no credential values.
 - `docker compose -f infra/compose/docker-compose.yml config --quiet` after Sprint 5.1 — exit `0`; Compose topology and protected service modes remain valid.
@@ -306,11 +315,13 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 5.1 live social/X read-only acceptance: `BLOCKED_EXTERNAL` — `SOCIAL_API_URL` and `SOCIAL_API_KEY` are missing; `make social-doctor` did not attempt a live call and no live-provider success is claimed.
 - Sprint 5.2 author trust/velocity fixture and contract acceptance: `PASS` — deterministic explicit registry policy, trust/velocity scores, 1m/5m/15m windows, quality/duplicate/spam/coordination diagnostics, fail-closed future/stale handling and protected-mode contracts pass without credentials or an LLM.
 - Sprint 5.2 live social/X read-only acceptance: `BLOCKED_EXTERNAL` — `SOCIAL_API_URL` and `SOCIAL_API_KEY` remain missing; `make social-doctor` did not attempt a live call and no live-provider success is claimed.
+- Sprint 5.3 current keyless narrative contract slice: `PASS` — strict structured output, bounded prompt/input sanitization, timeout/cache/fallback behavior, fixture/REST seams, doctor classifications, replay contracts and protected-mode checks pass without credentials or a live LLM.
+- Sprint 5.3 live narrative provider acceptance: `BLOCKED_EXTERNAL` — `NARRATIVE_API_URL` and `NARRATIVE_API_KEY` are missing; `make narrative-doctor` did not attempt a live call and no live-provider success is claimed. This is not a completed Gate P5 acceptance.
 - Birdeye, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 
 ## Blockers
 
-- No current implementation blocker. Helius, Birdeye, Sprint 2.4 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance and Sprint 5.1/Sprint 5.2 live social/X acceptance remain externally blocked for missing endpoint/credential configuration; all keyless implementation and gate evidence is green. No live-provider success is claimed.
+- No blocker affects the saved Sprint 5.3 keyless implementation slice. The remaining Sprint 5.3 work is implementation completion, documentation reconciliation and Gate P5 verification. Helius, Birdeye, Sprint 2.4 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance, Sprint 5.1/Sprint 5.2 live social/X acceptance and Sprint 5.3 live narrative acceptance remain externally blocked for missing endpoint/credential configuration; no live-provider success is claimed.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -323,6 +334,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 4.3 remains a provider-independent warm-path confluence contract; no physical smart-money migration is introduced. The logical `smart_money_confluence_snapshots` target remains for a later persistence task, and event/score analysis does not write business state automatically.
 - Sprint 5.1 remains a provider-independent warm-path social contract; no physical social migration is introduced. The existing `social_authors`/`social_mentions` targets remain for a later persistence task, and social normalization does not write business state automatically.
 - Sprint 5.2 remains a provider-independent warm-path social intelligence contract; no physical migration is introduced. Logical `author_trust_snapshots` and `social_velocity_snapshots` targets remain for a later persistence task, and trust/velocity scoring does not write business state automatically.
+- The Sprint 5.3 keyless narrative slice remains a provider-independent warm-path advisory contract; no physical migration is introduced. Narrative evidence/snapshot persistence remains a later roadmap task, and narrative analysis does not write business state or authorize execution automatically.
 
 ## Git state
 
@@ -368,7 +380,10 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 5.2 deterministic test correction: `17818ed` (`test: freeze Helius schema test clock`).
 - Latest pushed Sprint 5.2 documentation checkpoint: `f39d100` (`docs: complete Sprint 5.2 social intelligence checkpoint`).
 - Sprint 5.2 status synchronization: pending this synchronization.
+- Latest pushed Sprint 5.3 plan checkpoint: `2c21b4b` (`docs: plan Sprint 5.3 narrative LLM`).
+- Sprint 5.3 keyless implementation/fixture/doctor checkpoint: pending this stop synchronization.
+- Sprint 5.3 status synchronization: pending this stop synchronization.
 
 ## Next task
 
-Start `Phase 5 / Sprint 5.3 — Narrative LLM`: define provider-neutral `NarrativePort`; add strict structured output for narrative, novelty, organic-vs-promo evidence and sentiment uncertainty; add bounded cost/token budgets, caching and timeouts; ensure LLM outage never blocks deterministic analysis; and harden prompts against untrusted social-content injection. Preserve all four safety modes, keep LLM output visibly advisory, fail closed on critical UNKNOWN evidence and do not enable live-money execution.
+Continue `Phase 5 / Sprint 5.3 — Narrative LLM` from the saved keyless implementation slice: complete the remaining implementation and docs reconciliation, then run the full Gate P5 quality/runtime checks and record the final sprint checkpoint. The current slice already covers strict provider-neutral contracts, bounded cost/token budgets, caching/timeouts, deterministic fallback, untrusted-content sanitization, fixture/REST seams and the key-safe doctor. Preserve all four safety modes, keep LLM output visibly advisory, fail closed on critical UNKNOWN evidence and do not enable live-money execution. Live narrative provider acceptance remains `BLOCKED_EXTERNAL` without configured safe read-only endpoint/credential access.

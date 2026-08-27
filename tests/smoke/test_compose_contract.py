@@ -257,6 +257,61 @@ def test_social_intelligence_replay_seam_is_packaged_and_safe():
         assert environment["AUTO_EXECUTION"] == "false"
 
 
+def test_narrative_llm_seam_is_optional_strict_and_safe():
+    from memeradar_application.narrative import NarrativeAnalyzer, NarrativeCache, NarrativePolicy
+    from memeradar_application.provider_contracts import (
+        NarrativeEvidence,
+        NarrativeOrganicAssessment,
+        NarrativeSentiment,
+        NarrativeSnapshot,
+    )
+    from memeradar_providers.narrative import (
+        FixtureNarrativeAdapter,
+        NarrativeRestAdapter,
+    )
+
+    assert NarrativeAnalyzer
+    assert NarrativeCache
+    assert NarrativePolicy().version == "narrative-gateway-v1"
+    assert NarrativeEvidence
+    assert NarrativeOrganicAssessment.UNKNOWN.value == "UNKNOWN"
+    assert NarrativeSentiment.UNKNOWN.value == "UNKNOWN"
+    assert NarrativeSnapshot
+    assert FixtureNarrativeAdapter.provider_name == "fixture-narrative"
+    assert NarrativeRestAdapter.provider_name == "narrative"
+    narrative_fixture_dir = ROOT / "fixtures" / "providers" / "narrative"
+    assert (narrative_fixture_dir / "README.md").is_file()
+    assert (narrative_fixture_dir / "valid.json").is_file()
+    assert (narrative_fixture_dir / "malformed.json").is_file()
+    assert (narrative_fixture_dir / "injection.json").is_file()
+    source = (
+        ROOT
+        / "packages"
+        / "application"
+        / "src"
+        / "memeradar_application"
+        / "narrative.py"
+    ).read_text()
+    assert "memeradar_providers" not in source
+    makefile = (ROOT / "Makefile").read_text()
+    env_example = (ROOT / ".env.example").read_text()
+    assert "narrative-doctor:" in makefile
+    assert "NARRATIVE_API_URL=" in env_example
+    assert "NARRATIVE_API_KEY=" in env_example
+    assert "NARRATIVE_MODEL=" in env_example
+    assert "ANALYSIS_ONLY=true" in env_example
+    assert "PAPER_TRADING=true" in env_example
+    assert "MANUAL_EXECUTION=false" in env_example
+    assert "AUTO_EXECUTION=false" in env_example
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
+
+
 def test_birdeye_market_layer_and_doctor_are_explicit_and_keyless():
     from memeradar_providers.birdeye import (
         BIRDEYE_CHAIN,

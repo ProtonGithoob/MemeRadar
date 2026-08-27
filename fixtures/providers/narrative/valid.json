@@ -1,0 +1,33 @@
+{
+  "data": {
+    "as_of": "2026-08-27T21:00:00Z",
+    "cache_key": "sha256:fixture-output",
+    "confidence": "0.62",
+    "config_hash": "narrative-config-v1",
+    "evidence_refs": [
+      "post-1",
+      "post-2"
+    ],
+    "expires_at": "2026-08-27T21:05:00Z",
+    "model": "fixture-narrative-v1",
+    "narrative": "Several normalized posts discuss the token while promotional uncertainty remains.",
+    "novelty": "0.58",
+    "organic_assessment": "MIXED",
+    "organic_probability": "0.55",
+    "promotional_probability": "0.45",
+    "reason_codes": [
+      "NARRATIVE_FIXTURE"
+    ],
+    "schema_version": "narrative-v1",
+    "sentiment": "NEUTRAL",
+    "source_id": "narrative-fixture-output-1",
+    "topic": "token discussion",
+    "uncertainty": "0.38",
+    "usage": {
+      "estimated_cost_usd": "0",
+      "input_tokens": 36,
+      "output_tokens": 18,
+      "total_tokens": 54
+    }
+  }
+}

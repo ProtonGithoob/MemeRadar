@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -28,6 +28,7 @@ from memeradar_domain.common import (
     require_text,
     to_decimal,
 )
+from memeradar_domain.events import normalize_reason_codes
 from memeradar_domain.identities import require_solana_address
 
 
@@ -172,21 +173,133 @@ class SocialDataRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class NarrativeEvidence:
+    """Bounded, provider-neutral evidence supplied to a narrative model."""
+
+    evidence_id: str
+    kind: str
+    content: str
+    observed_at: datetime
+    provenance: Provenance
+    quality_state: QualityState = QualityState.FRESH
+    metadata: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "evidence_id",
+            require_text(self.evidence_id, "evidence_id", max_length=128),
+        )
+        object.__setattr__(
+            self,
+            "kind",
+            require_text(self.kind, "kind", max_length=64).lower(),
+        )
+        object.__setattr__(
+            self,
+            "content",
+            require_text(self.content, "content", max_length=20_000),
+        )
+        object.__setattr__(self, "observed_at", ensure_utc(self.observed_at, "observed_at"))
+        if not isinstance(self.provenance, Provenance):
+            raise TypeError("provenance must be a Provenance")
+        if self.provenance.observed_at > self.observed_at:
+            raise ValueError("provenance observed_at must not be later than observed_at")
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        object.__setattr__(self, "metadata", freeze_mapping(self.metadata, "metadata"))
+
+
+class NarrativeOrganicAssessment(str, Enum):
+    """Strict organic-versus-promotional classification values."""
+
+    ORGANIC = "ORGANIC"
+    MIXED = "MIXED"
+    PROMOTIONAL = "PROMOTIONAL"
+    UNKNOWN = "UNKNOWN"
+
+
+class NarrativeSentiment(str, Enum):
+    """Strict sentiment values; sentiment is never a trading instruction."""
+
+    POSITIVE = "POSITIVE"
+    NEUTRAL = "NEUTRAL"
+    NEGATIVE = "NEGATIVE"
+    MIXED = "MIXED"
+    UNKNOWN = "UNKNOWN"
+
+
+_NARRATIVE_USAGE_KEYS = frozenset(
+    {"input_tokens", "output_tokens", "total_tokens", "estimated_cost_usd"}
+)
+
+
+def _normalize_narrative_usage(value: Mapping[str, object]) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise TypeError("usage must be a mapping")
+    unknown_keys = set(value) - _NARRATIVE_USAGE_KEYS
+    if unknown_keys:
+        raise ValueError("usage contains unsupported fields")
+    normalized: dict[str, object] = {}
+    for field_name in ("input_tokens", "output_tokens", "total_tokens"):
+        raw_value = value.get(field_name)
+        if raw_value is None:
+            continue
+        if not isinstance(raw_value, int) or isinstance(raw_value, bool) or raw_value < 0:
+            raise ValueError(f"{field_name} must be a non-negative integer")
+        if raw_value > 10_000_000:
+            raise ValueError(f"{field_name} exceeds the configured bound")
+        normalized[field_name] = raw_value
+    input_tokens = normalized.get("input_tokens")
+    output_tokens = normalized.get("output_tokens")
+    total_tokens = normalized.get("total_tokens")
+    if (
+        isinstance(input_tokens, int)
+        and isinstance(output_tokens, int)
+        and isinstance(total_tokens, int)
+        and input_tokens + output_tokens != total_tokens
+    ):
+        raise ValueError("total_tokens must equal input_tokens plus output_tokens")
+    if "estimated_cost_usd" in value and value["estimated_cost_usd"] is not None:
+        estimated_cost = to_decimal(value["estimated_cost_usd"], "estimated_cost_usd")
+        if estimated_cost < 0 or estimated_cost > Decimal("1000000"):
+            raise ValueError("estimated_cost_usd must be between 0 and 1000000")
+        normalized["estimated_cost_usd"] = estimated_cost
+    return freeze_mapping(normalized, "usage")
+
+
+@dataclass(frozen=True, slots=True)
 class NarrativeInput:
     context: ProviderRequestContext
-    observations: tuple[Observation, ...]
-    config_hash: str
+    observations: tuple[Observation, ...] = ()
+    config_hash: str = "narrative-v1"
+    evidence: tuple[NarrativeEvidence, ...] = ()
+    schema_version: str = "narrative-v1"
 
     def __post_init__(self) -> None:
         if not isinstance(self.context, ProviderRequestContext):
             raise TypeError("context must be a ProviderRequestContext")
         observations = tuple(self.observations)
-        if not 1 <= len(observations) <= 100:
-            raise ValueError("observations must contain between 1 and 100 items")
+        evidence = tuple(self.evidence)
+        if not observations and not evidence:
+            raise ValueError("observations or evidence must contain at least one item")
+        if len(observations) + len(evidence) > 100:
+            raise ValueError("narrative evidence must contain at most 100 items")
         if any(not isinstance(value, Observation) for value in observations):
             raise TypeError("observations must contain Observation values")
+        if any(not isinstance(value, NarrativeEvidence) for value in evidence):
+            raise TypeError("evidence must contain NarrativeEvidence values")
         object.__setattr__(self, "observations", observations)
-        object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
+        object.__setattr__(self, "evidence", evidence)
+        object.__setattr__(
+            self,
+            "config_hash",
+            require_text(self.config_hash, "config_hash", max_length=128),
+        )
+        object.__setattr__(
+            self,
+            "schema_version",
+            require_text(self.schema_version, "schema_version", max_length=64),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,19 +521,64 @@ class NarrativeSnapshot:
     uncertainty: Decimal | int | float | str
     confidence: Decimal | int | float | str
     evidence_refs: tuple[str, ...]
+    topic: str = "unknown"
+    organic_probability: Decimal | int | float | str = Decimal("0.5")
+    promotional_probability: Decimal | int | float | str = Decimal("0.5")
+    usage: Mapping[str, object] = field(default_factory=dict)
+    model: str = "unknown"
+    schema_version: str = "narrative-v1"
+    config_hash: str = "unknown"
+    cache_key: str = "unknown"
+    reason_codes: tuple[ReasonCode | str, ...] = ("NARRATIVE_OUTPUT",)
+    quality_state: QualityState = QualityState.FRESH
+    advisory: bool = True
+    cache_hit: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.provenance, Provenance):
             raise TypeError("provenance must be a Provenance")
-        freshness = Freshness(self.as_of, self.expires_at)
+        quality_state = QualityState(self.quality_state)
+        freshness = Freshness(self.as_of, self.expires_at, quality_state)
         object.__setattr__(self, "as_of", freshness.as_of)
         object.__setattr__(self, "expires_at", freshness.expires_at)
-        object.__setattr__(self, "narrative", require_text(self.narrative, "narrative"))
+        object.__setattr__(
+            self,
+            "narrative",
+            require_text(self.narrative, "narrative", max_length=2_000),
+        )
+        object.__setattr__(self, "topic", require_text(self.topic, "topic", max_length=256))
         object.__setattr__(
             self,
             "novelty",
             bounded_decimal(self.novelty, "novelty", Decimal("0"), Decimal("1")),
         )
+        try:
+            organic_assessment = NarrativeOrganicAssessment(self.organic_assessment)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("organic_assessment must be a strict narrative assessment") from exc
+        object.__setattr__(self, "organic_assessment", organic_assessment)
+        normalized_probabilities: dict[str, Decimal] = {}
+        for field_name in ("organic_probability", "promotional_probability"):
+            normalized_value = bounded_decimal(
+                getattr(self, field_name),
+                field_name,
+                Decimal("0"),
+                Decimal("1"),
+            )
+            normalized_probabilities[field_name] = normalized_value
+            object.__setattr__(
+                self,
+                field_name,
+                normalized_value,
+            )
+        if (
+            normalized_probabilities["organic_probability"]
+            + normalized_probabilities["promotional_probability"]
+            > Decimal("1.000001")
+        ):
+            raise ValueError(
+                "organic_probability and promotional_probability must sum to at most 1"
+            )
         object.__setattr__(
             self,
             "uncertainty",
@@ -431,21 +589,55 @@ class NarrativeSnapshot:
             "confidence",
             bounded_decimal(self.confidence, "confidence", Decimal("0"), Decimal("1")),
         )
-        object.__setattr__(
-            self,
-            "organic_assessment",
-            require_text(self.organic_assessment, "organic_assessment", max_length=32),
-        )
-        object.__setattr__(
-            self,
-            "sentiment",
-            require_text(self.sentiment, "sentiment", max_length=32),
-        )
+        try:
+            sentiment = NarrativeSentiment(self.sentiment)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("sentiment must be a strict narrative sentiment") from exc
+        object.__setattr__(self, "sentiment", sentiment)
         object.__setattr__(
             self,
             "evidence_refs",
             normalize_texts(self.evidence_refs, "evidence_refs"),
         )
+        if not self.evidence_refs:
+            raise ValueError("evidence_refs must contain at least one reference")
+        object.__setattr__(self, "usage", _normalize_narrative_usage(self.usage))
+        object.__setattr__(self, "model", require_text(self.model, "model", max_length=128))
+        object.__setattr__(
+            self,
+            "schema_version",
+            require_text(self.schema_version, "schema_version", max_length=64),
+        )
+        object.__setattr__(
+            self,
+            "config_hash",
+            require_text(self.config_hash, "config_hash", max_length=128),
+        )
+        object.__setattr__(
+            self,
+            "cache_key",
+            require_text(self.cache_key, "cache_key", max_length=128),
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            normalize_reason_codes(self.reason_codes, required=True),
+        )
+        object.__setattr__(self, "quality_state", quality_state)
+        if self.advisory is not True:
+            raise ValueError("narrative snapshots must remain advisory")
+        if not isinstance(self.cache_hit, bool):
+            raise TypeError("cache_hit must be a boolean")
+
+    @property
+    def freshness(self) -> Freshness:
+        return Freshness(self.as_of, self.expires_at, self.quality_state)
+
+    def execution_eligible(self, at: datetime) -> bool:
+        """Narrative output is advisory and can never authorize execution."""
+
+        del at
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -625,8 +817,11 @@ __all__ = [
     "ExecutionRequest",
     "MarketDataPort",
     "MarketDataRequest",
+    "NarrativeEvidence",
     "NarrativeInput",
+    "NarrativeOrganicAssessment",
     "NarrativePort",
+    "NarrativeSentiment",
     "NarrativeSnapshot",
     "NotificationPort",
     "NotificationRequest",
