@@ -4,14 +4,14 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`SPRINT_2_2_COMPLETE_NEXT_SPRINT_2_3`
+`SPRINT_2_3_IN_PROGRESS`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 and 2.2 are complete and locally verified with keyless fixtures and contracts. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 and 2.2 are complete and locally verified with keyless fixtures and contracts. Phase 2 / Sprint 2.3 is now in progress from its committed plan. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
 - Completed: `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`
-- Next: `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`
+- In progress: `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`
 
 ## Current operating policy
 
@@ -69,6 +69,7 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Synthetic Helius JSON-RPC fixtures and contract tests for token, account and transaction reads.
 - [x] Key-safe `make provider-doctor` with one bounded read-only `getHealth` call, safe status/latency/quota reporting and protected modes.
 - [x] Roadmap checkboxes reconciled for Sprint 2.2; live Helius acceptance isolated as `BLOCKED_EXTERNAL` because endpoint/key configuration is absent.
+- [x] Sprint 2.3 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-3-birdeye-dex-market-layer.md`.
 
 ## Current sprint progress
 
@@ -78,7 +79,8 @@ The configuration loader rejects attempts to override these protected values.
 - Sprint 2.1 gate evidence: all documented provider ports are typed and async; keyless transport, health, fixture/fake and normalized adapter contract tests pass; API/worker runtime imports pass in rebuilt Compose images.
 - Sprint 2.2 plan recorded in `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-2-helius-solana-read-layer.md`.
 - Sprint 2.2 gate evidence: Helius unit/stream/doctor and fixture contract tests pass; full repository quality gates pass; rebuilt API/worker images import the Helius adapter and stream seam while retaining all four safe modes.
-- Current task is complete; the next task is to begin `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer` from its roadmap checklist.
+- Sprint 2.3 plan recorded in `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-3-birdeye-dex-market-layer.md`.
+- Current subtask: implement the Birdeye REST discovery/market adapter and normalized market, trade, holder and security observations, then add stream/poll fallback, reconciliation, fixtures and doctor.
 
 ## Verification evidence
 
@@ -123,11 +125,12 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 2.1 keyless provider framework/fixture acceptance: `PASS` — contract tests and fake providers pass without external credentials.
 - Sprint 2.2 Helius fixtures, normalization, stream seam and doctor contract acceptance: `PASS` — all keyless tests and redacted fixtures pass.
 - Sprint 2.2 live Helius read-only acceptance: `BLOCKED_EXTERNAL` — `make provider-doctor` found both `HELIUS_RPC_URL` and `HELIUS_API_KEY` missing, so no live call was attempted and no live success is claimed.
+- Sprint 2.3 Birdeye live acceptance: `NOT_RUN` — the adapter and doctor are not yet complete; no live-provider PASS is claimed.
 - Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 
 ## Blockers
 
-- No current implementation blocker for Sprint 2.2. The only Sprint 2.2 acceptance blocker is external Helius access: credentials/configuration are unavailable, recorded as `BLOCKED_EXTERNAL`.
+- No current implementation blocker. Sprint 2.2 remains externally blocked for Helius credentials/configuration; Sprint 2.3 live acceptance remains `NOT_RUN` until its keyless implementation and doctor are complete.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -139,10 +142,9 @@ The worker container initially exited because `__main__.py` was missing. The fai
 ## Git state
 
 - Intended branch: `main`.
-- Latest pushed implementation checkpoint: `fb16367` (`feat: add Helius provider doctor`).
-- Latest pushed Sprint 2.2 checkpoint: `1d9b128` (`docs: complete sprint 2.2 Helius read layer`), including the smoke/runtime checks and completion documentation.
-- Local `main` and `origin/main` are synchronized at `1d9b128`, with no unrelated changes present.
+- Latest pushed Sprint 2.2 checkpoint: `039bb06` (`docs: synchronize sprint 2.2 status`), including the Helius implementation, smoke/runtime checks and completion documentation.
+- Sprint 2.3 plan/status transition is pending its checkpoint commit; local `main` and `origin/main` are synchronized at `039bb06` before that commit, with no unrelated changes present.
 
 ## Next task
 
-Begin `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`: implement the candidate/new-pool discovery adapter, supported price/liquidity/trade/volume/holder/security observations, stream/poll fallback, freshness/conflict handling and key-safe provider doctor/fixture acceptance. Preserve all four safety modes and isolate any live-provider item as `BLOCKED_EXTERNAL` when credentials/network are unavailable.
+Continue `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`: implement the candidate/new-pool discovery adapter, supported price/liquidity/trade/volume/holder/security observations, stream/poll fallback, freshness/conflict handling and key-safe provider doctor/fixture acceptance. Preserve all four safety modes and isolate any live-provider item as `BLOCKED_EXTERNAL` when credentials/network are unavailable.
