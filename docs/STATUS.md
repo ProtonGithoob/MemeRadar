@@ -4,14 +4,14 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`SPRINT_2_2_IN_PROGRESS`
+`SPRINT_2_2_COMPLETE_NEXT_SPRINT_2_3`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprint 2.1 is complete and its provider-independent framework is locally verified. Phase 2 / Sprint 2.2 is now in progress from its committed plan. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 and 2.2 are complete and locally verified with keyless fixtures and contracts. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
-- Completed: `Phase 2 / Sprint 2.1 — Provider Framework`
-- In progress: `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`
+- Completed: `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`
+- Next: `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`
 
 ## Current operating policy
 
@@ -31,7 +31,7 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Pinned Python dependency lock and npm lockfile; Next.js was upgraded to 16.3.3 and ESLint to 9.39.5 after audit advisories.
 - [x] Safe `.env.example`, `.gitignore`, root `.dockerignore` and editor configuration.
 - [x] API, worker and web Dockerfiles plus Postgres 16 / Redis 7 Compose services with health checks.
-- [x] Make targets: `bootstrap`, `lint`, `typecheck`, `test`, `verify`, `up`, `down`, `migrate`, `doctor`.
+- [x] Make targets: `bootstrap`, `lint`, `typecheck`, `test`, `verify`, `up`, `down`, `migrate`, `doctor`, `provider-doctor`.
 - [x] Redacted local doctor and high-confidence tracked-file secret scan.
 - [x] GitHub Actions workflow for backend, frontend, Compose and secret-scan checks.
 - [x] Branch-aware pytest coverage configuration and frontend Vitest/Testing Library baseline.
@@ -63,6 +63,12 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Recursive fixture redaction, deterministic JSON export, fake provider failures and normalized discovery/market adapter contracts.
 - [x] Roadmap checkboxes reconciled for Sprint 2.1.
 - [x] Sprint 2.2 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-2-helius-solana-read-layer.md`.
+- [x] Helius/RPC read adapter for token metadata, account info and transaction enrichment with canonical identities and classified failures.
+- [x] Helius token-program, mint/freeze authority, timestamp and transaction identity normalization with explicit UNKNOWN/INVALID quality states.
+- [x] Injected Helius webhook/WebSocket observation seam with redaction, deterministic duplicate IDs, bounded reconnects and cancellation propagation.
+- [x] Synthetic Helius JSON-RPC fixtures and contract tests for token, account and transaction reads.
+- [x] Key-safe `make provider-doctor` with one bounded read-only `getHealth` call, safe status/latency/quota reporting and protected modes.
+- [x] Roadmap checkboxes reconciled for Sprint 2.2; live Helius acceptance isolated as `BLOCKED_EXTERNAL` because endpoint/key configuration is absent.
 
 ## Current sprint progress
 
@@ -71,7 +77,8 @@ The configuration loader rejects attempts to override these protected values.
 - Sprint 2.1 plan recorded in `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-1-provider-framework.md` and completed.
 - Sprint 2.1 gate evidence: all documented provider ports are typed and async; keyless transport, health, fixture/fake and normalized adapter contract tests pass; API/worker runtime imports pass in rebuilt Compose images.
 - Sprint 2.2 plan recorded in `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-2-helius-solana-read-layer.md`.
-- Current subtask: implement the Helius/RPC read-only adapter normalization and fixture contracts, then add the WebSocket/webhook seam and key-safe provider doctor.
+- Sprint 2.2 gate evidence: Helius unit/stream/doctor and fixture contract tests pass; full repository quality gates pass; rebuilt API/worker images import the Helius adapter and stream seam while retaining all four safe modes.
+- Current task is complete; the next task is to begin `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer` from its roadmap checklist.
 
 ## Verification evidence
 
@@ -80,10 +87,14 @@ All commands below were run in the current checkout on 2026-08-27.
 - `.venv/bin/pytest tests/unit/test_event_processing.py tests/unit/test_telemetry.py tests/unit/test_persistence_contract.py tests/unit/test_migration_contract.py -q` — `18 passed` before the final synthetic replay/idempotency additions; the final full gate below includes those additions.
 - `.venv/bin/pytest tests/unit/test_event_processing.py -q` — `7 passed`; dispatcher ordering/dedupe/conflict, synthetic candidate replay, retry/backoff, dead-letter redaction and worker cancellation pass.
 - `MEMERADAR_TEST_DATABASE_URL`-configured `.venv/bin/pytest tests/integration/test_persistence_postgres.py -q` — `3 passed`; candidate persistence/idempotency conflict, lease recovery/dead-letter and transactional processor delivery pass.
-- `make verify` — exit `0`; Ruff, mypy (`25 source files`), `54 passed, 3 skipped`, total branch-aware coverage `74%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
-- `.venv/bin/mypy` — `Success: no issues found in 25 source files`.
+- `make verify` — exit `0`; Ruff, mypy (`32 source files`), `97 passed, 3 skipped`, total branch-aware coverage `74%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
+- `.venv/bin/mypy` — `Success: no issues found in 32 source files`.
 - `.venv/bin/pytest tests/unit/test_provider_contracts.py tests/unit/test_provider_transport.py tests/unit/test_provider_health.py tests/unit/test_provider_fixtures.py tests/contract/test_provider_adapters.py -q` — `23 passed`; provider ports, resilience, health/freshness/quota, redaction/fakes and normalized adapter contracts pass.
 - `.venv/bin/mypy` after the provider package was included in the configured source roots — `Success: no issues found in 30 source files`.
+- `.venv/bin/pytest tests/unit/test_helius_normalization.py tests/unit/test_helius_stream.py tests/unit/test_provider_doctor.py tests/contract/test_helius_provider.py -q` — `19 passed`; Helius normalization, stream/reconnect/cancellation, doctor classification and fixture replay contracts pass.
+- `make lint typecheck secret-scan` after Sprint 2.2 — exit `0`; Ruff, mypy (`32 source files`) and tracked-file secret scan pass.
+- `make provider-doctor` with no Helius configuration — exit `2`; report status `BLOCKED_EXTERNAL`, reason `CONFIGURATION_MISSING`, with no credential values emitted.
+- `./.venv/bin/pytest tests/smoke/test_compose_contract.py -q` — `4 passed`; Compose topology, safe modes, Helius runtime import and explicit doctor wiring pass.
 - `alembic downgrade base && alembic upgrade head && alembic check` against local Compose Postgres — exit `0`; reversible migration cycle passed and `No new upgrade operations detected.`
 - `scripts/check_migrations.py` — exit `0`; `{"heads": ["0002_outbox_processing"], "table_count": 13}`.
 - `make integration-test` with the local Compose Postgres URL — exit `0`; `3 passed`.
@@ -93,6 +104,8 @@ All commands below were run in the current checkout on 2026-08-27.
 - Compose runtime import probe — `worker_event_processing_import_ok`; application event processing, `SqlAlchemyOutboxStore` and structured event telemetry import in the worker image.
 - `docker compose -f infra/compose/docker-compose.yml up -d --build api worker` after provider packaging — exit `0`; API/worker images include `packages/providers/src`.
 - Compose provider runtime probes — `provider_framework_import_ok 9` in worker and `provider_package_import_ok 0.1.0` in API; all nine provider capabilities import without credentials.
+- `docker compose -f infra/compose/docker-compose.yml up -d --build api worker` after Sprint 2.2 — exit `0`; API/worker images rebuilt with Helius read/stream code.
+- Compose Helius runtime probes — worker `helius_runtime_import_ok helius helius-stream-v1 True`; API `helius_api_runtime_import_ok helius helius`; both probes asserted all four safe-mode environment values.
 - Compose status — API healthy, Postgres healthy, Redis healthy, web running and worker running after the event-processing image rebuild.
 - `GET http://127.0.0.1:8000/health/live` — `{"status":"alive","service":"api","version":"0.1.0"}`.
 - `GET http://127.0.0.1:8000/health/ready` — HTTP `200`; database and Redis both reported `required: true, state: reachable` inside Compose.
@@ -108,12 +121,13 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Phase 0 and Phase 1 provider acceptance: `NOT_APPLICABLE` — no provider credentials are required for the completed foundation/domain work.
 - Sprint 2.1 keyless provider framework/fixture acceptance: `PASS` — contract tests and fake providers pass without external credentials.
-- Helius/RPC, Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
-- No external blocker is known for Sprint 2.1. Live provider phases will use fixtures/contracts first and report live checks separately as `PASS`, `BLOCKED_EXTERNAL` or `FAIL`.
+- Sprint 2.2 Helius fixtures, normalization, stream seam and doctor contract acceptance: `PASS` — all keyless tests and redacted fixtures pass.
+- Sprint 2.2 live Helius read-only acceptance: `BLOCKED_EXTERNAL` — `make provider-doctor` found both `HELIUS_RPC_URL` and `HELIUS_API_KEY` missing, so no live call was attempted and no live success is claimed.
+- Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 
 ## Blockers
 
-- No current implementation blocker. Live provider acceptance is intentionally not run until provider adapters and their doctor tasks are implemented; unavailable credentials/network will be isolated as `BLOCKED_EXTERNAL` if encountered.
+- No current implementation blocker for Sprint 2.2. The only Sprint 2.2 acceptance blocker is external Helius access: credentials/configuration are unavailable, recorded as `BLOCKED_EXTERNAL`.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -125,10 +139,9 @@ The worker container initially exited because `__main__.py` was missing. The fai
 ## Git state
 
 - Intended branch: `main`.
-- Latest pushed implementation checkpoint: `49a2df8` (`build: package provider framework in runtimes`).
-- Latest pushed documentation checkpoint: `bac6cb3` (`docs: synchronize sprint 2.1 status`).
-- This Sprint 2.2 start update is the next documentation checkpoint; local `main` and `origin/main` were synchronized at `bac6cb3` before it, with no unrelated changes present.
+- Latest pushed implementation checkpoint: `fb16367` (`feat: add Helius provider doctor`).
+- Sprint 2.2 smoke/runtime changes and completion documentation are pending the checkpoint commit; local `main` and `origin/main` are synchronized at `fb16367` before that commit, with no unrelated changes present.
 
 ## Next task
 
-Continue `Phase 2 / Sprint 2.2 — Helius / Solana Read Layer`: implement the Helius/RPC token/account/transaction enrichment adapter, WebSocket/webhook seam, token-program and authority normalization, fixture-based contracts and a key-safe provider doctor. Run live read-only acceptance only when credentials/network permit; otherwise mark only that acceptance `BLOCKED_EXTERNAL`. Preserve all four safety modes.
+Begin `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`: implement the candidate/new-pool discovery adapter, supported price/liquidity/trade/volume/holder/security observations, stream/poll fallback, freshness/conflict handling and key-safe provider doctor/fixture acceptance. Preserve all four safety modes and isolate any live-provider item as `BLOCKED_EXTERNAL` when credentials/network are unavailable.

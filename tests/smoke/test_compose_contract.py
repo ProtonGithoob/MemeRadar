@@ -53,3 +53,24 @@ def test_dockerfiles_keep_runtime_entrypoints_explicit():
     assert "/app/packages/providers/src" in worker_dockerfile
     assert "COPY packages/providers/src ./packages/providers/src" in worker_dockerfile
     assert '"npm", "run", "dev"' in web_dockerfile
+
+
+def test_helius_read_layer_and_doctor_are_explicit_and_keyless():
+    from memeradar_providers.helius import HeliusRpcAdapter
+    from memeradar_providers.helius_stream import (
+        HeliusObservationNormalizer,
+        HeliusStreamConsumer,
+    )
+
+    assert HeliusRpcAdapter.provider_name == "helius"
+    assert HeliusObservationNormalizer.provider_name == "helius"
+    assert HeliusStreamConsumer
+    makefile = (ROOT / "Makefile").read_text()
+    env_example = (ROOT / ".env.example").read_text()
+    assert "provider-doctor:" in makefile
+    assert "HELIUS_RPC_URL=" in env_example
+    assert "HELIUS_API_KEY=" in env_example
+    assert "ANALYSIS_ONLY=true" in env_example
+    assert "PAPER_TRADING=true" in env_example
+    assert "MANUAL_EXECUTION=false" in env_example
+    assert "AUTO_EXECUTION=false" in env_example

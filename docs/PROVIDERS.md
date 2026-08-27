@@ -82,6 +82,16 @@ Sprint 2.1 defines the provider ports in `packages/application/src/memeradar_app
 
 Shared request contexts carry a bounded correlation ID and optional deadline. The keyless provider framework in `packages/providers/src/memeradar_providers/` supplies callback-based transport resilience, health/quota/freshness projections, recursively redacted fixture recording and deterministic fake responses. These seams are tested without provider credentials; live acceptance remains a separate adapter-phase concern.
 
+## Helius / Solana read layer
+
+Sprint 2.2 implements the read-only Helius adapter in `packages/providers/src/memeradar_providers/helius.py`. `HeliusRpcAdapter` maps `getAsset`, `getAccountInfo` and `getTransaction` JSON-RPC/DAS responses into canonical `TokenIdentity`, account and transaction records plus application `Observation` values. It validates Solana base58 identities, preserves `occurred_at`/`observed_at`/`ingested_at`, attaches Helius/source/parser provenance, forwards request correlation IDs, and classifies timeout, availability, authentication, rate-limit and schema failures without retaining raw response text.
+
+Token metadata explicitly distinguishes SPL Token and Token-2022 programs. Mint and freeze authorities normalize to `ACTIVE`, `REVOKED`, `UNKNOWN` or `INVALID`; missing evidence remains `UNKNOWN` and never becomes safe evidence. Invalid account keys, owner values, numeric fields and future transaction times fail closed as classified schema errors. `last_rate_limit` exposes only safe quota/reset metadata for health reporting. The adapter has no signing or execution path.
+
+`HeliusObservationNormalizer` and `HeliusStreamConsumer` in `helius_stream.py` form the webhook/WebSocket seam. They accept only injected async sources, redact credential-shaped fields, map event types to an allow-list, validate event timestamps, and create deterministic observation IDs from `helius` plus the provider source ID. Duplicate deliveries are forwarded so downstream persistence can apply its idempotency policy. Reconnects are bounded and cancellation propagates; untrusted messages cannot invoke execution or mutate configuration.
+
+The explicit `make provider-doctor` command runs one bounded, read-only `getHealth` call when both `HELIUS_RPC_URL` and `HELIUS_API_KEY` are configured. Its JSON report includes only configuration presence, network/auth/schema status, rounded latency, safe rate-limit metadata and the protected operating modes. It returns `PASS`, `FAIL` or `BLOCKED_EXTERNAL`; the current keyless checkout reports `BLOCKED_EXTERNAL` with `CONFIGURATION_MISSING`.
+
 ## Adapter requirements
 
 Every network adapter must implement:

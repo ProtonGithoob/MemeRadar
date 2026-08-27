@@ -33,11 +33,11 @@
 - `HeliusRpcAdapter(endpoint, api_key=None, client=None, transport=None, clock=None)` implements `OnChainPort.enrich` and exposes bounded `fetch_token_metadata`, `fetch_account`, and `fetch_transaction` reads.
 - JSON-RPC status/auth/rate-limit/schema failures map to the existing classified provider errors and raw response text is not retained.
 
-- [ ] **Step 1: Write failing tests** for authority null/missing/valid normalization, SPL/Token-2022/unknown program mapping, transaction identity, malformed responses and safe endpoint/key handling.
-- [ ] **Step 2: Run the focused tests and confirm the adapter module is absent.**
-- [ ] **Step 3: Implement normalization records and injected-client JSON-RPC adapter using `ProviderTransport`.**
-- [ ] **Step 4: Run focused tests, Ruff and mypy.**
-- [ ] **Step 5: Commit `feat: add Helius Solana read adapter`.**
+- [x] **Step 1: Write failing tests** for authority null/missing/valid normalization, SPL/Token-2022/unknown program mapping, transaction identity, malformed responses and safe endpoint/key handling.
+- [x] **Step 2: Run the focused tests and confirm the adapter module is absent.**
+- [x] **Step 3: Implement normalization records and injected-client JSON-RPC adapter using `ProviderTransport`.**
+- [x] **Step 4: Run focused tests, Ruff and mypy.**
+- [x] **Step 5: Commit `feat: add Helius Solana read adapter` (`17724c7`).**
 
 ### Task 2: Webhook and WebSocket observation seam
 
@@ -51,11 +51,11 @@
 - `HeliusStreamConsumer` consumes an injected async message source, supports cancellation and bounded reconnect delay, and never invokes execution code.
 - Duplicate source IDs remain replayable/idempotent; malformed messages become classified schema failures or INVALID observations.
 
-- [ ] **Step 1: Write failing stream/webhook normalization, duplicate, malformed-payload and cancellation tests.**
-- [ ] **Step 2: Run the focused tests and verify missing stream symbols fail.**
-- [ ] **Step 3: Implement the injected source/sink seam and normalization/reconnect behavior.**
-- [ ] **Step 4: Run focused tests, Ruff and mypy.**
-- [ ] **Step 5: Commit `feat: add Helius observation stream seam`.**
+- [x] **Step 1: Write failing stream/webhook normalization, duplicate, malformed-payload and cancellation tests.**
+- [x] **Step 2: Run the focused tests and verify missing stream symbols fail.**
+- [x] **Step 3: Implement the injected source/sink seam and normalization/reconnect behavior.**
+- [x] **Step 4: Run focused tests, Ruff and mypy.**
+- [x] **Step 5: Commit `feat: add Helius observation stream seam` (`2ab96c3`).**
 
 ### Task 3: Safe Helius fixtures and provider contract tests
 
@@ -66,11 +66,11 @@
 - Create: `tests/contract/test_helius_provider.py`
 - Modify: `fixtures/providers/README.md`
 
-- [ ] **Step 1: Add synthetic/redacted JSON-RPC responses with no credential-shaped values.**
-- [ ] **Step 2: Write fixture contract tests** for token/account/transaction reads and normalized outputs.
-- [ ] **Step 3: Run the tests and secret scan; confirm fixture exports are deterministic and safe.**
-- [ ] **Step 4: Run Ruff and mypy over the adapter and contract tests.**
-- [ ] **Step 5: Commit `test: add Helius read fixtures`.**
+- [x] **Step 1: Add synthetic/redacted JSON-RPC responses with no credential-shaped values.**
+- [x] **Step 2: Write fixture contract tests** for token/account/transaction reads and normalized outputs.
+- [x] **Step 3: Run the tests and secret scan; confirm fixture exports are deterministic and safe.**
+- [x] **Step 4: Run Ruff and mypy over the adapter and contract tests.**
+- [x] **Step 5: Commit `test: add Helius read fixtures` (`46a789e`).**
 
 ### Task 4: Key-safe provider doctor
 
@@ -85,11 +85,11 @@
 - Missing configuration or unavailable external access is reported as `BLOCKED_EXTERNAL`; malformed/auth/schema responses are `FAIL`; observed successful health/schema evidence is `PASS`.
 - The doctor never mutates chain state and never changes operating modes.
 
-- [ ] **Step 1: Write failing doctor tests** for missing configuration, successful fixture response, auth failure, timeout and secret non-disclosure.
-- [ ] **Step 2: Run focused tests and verify the command/module is absent.**
-- [ ] **Step 3: Implement the doctor with injectable adapter/client and safe report serialization.**
-- [ ] **Step 4: Add `make provider-doctor`, update safe environment examples and run keyless doctor tests.**
-- [ ] **Step 5: Commit `feat: add Helius provider doctor`.**
+- [x] **Step 1: Write failing doctor tests** for missing configuration, successful fixture response, auth failure, timeout and secret non-disclosure.
+- [x] **Step 2: Run focused tests and verify the command/module is absent.**
+- [x] **Step 3: Implement the doctor with injectable adapter/client and safe report serialization.**
+- [x] **Step 4: Add `make provider-doctor`, update safe environment examples and run keyless doctor tests.**
+- [x] **Step 5: Commit `feat: add Helius provider doctor` (`fb16367`).**
 
 ### Task 5: Sprint 2.2 gate and live-acceptance boundary
 
@@ -100,8 +100,8 @@
 - Modify: `docs/STATUS.md`
 - Modify: `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-2-helius-solana-read-layer.md`
 
-- [ ] **Step 1: Add runtime import and safety-mode smoke checks for the Helius adapter/doctor.**
-- [ ] **Step 2: Run `make verify`, Helius unit/contract tests, secret scan, provider doctor and Compose runtime imports.**
-- [ ] **Step 3: If configured live read-only access is absent, record exactly `BLOCKED_EXTERNAL`; never substitute fixture PASS for live PASS.**
-- [ ] **Step 4: Reconcile all Sprint 2.2 checkboxes/status with exact results, blockers, provider acceptance and safety modes.**
-- [ ] **Step 5: Commit and push the sprint checkpoint; record the exact next task `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`.**
+- [x] **Step 1: Add runtime import and safety-mode smoke checks for the Helius adapter/doctor.**
+- [x] **Step 2: Run `make verify`, Helius unit/contract tests, secret scan, provider doctor and Compose runtime imports.**
+- [x] **Step 3: If configured live read-only access is absent, record exactly `BLOCKED_EXTERNAL`; never substitute fixture PASS for live PASS.**
+- [x] **Step 4: Reconcile all Sprint 2.2 checkboxes/status with exact results, blockers, provider acceptance and safety modes.**
+- [x] **Step 5: Commit and push the sprint checkpoint; record the exact next task `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`.**

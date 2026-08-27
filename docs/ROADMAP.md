@@ -81,12 +81,12 @@ Codex must execute this roadmap in order unless a task is externally blocked and
 
 ### Sprint 2.2 — Helius / Solana Read Layer
 
-- [ ] Implement Helius/RPC adapter for token/account/transaction enrichment.
-- [ ] Add websocket/webhook seam for relevant Solana observations.
-- [ ] Normalize token program, mint/freeze authorities and transaction identity.
-- [ ] Implement provider doctor command.
-- [ ] Add fixture-based contract tests.
-- [ ] Run live read-only acceptance when credentials/network permit.
+- [x] Implement Helius/RPC adapter for token/account/transaction enrichment.
+- [x] Add websocket/webhook seam for relevant Solana observations.
+- [x] Normalize token program, mint/freeze authorities and transaction identity.
+- [x] Implement provider doctor command.
+- [x] Add fixture-based contract tests.
+- [x] Run live read-only acceptance when credentials/network permit — `BLOCKED_EXTERNAL` in this checkout because Helius endpoint/key configuration is absent; no live-provider success is claimed.
 
 ### Sprint 2.3 — Birdeye / DEX Market Layer
 
