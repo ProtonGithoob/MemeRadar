@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "data": {
+    "address": "So11111111111111111111111111111111111111112",
+    "volume24h": 10000.25,
+    "trade24h": 42,
+    "buy24h": 30,
+    "sell24h": 12,
+    "uniqueWallet24h": 25,
+    "buyVolume24h": 7000.25,
+    "sellVolume24h": 3000,
+    "volume24hChangePercent": 12.5,
+    "updateUnixTime": 1787828400
+  }
+}

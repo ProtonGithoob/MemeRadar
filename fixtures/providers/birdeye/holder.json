@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "data": {
+    "address": "So11111111111111111111111111111111111111112",
+    "holder": 321,
+    "top10HoldPercent": 0.42,
+    "items": [
+      {
+        "owner": "Vote111111111111111111111111111111111111111",
+        "amount": 42000000,
+        "uiAmount": 0.042,
+        "percentage": 0.042
+      }
+    ],
+    "updateUnixTime": 1787828400
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "data": {
+    "address": "So11111111111111111111111111111111111111112",
+    "isFreezable": false,
+    "isMintable": false,
+    "isMutable": true,
+    "isHoneypot": false,
+    "isBlacklisted": false,
+    "creatorAddress": "Vote111111111111111111111111111111111111111",
+    "updateUnixTime": 1787828400
+  }
+}

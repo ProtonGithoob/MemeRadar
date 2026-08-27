@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "data": {
+    "address": "So11111111111111111111111111111111111111112",
+    "price": 0.00125,
+    "liquidity": 125000.5,
+    "marketCap": 500000,
+    "fdv": 600000,
+    "supply": 1000000000,
+    "circulatingSupply": 900000000,
+    "holder": 321,
+    "updateUnixTime": 1787828400
+  }
+}

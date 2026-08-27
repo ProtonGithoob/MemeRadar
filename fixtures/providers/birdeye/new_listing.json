@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "address": "So11111111111111111111111111111111111111112",
+        "name": "Meme Radar Fixture",
+        "symbol": "MRF",
+        "decimals": 9,
+        "liquidity": 125000.5,
+        "listedAt": 1787828280,
+        "tokenProgram": "spl-token"
+      }
+    ],
+    "hasNext": false
+  }
+}
