@@ -426,6 +426,7 @@ class HeliusRpcAdapter(OnChainPort):
         self._transport = transport or ProviderTransport()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._parser_version = require_text(parser_version, "parser_version", max_length=64)
+        self._last_rate_limit: RateLimitSnapshot | None = None
 
     @staticmethod
     def _validate_endpoint(endpoint: str) -> str:
@@ -467,6 +468,12 @@ class HeliusRpcAdapter(OnChainPort):
     async def aclose(self) -> None:
         if self._owns_client:
             await self._client.aclose()
+
+    @property
+    def last_rate_limit(self) -> RateLimitSnapshot | None:
+        """Return the latest safe rate-limit headers observed by this adapter."""
+
+        return self._last_rate_limit
 
     def _request_url(self) -> str:
         if self._api_key is None:
@@ -568,6 +575,7 @@ class HeliusRpcAdapter(OnChainPort):
                 raise ProviderUnavailableError("provider transport failed") from exc
             snapshot = self._rate_limit_snapshot(response.headers)
             if snapshot is not None:
+                self._last_rate_limit = snapshot
                 self._transport.rate_limiter.update(snapshot)
             if response.status_code in {401, 403}:
                 raise ProviderAuthenticationError("provider authentication failed")
@@ -607,6 +615,14 @@ class HeliusRpcAdapter(OnChainPort):
             observed_at=observed_at,
             parser_version=self._parser_version,
         )
+
+    async def check_health(self, *, context: ProviderRequestContext) -> str:
+        """Perform the provider's read-only JSON-RPC health check."""
+
+        result = await self._rpc("getHealth", (), context=context)
+        if not isinstance(result, str) or result.strip().lower() != "ok":
+            raise ProviderSchemaError("provider health response was invalid")
+        return "ok"
 
     async def fetch_token_metadata(
         self,

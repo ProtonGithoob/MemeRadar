@@ -7,7 +7,8 @@ COMPOSE_FILE ?= infra/compose/docker-compose.yml
 COMPOSE ?= docker compose -f $(COMPOSE_FILE)
 
 .PHONY: bootstrap lint typecheck test frontend-lint frontend-typecheck frontend-test \
-	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor
+	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
+	provider-doctor
 
 bootstrap:
 	python3 -m venv .venv
@@ -72,3 +73,6 @@ migrate:
 
 doctor:
 	$(PYTHON) scripts/doctor.py
+
+provider-doctor:
+	$(PYTHON) scripts/provider_doctor.py
