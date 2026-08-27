@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import TracebackType
 from urllib.parse import parse_qsl, urlsplit
@@ -39,6 +40,7 @@ from .transport import (
 Clock = Callable[[], datetime]
 BIRDEYE_PROVIDER = "birdeye"
 BIRDEYE_PARSER_VERSION = "birdeye-market-v1"
+BIRDEYE_RECONCILER_VERSION = "birdeye-reconcile-v1"
 BIRDEYE_CHAIN = "solana"
 _MISSING = object()
 _CREDENTIAL_QUERY_KEYS = {
@@ -796,10 +798,122 @@ class BirdeyeRestAdapter(CandidateDiscoveryPort, MarketDataPort):
         return tuple(observations)
 
 
+_QUALITY_ORDER = {
+    QualityState.FRESH: 0,
+    QualityState.STALE: 1,
+    QualityState.UNKNOWN: 2,
+    QualityState.CONFLICTED: 3,
+    QualityState.INVALID: 4,
+}
+_COMPARABLE_MARKET_FIELDS = ("price", "liquidity", "market_cap", "fdv", "volume_24h")
+
+
+def _relative_difference(left: Decimal, right: Decimal) -> Decimal:
+    difference = abs(left - right)
+    denominator = max(abs(left), abs(right))
+    return Decimal(0) if denominator == 0 else difference / denominator
+
+
+class BirdeyeObservationResolver:
+    """Resolve freshness and material conflicts without losing source evidence."""
+
+    def resolve(
+        self,
+        observations: Sequence[Observation],
+        *,
+        now: datetime,
+        ttl: timedelta,
+        relative_tolerance: Decimal | int | float | str = Decimal("0.05"),
+    ) -> Observation:
+        values = tuple(observations)
+        if not values:
+            raise ValueError("at least one observation is required")
+        if any(not isinstance(observation, Observation) for observation in values):
+            raise TypeError("observations must contain Observation values")
+        if not isinstance(ttl, timedelta) or ttl <= timedelta(0):
+            raise ValueError("ttl must be positive")
+        try:
+            tolerance = to_decimal(relative_tolerance, "relative_tolerance")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("relative_tolerance must be a decimal between 0 and 1") from exc
+        if tolerance < 0 or tolerance > 1:
+            raise ValueError("relative_tolerance must be between 0 and 1")
+        checked_now = ensure_utc(now, "now")
+        first = values[0]
+        if any(item.kind != first.kind for item in values):
+            raise ValueError("observations must have the same kind")
+        if any(item.token_id != first.token_id for item in values):
+            raise ValueError("observations must have the same token_id")
+        if any(item.observed_at > checked_now for item in values):
+            raise ValueError("observation cannot be in the future")
+
+        effective_quality: list[QualityState] = []
+        for item in values:
+            state = item.quality_state
+            if state is QualityState.FRESH and checked_now >= item.observed_at + ttl:
+                state = QualityState.STALE
+            effective_quality.append(state)
+
+        conflicts: list[dict[str, object]] = []
+        for field in _COMPARABLE_MARKET_FIELDS:
+            field_values: list[tuple[str, Decimal]] = []
+            for item in values:
+                raw_value = item.normalized_payload.get(field)
+                if raw_value is None:
+                    continue
+                try:
+                    numeric = to_decimal(raw_value, field)
+                except (TypeError, ValueError):
+                    continue
+                field_values.append((item.provenance.source_id, numeric))
+            if len(field_values) >= 2:
+                low = min(value for _, value in field_values)
+                high = max(value for _, value in field_values)
+                if _relative_difference(low, high) > tolerance:
+                    conflicts.append({"field": field, "values": tuple(field_values)})
+
+        quality = max(effective_quality, key=lambda state: _QUALITY_ORDER[state])
+        if conflicts and quality is not QualityState.INVALID:
+            quality = QualityState.CONFLICTED
+        latest = max(values, key=lambda item: item.observed_at)
+        payload = dict(latest.normalized_payload)
+        payload["source_ids"] = tuple(item.provenance.source_id for item in values)
+        payload["freshness_state"] = quality.value
+        payload["freshness_ttl_seconds"] = ttl.total_seconds()
+        payload["conflicts"] = tuple(conflicts)
+        if len(values) == 1:
+            return replace(latest, quality_state=quality, normalized_payload=payload)
+
+        observed_at = max(item.observed_at for item in values)
+        ingested_at = max(item.ingested_at for item in values)
+        occurred_values = tuple(item.occurred_at for item in values if item.occurred_at is not None)
+        occurred_at = max(occurred_values) if occurred_values else None
+        evidence_key = "|".join(f"{item.provenance.source_id}:{item.id}" for item in values)
+        source_id = f"reconcile:{hashlib.sha256(evidence_key.encode()).hexdigest()[:32]}"
+        return Observation(
+            id=uuid5(NAMESPACE_URL, f"memeradar:{source_id}"),
+            kind=latest.kind,
+            provenance=Provenance(
+                provider="birdeye.reconciler",
+                source_id=source_id,
+                observed_at=observed_at,
+                parser_version=BIRDEYE_RECONCILER_VERSION,
+            ),
+            occurred_at=occurred_at,
+            observed_at=observed_at,
+            ingested_at=ingested_at,
+            quality_state=quality,
+            normalized_payload=payload,
+            token_id=latest.token_id,
+        )
+
+
 __all__ = [
     "BIRDEYE_CHAIN",
     "BIRDEYE_PARSER_VERSION",
+    "BIRDEYE_RECONCILER_VERSION",
     "BIRDEYE_PROVIDER",
     "BirdeyeMarketRecord",
+    "BirdeyeObservationResolver",
     "BirdeyeRestAdapter",
 ]
