@@ -136,9 +136,9 @@ git push origin main
 - Modify: docs/STATUS.md
 - Modify: tests/smoke/test_compose_contract.py
 
-- [ ] **Step 1: Add the provider and risk-policy documentation.** Record official RugCheck report/health paths, freshness and provenance rules, advisory verification semantics, on-chain authority precedence, and the exact BLOCKED_EXTERNAL live acceptance conditions.
-- [ ] **Step 2: Extend the smoke contract.** Assert the provider module imports in API/worker images and all four safe modes remain unchanged.
-- [ ] **Step 3: Run the full Sprint 3.1 quality gate.**
+- [x] **Step 1: Add the provider and risk-policy documentation.** Record official RugCheck report/health paths, freshness and provenance rules, advisory verification semantics, on-chain authority precedence, and the exact BLOCKED_EXTERNAL live acceptance conditions.
+- [x] **Step 2: Extend the smoke contract.** Assert the provider module imports in API/worker images and all four safe modes remain unchanged.
+- [x] **Step 3: Run the full Sprint 3.1 quality gate.**
 
 ~~~bash
 make verify
@@ -150,9 +150,9 @@ make rugcheck-doctor
 ~~~
 
 Record exact exit codes and pass/skip counts; a missing RugCheck URL must be recorded as BLOCKED_EXTERNAL, never as PASS.
-- [ ] **Step 4: Rebuild bounded local Compose services and run runtime import/health probes.** Do not enable live execution or make external calls without configured credentials.
-- [ ] **Step 5: Mark Sprint 3.1 complete only after the keyless gate passes, update docs/STATUS.md with completed work, exact verification evidence, blockers, provider acceptance, safety modes, Git sync state, and the exact Sprint 3.2 next task.
-- [ ] **Step 6: Commit and push the final sprint checkpoint.**
+- [x] **Step 4: Rebuild bounded local Compose services and run runtime import/health probes.** Do not enable live execution or make external calls without configured credentials.
+- [x] **Step 5: Mark Sprint 3.1 complete only after the keyless gate passes, update docs/STATUS.md with completed work, exact verification evidence, blockers, provider acceptance, safety modes, Git sync state, and the exact Sprint 3.2 next task.
+- [x] **Step 6: Commit and push the final sprint checkpoint.**
 
 ~~~bash
 git add docs/PROVIDERS.md docs/SCORING_AND_RISK.md docs/SECURITY.md docs/ROADMAP.md docs/STATUS.md tests/smoke/test_compose_contract.py

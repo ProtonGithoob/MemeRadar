@@ -110,6 +110,18 @@ Sprint 2.4 adds provider-local `PumpFunAdapter`, `PumpSwapAdapter`, `RaydiumAdap
 
 The analysis-only manual input path is exposed at `POST /v1/manual/mints`. It requires the configured `OPERATOR_API_TOKEN` bearer credential, returns `503` when operator authentication is not configured, validates a canonical mint and creates a deterministic `manual:<mint>` discovery candidate. It reports duplicate submissions without dropping them and always returns `execution_enabled: false`; it has no signing, quote, transaction or live-money path.
 
+## RugCheck / token-security risk layer
+
+Sprint 3.1 adds the provider-local `RugCheckRestAdapter` in `packages/providers/src/memeradar_providers/rugcheck.py`. It performs a read-only `GET /v1/tokens/{id}/report/summary` request, validates the official summary shape, and maps each `risks[]` item into an application `RiskFinding` with the requested token, source ID, observation timestamp and `QualityState.FRESH`. The adapter accepts an optional JWT through the `Authorization: Bearer ...` header; it never places credentials in a URL, report body, fixture, exception or doctor output. The adapter uses the shared bounded transport policy and exposes only safe rate-limit metadata.
+
+The official `danger`, `critical` and `block` levels remain `RiskSeverity.BLOCK` findings at the provider boundary, but the application `TokenSecurityEvaluator` treats those third-party findings as uncorroborated warnings. Only deterministic on-chain evidence can establish the authority hard gates; a severe provider finding becomes a hard block only after an independent on-chain corroboration path is implemented. Provider `warn` and unknown levels remain warning/unknown advisory evidence. RugCheck verification fields are normalized as `VERIFICATION_STATUS` with `INFO` severity and are never an endorsement, score boost or execution gate.
+
+The evaluator consumes Helius-normalized `onchain.token_metadata` observations. Active mint or freeze authority is a hard block under the current policy. Missing, unknown, invalid, conflicted or stale critical authority evidence produces `UNKNOWN` and is not execution-eligible. Token-2022 program identity and extension names are retained in normalized Helius payloads; security-relevant extensions are surfaced as explicit warnings and do not silently become safe evidence. The default authority-evidence TTL is five minutes, and every resulting risk assessment carries a version, configuration hash, reason codes and all evidence references.
+
+`make rugcheck-doctor` performs one bounded read-only `GET /ping` call when `RUGCHECK_API_URL` is configured. The official ping response must contain `message: pong`; the optional `RUGCHECK_API_KEY` is reported only as present/missing and is sent as a bearer header when set. Missing URL, unavailable network access or rate limiting is `BLOCKED_EXTERNAL`; authentication/schema failures are `FAIL`. The current checkout has no RugCheck endpoint configured, so no live provider success is claimed. Keyless fixtures and contracts are stored under `fixtures/providers/rugcheck/`.
+
+Reference contract: [RugCheck API Swagger](https://api.rugcheck.xyz/swagger/index.html) and its [raw API specification](https://api.rugcheck.xyz/swagger/doc.json).
+
 ## Adapter requirements
 
 Every network adapter must implement:

@@ -67,6 +67,19 @@ Exact threshold values belong in config. Initial hard-block classes:
 
 Do not treat token verification as proof of investment safety.
 
+### Sprint 3.1 token-security rules
+
+The deterministic `TokenSecurityEvaluator` consumes provider-independent Helius observations and optional `RiskFinding` values:
+
+- `ACTIVE` mint authority produces `MINT_AUTHORITY_ACTIVE` and a hard block with an initial `mint_authority` penalty of 30.
+- `ACTIVE` freeze authority produces `FREEZE_AUTHORITY_ACTIVE` and a hard block with an initial `freeze_authority` penalty of 30.
+- Missing or `UNKNOWN` authority evidence, invalid normalized authority data, unknown token programs, conflicts and expired fresh evidence produce `UNKNOWN` critical state and are never execution-eligible.
+- `spl-token-2022` is retained as a distinct program. Extension names are preserved by the on-chain adapter; transfer hooks, permanent delegates and other security-relevant extensions are explicit warnings. Unreported extension metadata is also a warning and cannot act as an endorsement.
+- RugCheck `BLOCK` findings are advisory until an independent deterministic on-chain corroboration exists. They cannot create a sole-authority hard block, and stale/unknown third-party findings do not convert missing on-chain evidence into safety.
+- RugCheck verification is an informational `VERIFICATION_STATUS` reason only. It cannot raise confidence, clear a hard block or make an assessment execution-eligible.
+
+The initial token-security assessment is versioned as `token-security-v1`, uses a five-minute critical-evidence TTL, records all provider/source references and config hash, and preserves `PASS`, `WARN`, `BLOCK` and `UNKNOWN` as distinct outcomes. `RiskAssessment.execution_eligible()` remains true only for a fresh explicit `PASS`; warnings, unknowns and stale evidence remain fail-closed.
+
 ## 5. Initial penalties
 
 Illustrative v1 penalty classes, calibrated later:

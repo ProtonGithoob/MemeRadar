@@ -114,11 +114,13 @@ Current gate state: keyless normalized discovery/enrichment seams and determinis
 
 ### Sprint 3.1 — Authority / Token Security
 
-- [ ] Implement mint/freeze authority checks.
-- [ ] Handle Token-2022/security-relevant metadata when applicable.
-- [ ] Integrate RugCheck/security-provider seam without making it sole authority.
-- [ ] Implement verification status as informational, never endorsement.
-- [ ] Add hard-gate/UNKNOWN/freshness tests.
+- [x] Implement mint/freeze authority checks.
+- [x] Handle Token-2022/security-relevant metadata when applicable.
+- [x] Integrate RugCheck/security-provider seam without making it sole authority.
+- [x] Implement verification status as informational, never endorsement.
+- [x] Add hard-gate/UNKNOWN/freshness tests.
+
+Sprint 3.1 keyless state: complete. Helius authority/Token-2022 normalization, provider-independent hard gates, RugCheck fixtures/adapter/doctor and freshness/UNKNOWN composition tests pass locally. Live RugCheck acceptance is `BLOCKED_EXTERNAL` when endpoint configuration is absent; no live-provider success is claimed.
 
 ### Sprint 3.2 — Holder Concentration / Wallet Graph
 

@@ -76,6 +76,24 @@ def test_helius_read_layer_and_doctor_are_explicit_and_keyless():
     assert "AUTO_EXECUTION=false" in env_example
 
 
+def test_token_security_and_rugcheck_seam_are_explicit_and_safe():
+    from memeradar_application.token_security import TokenSecurityEvaluator, TokenSecurityPolicy
+    from memeradar_providers.rugcheck import RugCheckRestAdapter
+
+    assert TokenSecurityEvaluator
+    assert TokenSecurityPolicy().risk_version == "token-security-v1"
+    assert RugCheckRestAdapter.provider_name == "rugcheck"
+    makefile = (ROOT / "Makefile").read_text()
+    env_example = (ROOT / ".env.example").read_text()
+    assert "rugcheck-doctor:" in makefile
+    assert "RUGCHECK_API_URL=" in env_example
+    assert "RUGCHECK_API_KEY=" in env_example
+    assert "ANALYSIS_ONLY=true" in env_example
+    assert "PAPER_TRADING=true" in env_example
+    assert "MANUAL_EXECUTION=false" in env_example
+    assert "AUTO_EXECUTION=false" in env_example
+
+
 def test_birdeye_market_layer_and_doctor_are_explicit_and_keyless():
     from memeradar_providers.birdeye import (
         BIRDEYE_CHAIN,

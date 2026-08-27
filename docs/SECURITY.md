@@ -16,6 +16,8 @@ Never commit:
 
 Use environment/secret-manager references. `.env.example` contains names and safe placeholders only. Logs and doctor commands redact credentials.
 
+The Sprint 3.1 RugCheck integration is read-only. `RUGCHECK_API_KEY`, when needed, is sent only as an `Authorization: Bearer ...` header; the adapter rejects credential-bearing base URLs and does not include provider response bodies in errors. `make rugcheck-doctor` reports configuration presence rather than values and returns `BLOCKED_EXTERNAL` when no endpoint is configured. RugCheck severity and verification are advisory inputs: on-chain authority evidence remains the deterministic security authority, and provider verification is never treated as an endorsement.
+
 ## Operating modes
 
 Default and mandatory until roadmap gates explicitly unlock:
