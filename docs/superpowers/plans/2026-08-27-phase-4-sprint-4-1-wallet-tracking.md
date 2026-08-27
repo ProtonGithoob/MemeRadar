@@ -24,7 +24,7 @@
 - Create: `tests/unit/test_wallet_tracking.py`
 
 **Interfaces:**
-- Produces `WalletTier`, `TrackedWallet`, `TrackedWalletRegistry`, `WalletActivity`, `WalletRoundTrip`, `WalletTrackingSnapshot`, `WalletTrackingPolicy` and `WalletTrackingAnalyzer`.
+- Produces `WalletTier`, `TrackedWallet`, `TrackedWalletRegistry`, `WalletAction`, `WalletActivity`, `WalletRoundTrip`, `WalletTrackingSnapshot`, `WalletTrackingPolicy` and `WalletTrackingAnalyzer`.
 - Produces `WalletTrackingAnalyzer.ingest_activities(token, observations, registry, now) -> tuple[WalletActivity, ...]`.
 - Produces `WalletTrackingAnalyzer.reconstruct_positions(token, activities, registry, now, config_hash, token_created_at=None, rug_observations=()) -> tuple[WalletTrackingSnapshot, ...]`.
 
