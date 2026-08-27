@@ -340,7 +340,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 5.1 plan checkpoint: `dc30b36` (`docs: plan Sprint 5.1 social provider`).
 - Latest pushed Sprint 5.1 application checkpoint: `1809c69` (`feat: add social provider read seam`).
 - Latest pushed Sprint 5.1 fixture/contract checkpoint: `5fb3542` (`test: add social provider replay contracts`).
-- Latest pushed Sprint 5.1 documentation/status checkpoint: pending this synchronization.
+- Latest pushed Sprint 5.1 documentation checkpoint: `09efaa7` (`docs: complete Sprint 5.1 social checkpoint`).
+- Latest pushed Sprint 5.1 status synchronization: pending this synchronization.
 
 ## Next task
 
