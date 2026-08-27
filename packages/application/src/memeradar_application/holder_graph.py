@@ -1144,7 +1144,7 @@ class HolderGraphAnalyzer:
                     _append_unique(component_refs, edge.evidence_refs)
                 if (
                     edge.relation_type == "funded_by"
-                    and len(endpoints.intersection(addresses)) == 1
+                    and edge.to_address in addresses
                     and len(addresses) > 1
                 ):
                     shared_funder = True
