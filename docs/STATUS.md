@@ -223,7 +223,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 3.2 application checkpoint: `a355dd4` (`feat: add bounded holder concentration graph analysis`).
 - Latest pushed Sprint 3.2 clustering correction: `5345f4a` (`fix: classify holder funding clusters`).
 - Latest pushed Sprint 3.2 fixture/contract checkpoint: `f7590d0` (`test: add holder graph replay contracts`).
-- The Sprint 3.2 documentation/status synchronization is the current checkpoint and records the exact keyless gate evidence above.
+- Latest pushed Sprint 3.2 documentation checkpoint: `048d811` (`docs: complete Sprint 3.2 holder graph checkpoint`); this status synchronization records the exact keyless gate evidence above.
 
 ## Next task
 
