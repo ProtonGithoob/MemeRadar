@@ -27,19 +27,19 @@
 - Produces `SmartWalletScoringPolicy`, `SmartWalletScore` and `SmartWalletScorer`.
 - Produces `SmartWalletScorer.score(snapshots, now, config_hash, manipulation_penalties=()) -> tuple[SmartWalletScore, ...]`.
 
-- [ ] **Step 1: Write failing unit tests for score inputs and aggregation.** Cover completed FIFO outcomes, win rate, realized PnL, median return, early entries, rug avoidance, manipulation penalties, duplicate round trips, future exclusion and rolling-window bounds.
-- [ ] **Step 2: Run focused tests and confirm they fail because the module is absent.**
-- [ ] **Step 3: Implement immutable score/policy models.** Validate Decimal ranges, provenance/evidence, score components, quality states, version/config hash and non-authorizing execution predicate.
-- [ ] **Step 4: Add failing threshold/confidence tests.** Cover Bayesian/shrinkage confidence, minimum sample, minimum confidence, explicit blocked tiers and the prohibition on tiny-sample Tier A.
-- [ ] **Step 5: Implement deterministic scoring and tier recommendation.** Aggregate only in-window completed round trips, keep incomplete metrics nullable, shrink sparse evidence toward neutral, apply bounded manipulation penalties and return a non-mutating recommended tier.
-- [ ] **Step 6: Run the full scoring unit suite plus Ruff and mypy.**
+- [x] **Step 1: Write failing unit tests for score inputs and aggregation.** Cover completed FIFO outcomes, win rate, realized PnL, median return, early entries, rug avoidance, manipulation penalties, duplicate round trips, future exclusion and rolling-window bounds.
+- [x] **Step 2: Run focused tests and confirm they fail because the module is absent.**
+- [x] **Step 3: Implement immutable score/policy models.** Validate Decimal ranges, provenance/evidence, score components, quality states, version/config hash and non-authorizing execution predicate.
+- [x] **Step 4: Add failing threshold/confidence tests.** Cover Bayesian/shrinkage confidence, minimum sample, minimum confidence, explicit blocked tiers and the prohibition on tiny-sample Tier A.
+- [x] **Step 5: Implement deterministic scoring and tier recommendation.** Aggregate only in-window completed round trips, keep incomplete metrics nullable, shrink sparse evidence toward neutral, apply bounded manipulation penalties and return a non-mutating recommended tier.
+- [x] **Step 6: Run the full scoring unit suite plus Ruff and mypy.**
 
 ```bash
 ./.venv/bin/pytest tests/unit/test_wallet_scoring.py -q
 make lint typecheck
 ```
 
-- [ ] **Step 7: Commit the application checkpoint.**
+- [x] **Step 7: Commit the application checkpoint.**
 
 ```bash
 git add packages/application/src/memeradar_application/wallet_scoring.py tests/unit/test_wallet_scoring.py
@@ -56,11 +56,11 @@ git push origin main
 - Create: `tests/contract/test_phase4_sprint4_2.py`
 - Modify: `tests/smoke/test_compose_contract.py`
 
-- [ ] **Step 1: Write failing fixture/composition contracts.** Load credential-free Sprint 4.1-style snapshot fixtures and assert deterministic score decomposition.
-- [ ] **Step 2: Run focused contract and smoke tests before fixture wiring.**
-- [ ] **Step 3: Add deterministic fixtures.** Include a sufficiently sampled high-quality wallet, a tiny-sample wallet, stale/unknown evidence and a rolling-window boundary case with optional manipulation penalties.
-- [ ] **Step 4: Extend Compose smoke coverage.** Assert wallet-scoring imports and fixture paths while all four protected modes remain unchanged.
-- [ ] **Step 5: Run fixture/contract/smoke tests, Compose config and secret scan.**
+- [x] **Step 1: Write failing fixture/composition contracts.** Load credential-free Sprint 4.1-style snapshot fixtures and assert deterministic score decomposition.
+- [x] **Step 2: Run focused contract and smoke tests before fixture wiring.**
+- [x] **Step 3: Add deterministic fixtures.** Include a sufficiently sampled high-quality wallet, a tiny-sample wallet, stale/unknown evidence and a rolling-window boundary case with optional manipulation penalties.
+- [x] **Step 4: Extend Compose smoke coverage.** Assert wallet-scoring imports and fixture paths while all four protected modes remain unchanged.
+- [x] **Step 5: Run fixture/contract/smoke tests, Compose config and secret scan.**
 
 ```bash
 ./.venv/bin/pytest tests/contract/test_phase4_sprint4_2.py tests/smoke/test_compose_contract.py -q
@@ -68,7 +68,7 @@ docker compose -f infra/compose/docker-compose.yml config --quiet
 ./.venv/bin/python scripts/secret_scan.py
 ```
 
-- [ ] **Step 6: Commit and push the fixture/contract checkpoint.**
+- [x] **Step 6: Commit and push the fixture/contract checkpoint.**
 
 ```bash
 git add fixtures/providers/wallet_scoring tests/contract/test_phase4_sprint4_2.py tests/smoke/test_compose_contract.py
@@ -86,8 +86,8 @@ git push origin main
 - Modify: `docs/STATUS.md`
 - Modify: this plan
 
-- [ ] **Step 1: Document the score formula, component nullability, rolling window, shrinkage and Tier-A gates.**
-- [ ] **Step 2: Run the Sprint 4.2 quality gate.**
+- [x] **Step 1: Document the score formula, component nullability, rolling window, shrinkage and Tier-A gates.**
+- [x] **Step 2: Run the Sprint 4.2 quality gate.**
 
 ```bash
 make verify
@@ -96,8 +96,8 @@ docker compose -f infra/compose/docker-compose.yml config --quiet
 ```
 
 Record exact test, type, coverage, safety-mode and Compose results.
-- [ ] **Step 3: Mark Sprint 4.2 complete only after the keyless gate passes.** Record provider acceptance, blockers, current safety modes, Git sync state and the exact next task in `docs/STATUS.md`.
-- [ ] **Step 4: Commit and push the synchronized Sprint 4.2 documentation checkpoint.**
+- [x] **Step 3: Mark Sprint 4.2 complete only after the keyless gate passes.** Record provider acceptance, blockers, current safety modes, Git sync state and the exact next task in `docs/STATUS.md`.
+- [x] **Step 4: Commit and push the synchronized Sprint 4.2 documentation checkpoint.**
 
 ```bash
 git add docs/DATA_MODEL.md docs/SCORING_AND_RISK.md docs/PROVIDERS.md docs/ROADMAP.md docs/STATUS.md docs/superpowers/plans/2026-08-27-phase-4-sprint-4-2-smart-wallet-score.md

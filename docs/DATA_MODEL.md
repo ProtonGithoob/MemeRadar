@@ -213,6 +213,17 @@ reason codes and config/version metadata. Physical wallet migrations remain a
 later persistence task; no schema migration is required for this keyless
 application checkpoint.
 
+Sprint 4.2's warm-path `SmartWalletScore` aggregates completed round trips
+across tokens by wallet inside a bounded rolling window. It stores the raw
+sample/known-outcome counts, win rate, aggregate realized PnL, median return,
+early-entry rate, rug-avoidance rate, manipulation penalty, normalized
+component scores, recommended tier, confidence, expiry, quality state,
+provenance, evidence references, reason codes and config/version metadata.
+Missing component evidence remains nullable. Duplicate round trips are
+deduplicated by immutable token/wallet/timestamps/quantity/source evidence;
+future outcomes are excluded and mark the score invalid rather than becoming
+look-ahead data. A recommendation never mutates the explicit registry tier.
+
 ### wallet_graph_edges
 - id
 - from_wallet_id/to_wallet_id

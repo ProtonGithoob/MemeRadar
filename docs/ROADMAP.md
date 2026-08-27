@@ -178,10 +178,17 @@ read-only provider access.
 
 ### Sprint 4.2 — SmartWalletScore
 
-- [ ] Implement versioned wallet scoring from win rate, realized PnL, median return, early-entry rate, rug avoidance and manipulation penalties.
-- [ ] Define minimum sample/confidence thresholds.
-- [ ] Prevent tiny-sample wallets from becoming Tier A.
-- [ ] Add rolling-window recalculation.
+- [x] Implement versioned wallet scoring from win rate, realized PnL, median return, early-entry rate, rug avoidance and manipulation penalties.
+- [x] Define minimum sample/confidence thresholds.
+- [x] Prevent tiny-sample wallets from becoming Tier A.
+- [x] Add rolling-window recalculation.
+
+Sprint 4.2 keyless state: complete. The versioned, neutral-shrunk
+`SmartWalletScore` aggregates completed FIFO outcomes with deterministic
+sample/confidence gates, duplicate suppression, future-data exclusion and
+explicit manipulation penalties. Registry tiers remain unmodified and score
+results cannot authorize execution. Live wallet-history acceptance remains
+`BLOCKED_EXTERNAL` without configured read-only provider access.
 
 ### Sprint 4.3 — Confluence
 

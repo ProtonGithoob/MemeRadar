@@ -216,6 +216,29 @@ activity and rug-outcome acceptance remains `BLOCKED_EXTERNAL` until a
 configured read-only chain/risk provider is available; keyless replay is not
 substituted for live-provider success.
 
+## Smart-wallet scoring
+
+Sprint 4.2 adds the provider-independent `SmartWalletScorer`. It consumes
+`WalletTrackingSnapshot` and `WalletRoundTrip` evidence after provider
+normalization; no provider client or persistence model is imported. The
+scorer aggregates completed outcomes by wallet over a bounded rolling window,
+deduplicates replayed round trips, excludes old outcomes and marks future
+outcomes invalid to prevent look-ahead leakage.
+
+`SmartWalletScore` retains component values, nullable metrics, sample and
+known-outcome counts, manipulation penalties, confidence, tier recommendation,
+quality/freshness, provenance, evidence references, reason codes, version and
+config hash. Sparse components shrink toward neutral and minimum sample/
+confidence gates prevent tiny samples from receiving a Tier-A recommendation.
+The recommendation is not written back to the tracked-wallet registry and the
+score has no quote, signing, submission or live-money authority.
+
+Synthetic score snapshots and explicit penalty inputs are stored under
+`fixtures/providers/wallet_scoring/`. They contain no credentials and replay
+the scoring seam without any live provider call. Live wallet-history acceptance
+remains `BLOCKED_EXTERNAL` until a configured read-only chain/provider path is
+available.
+
 ## Adapter requirements
 
 Every network adapter must implement:

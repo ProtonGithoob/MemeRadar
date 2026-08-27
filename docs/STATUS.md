@@ -4,9 +4,9 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`PHASE_4_SPRINT_4_1_COMPLETE_NEXT_SPRINT_4_2`
+`PHASE_4_SPRINT_4_2_COMPLETE_NEXT_SPRINT_4_3`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3 and Phase 4 / Sprint 4.1 are complete for their keyless implementation and replay gates; live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3 and Phase 4 / Sprints 4.1 and 4.2 are complete for their keyless implementation and replay gates; live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
@@ -15,7 +15,8 @@ Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verif
 - Completed: `Phase 3 / Sprint 3.2 — Holder Concentration / Wallet Graph` (keyless portion)
 - Completed: `Phase 3 / Sprint 3.3 — Liquidity / Sellability / Wash Trading` (keyless portion)
 - Completed: `Phase 4 / Sprint 4.1 — Wallet Tracking` (keyless portion)
-- Next: `Phase 4 / Sprint 4.2 — SmartWalletScore`
+- Completed: `Phase 4 / Sprint 4.2 — SmartWalletScore` (keyless portion)
+- Next: `Phase 4 / Sprint 4.3 — Confluence`
 
 ## Current operating policy
 
@@ -107,6 +108,11 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Watched-wallet BUY/SELL observations normalize aliases, preserve provenance and all event timestamps, deduplicate equivalent deliveries and reject unknown/conflicting activity.
 - [x] Bounded FIFO position reconstruction records open quantity/cost basis, conservative realized PnL, unmatched sells, hold duration, token age at entry and rug exposure with nullable/non-fresh evidence states.
 - [x] Synthetic registry/activity/risk fixtures, deterministic replay contracts and Compose safe-mode/runtime import checks are committed and pass.
+- [x] Sprint 4.2 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-4-sprint-4-2-smart-wallet-score.md` and completed.
+- [x] Versioned `SmartWalletScore` aggregates completed FIFO outcomes for win rate, realized PnL, median return, early-entry rate and rug avoidance with explicit component values.
+- [x] Rolling-window scoring excludes old outcomes, marks future outcomes invalid, deduplicates replayed round trips and applies bounded explicit manipulation penalties.
+- [x] Neutral shrinkage, sample/confidence thresholds and non-mutating Tier-A/Tier-B recommendations prevent tiny or non-fresh samples from becoming Tier A.
+- [x] Synthetic score snapshots/penalties, deterministic replay contracts and Compose safe-mode/runtime import checks are committed and pass.
 
 ## Current sprint progress
 
@@ -130,6 +136,8 @@ The configuration loader rejects attempts to override these protected values.
 - Sprint 3.3 gate evidence: liquidity change/depth, quote impact/sellability, maker diversity, repeated sizes, reciprocal flow, rapid round trips, score bounds, freshness states, fixture replay, source evidence and Compose runtime imports pass; `OrganicFlowScore.execution_eligible()` is explicitly non-authorizing.
 - Sprint 4.1 plan evidence: the implementation plan defines explicit registry tiers, normalized wallet activity, duplicate/conflict handling, bounded FIFO reconstruction, nullable financial evidence, token age/hold/rug semantics, replay fixtures and the synchronized keyless gate.
 - Sprint 4.1 gate evidence: registry/activity unit tests, FIFO partial-close and unmatched-sell tests, stale/future/missing-evidence tests, deterministic fixture replay, provider-independence checks and Compose safe-mode smoke/runtime imports pass; wallet snapshots have no execution authority.
+- Sprint 4.2 plan evidence: the implementation plan defines versioned component aggregation, rolling-window/no-lookahead behavior, neutral shrinkage, explicit manipulation penalties, sample/confidence gates, tiny-sample Tier-A prevention, fixture replay and the synchronized keyless gate.
+- Sprint 4.2 gate evidence: score unit tests, rolling/future/duplicate handling, nullable unknown metrics, threshold/recommendation tests, deterministic fixture replay, provider-independence checks and Compose safe-mode smoke/runtime imports pass; score results have no execution authority.
 
 ## Verification evidence
 
@@ -170,6 +178,15 @@ All commands below were run in the current checkout on 2026-08-27.
 - `make doctor` after Sprint 4.1 — exit `0`; local dependencies are `not_required`, external provider checks are `not_run`, and `analysis_only=true`, `paper_trading=true`, `manual_execution=false`, `auto_execution=false` are reported.
 - `docker compose -f infra/compose/docker-compose.yml up -d --build api worker` after Sprint 4.1 — exit `0`; rebuilt API/worker images include wallet-tracking code and both containers started.
 - Compose Sprint 4.1 runtime probes — worker `wallet_tracking_worker_runtime_import_ok WalletTrackingAnalyzer 5000`; API `wallet_tracking_api_runtime_import_ok TrackedWalletRegistry WalletTrackingSnapshot`; both asserted all four protected mode values. Compose API was healthy, Postgres/Redis were healthy, and web/worker were running.
+- `.venv/bin/pytest tests/unit/test_wallet_scoring.py -q` — `6 passed`; component aggregation, penalties, rolling-window duplicate/future handling, shrinkage, minimum sample/confidence and non-mutating tier recommendations pass.
+- `make lint typecheck` after Sprint 4.2 application work — exit `0`; Ruff passes and mypy reports `Success: no issues found in 43 source files`.
+- `.venv/bin/pytest tests/contract/test_phase4_sprint4_2.py tests/unit/test_wallet_scoring.py tests/smoke/test_compose_contract.py -q` — `19 passed`; credential-free score snapshot/penalty replay, deterministic decomposition, provider-independence and all-four-mode Compose contracts pass.
+- `docker compose -f infra/compose/docker-compose.yml config --quiet` after Sprint 4.2 fixture wiring — exit `0`; Compose topology and protected service modes remain valid.
+- `.venv/bin/python scripts/secret_scan.py` after Sprint 4.2 fixture wiring — exit `0`; wallet-scoring fixtures and docs contain no tracked secret material.
+- `make verify` after Sprint 4.2 — exit `0`; Ruff, mypy (`43 source files`), `217 passed, 3 skipped`, total branch-aware coverage `78%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
+- `make doctor` after Sprint 4.2 — exit `0`; local dependencies are `not_required`, external provider checks are `not_run`, and `analysis_only=true`, `paper_trading=true`, `manual_execution=false`, `auto_execution=false` are reported.
+- `docker compose -f infra/compose/docker-compose.yml up -d --build api worker` after Sprint 4.2 — exit `0`; rebuilt API/worker images include wallet scoring and both containers started.
+- Compose Sprint 4.2 runtime probes — worker `wallet_scoring_worker_runtime_import_ok SmartWalletScorer smart-wallet-v1`; API `wallet_scoring_api_runtime_import_ok SmartWalletScore`; both asserted all four protected mode values. Compose API was healthy, Postgres/Redis were healthy, and web/worker were running.
 - `.venv/bin/pytest tests/contract/test_phase2_gate.py -q` — `1 passed`; keyless discovery/enrichment composition is deterministic and provider-independent at the application boundary.
 - `.venv/bin/mypy` — `Success: no issues found in 32 source files`.
 - `.venv/bin/pytest tests/unit/test_provider_contracts.py tests/unit/test_provider_transport.py tests/unit/test_provider_health.py tests/unit/test_provider_fixtures.py tests/contract/test_provider_adapters.py -q` — `23 passed`; provider ports, resilience, health/freshness/quota, redaction/fakes and normalized adapter contracts pass.
@@ -230,11 +247,13 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 3.3 live market/quote provider acceptance: `BLOCKED_EXTERNAL` — Birdeye and Jupiter endpoint/credential configuration is absent; no live liquidity, trade or quote call was attempted and no live-provider success is claimed.
 - Sprint 4.1 wallet registry/activity/FIFO fixture and contract acceptance: `PASS` — deterministic tracked-wallet replay, duplicate delivery handling, partial FIFO close, unmatched sell, token-age/rug evidence and all protected modes pass without credentials.
 - Sprint 4.1 live wallet activity/rug-outcome acceptance: `BLOCKED_EXTERNAL` — no configured read-only chain/risk provider endpoint or credential is available; no live wallet call was attempted and no live-provider success is claimed.
+- Sprint 4.2 wallet-score fixture and contract acceptance: `PASS` — deterministic SmartWalletScore aggregation, rolling/future/duplicate handling, threshold gates, explicit penalties and all protected modes pass without credentials.
+- Sprint 4.2 live wallet-history acceptance: `BLOCKED_EXTERNAL` — no configured read-only chain/provider endpoint or credential is available; no live wallet-history call was attempted and no live-provider success is claimed.
 - Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 
 ## Blockers
 
-- No current implementation blocker. Helius, Birdeye, Sprint 2.4 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance and Sprint 4.1 live wallet/rug acceptance remain externally blocked for missing endpoint/credential configuration; all keyless implementation and gate evidence is green. No live-provider success is claimed.
+- No current implementation blocker. Helius, Birdeye, Sprint 2.4 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance and Sprint 4.2 live wallet-history acceptance remain externally blocked for missing endpoint/credential configuration; all keyless implementation and gate evidence is green. No live-provider success is claimed.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -243,6 +262,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - `infra/alembic/versions/0001_initial.py` creates the 13 core Phase 1 tables represented by the current metadata; `0002_outbox_processing.py` adds leased processing/dead-letter columns and indexes. Social, wallet, extended market, research and execution tables remain later roadmap extensions.
 - Local Postgres upgrade/downgrade/upgrade, migration parity and repository integration checks pass. The API and worker images include the persistence and event-processing packages, but the current API/worker composition still does not write business state automatically.
 - Sprint 4.1 remains a provider-independent warm-path application contract; no physical wallet migration is introduced. The existing future wallet tables remain the persistence target for a later roadmap task, and the current API/worker composition still does not write wallet business state automatically.
+- Sprint 4.2 remains a provider-independent warm-path score contract; no physical wallet-performance migration is introduced. The existing future `wallet_performance_snapshots` table remains the persistence target for a later roadmap task, and scoring does not write business state automatically.
 
 ## Git state
 
@@ -269,7 +289,10 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 4.1 application checkpoint: `28bb0f7` (`feat: add conservative wallet tracking`).
 - Latest pushed Sprint 4.1 fixture/contract checkpoint: `478cfe1` (`test: add wallet tracking replay contracts`).
 - Latest pushed Sprint 4.1 documentation checkpoint: `51013a1` (`docs: complete Sprint 4.1 wallet tracking checkpoint`); this status synchronization records the exact keyless gate and Compose runtime evidence above.
+- Latest pushed Sprint 4.2 plan checkpoint: `7172772` (`docs: plan Sprint 4.2 smart wallet score`).
+- Latest pushed Sprint 4.2 application checkpoint: `8f644cb` (`feat: add versioned smart wallet scoring`).
+- Latest pushed Sprint 4.2 fixture/contract checkpoint: `d281496` (`test: add smart wallet score replay contracts`).
 
 ## Next task
 
-Start `Phase 4 / Sprint 4.2 — SmartWalletScore`: implement a versioned wallet score from win rate, realized PnL, median return, early-entry rate, rug avoidance and manipulation penalties; define minimum sample/confidence thresholds, prevent tiny-sample wallets from becoming Tier A, and add rolling-window recalculation. Preserve all four safety modes, fail closed on critical UNKNOWN evidence and do not enable live-money execution.
+Start `Phase 4 / Sprint 4.3 — Confluence`: detect independent smart-wallet entries/exits, detect correlated/clustered wallets so one actor is not counted as many, emit confluence and distribution events, and add a token-level smart-money component score. Preserve all four safety modes, fail closed on critical UNKNOWN evidence and do not enable live-money execution.

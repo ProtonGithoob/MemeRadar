@@ -162,6 +162,32 @@ retains provenance, source references, confidence, expiry, quality state and
 config hash, and its execution-eligibility predicate is always false. These
 are inputs for the later SmartWalletScore, not a live-money permission.
 
+### Sprint 4.2 SmartWalletScore rules
+
+`SmartWalletScorer` groups Sprint 4.1 `WalletTrackingSnapshot` records by
+canonical wallet and uses only completed FIFO round trips whose sell time is
+inside the configured rolling window and no later than the score's `now`.
+Equivalent round trips delivered through multiple snapshots are counted once;
+old outcomes are excluded and future outcomes produce an `INVALID` quality
+state and are never scored. Optional manipulation penalties are explicit,
+bounded inputs and are capped by policy rather than inferred from a provider.
+
+The default `smart-wallet-v1` policy uses a 30-day rolling window, equal 20%
+weights for win rate, aggregate realized-PnL return, median return, early-entry
+rate and rug-avoidance rate, and a five-minute evidence TTL. Return-derived
+components clamp returns to `-1..1` and map them to `0..100`; all sparse
+components shrink toward neutral `50` using `sample / (sample + prior)` with a
+default prior of one outcome. The final score is the shrunk weighted score
+minus the bounded manipulation penalty, clamped to `0..100`.
+
+Confidence is separate from score magnitude: it multiplies sample confidence,
+the lowest source snapshot confidence and the quality-state factor. The
+default minimum sample/confidence is `5`/`0.70`; a Tier-B recommendation needs
+`5`/`0.60`, while Tier A needs `20`/`0.85` and `FRESH` evidence. A blocked
+registry tier remains blocked, and no small or non-fresh sample can receive a
+Tier-A recommendation. Recommendations are returned as immutable explainable
+data and never mutate the registry or authorize execution.
+
 ## 5. Initial penalties
 
 Illustrative v1 penalty classes, calibrated later:
