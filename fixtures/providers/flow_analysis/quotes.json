@@ -1,0 +1,26 @@
+{
+  "schema": "memeradar-quote-flow-v1",
+  "captured_at": "2026-08-27T14:59:30Z",
+  "input_mint": "So11111111111111111111111111111111111111112",
+  "output_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "quotes": [
+    {
+      "source_id": "quote:safe",
+      "observed_at": "2026-08-27T14:59:30+00:00",
+      "output_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "input_amount": "1000",
+      "output_amount": "950",
+      "price_impact_bps": "25",
+      "route": ["fixture-route"]
+    },
+    {
+      "source_id": "quote:suspicious",
+      "observed_at": "2026-08-27T14:59:30+00:00",
+      "output_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "input_amount": "1000",
+      "output_amount": "500",
+      "price_impact_bps": "250",
+      "route": ["fixture-route", "deep-impact-hop"]
+    }
+  ]
+}

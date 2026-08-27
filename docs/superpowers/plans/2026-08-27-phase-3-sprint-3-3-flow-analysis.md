@@ -61,11 +61,11 @@ git push origin main
 - Create: `tests/contract/test_phase3_sprint3_3.py`
 - Modify: `tests/smoke/test_compose_contract.py`
 
-- [ ] **Step 1: Write failing fixture/composition contracts.** Load redacted normalized fixtures, reject credential-shaped fields, build explicit observations/quotes and assert safe/suspicious classifications are deterministic.
-- [ ] **Step 2: Run the focused contract and smoke tests before fixture wiring.**
-- [ ] **Step 3: Add synthetic fixtures and replay contracts.** Include two market snapshots for liquidity change, safe and suspicious maker/trade sets, repeated sizes, a reciprocal/circular pattern, a rapid round trip, optional sell quote impact and explicit source IDs/timestamps.
-- [ ] **Step 4: Extend Compose smoke coverage.** Assert the flow-analysis seam and fixture paths are present while all four protected modes remain unchanged.
-- [ ] **Step 5: Run fixture/contract/smoke tests, Compose config and secret scan.**
+- [x] **Step 1: Write failing fixture/composition contracts.** Load redacted normalized fixtures, reject credential-shaped fields, build explicit observations/quotes and assert safe/suspicious classifications are deterministic.
+- [x] **Step 2: Run the focused contract and smoke tests before fixture wiring.**
+- [x] **Step 3: Add synthetic fixtures and replay contracts.** Include two market snapshots for liquidity change, safe and suspicious maker/trade sets, repeated sizes, a reciprocal/circular pattern, a rapid round trip, optional sell quote impact and explicit source IDs/timestamps.
+- [x] **Step 4: Extend Compose smoke coverage.** Assert the flow-analysis seam and fixture paths are present while all four protected modes remain unchanged.
+- [x] **Step 5: Run fixture/contract/smoke tests, Compose config and secret scan.**
 
 ```bash
 ./.venv/bin/pytest tests/contract/test_phase3_sprint3_3.py tests/smoke/test_compose_contract.py -q
@@ -73,7 +73,7 @@ docker compose -f infra/compose/docker-compose.yml config --quiet
 ./.venv/bin/python scripts/secret_scan.py
 ```
 
-- [ ] **Step 6: Commit and push the fixture/contract checkpoint.**
+- [x] **Step 6: Commit and push the fixture/contract checkpoint.**
 
 ```bash
 git add fixtures/providers/flow_analysis tests/contract/test_phase3_sprint3_3.py tests/smoke/test_compose_contract.py

@@ -1,0 +1,19 @@
+{
+  "schema": "memeradar-market-flow-v1",
+  "captured_at": "2026-08-27T14:59:00Z",
+  "mint_address": "So11111111111111111111111111111111111111112",
+  "observations": [
+    {
+      "source_id": "market:safe:previous",
+      "observed_at": "2026-08-27T14:57:00+00:00",
+      "liquidity": "100000",
+      "depth": "60000"
+    },
+    {
+      "source_id": "market:safe:latest",
+      "observed_at": "2026-08-27T14:59:00+00:00",
+      "liquidity": "100000",
+      "depth": "60000"
+    }
+  ]
+}
