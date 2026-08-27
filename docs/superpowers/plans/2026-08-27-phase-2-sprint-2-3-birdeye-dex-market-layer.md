@@ -34,13 +34,13 @@
 - `BirdeyeRestAdapter.discover(DiscoveryRequest)` reads the new-listing endpoint and returns canonical `DiscoveryCandidate` values.
 - `BirdeyeRestAdapter.snapshot(MarketDataRequest)` reads supported token market, trade, holder and security endpoints and returns normalized `Observation` values.
 - `BirdeyeMarketRecord` and safe field-normalization helpers retain unknown/malformed values as classified quality states.
-- The read paths are `GET /defi/v2/tokens/new_listing`, `GET /defi/v3/token/market-data`, `GET /defi/v3/token/trade-data/single`, `GET /defi/v3/token/holder` and `GET /defi/token_security` on the configured base URL; Solana requests send `chain=solana` and token requests send the canonical mint as `address`.
+- The read paths are `GET /defi/v2/tokens/new_listing`, `GET /defi/v3/token/market-data`, `GET /defi/v3/token/trade-data/single`, `GET /defi/v3/token/holder` and `GET /defi/token_security` on the configured base URL; Solana requests send `x-chain: solana` and token requests send the canonical mint as `address`.
 
-- [ ] **Step 1: Write failing tests** for new-listing pagination, canonical Solana token identity, market/trade/holder/security observation mapping, correlation headers, endpoint/key safety and classified HTTP/schema failures.
-- [ ] **Step 2: Run the focused tests and confirm the Birdeye adapter module is absent.**
-- [ ] **Step 3: Implement the injected-client REST adapter using bounded `ProviderTransport`, `X-API-KEY`/`X-CHAIN` request headers and the read-only endpoint mapping above.**
-- [ ] **Step 4: Run focused tests, Ruff and mypy.**
-- [ ] **Step 5: Commit `feat: add Birdeye market read adapter`.**
+- [x] **Step 1: Write failing tests** for new-listing pagination, canonical Solana token identity, market/trade/holder/security observation mapping, correlation headers, endpoint/key safety and classified HTTP/schema failures.
+- [x] **Step 2: Run the focused tests and confirm the Birdeye adapter module is absent.**
+- [x] **Step 3: Implement the injected-client REST adapter using bounded `ProviderTransport`, `X-API-KEY`/`X-CHAIN` request headers and the read-only endpoint mapping above.**
+- [x] **Step 4: Run focused tests, Ruff and mypy.**
+- [x] **Step 5: Commit `feat: add Birdeye market read adapter` (`d1bb83a`).**
 
 ### Task 2: Stream and polling fallback
 
@@ -53,11 +53,11 @@
 - `BirdeyeDiscoveryFallback` attempts an injected async stream, then uses the adapter's bounded polling callback after transient stream failure or exhaustion.
 - Duplicate stream/poll candidates are retained for downstream idempotency while malformed messages are classified and never invoke execution.
 
-- [ ] **Step 1: Write failing stream normalization, duplicate, fallback and cancellation tests.**
-- [ ] **Step 2: Run the focused tests and verify missing stream symbols fail.**
-- [ ] **Step 3: Implement bounded stream-first/poll-fallback coordination with injected source, sink, sleeper and stop event.**
-- [ ] **Step 4: Run focused tests, Ruff and mypy.**
-- [ ] **Step 5: Commit `feat: add Birdeye stream polling fallback`.**
+- [x] **Step 1: Write failing stream normalization, duplicate, fallback and cancellation tests.**
+- [x] **Step 2: Run the focused tests and verify missing stream symbols fail.**
+- [x] **Step 3: Implement bounded stream-first/poll-fallback coordination with injected source, sink, sleeper and stop event.**
+- [x] **Step 4: Run focused tests, Ruff and mypy.**
+- [x] **Step 5: Commit `feat: add Birdeye stream polling fallback` (`337e60d`).**
 
 ### Task 3: Freshness and conflict reconciliation
 
@@ -70,10 +70,10 @@
 - Fresh evidence older than the configured TTL becomes `QualityState.STALE`; pre-existing `UNKNOWN`, `INVALID` and `CONFLICTED` states are never upgraded.
 - Material disagreement in comparable numeric market fields produces `QualityState.CONFLICTED` and explainable conflict payload data instead of silent latest-value selection.
 
-- [ ] **Step 1: Write failing stale, unknown-preservation, agreement and material-conflict tests.**
-- [ ] **Step 2: Implement deterministic quality ordering, bounded numeric comparison and source-preserving reconciliation.**
-- [ ] **Step 3: Run focused tests, Ruff and mypy.**
-- [ ] **Step 4: Commit `feat: add Birdeye freshness conflict resolution`.**
+- [x] **Step 1: Write failing stale, unknown-preservation, agreement and material-conflict tests.**
+- [x] **Step 2: Implement deterministic quality ordering, bounded numeric comparison and source-preserving reconciliation.**
+- [x] **Step 3: Run focused tests, Ruff and mypy.**
+- [x] **Step 4: Commit `feat: add Birdeye freshness conflict resolution` (`38cb4de`).**
 
 ### Task 4: Safe Birdeye fixtures and contract tests
 
@@ -87,11 +87,11 @@
 - Create: `tests/contract/test_birdeye_provider.py`
 - Modify: `fixtures/providers/README.md`
 
-- [ ] **Step 1: Add synthetic/redacted Birdeye envelopes with no credential-shaped values and provider metadata.**
-- [ ] **Step 2: Write fixture contract tests** for discovery, market/trade/holder/security normalization and health schema.
-- [ ] **Step 3: Run contract tests and secret scan; confirm deterministic fixture replay.**
-- [ ] **Step 4: Run Ruff and mypy over the adapter and contract tests.**
-- [ ] **Step 5: Commit `test: add Birdeye market fixtures`.**
+- [x] **Step 1: Add synthetic/redacted Birdeye envelopes with no credential-shaped values and provider metadata.**
+- [x] **Step 2: Write fixture contract tests** for discovery, market/trade/holder/security normalization and health schema.
+- [x] **Step 3: Run contract tests and secret scan; confirm deterministic fixture replay.**
+- [x] **Step 4: Run Ruff and mypy over the adapter and contract tests.**
+- [x] **Step 5: Commit `test: add Birdeye fixture contracts` (`f804011`).**
 
 ### Task 5: Key-safe Birdeye provider doctor
 
@@ -103,15 +103,15 @@
 
 **Interfaces:**
 - `birdeye_doctor.py` reads `BIRDEYE_API_URL`/`BIRDEYE_API_KEY` without echoing values, performs one bounded read-only supported-networks call when configured, and emits redacted JSON.
-- The doctor health path is `GET /defi/networks` on the configured base URL with `chain=solana` and no write-capable request.
+- The doctor health path is `GET /defi/networks` on the configured base URL with `x-chain: solana` and no write-capable request.
 - Missing configuration or unavailable external access is `BLOCKED_EXTERNAL`; malformed/auth/schema results are `FAIL`; successful bounded health/schema evidence is `PASS`.
 - `make birdeye-doctor` is explicit and never mutates chain state or operating modes.
 
-- [ ] **Step 1: Write failing doctor tests** for missing configuration, successful fixture response, auth failure, timeout and secret non-disclosure.
-- [ ] **Step 2: Run focused tests and verify the command/module is absent.**
-- [ ] **Step 3: Implement the doctor with injectable adapter/client and safe report serialization.**
-- [ ] **Step 4: Add `make birdeye-doctor`, update safe environment examples and run keyless doctor tests.**
-- [ ] **Step 5: Commit `feat: add Birdeye provider doctor`.**
+- [x] **Step 1: Write failing doctor tests** for missing configuration, successful fixture response, auth failure, timeout and secret non-disclosure.
+- [x] **Step 2: Run focused tests and verify the command/module is absent.**
+- [x] **Step 3: Implement the doctor with injectable adapter/client and safe report serialization.**
+- [x] **Step 4: Add `make birdeye-doctor`, update safe environment examples and run keyless doctor tests.**
+- [x] **Step 5: Commit `feat: add Birdeye provider doctor` (`68c96ed`).**
 
 ### Task 6: Sprint 2.3 gate and live-acceptance boundary
 
@@ -122,8 +122,8 @@
 - Modify: `docs/STATUS.md`
 - Modify: `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-3-birdeye-dex-market-layer.md`
 
-- [ ] **Step 1: Add runtime import and safety-mode smoke checks for the Birdeye adapter, fallback and doctor.**
-- [ ] **Step 2: Run `make verify`, Birdeye unit/contract tests, secret scan, provider doctor and Compose runtime imports.**
-- [ ] **Step 3: If configured live read-only access is absent, record exactly `BLOCKED_EXTERNAL`; never substitute fixture PASS for live PASS.**
-- [ ] **Step 4: Reconcile all Sprint 2.3 checkboxes/status with exact results, blockers, provider acceptance and safety modes.**
-- [ ] **Step 5: Commit and push the sprint checkpoint; record the exact next task `Phase 2 / Sprint 2.4 — Launchpad / DEX Coverage`.**
+- [x] **Step 1: Add runtime import and safety-mode smoke checks for the Birdeye adapter, fallback and doctor.**
+- [x] **Step 2: Run `make verify`, Birdeye unit/contract tests, secret scan, provider doctor and Compose runtime imports.**
+- [x] **Step 3: If configured live read-only access is absent, record exactly `BLOCKED_EXTERNAL`; never substitute fixture PASS for live PASS.**
+- [x] **Step 4: Reconcile all Sprint 2.3 checkboxes/status with exact results, blockers, provider acceptance and safety modes.**
+- [x] **Step 5: Commit and push the sprint checkpoint; record the exact next task `Phase 2 / Sprint 2.4 — Launchpad / DEX Coverage`.**

@@ -74,3 +74,30 @@ def test_helius_read_layer_and_doctor_are_explicit_and_keyless():
     assert "PAPER_TRADING=true" in env_example
     assert "MANUAL_EXECUTION=false" in env_example
     assert "AUTO_EXECUTION=false" in env_example
+
+
+def test_birdeye_market_layer_and_doctor_are_explicit_and_keyless():
+    from memeradar_providers.birdeye import (
+        BIRDEYE_CHAIN,
+        BirdeyeObservationResolver,
+        BirdeyeRestAdapter,
+    )
+    from memeradar_providers.birdeye_stream import (
+        BirdeyeDiscoveryFallback,
+        BirdeyeListingNormalizer,
+    )
+
+    assert BIRDEYE_CHAIN == "solana"
+    assert BirdeyeRestAdapter.provider_name == "birdeye"
+    assert BirdeyeListingNormalizer.provider_name == "birdeye"
+    assert BirdeyeDiscoveryFallback
+    assert BirdeyeObservationResolver
+    makefile = (ROOT / "Makefile").read_text()
+    env_example = (ROOT / ".env.example").read_text()
+    assert "birdeye-doctor:" in makefile
+    assert "BIRDEYE_API_URL=" in env_example
+    assert "BIRDEYE_API_KEY=" in env_example
+    assert "ANALYSIS_ONLY=true" in env_example
+    assert "PAPER_TRADING=true" in env_example
+    assert "MANUAL_EXECUTION=false" in env_example
+    assert "AUTO_EXECUTION=false" in env_example

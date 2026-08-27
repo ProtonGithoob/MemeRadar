@@ -90,11 +90,11 @@ Codex must execute this roadmap in order unless a task is externally blocked and
 
 ### Sprint 2.3 — Birdeye / DEX Market Layer
 
-- [ ] Implement candidate/new-pool discovery adapter.
-- [ ] Implement price/liquidity/trade/volume/holder/security observations as supported.
-- [ ] Implement stream/poll fallback strategy.
-- [ ] Add data freshness and conflict handling.
-- [ ] Add provider doctor and fixture/live read-only acceptance.
+- [x] Implement candidate/new-pool discovery adapter.
+- [x] Implement price/liquidity/trade/volume/holder/security observations as supported.
+- [x] Implement stream/poll fallback strategy.
+- [x] Add data freshness and conflict handling.
+- [x] Add provider doctor and fixture/live read-only acceptance — keyless fixtures/contracts pass; live Birdeye acceptance is `BLOCKED_EXTERNAL` when endpoint/key configuration is absent.
 
 ### Sprint 2.4 — Launchpad / DEX Coverage
 

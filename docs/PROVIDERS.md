@@ -92,6 +92,16 @@ Token metadata explicitly distinguishes SPL Token and Token-2022 programs. Mint 
 
 The explicit `make provider-doctor` command runs one bounded, read-only `getHealth` call when both `HELIUS_RPC_URL` and `HELIUS_API_KEY` are configured. Its JSON report includes only configuration presence, network/auth/schema status, rounded latency, safe rate-limit metadata and the protected operating modes. It returns `PASS`, `FAIL` or `BLOCKED_EXTERNAL`; the current keyless checkout reports `BLOCKED_EXTERNAL` with `CONFIGURATION_MISSING`.
 
+## Birdeye / DEX market layer
+
+Sprint 2.3 implements the read-only `BirdeyeRestAdapter` in `packages/providers/src/memeradar_providers/birdeye.py`. It maps the new-listing endpoint (`/defi/v2/tokens/new_listing`) into canonical `DiscoveryCandidate` values and maps the supported token market-data, trade-data, holder and token-security endpoints into provider-independent `Observation` values. Birdeye response envelopes, field names and request paths remain inside the provider package; normalized observations carry canonical Solana token identities, ordered event timestamps, quality state and Birdeye/parser provenance.
+
+The adapter sends the configured API key only as the `x-api-key` header, identifies the Solana chain with `x-chain: solana`, forwards a bounded correlation ID and never places credentials in URLs, payloads, fixtures, exceptions or doctor output. Its injected `ProviderTransport` applies timeout, retry, rate-limit and circuit policies, while HTTP/auth/schema failures remain classified provider errors. `BirdeyeRestAdapter.check_health` performs one read-only `/defi/networks` request and validates the returned list/mapping without making a write-capable call.
+
+`BirdeyeListingNormalizer` and `BirdeyeDiscoveryFallback` in `birdeye_stream.py` form a stream-first, bounded polling-fallback seam for untrusted new-listing messages. Malformed messages are counted and skipped, duplicates are retained for downstream idempotency, reconnects are bounded and cancellation propagates. `BirdeyeObservationResolver` marks expired fresh evidence `STALE`, preserves `UNKNOWN`/`INVALID`/`CONFLICTED`, retains source IDs and values and emits explainable `CONFLICTED` evidence for material numeric disagreement.
+
+The explicit `make birdeye-doctor` command performs one bounded, read-only supported-networks call when `BIRDEYE_API_URL` and `BIRDEYE_API_KEY` are configured. It reports only configuration presence, network/auth/schema status, rounded latency, safe rate-limit metadata and protected modes. Synthetic fixtures and keyless contract tests are committed under `fixtures/providers/birdeye/`; live acceptance remains `BLOCKED_EXTERNAL` when the endpoint/key configuration is absent. Reference endpoint documentation: [new listing](https://docs.birdeye.so/reference/get-defi-v2-tokens-new_listing), [market data](https://docs.birdeye.so/reference/get-defi-v3-token-market-data), [trade data](https://docs.birdeye.so/reference/get-defi-v3-token-trade-data-single), [holder data](https://docs.birdeye.so/reference/get-defi-v3-token-holder) and [supported networks](https://docs.birdeye.so/reference/get-defi-networks).
+
 ## Adapter requirements
 
 Every network adapter must implement:
