@@ -153,6 +153,28 @@ def test_wallet_tracking_replay_seam_is_packaged_and_safe():
         assert environment["AUTO_EXECUTION"] == "false"
 
 
+def test_wallet_scoring_replay_seam_is_packaged_and_safe():
+    from memeradar_application.wallet_scoring import (
+        SmartWalletScore,
+        SmartWalletScorer,
+        SmartWalletScoringPolicy,
+    )
+
+    assert SmartWalletScorer
+    assert SmartWalletScore
+    assert SmartWalletScoringPolicy().version == "smart-wallet-v1"
+    score_fixture_dir = ROOT / "fixtures" / "providers" / "wallet_scoring"
+    assert (score_fixture_dir / "snapshots.json").is_file()
+    assert (score_fixture_dir / "penalties.json").is_file()
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
+
+
 def test_birdeye_market_layer_and_doctor_are_explicit_and_keyless():
     from memeradar_providers.birdeye import (
         BIRDEYE_CHAIN,

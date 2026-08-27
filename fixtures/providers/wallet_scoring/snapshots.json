@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "snapshots": [
+    {
+      "wallet_address": "11111111111111111111111111111112",
+      "label": "well sampled explicit wallet",
+      "tier": "TIER_B",
+      "quality_state": "FRESH",
+      "confidence": "1",
+      "as_of": "2026-08-27T16:59:50+00:00",
+      "round_trips": [
+        {
+          "source_id": "score:wallet-a:1",
+          "buy_at": "2026-08-27T16:40:00+00:00",
+          "sell_at": "2026-08-27T16:41:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "15",
+          "token_age_at_entry_seconds": "60",
+          "rug_exposure": false
+        },
+        {
+          "source_id": "score:wallet-a:2",
+          "buy_at": "2026-08-27T16:42:00+00:00",
+          "sell_at": "2026-08-27T16:43:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "12",
+          "token_age_at_entry_seconds": "120",
+          "rug_exposure": false
+        },
+        {
+          "source_id": "score:wallet-a:3",
+          "buy_at": "2026-08-27T16:44:00+00:00",
+          "sell_at": "2026-08-27T16:45:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "20",
+          "token_age_at_entry_seconds": "180",
+          "rug_exposure": false
+        }
+      ]
+    },
+    {
+      "wallet_address": "11111111111111111111111111111112",
+      "label": "well sampled explicit wallet",
+      "tier": "TIER_B",
+      "quality_state": "FRESH",
+      "confidence": "1",
+      "as_of": "2026-08-27T16:59:50+00:00",
+      "round_trips": [
+        {
+          "source_id": "score:wallet-a:1",
+          "buy_at": "2026-08-27T16:40:00+00:00",
+          "sell_at": "2026-08-27T16:41:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "15",
+          "token_age_at_entry_seconds": "60",
+          "rug_exposure": false
+        },
+        {
+          "source_id": "score:wallet-a:2",
+          "buy_at": "2026-08-27T16:42:00+00:00",
+          "sell_at": "2026-08-27T16:43:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "12",
+          "token_age_at_entry_seconds": "120",
+          "rug_exposure": false
+        },
+        {
+          "source_id": "score:wallet-a:3",
+          "buy_at": "2026-08-27T16:44:00+00:00",
+          "sell_at": "2026-08-27T16:45:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "20",
+          "token_age_at_entry_seconds": "180",
+          "rug_exposure": false
+        }
+      ]
+    },
+    {
+      "wallet_address": "11111111111111111111111111111113",
+      "label": "tiny sample candidate",
+      "tier": "CANDIDATE",
+      "quality_state": "FRESH",
+      "confidence": "1",
+      "as_of": "2026-08-27T16:59:50+00:00",
+      "round_trips": [
+        {
+          "source_id": "score:wallet-b:1",
+          "buy_at": "2026-08-27T16:50:00+00:00",
+          "sell_at": "2026-08-27T16:51:00+00:00",
+          "cost_basis": "1",
+          "proceeds": "100",
+          "token_age_at_entry_seconds": "60",
+          "rug_exposure": false
+        }
+      ]
+    },
+    {
+      "wallet_address": "11111111111111111111111111111114",
+      "label": "incomplete stale evidence",
+      "tier": "WATCH",
+      "quality_state": "UNKNOWN",
+      "confidence": "0.4",
+      "as_of": "2026-08-27T16:40:00+00:00",
+      "round_trips": [
+        {
+          "source_id": "score:wallet-c:1",
+          "buy_at": "2026-08-27T16:45:00+00:00",
+          "sell_at": "2026-08-27T16:46:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "5",
+          "token_age_at_entry_seconds": null,
+          "rug_exposure": null
+        }
+      ]
+    },
+    {
+      "wallet_address": "11111111111111111111111111111115",
+      "label": "rolling boundary wallet",
+      "tier": "WATCH",
+      "quality_state": "FRESH",
+      "confidence": "1",
+      "as_of": "2026-08-27T16:59:50+00:00",
+      "round_trips": [
+        {
+          "source_id": "score:wallet-d:current",
+          "buy_at": "2026-08-27T16:55:00+00:00",
+          "sell_at": "2026-08-27T16:56:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "11",
+          "token_age_at_entry_seconds": "60",
+          "rug_exposure": false
+        },
+        {
+          "source_id": "score:wallet-d:old",
+          "buy_at": "2026-07-26T16:00:00+00:00",
+          "sell_at": "2026-07-27T16:00:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "100",
+          "token_age_at_entry_seconds": "60",
+          "rug_exposure": false
+        },
+        {
+          "source_id": "score:wallet-d:future",
+          "buy_at": "2026-08-27T17:00:10+00:00",
+          "sell_at": "2026-08-27T17:01:00+00:00",
+          "cost_basis": "10",
+          "proceeds": "100",
+          "token_age_at_entry_seconds": "60",
+          "rug_exposure": false
+        }
+      ]
+    }
+  ]
+}
