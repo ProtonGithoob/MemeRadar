@@ -339,6 +339,9 @@ class SocialMention:
     token_id: UUID | None = None
     referenced_mint: str | None = None
     quality_state: QualityState = QualityState.FRESH
+    referenced_ticker: str | None = None
+    canonical_links: tuple[str, ...] = ()
+    duplicate_cluster: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.provenance, Provenance):
@@ -369,6 +372,25 @@ class SocialMention:
                 self,
                 "referenced_mint",
                 require_solana_address(self.referenced_mint, "referenced_mint"),
+            )
+        if self.referenced_ticker is not None:
+            ticker = require_text(self.referenced_ticker, "referenced_ticker", max_length=32)
+            ticker = ticker.removeprefix("$").upper()
+            if not ticker or not ticker[0].isalpha() or not all(
+                character.isalnum() or character == "_" for character in ticker
+            ):
+                raise ValueError("referenced_ticker must be alphanumeric")
+            object.__setattr__(self, "referenced_ticker", ticker)
+        object.__setattr__(
+            self,
+            "canonical_links",
+            normalize_texts(self.canonical_links, "canonical_links", max_item_length=512),
+        )
+        if self.duplicate_cluster is not None:
+            object.__setattr__(
+                self,
+                "duplicate_cluster",
+                require_text(self.duplicate_cluster, "duplicate_cluster", max_length=128),
             )
 
 
