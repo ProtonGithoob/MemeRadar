@@ -4,7 +4,7 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`PHASE_3_SPRINT_3_1_COMPLETE_NEXT_SPRINT_3_2`
+`PHASE_3_SPRINT_3_2_IN_PROGRESS`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. The live portion of Gate P2 remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
 
@@ -12,7 +12,7 @@ Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verif
 
 - Completed: `Phase 2 / Gate P2 — Read-only discovery and independent enrichment acceptance` (keyless portion)
 - Completed: `Phase 3 / Sprint 3.1 — Authority / Token Security` (keyless portion)
-- Next: `Phase 3 / Sprint 3.2 — Holder Concentration / Wallet Graph`
+- In progress: `Phase 3 / Sprint 3.2 — Holder Concentration / Wallet Graph`
 
 ## Current operating policy
 
@@ -88,6 +88,7 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Helius Token-2022 normalization preserves extension names and reported/unreported state in the on-chain observation without coupling provider code to application policy.
 - [x] Independent read-only `RugCheckRestAdapter` maps official report-summary risks into provider-neutral findings, keeps verification informational and applies shared bounded transport/error handling.
 - [x] Redacted RugCheck fixtures, adapter/provider contracts, security composition tests, key-safe `make rugcheck-doctor`, safe environment placeholders and Compose smoke coverage.
+- [x] Sprint 3.2 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-3-sprint-3-2-holder-graph.md`; holder concentration and wallet-graph implementation is in progress.
 
 ## Current sprint progress
 
@@ -105,6 +106,7 @@ The configuration loader rejects attempts to override these protected values.
 - Gate P2 keyless acceptance evidence: `tests/contract/test_phase2_gate.py` composes a Birdeye new-listing discovery fixture with an independent Helius token-enrichment fixture; both preserve the same canonical token UUID and separate provider provenance.
 - Sprint 3.1 plan evidence: the implementation plan defines the provider-independent authority evaluator, independent RugCheck seam, key-safe doctor, fixture contracts, freshness/hard-gate tests, and final sprint quality gate.
 - Sprint 3.1 gate evidence: Helius authority/Token-2022 normalization, deterministic token-security evaluation, RugCheck summary normalization, provider doctor classifications, keyless composition and safe-mode smoke checks pass; live RugCheck acceptance remains externally blocked without endpoint configuration.
+- Sprint 3.2 plan evidence: the implementation plan defines bounded holder normalization, known-address classification, creator/top-holder graph traversal, union-find clustering, concentration-after-clustering, fixture replay and the synchronized keyless gate.
 
 ## Verification evidence
 
@@ -207,4 +209,4 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 ## Next task
 
-Begin `Phase 3 / Sprint 3.2 — Holder Concentration / Wallet Graph`: snapshot top holders and concentration metrics, identify pool/program/system addresses, build a bounded creator/top-holder funding and transfer graph, add cluster heuristics and concentration-after-clustering metrics, and record explainable evidence edges. Preserve all four safety modes and do not enable live-money execution.
+Continue `Phase 3 / Sprint 3.2 — Holder Concentration / Wallet Graph`: snapshot top holders and concentration metrics, identify pool/program/system addresses, build a bounded creator/top-holder funding and transfer graph, add cluster heuristics and concentration-after-clustering metrics, and record explainable evidence edges. Preserve all four safety modes and do not enable live-money execution.
