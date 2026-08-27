@@ -381,8 +381,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 5.2 documentation checkpoint: `f39d100` (`docs: complete Sprint 5.2 social intelligence checkpoint`).
 - Sprint 5.2 status synchronization: pending this synchronization.
 - Latest pushed Sprint 5.3 plan checkpoint: `2c21b4b` (`docs: plan Sprint 5.3 narrative LLM`).
-- Sprint 5.3 keyless implementation/fixture/doctor checkpoint: pending this stop synchronization.
-- Sprint 5.3 status synchronization: pending this stop synchronization.
+- Latest pushed Sprint 5.3 keyless implementation/fixture/doctor checkpoint: `2bf7338` (`feat: add narrative analysis safety seam`).
+- Sprint 5.3 status synchronization: final stop-state documentation checkpoint follows `2bf7338` and is being pushed now.
 
 ## Next task
 
