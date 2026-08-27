@@ -300,6 +300,47 @@ AuthorTrustScore should use evidence such as:
 
 Never infer trust from follower count alone.
 
+### Sprint 5.2 author trust and social velocity rules
+
+`SocialAuthorRegistry` is explicit operator/configuration evidence. Its
+trusted, KOL and blocked lists are bounded and conflict-checked; an unlisted
+author remains `UNKNOWN`, and mention activity never promotes an author. The
+provider-independent `AuthorTrustScorer` uses the following initial base
+components: KOL `100`, trusted `80`, unlisted `30` and blocked `0`. For a
+fresh evidence set it combines registry base (`80%`), engagement quality
+(`10%`) and originality (`10%`), then subtracts bounded duplicate, spam and
+coordination penalties. Blocked authors always score zero. Follower counts are
+retained as provider metrics but do not by themselves increase trust.
+
+`SocialVelocityScorer` groups mentions by canonical `token_id` or, when no
+identity is attached, by validated `referenced_mint`. It counts event-time
+mentions and unique authors in `(now - window, now]` for 1m, 5m and 15m
+windows. The initial normalized components are velocity in each window,
+15m author breadth, engagement quality and originality:
+
+```text
+velocity_1m       20%    velocity_5m       25%    velocity_15m      25%
+author_breadth    15%    engagement        10%    originality        5%
+```
+
+Duplicate ratio is the share of copied/fingerprint-clustered mentions. Spam
+ratio is the share with an explicit high spam probability/flag. A coordination
+cluster requires the same normalized text fingerprint, at least two distinct
+authors and a bounded five-minute posting spread. Its bounded source ratio is
+also exposed as `bot_heuristic_ratio`; this is a bot-like burst diagnostic and
+never proof of bot identity or shared control. The initial penalty ceilings
+are duplicate `25`, spam `20` and coordination `25` points.
+
+Engagement quality is the bounded interaction-to-impression percentage only
+when those metrics are present; missing metrics remain nullable and reduce
+confidence rather than becoming zero engagement. Confidence is separate from
+score and reflects sample size, metric completeness and evidence quality. Any
+future, stale, unknown, conflicted or invalid critical social evidence forces
+the published score and confidence to zero while retaining diagnostics,
+provenance, evidence references and reason codes. `AuthorTrustScore` and
+`SocialVelocityScore` are advisory and their execution predicates are always
+false.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

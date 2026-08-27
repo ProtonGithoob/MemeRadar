@@ -4,9 +4,9 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`PHASE_5_SPRINT_5_1_COMPLETE_NEXT_SPRINT_5_2`
+`PHASE_5_SPRINT_5_2_COMPLETE_NEXT_SPRINT_5_3`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3 and Phase 5 / Sprint 5.1 are complete for their keyless implementation and replay gates; live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3 and Phase 5 / Sprints 5.1 and 5.2 are complete for their keyless implementation and replay gates; live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
@@ -18,7 +18,8 @@ Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verif
 - Completed: `Phase 4 / Sprint 4.2 — SmartWalletScore` (keyless portion)
 - Completed: `Phase 4 / Sprint 4.3 — Confluence` (keyless portion)
 - Completed: `Phase 5 / Sprint 5.1 — Social Provider Seam` (keyless portion)
-- Next: `Phase 5 / Sprint 5.2 — Author Trust and Social Velocity`
+- Completed: `Phase 5 / Sprint 5.2 — Author Trust and Social Velocity` (keyless portion)
+- Next: `Phase 5 / Sprint 5.3 — Narrative LLM`
 
 ## Current operating policy
 
@@ -124,6 +125,10 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Provider-independent `SocialMention` contract and read-only compliant social/X adapter normalize post/author identity, UTC timestamps, bounded metrics, mint/ticker/link references and provenance.
 - [x] Exact duplicate source IDs are idempotently collapsed; URL/mention-insensitive text fingerprints identify copied-text clusters and conflicting duplicate IDs fail closed.
 - [x] Key-safe `make social-doctor`, redacted social replay fixtures, deterministic contract/unit tests and Compose safe-mode/runtime import checks are committed and pass.
+- [x] Sprint 5.2 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-5-sprint-5-2-author-trust-social-velocity.md` and completed.
+- [x] Explicit `SocialAuthorRegistry` trusted/KOL/blocked configuration resolves author tiers without automatic promotion or follower-count trust inference.
+- [x] Provider-independent `AuthorTrustScore` and `SocialVelocityScore` calculate 1m/5m/15m mention and unique-author windows, engagement quality, duplicate/spam/coordination ratios, bounded confidence, reason codes and replay evidence.
+- [x] Copied-text coordination and named bot-like burst heuristics remain advisory diagnostics; future/stale/invalid/conflicted critical evidence fails closed, fixtures/contracts/smoke pass and no result has execution authority.
 
 ## Current sprint progress
 
@@ -153,6 +158,8 @@ The configuration loader rejects attempts to override these protected values.
 - Sprint 4.3 gate evidence: qualified-wallet entry/exit extraction, transitive correlated-wallet deduplication, missing/stale graph withholding, future-activity invalidation, deterministic event replay, component/penalty explanations, provider-independence and Compose safe-mode/runtime imports pass; smart-money results have no execution authority.
 - Sprint 5.1 plan evidence: the implementation plan defines the normalized social contract extension, compliant read-only adapter, mint/ticker/link extraction, metric/timestamp normalization, exact dedupe, copied-text clustering, redacted fixtures, key-safe doctor and final keyless gate.
 - Sprint 5.1 gate evidence: social adapter/doctor unit tests, deterministic health/search fixture replay, credential-free contracts, conflicting-duplicate and unsafe URL handling, provider-independence checks and Compose safe-mode/runtime imports pass; social evidence remains advisory and has no execution authority.
+- Sprint 5.2 plan evidence: the implementation plan defines explicit author registry/list policy, 1m/5m/15m velocity and unique-author windows, engagement quality, duplicate/spam/coordination penalties, trust/velocity scores with confidence, copied-text bot-like heuristics, fixtures, fail-closed evidence handling and the final quality gate.
+- Sprint 5.2 gate evidence: deterministic author registry/scorer unit tests, redacted replay fixtures, future/stale fail-closed contracts, credential/provider-independence checks, safe-mode assertions and rebuilt Compose runtime imports pass; social intelligence remains advisory and has no execution authority.
 
 ## Verification evidence
 
@@ -216,6 +223,16 @@ All commands below were run in the current checkout on 2026-08-27.
 - `make typecheck` — exit `0`; mypy reported `Success: no issues found in 45 source files`.
 - `.venv/bin/python scripts/secret_scan.py` — exit `0`; social adapter, doctor, fixtures and documentation contain no tracked secret material.
 - `make verify` after Sprint 5.1 — exit `0`; Ruff, mypy (`45 source files`), `235 passed, 3 skipped`, total branch-aware coverage `78%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
+- `.venv/bin/pytest tests/unit/test_helius_normalization.py::test_malformed_rpc_response_is_a_classified_schema_failure -q` — `1 passed`; the synthetic `NOW` clock is injected so the test deterministically reaches schema classification instead of expiring against the host clock.
+- `.venv/bin/pytest tests/unit/test_social_intelligence.py tests/contract/test_phase5_sprint5_2.py tests/smoke/test_compose_contract.py -q` — `21 passed`; registry/tier policy, trust and velocity replay, windows, metric quality, coordination/bot-like diagnostics, future/stale handling, provider independence, fixture determinism and protected modes pass.
+- `make verify` after Sprint 5.2 — exit `0`; Ruff, mypy (`46 source files`), `243 passed, 3 skipped`, total branch-aware coverage `79%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
+- `make doctor` after Sprint 5.2 — exit `0`; local dependencies are `not_required`, external provider checks are `not_run`, and `analysis_only=true`, `paper_trading=true`, `manual_execution=false`, `auto_execution=false` are reported.
+- `make social-doctor` with no social configuration after Sprint 5.2 — exit `2` as expected; report status `BLOCKED_EXTERNAL`, reason `CONFIGURATION_MISSING`, configuration presence only, all four protected modes and no credential values.
+- `docker compose -f infra/compose/docker-compose.yml config --quiet` after Sprint 5.2 — exit `0`; Compose topology and protected service modes remain valid.
+- `docker compose -f infra/compose/docker-compose.yml up -d --build api worker` after Sprint 5.2 — exit `0`; rebuilt API/worker images include the social intelligence module and both containers started.
+- Compose Sprint 5.2 runtime probes — worker `social_intelligence_worker_runtime_import_ok AuthorTrustScorer SocialVelocityScorer`; API `social_intelligence_api_runtime_import_ok AuthorTrustScorer SocialVelocityScorer`; both asserted all four protected mode values. Compose API, Postgres and Redis were healthy, and web/worker were running.
+- `./.venv/bin/python scripts/secret_scan.py` after Sprint 5.2 — exit `0`; social intelligence fixtures, code and documentation contain no tracked secret material.
+- `./.venv/bin/python scripts/check_migrations.py` after Sprint 5.2 — exit `0`; `{"heads": ["0002_outbox_processing"], "table_count": 13}`.
 - `make doctor` after Sprint 5.1 — exit `0`; local dependencies are `not_required`, external provider checks are `not_run`, and `analysis_only=true`, `paper_trading=true`, `manual_execution=false`, `auto_execution=false` are reported.
 - `make social-doctor` with no social configuration — exit `2` as expected; report status `BLOCKED_EXTERNAL`, reason `CONFIGURATION_MISSING`, configuration presence only, all four protected modes and no credential values.
 - `docker compose -f infra/compose/docker-compose.yml config --quiet` after Sprint 5.1 — exit `0`; Compose topology and protected service modes remain valid.
@@ -287,11 +304,13 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 4.3 live wallet-history/graph acceptance: `BLOCKED_EXTERNAL` — no configured read-only chain/graph provider endpoint or credential is available; no live wallet-history/graph call was attempted and no live-provider success is claimed.
 - Sprint 5.1 social/X fixture, adapter and doctor acceptance: `PASS` — deterministic credential-free health/search replay, normalization, extraction, dedupe, copied-text clustering, redaction and protected-mode contracts pass.
 - Sprint 5.1 live social/X read-only acceptance: `BLOCKED_EXTERNAL` — `SOCIAL_API_URL` and `SOCIAL_API_KEY` are missing; `make social-doctor` did not attempt a live call and no live-provider success is claimed.
+- Sprint 5.2 author trust/velocity fixture and contract acceptance: `PASS` — deterministic explicit registry policy, trust/velocity scores, 1m/5m/15m windows, quality/duplicate/spam/coordination diagnostics, fail-closed future/stale handling and protected-mode contracts pass without credentials or an LLM.
+- Sprint 5.2 live social/X read-only acceptance: `BLOCKED_EXTERNAL` — `SOCIAL_API_URL` and `SOCIAL_API_KEY` remain missing; `make social-doctor` did not attempt a live call and no live-provider success is claimed.
 - Birdeye, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 
 ## Blockers
 
-- No current implementation blocker. Helius, Birdeye, Sprint 2.4 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance and Sprint 5.1 live social/X acceptance remain externally blocked for missing endpoint/credential configuration; all keyless implementation and gate evidence is green. No live-provider success is claimed.
+- No current implementation blocker. Helius, Birdeye, Sprint 2.4 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance and Sprint 5.1/Sprint 5.2 live social/X acceptance remain externally blocked for missing endpoint/credential configuration; all keyless implementation and gate evidence is green. No live-provider success is claimed.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -303,6 +322,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 4.2 remains a provider-independent warm-path score contract; no physical wallet-performance migration is introduced. The existing future `wallet_performance_snapshots` table remains the persistence target for a later roadmap task, and scoring does not write business state automatically.
 - Sprint 4.3 remains a provider-independent warm-path confluence contract; no physical smart-money migration is introduced. The logical `smart_money_confluence_snapshots` target remains for a later persistence task, and event/score analysis does not write business state automatically.
 - Sprint 5.1 remains a provider-independent warm-path social contract; no physical social migration is introduced. The existing `social_authors`/`social_mentions` targets remain for a later persistence task, and social normalization does not write business state automatically.
+- Sprint 5.2 remains a provider-independent warm-path social intelligence contract; no physical migration is introduced. Logical `author_trust_snapshots` and `social_velocity_snapshots` targets remain for a later persistence task, and trust/velocity scoring does not write business state automatically.
 
 ## Git state
 
@@ -341,8 +361,14 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 5.1 application checkpoint: `1809c69` (`feat: add social provider read seam`).
 - Latest pushed Sprint 5.1 fixture/contract checkpoint: `5fb3542` (`test: add social provider replay contracts`).
 - Latest pushed Sprint 5.1 documentation checkpoint: `09efaa7` (`docs: complete Sprint 5.1 social checkpoint`).
-- Latest pushed Sprint 5.1 status synchronization: pending this synchronization.
+- Latest pushed Sprint 5.1 status synchronization: `bb4d8e2` (`docs: synchronize Sprint 5.1 status`).
+- Latest pushed Sprint 5.2 plan checkpoint: `1f01b07` (`docs: plan Sprint 5.2 social intelligence`).
+- Latest pushed Sprint 5.2 application checkpoint: `13b4f01` (`feat: add social trust and velocity scoring`).
+- Latest pushed Sprint 5.2 fixture/contract checkpoint: `92b62f0` (`test: add social intelligence replay contracts`).
+- Latest pushed Sprint 5.2 deterministic test correction: `17818ed` (`test: freeze Helius schema test clock`).
+- Sprint 5.2 documentation checkpoint: pending this synchronization.
+- Sprint 5.2 status synchronization: pending this synchronization.
 
 ## Next task
 
-Start `Phase 5 / Sprint 5.2 — Author Trust and Social Velocity`: build the author registry and configurable trusted/KOL lists; compute 1m/5m/15m mention velocity and unique-author counts; compute engagement-quality and duplicate/spam ratios; implement `AuthorTrustScore` and `SocialVelocityScore` with confidence; and add coordinated-promotion/bot heuristics. Preserve all four safety modes, keep social evidence corroborating/advisory, fail closed on critical UNKNOWN evidence and do not enable live-money execution.
+Start `Phase 5 / Sprint 5.3 — Narrative LLM`: define provider-neutral `NarrativePort`; add strict structured output for narrative, novelty, organic-vs-promo evidence and sentiment uncertainty; add bounded cost/token budgets, caching and timeouts; ensure LLM outage never blocks deterministic analysis; and harden prompts against untrusted social-content injection. Preserve all four safety modes, keep LLM output visibly advisory, fail closed on critical UNKNOWN evidence and do not enable live-money execution.

@@ -229,11 +229,18 @@ handling is deterministic, and live social acceptance is
 
 ### Sprint 5.2 — Author Trust and Social Velocity
 
-- [ ] Build author registry and configurable trusted/KOL lists.
-- [ ] Compute 1m/5m/15m mention velocity and unique-author counts.
-- [ ] Compute engagement-quality and duplicate/spam ratios.
-- [ ] Implement `AuthorTrustScore` and `SocialVelocityScore` with confidence.
-- [ ] Add coordinated-promotion/bot heuristics.
+- [x] Build author registry and configurable trusted/KOL lists.
+- [x] Compute 1m/5m/15m mention velocity and unique-author counts.
+- [x] Compute engagement-quality and duplicate/spam ratios.
+- [x] Implement `AuthorTrustScore` and `SocialVelocityScore` with confidence.
+- [x] Add coordinated-promotion/bot heuristics.
+
+Sprint 5.2 keyless state: complete. Explicit author registry policy,
+provider-independent trust and velocity scores, bounded engagement and
+duplicate/spam metrics, copied-text coordination diagnostics, future/stale
+fail-closed handling, redacted replay fixtures and deterministic contracts
+pass without credentials or an LLM. Live social acceptance remains
+`BLOCKED_EXTERNAL` when endpoint/key configuration is absent.
 
 ### Sprint 5.3 — Narrative LLM
 

@@ -297,6 +297,17 @@ search/health fixtures and keyless contracts live under
 `fixtures/providers/social/`. The current checkout has no social endpoint or
 credential configured, so no live provider success is claimed.
 
+Sprint 5.2 adds provider-independent `SocialAuthorRegistry`,
+`AuthorTrustScorer` and `SocialVelocityScorer` in
+`packages/application/src/memeradar_application/social_intelligence.py`.
+They consume only normalized `SocialMention` values, preserve source
+provenance and evidence references, and calculate bounded author trust,
+engagement quality, duplicate/spam ratios, 1m/5m/15m velocity and unique
+author breadth. Copied-text bursts provide a conservative coordinated-
+promotion/bot-like heuristic; they are diagnostics, not identity or execution
+authority. The scorers work without an LLM or live provider and fail closed on
+future/non-fresh critical evidence.
+
 ## Adapter requirements
 
 Every network adapter must implement:

@@ -27,6 +27,13 @@ corroborating evidence, never token identity proof or an execution override.
 `make social-doctor` reports only presence/status metadata and never emits the
 credential.
 
+Sprint 5.2 trusted/KOL labels are explicit configuration and cannot be earned
+from a burst of posts. Copied-text, spam, coordination and bot-like heuristics
+are bounded advisory penalties; they do not assert account identity, common
+control or malicious intent. Missing or stale social evidence cannot be
+converted into a safe score, and neither social score can clear a deterministic
+risk hard gate or enable execution.
+
 ## Operating modes
 
 Default and mandatory until roadmap gates explicitly unlock:

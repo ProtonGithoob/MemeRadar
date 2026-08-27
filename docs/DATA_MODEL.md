@@ -138,6 +138,48 @@ are idempotently collapsed and conflicting records are rejected. The
 `SocialRestAdapter` performs no persistence, browser scraping or write call;
 physical social tables remain the later persistence target.
 
+### author_trust_snapshots
+- id
+- provider_author_id
+- as_of/expires_at
+- registry_tier
+- trust_score/confidence
+- mention_count
+- engagement_quality/duplicate_ratio/spam_ratio/coordination_ratio
+- components JSONB
+- penalties JSONB
+- provenance/evidence_refs/reason_codes JSONB
+- config_hash/version
+
+The Phase 5.2 warm-path `AuthorTrustScore` uses explicit registry/KOL policy
+plus bounded mention evidence. It never promotes an unlisted author, treats
+follower count alone as trust, or grants execution authority. Non-fresh,
+future, conflicted or invalid evidence produces zero confidence and no fresh
+positive score.
+
+### social_velocity_snapshots
+- id
+- token_id/candidate_id/referenced_mint
+- as_of/expires_at
+- mention_count
+- window_counts JSONB (`1m`, `5m`, `15m`)
+- unique_author_counts JSONB (`1m`, `5m`, `15m`)
+- engagement_quality
+- duplicate_ratio/spam_ratio/coordination_ratio
+- coordination_clusters JSONB
+- score/confidence
+- components JSONB
+- penalties JSONB
+- provenance/evidence_refs/reason_codes JSONB
+- config_hash/version
+
+The Phase 5.2 warm-path `SocialVelocityScore` counts event-time mentions in
+the windows `(now - window, now]`, deduplicates equivalent source deliveries,
+excludes future events and keeps missing metric evidence distinct from zero
+engagement. Copied-text bursts and the bounded `bot_heuristic_ratio` are
+coordination diagnostics, not claims of common control or bot identity. No
+physical social migration is required for the keyless application checkpoint.
+
 ### narrative_snapshots
 - id
 - candidate_id
