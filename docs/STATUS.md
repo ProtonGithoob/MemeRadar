@@ -140,7 +140,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Intended branch: `main`.
 - Latest pushed implementation checkpoint: `fb16367` (`feat: add Helius provider doctor`).
-- Sprint 2.2 smoke/runtime changes and completion documentation are pending the checkpoint commit; local `main` and `origin/main` are synchronized at `fb16367` before that commit, with no unrelated changes present.
+- Latest pushed Sprint 2.2 checkpoint: `1d9b128` (`docs: complete sprint 2.2 Helius read layer`), including the smoke/runtime checks and completion documentation.
+- Local `main` and `origin/main` are synchronized at `1d9b128`, with no unrelated changes present.
 
 ## Next task
 

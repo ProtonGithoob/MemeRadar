@@ -104,4 +104,4 @@
 - [x] **Step 2: Run `make verify`, Helius unit/contract tests, secret scan, provider doctor and Compose runtime imports.**
 - [x] **Step 3: If configured live read-only access is absent, record exactly `BLOCKED_EXTERNAL`; never substitute fixture PASS for live PASS.**
 - [x] **Step 4: Reconcile all Sprint 2.2 checkboxes/status with exact results, blockers, provider acceptance and safety modes.**
-- [x] **Step 5: Commit and push the sprint checkpoint; record the exact next task `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`.**
+- [x] **Step 5: Commit and push the sprint checkpoint (`1d9b128`); record the exact next task `Phase 2 / Sprint 2.3 — Birdeye / DEX Market Layer`.**
