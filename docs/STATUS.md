@@ -268,6 +268,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 4.1 plan checkpoint: `3126bd5` (`docs: plan Sprint 4.1 wallet tracking`); plan interface correction checkpoint: `6425f80` (`docs: clarify Sprint 4.1 plan interface`).
 - Latest pushed Sprint 4.1 application checkpoint: `28bb0f7` (`feat: add conservative wallet tracking`).
 - Latest pushed Sprint 4.1 fixture/contract checkpoint: `478cfe1` (`test: add wallet tracking replay contracts`).
+- Latest pushed Sprint 4.1 documentation checkpoint: `51013a1` (`docs: complete Sprint 4.1 wallet tracking checkpoint`); this status synchronization records the exact keyless gate and Compose runtime evidence above.
 
 ## Next task
 
