@@ -1,0 +1,134 @@
+{
+  "token": {
+    "mint_address": "So11111111111111111111111111111111111111112"
+  },
+  "scores": [
+    {
+      "wallet_address": "11111111111111111111111111111112",
+      "label": "fixture smart wallet 12",
+      "registry_tier": "TIER_B",
+      "recommended_tier": "TIER_B",
+      "score": "80",
+      "confidence": "0.90",
+      "sample_count": 10,
+      "known_outcome_count": 10,
+      "quality_state": "FRESH",
+      "source_id": "score:12"
+    },
+    {
+      "wallet_address": "11111111111111111111111111111113",
+      "label": "fixture smart wallet 13",
+      "registry_tier": "TIER_B",
+      "recommended_tier": "TIER_B",
+      "score": "80",
+      "confidence": "0.90",
+      "sample_count": 10,
+      "known_outcome_count": 10,
+      "quality_state": "FRESH",
+      "source_id": "score:13"
+    },
+    {
+      "wallet_address": "11111111111111111111111111111114",
+      "label": "fixture smart wallet 14",
+      "registry_tier": "TIER_B",
+      "recommended_tier": "TIER_B",
+      "score": "80",
+      "confidence": "0.90",
+      "sample_count": 10,
+      "known_outcome_count": 10,
+      "quality_state": "FRESH",
+      "source_id": "score:14"
+    }
+  ],
+  "snapshots": [
+    {
+      "wallet_address": "11111111111111111111111111111112",
+      "label": "fixture smart wallet 12",
+      "tier": "TIER_B",
+      "as_of": "2026-08-27T17:59:30+00:00",
+      "confidence": "0.95",
+      "quality_state": "FRESH",
+      "round_trips": [
+        {
+          "source_id": "trip:12",
+          "buy_at": "2026-08-27T17:50:00+00:00",
+          "sell_at": "2026-08-27T17:59:00+00:00",
+          "quantity": "2",
+          "cost_basis": "10",
+          "proceeds": "15",
+          "token_age_at_entry_seconds": "60",
+          "rug_exposure": false
+        }
+      ]
+    },
+    {
+      "wallet_address": "11111111111111111111111111111113",
+      "label": "fixture smart wallet 13",
+      "tier": "TIER_B",
+      "as_of": "2026-08-27T17:59:30+00:00",
+      "confidence": "0.95",
+      "quality_state": "FRESH",
+      "round_trips": [
+        {
+          "source_id": "trip:13",
+          "buy_at": "2026-08-27T17:51:00+00:00",
+          "sell_at": "2026-08-27T17:58:00+00:00",
+          "quantity": "2",
+          "cost_basis": "10",
+          "proceeds": "15",
+          "token_age_at_entry_seconds": "60",
+          "rug_exposure": false
+        }
+      ]
+    },
+    {
+      "wallet_address": "11111111111111111111111111111114",
+      "label": "fixture smart wallet 14",
+      "tier": "TIER_B",
+      "as_of": "2026-08-27T17:59:30+00:00",
+      "confidence": "0.95",
+      "quality_state": "FRESH",
+      "round_trips": [
+        {
+          "source_id": "trip:14",
+          "buy_at": "2026-08-27T17:52:00+00:00",
+          "sell_at": "2026-08-27T17:57:00+00:00",
+          "quantity": "2",
+          "cost_basis": "10",
+          "proceeds": "15",
+          "token_age_at_entry_seconds": "60",
+          "rug_exposure": false
+        }
+      ]
+    }
+  ],
+  "graph": {
+    "as_of": "2026-08-27T17:59:30+00:00",
+    "expires_at": "2026-08-27T18:04:30+00:00",
+    "seed_addresses": [
+      "11111111111111111111111111111112",
+      "11111111111111111111111111111113",
+      "11111111111111111111111111111114"
+    ],
+    "nodes": [
+      "11111111111111111111111111111112",
+      "11111111111111111111111111111113",
+      "11111111111111111111111111111114",
+      "11111111111111111111111111111115"
+    ],
+    "confidence": "0.90",
+    "source_id": "graph:relationships",
+    "edges": [
+      {
+        "from_address": "11111111111111111111111111111112",
+        "to_address": "11111111111111111111111111111115",
+        "source_id": "edge:12-15"
+      },
+      {
+        "from_address": "11111111111111111111111111111113",
+        "to_address": "11111111111111111111111111111115",
+        "source_id": "edge:13-15"
+      }
+    ]
+  }
+}

@@ -175,6 +175,31 @@ def test_wallet_scoring_replay_seam_is_packaged_and_safe():
         assert environment["AUTO_EXECUTION"] == "false"
 
 
+def test_confluence_replay_seam_is_packaged_and_safe():
+    from memeradar_application.confluence import (
+        ConfluenceAnalyzer,
+        ConfluencePolicy,
+        SmartMoneyEventType,
+        TokenSmartMoneyScore,
+    )
+
+    assert ConfluenceAnalyzer
+    assert ConfluencePolicy().version == "smart-money-confluence-v1"
+    assert SmartMoneyEventType.CONFLUENCE.value == "CONFLUENCE"
+    assert TokenSmartMoneyScore
+    confluence_fixture_dir = ROOT / "fixtures" / "providers" / "confluence"
+    assert (confluence_fixture_dir / "README.md").is_file()
+    assert (confluence_fixture_dir / "replay.json").is_file()
+    assert (confluence_fixture_dir / "graph_stale.json").is_file()
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
+
+
 def test_birdeye_market_layer_and_doctor_are_explicit_and_keyless():
     from memeradar_providers.birdeye import (
         BIRDEYE_CHAIN,
