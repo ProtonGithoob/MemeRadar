@@ -107,18 +107,18 @@ git push origin main
 - Consumes: RUGCHECK_API_URL, optional RUGCHECK_API_KEY, safe operating-mode settings, Helius fixture normalization, the evaluator, and RugCheck adapter.
 - Produces: make rugcheck-doctor, redacted PASS/FAIL/BLOCKED_EXTERNAL reports, fixture composition from Helius authority evidence plus RugCheck findings, and assertions that execution remains disabled.
 
-- [ ] **Step 1: Write failing doctor and composition contracts.** Cover missing configuration as BLOCKED_EXTERNAL, successful mocked /ping or report health response without secret echo, auth/timeout/schema classifications, and the full keyless authority-plus-RugCheck assessment.
-- [ ] **Step 2: Run the focused contracts and confirm the missing script/composition fails.**
-- [ ] **Step 3: Implement the doctor.** Use a single bounded read-only GET /ping check from the official API, require only the URL because the report summary is public while supporting an optional bearer token, report configuration presence only, classify unavailable access as BLOCKED_EXTERNAL, and return a nonzero exit code for blocked/failed checks without claiming provider success.
-- [ ] **Step 4: Wire Make and safe environment documentation.** Add RUGCHECK_API_URL= and RUGCHECK_API_KEY= to .env.example, add rugcheck-doctor, and document the no-secret keyless path in fixture metadata.
-- [ ] **Step 5: Run focused doctor/contracts and Compose import smoke tests.**
+- [x] **Step 1: Write failing doctor and composition contracts.** Cover missing configuration as BLOCKED_EXTERNAL, successful mocked /ping or report health response without secret echo, auth/timeout/schema classifications, and the full keyless authority-plus-RugCheck assessment.
+- [x] **Step 2: Run the focused contracts and confirm the missing script/composition fails.**
+- [x] **Step 3: Implement the doctor.** Use a single bounded read-only GET /ping check from the official API, require only the URL because the report summary is public while supporting an optional bearer token, report configuration presence only, classify unavailable access as BLOCKED_EXTERNAL, and return a nonzero exit code for blocked/failed checks without claiming provider success.
+- [x] **Step 4: Wire Make and safe environment documentation.** Add RUGCHECK_API_URL= and RUGCHECK_API_KEY= to .env.example, add rugcheck-doctor, and document the no-secret keyless path in fixture metadata.
+- [x] **Step 5: Run focused doctor/contracts and Compose import smoke tests.**
 
 ~~~bash
 .venv/bin/pytest tests/unit/test_rugcheck_doctor.py tests/contract/test_rugcheck_provider.py tests/contract/test_phase3_sprint3_1.py -q
 docker compose -f infra/compose/docker-compose.yml config --quiet
 ~~~
 
-- [ ] **Step 6: Commit the doctor and composition checkpoint.**
+- [x] **Step 6: Commit the doctor and composition checkpoint.**
 
 ~~~bash
 git add scripts/rugcheck_doctor.py tests/unit/test_rugcheck_doctor.py tests/contract/test_rugcheck_provider.py tests/contract/test_phase3_sprint3_1.py Makefile .env.example fixtures/providers/rugcheck/README.md
