@@ -58,6 +58,7 @@ class Settings:
     require_database_for_readiness: bool
     require_redis_for_readiness: bool
     readiness_timeout_seconds: float
+    operator_api_token: str | None
     analysis_only: bool
     paper_trading: bool
     manual_execution: bool
@@ -115,6 +116,7 @@ class Settings:
                 values.get("REQUIRE_REDIS_FOR_READINESS", "false"),
             ),
             readiness_timeout_seconds=readiness_timeout,
+            operator_api_token=_optional_value(values, "OPERATOR_API_TOKEN"),
             analysis_only=parsed_modes["ANALYSIS_ONLY"],
             paper_trading=parsed_modes["PAPER_TRADING"],
             manual_execution=parsed_modes["MANUAL_EXECUTION"],

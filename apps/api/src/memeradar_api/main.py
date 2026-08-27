@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from starlette.responses import Response
 
 from memeradar_application.config import Settings
+from memeradar_application.manual_submission import ManualMintSubmissionService
 from memeradar_telemetry.logging import (
     CORRELATION_ID_HEADER,
     configure_logging,
@@ -20,11 +21,15 @@ from memeradar_telemetry.logging import (
 
 from . import __version__
 from .health import build_health_router
+from .manual import build_manual_router
 
 LOGGER = logging.getLogger(__name__)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    manual_service: ManualMintSubmissionService | None = None,
+) -> FastAPI:
     runtime_settings = settings or Settings.from_env()
     configure_logging(runtime_settings.log_level)
     app = FastAPI(title="MemeRadar API", version=__version__)
@@ -65,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     app.include_router(build_health_router(runtime_settings))
+    app.include_router(build_manual_router(runtime_settings, service=manual_service))
     return app
 
 
