@@ -143,7 +143,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 - Intended branch: `main`.
 - Latest pushed Sprint 2.2 checkpoint: `039bb06` (`docs: synchronize sprint 2.2 status`), including the Helius implementation, smoke/runtime checks and completion documentation.
-- Sprint 2.3 plan/status transition is pending its checkpoint commit; local `main` and `origin/main` are synchronized at `039bb06` before that commit, with no unrelated changes present.
+- Latest pushed Sprint 2.3 plan/status checkpoint: `3c2a0f2` (`docs: start sprint 2.3 Birdeye market layer`).
+- Local `main` and `origin/main` are synchronized at `3c2a0f2`, with no unrelated changes present.
 
 ## Next task
 
