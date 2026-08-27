@@ -157,7 +157,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Intended branch: `main`.
 - Latest pushed Sprint 2.2 checkpoint: `039bb06` (`docs: synchronize sprint 2.2 status`), including the Helius implementation, smoke/runtime checks and completion documentation.
 - Latest pushed Sprint 2.3 implementation checkpoints: `d1bb83a` (adapter), `337e60d` (stream fallback), `38cb4de` (reconciliation), `f804011` (fixtures/contracts) and `68c96ed` (doctor).
-- Sprint 2.3 gate/status documentation checkpoint is being committed and pushed with this update; the follow-up synchronization commit will record its exact final hash.
+- Latest pushed Sprint 2.3 gate/status documentation checkpoint: `2233125` (`docs: complete Sprint 2.3 Birdeye checkpoint`); this status synchronization follows it.
 
 ## Next task
 
