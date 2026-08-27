@@ -91,8 +91,8 @@ git push origin main
 - Modify: `docs/STATUS.md`
 - Modify: this plan
 
-- [ ] **Step 1: Document normalized liquidity, quote and trade contracts.** Record nullable depth/change/sellability semantics, bounded heuristics, score penalties, freshness and evidence behavior, and advisory/no-execution authority.
-- [ ] **Step 2: Run the Sprint 3.3 quality gate.**
+- [x] **Step 1: Document normalized liquidity, quote and trade contracts.** Record nullable depth/change/sellability semantics, bounded heuristics, score penalties, freshness and evidence behavior, and advisory/no-execution authority.
+- [x] **Step 2: Run the Sprint 3.3 quality gate.**
 
 ```bash
 make verify
@@ -101,8 +101,8 @@ docker compose -f infra/compose/docker-compose.yml config --quiet
 ```
 
 Record exact test, type, coverage, safety-mode and Compose results.
-- [ ] **Step 3: Mark Sprint 3.3 complete only after the keyless gate passes.** Record provider acceptance, blockers, current safety modes, Git sync state and the exact next task in `docs/STATUS.md`.
-- [ ] **Step 4: Commit and push the synchronized Sprint 3.3 documentation checkpoint.**
+- [x] **Step 3: Mark Sprint 3.3 complete only after the keyless gate passes.** Record provider acceptance, blockers, current safety modes, Git sync state and the exact next task in `docs/STATUS.md`.
+- [x] **Step 4: Commit and push the synchronized Sprint 3.3 documentation checkpoint.**
 
 ```bash
 git add docs/DATA_MODEL.md docs/SCORING_AND_RISK.md docs/PROVIDERS.md docs/ROADMAP.md docs/STATUS.md docs/superpowers/plans/2026-08-27-phase-3-sprint-3-3-flow-analysis.md

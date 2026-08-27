@@ -107,6 +107,35 @@ states and nullable metrics rather than fabricated concentration. These
 snapshots are explainability inputs only: they cannot grant execution
 authority, clear a token-security hard block or change any operating mode.
 
+### Sprint 3.3 liquidity, sellability and organic-flow rules
+
+`FlowAnalyzer` selects the latest matching normalized market snapshot and, when
+available, compares it with the previous fresh snapshot. It exposes liquidity,
+depth and signed liquidity-change ratios. Missing depth or prior evidence is
+represented as a nullable metric with an explicit reason code; missing or
+malformed liquidity evidence is `UNKNOWN` or `INVALID`, never zero-valued
+evidence.
+
+Trade-row evidence derives unique makers, transaction count, the non-negative
+transaction-to-maker ratio, exact repeated-size participation, reciprocal
+buyer/seller flow and maker-level rapid buy-then-sell round trips. When only a
+provider summary is available, counts and buy/sell volumes may be retained but
+row-level heuristics remain nullable and `TRADE_ROWS_MISSING` is recorded.
+
+An optional application `QuoteSnapshot` evaluates token-to-quote sellability
+and price impact. Missing or expired quotes retain a separate
+`quote_quality_state`; they are not interpreted as a successful sellability
+check. The initial deterministic penalty ceilings are: low liquidity 25,
+shallow depth 15, liquidity decay 20, high price impact 20, failed sellability
+25, transaction/maker concentration 15, repeated sizes 15, circular flow 20
+and rapid round trip 15. The score is `max(0, 100 - sum(penalties))`, carries
+all evidence references/reason codes, and is advisory only.
+
+The default analysis TTL is five minutes with bounded market/trade rows and
+size buckets. `FRESH`, `STALE`, `UNKNOWN`, `CONFLICTED` and `INVALID` remain
+distinct; any non-fresh critical market/trade state yields a zero-confidence,
+non-fresh advisory result and cannot make any execution path eligible.
+
 ## 5. Initial penalties
 
 Illustrative v1 penalty classes, calibrated later:
@@ -134,7 +163,7 @@ Authorities, token-program/extension risks, creator behavior, security-provider 
 Absolute liquidity, liquidity/market-cap relation, quote depth, price impact, persistence and liquidity change. Raw liquidity alone is insufficient.
 
 ### OrganicFlow
-Unique buyers/sellers, buy/sell volume, maker diversity, transaction/maker ratio, repeated trade-size patterns, circular flows and funding overlap.
+Unique buyers/sellers, buy/sell volume, maker diversity, transaction/maker ratio, repeated trade-size patterns, circular flows, rapid round trips, liquidity/sellability corroboration and funding overlap. Missing maker/quote evidence remains explicit and lowers confidence rather than being called organic.
 
 ### SocialVelocity
 Unique-author mention acceleration, trusted-author quality, engagement quality, duplication/spam ratio and narrative novelty. Follower count alone must not dominate.

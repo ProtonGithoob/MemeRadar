@@ -138,12 +138,23 @@ contract.
 
 ### Sprint 3.3 — Liquidity / Sellability / Wash Trading
 
-- [ ] Implement liquidity depth and liquidity-change checks.
-- [ ] Add quote-based sellability/price-impact checks where supported.
-- [ ] Implement unique-maker, transaction-maker ratio, repeated-size, circular-flow and rapid round-trip heuristics.
-- [ ] Produce `OrganicFlowScore` and reason codes.
+- [x] Implement liquidity depth and liquidity-change checks.
+- [x] Add quote-based sellability/price-impact checks where supported.
+- [x] Implement unique-maker, transaction-maker ratio, repeated-size, circular-flow and rapid round-trip heuristics.
+- [x] Produce `OrganicFlowScore` and reason codes.
+
+Sprint 3.3 keyless state: complete. Liquidity/depth change, optional quote
+sellability/impact, maker-diversity and wash-trading heuristics replay
+deterministically from synthetic normalized observations. Live market/quote
+provider acceptance remains separate and is not claimed by this application
+contract.
 
 **Gate P3:** curated safe/suspicious fixtures classify deterministically; critical UNKNOWN blocks execution eligibility.
+
+Gate P3 keyless state: pass. Safe and suspicious flow fixtures classify
+deterministically, missing/stale/invalid critical evidence remains non-fresh,
+and the flow result has no execution authority. Live provider acceptance is
+`BLOCKED_EXTERNAL` where endpoint/credential configuration is absent.
 
 ---
 

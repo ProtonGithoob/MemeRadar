@@ -232,6 +232,31 @@ references. Every snapshot also preserves quality state (`FRESH`, `STALE`,
 `UNKNOWN`, `CONFLICTED` or `INVALID`), expiry and config/version metadata;
 non-fresh states never become safe complete evidence.
 
+### organic_flow_snapshots
+- id
+- token_id
+- as_of/expires_at
+- flow_version
+- organic_flow_score 0..100 nullable when critical evidence is unknown
+- confidence 0..1
+- liquidity/depth/change metrics nullable
+- unique maker, transaction/maker, repeated-size, circular-flow and rapid-round-trip metrics
+- sellability and price-impact quote metrics nullable
+- penalties JSONB
+- reason_codes/evidence_refs
+- provider/config metadata
+
+The warm-path Sprint 3.3 `FlowAnalyzer` derives this record from bounded
+normalized market/trade observations and optional application `QuoteSnapshot`
+values. `transaction_maker_ratio` is a non-negative transaction-to-maker
+ratio; the other proportion metrics are inclusive `0..1` Decimal values.
+Summary trade observations may supply counts and volumes, but repeated-size,
+circular-flow and rapid-round-trip fields remain nullable until row-level
+maker evidence exists. Quote freshness is retained separately from overall
+flow quality so unsupported sellability is never treated as a successful
+sellability check. Organic-flow snapshots are advisory evidence and do not
+authorize orders.
+
 ## Trading
 
 ### portfolios

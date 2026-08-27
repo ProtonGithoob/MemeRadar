@@ -155,6 +155,37 @@ evidence, known system/program addresses and a deliberately out-of-depth edge;
 they are synthetic and contain no credentials. Live holder/graph provider
 acceptance remains separate from this deterministic application contract.
 
+## Flow, liquidity and sellability analysis
+
+Sprint 3.3 adds the provider-independent `FlowAnalyzer` in
+`packages/application/src/memeradar_application/flow_analysis.py`. It accepts
+normalized `market.market_data`/liquidity observations, row-level
+`market.trade` observations or bounded provider trade summaries, and optional
+application `QuoteSnapshot` values. No provider SDK, HTTP client or quote
+response type is imported by the analyzer.
+
+Liquidity evidence retains current liquidity, optional depth and a signed
+change against the previous fresh same-token snapshot. Trade evidence derives
+unique makers, transaction/maker ratio, repeated-size participation,
+reciprocal/circular flow and rapid round-trip behavior. A provider summary can
+provide counts and volumes, but cannot fabricate row-level maker heuristics.
+Sell quotes retain input/output amounts, route, impact, provenance and their
+own freshness state; missing or stale quote data is not a successful sellability
+result.
+
+The default analysis bounds are 20 market observations, 500 trade rows and 100
+distinct size buckets, with a five-minute evidence TTL and a two-minute rapid
+round-trip window. `OrganicFlowScore` records the score, confidence, metrics,
+penalties, stable reason codes, source IDs, provenance and config hash. It is
+advisory, exposes an explicit non-authorizing execution predicate and cannot
+submit/sign orders or alter operating modes.
+
+Synthetic safe/suspicious liquidity, trade and quote fixtures are stored under
+`fixtures/providers/flow_analysis/`; the replay contract verifies deterministic
+classification and the absence of credential-shaped fields. Live market/quote
+acceptance remains a separate provider gate and is not claimed by these
+keyless contracts.
+
 ## Adapter requirements
 
 Every network adapter must implement:
