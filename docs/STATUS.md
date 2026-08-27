@@ -244,7 +244,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 3.3 plan checkpoint: `659ebff` (`docs: plan Sprint 3.3 flow analysis`).
 - Latest pushed Sprint 3.3 application checkpoint: `3957adb` (`feat: add liquidity and organic flow analysis`).
 - Latest pushed Sprint 3.3 fixture/contract checkpoint: `95901ca` (`test: add organic flow replay contracts`).
-- The Sprint 3.3 documentation/status synchronization is the current checkpoint and records the exact keyless gate and Compose runtime evidence above.
+- Latest pushed Sprint 3.3 documentation checkpoint: `609ca0e` (`docs: complete Sprint 3.3 flow analysis checkpoint`); this status synchronization records the exact keyless gate and Compose runtime evidence above.
 
 ## Next task
 
