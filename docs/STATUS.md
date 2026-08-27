@@ -4,14 +4,14 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`SPRINT_2_4_COMPLETE_NEXT_GATE_P2`
+`PHASE_2_KEYLESS_GATE_COMPLETE_NEXT_SPRINT_3_1`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1, 2.2 and 2.3 are complete and locally verified with keyless fixtures and contracts. Phase 2 / Sprint 2.4 is complete with protocol-isolated Pump.fun, PumpSwap, Raydium and Meteora event adapters, canonical token/pool mapping, duplicate evidence, a protected manual mint-submission API and rebuilt-runtime checks. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. The live portion of Gate P2 remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
-- Completed: `Phase 2 / Sprint 2.4 — Launchpad / DEX Coverage`
-- Next: `Phase 2 / Gate P2 — Read-only discovery and independent enrichment acceptance`
+- Completed: `Phase 2 / Gate P2 — Read-only discovery and independent enrichment acceptance` (keyless portion)
+- Next: `Phase 3 / Sprint 3.1 — Authority / Token Security`
 
 ## Current operating policy
 
@@ -81,6 +81,7 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Authenticated `POST /v1/manual/mints` analysis-only API with canonical Solana validation, deterministic manual identity, duplicate reporting and fail-closed operator auth configuration.
 - [x] Synthetic launchpad/DEX fixtures and replay contracts for all four protocol adapters with no credentials or provider SDK dependency.
 - [x] Sprint 2.4 roadmap, provider/security documentation and Compose runtime smoke checks reconciled; live protocol acceptance remains isolated as `BLOCKED_EXTERNAL`.
+- [x] Gate P2 keyless composition contract connecting Birdeye discovery to independent Helius enrichment with shared canonical token identity and separate provenance.
 
 ## Current sprint progress
 
@@ -95,6 +96,7 @@ The configuration loader rejects attempts to override these protected values.
 - Sprint 2.3 gate evidence: full backend/frontend/Compose quality gates pass; keyless Birdeye fixture and doctor contracts pass; rebuilt API/worker images import the Birdeye adapter and fallback seam while retaining all four safe modes.
 - Sprint 2.4 plan recorded in `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-4-launchpad-dex-coverage.md` and completed.
 - Sprint 2.4 gate evidence: protocol parser/identity tests, manual service/API tests, fixture contracts and runtime smoke checks pass; rebuilt API/worker images import all four protocol adapters and the manual API while retaining all four safe modes.
+- Gate P2 keyless acceptance evidence: `tests/contract/test_phase2_gate.py` composes a Birdeye new-listing discovery fixture with an independent Helius token-enrichment fixture; both preserve the same canonical token UUID and separate provider provenance.
 
 ## Verification evidence
 
@@ -108,6 +110,8 @@ All commands below were run in the current checkout on 2026-08-27.
 - `make verify` after Sprint 2.3 — exit `0`; Ruff, mypy (`34 source files`), `119 passed, 3 skipped`, total branch-aware coverage `75%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
 - `.venv/bin/pytest tests/unit/test_launchpad_dex.py tests/unit/test_launchpad_dex_identity.py tests/unit/test_manual_submission.py tests/unit/test_manual_api.py tests/contract/test_launchpad_dex_provider.py tests/smoke/test_compose_contract.py -q` — `36 passed`; Sprint 2.4 parser, identity, manual API, fixture and smoke contracts pass keylessly.
 - `make verify` after Sprint 2.4 — exit `0`; Ruff, mypy (`37 source files`), `150 passed, 3 skipped`, total branch-aware coverage `76%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
+- `make verify` after Gate P2 — exit `0`; Ruff, mypy (`37 source files`), `151 passed, 3 skipped`, total branch-aware coverage `76%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
+- `.venv/bin/pytest tests/contract/test_phase2_gate.py -q` — `1 passed`; keyless discovery/enrichment composition is deterministic and provider-independent at the application boundary.
 - `.venv/bin/mypy` — `Success: no issues found in 32 source files`.
 - `.venv/bin/pytest tests/unit/test_provider_contracts.py tests/unit/test_provider_transport.py tests/unit/test_provider_health.py tests/unit/test_provider_fixtures.py tests/contract/test_provider_adapters.py -q` — `23 passed`; provider ports, resilience, health/freshness/quota, redaction/fakes and normalized adapter contracts pass.
 - `.venv/bin/mypy` after the provider package was included in the configured source roots — `Success: no issues found in 30 source files`.
@@ -154,11 +158,12 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 2.4 protocol fixture and manual API acceptance: `PASS` — all keyless parser, canonical identity, duplicate, fixture replay, API auth and runtime checks pass.
 - Sprint 2.4 live Pump.fun/PumpSwap/Raydium/Meteora acceptance: `BLOCKED_EXTERNAL` — no live protocol endpoint/credential configuration is present, so no live call was attempted and no live success is claimed.
 - Gate P2 keyless acceptance: `PASS` for normalized discovery/enrichment seams and deterministic fixtures; live read-only acceptance remains `BLOCKED_EXTERNAL` for missing provider access.
+- Gate P2 overall live acceptance: `BLOCKED_EXTERNAL` — the required real provider calls could not be attempted without configured read-only endpoint/credential access; the keyless composition evidence is not substituted for live success.
 - Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 
 ## Blockers
 
-- No current implementation blocker. Helius, Birdeye and Sprint 2.4 live protocol acceptance remain externally blocked for missing endpoint/credential configuration; keyless implementation and gate evidence are green. No live-provider success is claimed.
+- No current implementation blocker. Helius, Birdeye, Sprint 2.4 live protocol acceptance and the live portion of Gate P2 remain externally blocked for missing endpoint/credential configuration; all keyless implementation and gate evidence is green. No live-provider success is claimed.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -174,7 +179,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 2.3 implementation checkpoints: `d1bb83a` (adapter), `337e60d` (stream fallback), `38cb4de` (reconciliation), `f804011` (fixtures/contracts) and `68c96ed` (doctor).
 - Latest pushed Sprint 2.3 gate/status documentation checkpoint: `2233125` (`docs: complete Sprint 2.3 Birdeye checkpoint`); this status synchronization follows it.
 - Latest pushed Sprint 2.4 checkpoints: `84eee38` (plan), `0261ac4` (protocol adapters and canonical identities), `680d009` (manual API), `6b2cab0` (protocol fixtures/contracts), and `ea5ae4e` (gate/documentation); this status synchronization follows the gate checkpoint.
+- Latest pushed Gate P2 keyless contract checkpoint: `573bf6c` (`test: add Phase 2 gate composition`); Gate P2 status synchronization is being committed and pushed with this update, followed by an exact-hash synchronization commit.
 
 ## Next task
 
-Continue `Phase 2 / Gate P2 — Read-only discovery and independent enrichment acceptance`: verify the implemented keyless discovery/enrichment seams against the gate and preserve the live-provider result as `BLOCKED_EXTERNAL` unless actual configured read-only access succeeds. Preserve all four safety modes and do not enable live-money execution.
+Begin `Phase 3 / Sprint 3.1 — Authority / Token Security`: implement mint/freeze authority checks, Token-2022/security-relevant metadata handling, the independent RugCheck/security-provider seam, informational verification status and hard-gate/UNKNOWN/freshness tests. Preserve all four safety modes and do not enable live-money execution.
