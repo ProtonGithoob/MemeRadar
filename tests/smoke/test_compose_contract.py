@@ -101,3 +101,29 @@ def test_birdeye_market_layer_and_doctor_are_explicit_and_keyless():
     assert "PAPER_TRADING=true" in env_example
     assert "MANUAL_EXECUTION=false" in env_example
     assert "AUTO_EXECUTION=false" in env_example
+
+
+def test_launchpad_dex_adapters_and_manual_submission_are_explicit_and_safe():
+    from memeradar_api.main import create_app
+    from memeradar_application.config import Settings
+    from memeradar_providers.launchpad_dex import (
+        CanonicalDuplicateDetector,
+        MeteoraAdapter,
+        PumpFunAdapter,
+        PumpSwapAdapter,
+        RaydiumAdapter,
+    )
+
+    assert PumpFunAdapter().provider_name == "pump.fun"
+    assert PumpSwapAdapter().provider_name == "pumpswap"
+    assert RaydiumAdapter().provider_name == "raydium"
+    assert MeteoraAdapter().provider_name == "meteora"
+    assert CanonicalDuplicateDetector
+    route_paths = {route.path for route in create_app(Settings.from_env({})).routes}
+    assert "/v1/manual/mints" in route_paths
+    env_example = (ROOT / ".env.example").read_text()
+    assert "OPERATOR_API_TOKEN=" in env_example
+    assert "ANALYSIS_ONLY=true" in env_example
+    assert "PAPER_TRADING=true" in env_example
+    assert "MANUAL_EXECUTION=false" in env_example
+    assert "AUTO_EXECUTION=false" in env_example

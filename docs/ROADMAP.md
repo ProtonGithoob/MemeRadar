@@ -98,11 +98,13 @@ Codex must execute this roadmap in order unless a task is externally blocked and
 
 ### Sprint 2.4 — Launchpad / DEX Coverage
 
-- [ ] Add parsers/adapters needed for Pump.fun/PumpSwap, Raydium and Meteora identities/events without coupling domain code to protocol payloads.
-- [ ] Add canonical token/pool mapping and duplicate detection.
-- [ ] Add manual mint submission API.
+- [x] Add parsers/adapters needed for Pump.fun/PumpSwap, Raydium and Meteora identities/events without coupling domain code to protocol payloads.
+- [x] Add canonical token/pool mapping and duplicate detection.
+- [x] Add manual mint submission API — authenticated, analysis-only and fail-closed when operator authentication is not configured.
 
 **Gate P2:** at least one real discovery path + one independent enrichment path work read-only; keyless fixtures reproduce the same normalized outputs.
+
+Current gate state: keyless normalized discovery/enrichment seams and deterministic fixtures pass; live read-only acceptance is `BLOCKED_EXTERNAL` in this checkout because provider endpoints/credentials are not configured.
 
 ---
 

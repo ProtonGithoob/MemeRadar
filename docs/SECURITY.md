@@ -87,6 +87,8 @@ Do not blindly fetch arbitrary token/social URLs from backend. Use allowlists or
 - no secret echo in API errors;
 - audit config, permission, kill-switch and execution actions.
 
+The analysis-only manual mint endpoint requires `Authorization: Bearer <OPERATOR_API_TOKEN>` when `OPERATOR_API_TOKEN` is configured and fails closed with `503` when it is not configured. It accepts only a canonical Solana mint, never accepts signing material, and returns `execution_enabled: false`; the bearer value is compared in constant time and is not logged or returned.
+
 ## Supply chain
 
 CI should include:

@@ -35,11 +35,11 @@
 - `LaunchpadDexAdapter(venue)` exposes `parse(message, context) -> ParsedProtocolEvent` and `normalize(message, context) -> DiscoveryCandidate`.
 - `PumpFunAdapter`, `PumpSwapAdapter`, `RaydiumAdapter` and `MeteoraAdapter` specialize the adapter with per-venue event allow-lists and parser version `launchpad-dex-v1`.
 
-- [ ] **Step 1: Write failing parser tests** for one synthetic create/pool event per venue, accepted field aliases, deterministic source IDs, timestamp ordering, unsupported event types, malformed/non-Solana addresses and credential-shaped payload rejection.
-- [ ] **Step 2: Run the focused parser tests and confirm the launchpad/DEX module and adapter symbols are absent.**
-- [ ] **Step 3: Implement a provider-local parser** that accepts an envelope with `type`/`event_type`, optional `signature`/`event_id`, and a `data` mapping; validates an allow-listed event type; extracts mint, optional pool, quote and token-program aliases; redacts credential-shaped payload values; and emits `ParsedProtocolEvent` with `Provenance`-ready timestamps.
-- [ ] **Step 4: Add venue-specific adapter classes** with no SDK imports and make `normalize` use the canonical mapper interface defined in Task 2.
-- [ ] **Step 5: Run focused tests, Ruff and configured mypy; commit `feat: add launchpad and DEX event adapters`.**
+- [x] **Step 1: Write failing parser tests** for one synthetic create/pool event per venue, accepted field aliases, deterministic source IDs, timestamp ordering, unsupported event types, malformed/non-Solana addresses and credential-shaped payload rejection.
+- [x] **Step 2: Run the focused parser tests and confirm the launchpad/DEX module and adapter symbols are absent.**
+- [x] **Step 3: Implement a provider-local parser** that accepts an envelope with `type`/`event_type`, optional `signature`/`event_id`, and a `data` mapping; validates an allow-listed event type; extracts mint, optional pool, quote and token-program aliases; redacts credential-shaped payload values; and emits `ParsedProtocolEvent` with `Provenance`-ready timestamps.
+- [x] **Step 4: Add venue-specific adapter classes** with no SDK imports and make `normalize` use the canonical mapper interface defined in Task 2.
+- [x] **Step 5: Run focused tests, Ruff and configured mypy; commit `feat: add launchpad and DEX event adapters` (`0261ac4`).**
 
 ### Task 2: Canonical token/pool mapping and duplicate detection
 
@@ -54,11 +54,11 @@
 - `DuplicateResult` contains `is_duplicate`, `duplicate_keys` and ordered `prior_source_ids`.
 - `CanonicalDuplicateDetector.inspect(candidate) -> DuplicateResult` is read-only; `record(candidate) -> DuplicateResult` records canonical token and optional pool keys while retaining duplicate deliveries for downstream idempotency.
 
-- [ ] **Step 1: Write failing identity tests** for stable IDs across parser instances, token/pool relationship validation, venue normalization, same-token/different-source duplicates, same-pool duplicates, distinct-pool non-collision and source-order preservation.
-- [ ] **Step 2: Run the focused identity tests and confirm the mapper/detector symbols are absent.**
-- [ ] **Step 3: Implement deterministic UUID5 mapping** under a repository-owned namespace; require canonical Solana addresses and complete pool quote identity; return normalized `DiscoveryCandidate` values with protocol/provider/parser provenance.
-- [ ] **Step 4: Implement duplicate inspection/recording** keyed by canonical mint and pool address, returning prior source IDs without filtering or mutating the candidate.
-- [ ] **Step 5: Run parser plus identity tests, Ruff and configured mypy; commit `feat: add canonical launchpad identities`.**
+- [x] **Step 1: Write failing identity tests** for stable IDs across parser instances, token/pool relationship validation, venue normalization, same-token/different-source duplicates, same-pool duplicates, distinct-pool non-collision and source-order preservation.
+- [x] **Step 2: Run the focused identity tests and confirm the mapper/detector symbols are absent.**
+- [x] **Step 3: Implement deterministic UUID5 mapping** under a repository-owned namespace; require canonical Solana addresses and complete pool quote identity; return normalized `DiscoveryCandidate` values with protocol/provider/parser provenance.
+- [x] **Step 4: Implement duplicate inspection/recording** keyed by canonical mint and pool address, returning prior source IDs without filtering or mutating the candidate.
+- [x] **Step 5: Run parser plus identity tests, Ruff and configured mypy; commit `feat: add canonical launchpad identities` (`0261ac4`).**
 
 ### Task 3: Protected manual mint-submission API
 
@@ -77,11 +77,11 @@
 - `build_manual_router(settings, service=None) -> APIRouter` exposes `POST /v1/manual/mints`; it requires `Authorization: Bearer <OPERATOR_API_TOKEN>` when configured and returns `503` when operator authentication is not configured.
 - The request accepts `mint` or `mint_address`; the response contains only canonical mint, token UUID, source ID, duplicate flag, provider and `execution_enabled: false`.
 
-- [ ] **Step 1: Write failing service/API tests** for canonical mint acceptance, invalid/oversized mint rejection, deterministic duplicate behavior, missing-token `503`, wrong-token `401`, valid-token `200`, correlation propagation, extra-field rejection and no secret echo.
-- [ ] **Step 2: Run focused tests and confirm the manual submission module/route is absent.**
-- [ ] **Step 3: Implement `ManualMintSubmissionService`** with deterministic UUID5 token identity, `manual` provenance, bounded context timestamps and no provider/network dependency.
-- [ ] **Step 4: Add the authenticated FastAPI router**, optional `OPERATOR_API_TOKEN` configuration presence handling, request/response Pydantic schemas and composition-root wiring; leave all four safety modes enforced by `Settings.from_env`.
-- [ ] **Step 5: Run focused tests, API tests, Ruff and configured mypy; commit `feat: add protected manual mint submission`.**
+- [x] **Step 1: Write failing service/API tests** for canonical mint acceptance, invalid/oversized mint rejection, deterministic duplicate behavior, missing-token `503`, wrong-token `401`, valid-token `200`, correlation propagation, extra-field rejection and no secret echo.
+- [x] **Step 2: Run focused tests and confirm the manual submission module/route is absent.**
+- [x] **Step 3: Implement `ManualMintSubmissionService`** with deterministic UUID5 token identity, `manual` provenance, bounded context timestamps and no provider/network dependency.
+- [x] **Step 4: Add the authenticated FastAPI router**, optional `OPERATOR_API_TOKEN` configuration presence handling, request/response Pydantic schemas and composition-root wiring; leave all four safety modes enforced by `Settings.from_env`.
+- [x] **Step 5: Run focused tests, API tests, Ruff and configured mypy; commit `feat: add protected manual mint submission` (`680d009`).**
 
 ### Task 4: Protocol fixtures and contract coverage
 
@@ -98,10 +98,10 @@
 - Fixtures use a synthetic `launchpad-dex-v1` envelope with public-looking but synthetic canonical Solana addresses, no credential-shaped values and metadata marked `redacted: true`.
 - Contract tests replay all four fixtures through their concrete adapter and assert identical canonical identity/provenance/timestamp behavior across repeated reads.
 
-- [ ] **Step 1: Add safe synthetic protocol envelopes and metadata** for Pump.fun create, PumpSwap pool creation, Raydium pool creation and Meteora pool creation.
-- [ ] **Step 2: Write contract tests** for all adapters, pool/token linkage, duplicate detection and deterministic replay.
-- [ ] **Step 3: Run contract tests and secret scan; verify no fixture/API token leakage.**
-- [ ] **Step 4: Commit `test: add launchpad and DEX fixtures`.**
+- [x] **Step 1: Add safe synthetic protocol envelopes and metadata** for Pump.fun create, PumpSwap pool creation, Raydium pool creation and Meteora pool creation.
+- [x] **Step 2: Write contract tests** for all adapters, pool/token linkage, duplicate detection and deterministic replay.
+- [x] **Step 3: Run contract tests and secret scan; verify no fixture/API token leakage.**
+- [x] **Step 4: Commit `test: add launchpad and DEX fixtures` (`6b2cab0`).**
 
 ### Task 5: Sprint 2.4 gate, documentation and synchronization
 
@@ -112,8 +112,8 @@
 - Modify: `docs/STATUS.md`
 - Modify: `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-4-launchpad-dex-coverage.md`
 
-- [ ] **Step 1: Add runtime smoke checks** for all four protocol adapters, canonical duplicate detection, manual router composition and protected mode configuration.
-- [ ] **Step 2: Run `make verify`, focused protocol/API/contract tests, secret scan, `make doctor`, and Compose API/worker runtime imports.**
-- [ ] **Step 3: Record live protocol acceptance as `BLOCKED_EXTERNAL` unless an actual configured read-only provider check succeeds; never substitute fixtures for live evidence.**
-- [ ] **Step 4: Reconcile Sprint 2.4 roadmap checkboxes, provider documentation, plan checkboxes, exact verification evidence, blockers, safety modes, provider acceptance and Git state.**
-- [ ] **Step 5: Commit and push the Sprint 2.4 checkpoint; record the exact next task `Phase 2 / Gate P2 — Read-only discovery and independent enrichment acceptance`.**
+- [x] **Step 1: Add runtime smoke checks** for all four protocol adapters, canonical duplicate detection, manual router composition and protected mode configuration.
+- [x] **Step 2: Run `make verify`, focused protocol/API/contract tests, secret scan, `make doctor`, and Compose API/worker runtime imports.**
+- [x] **Step 3: Record live protocol acceptance as `BLOCKED_EXTERNAL` unless an actual configured read-only provider check succeeds; never substitute fixtures for live evidence.**
+- [x] **Step 4: Reconcile Sprint 2.4 roadmap checkboxes, provider documentation, plan checkboxes, exact verification evidence, blockers, safety modes, provider acceptance and Git state.**
+- [x] **Step 5: Commit and push the Sprint 2.4 checkpoint; record the exact next task `Phase 2 / Gate P2 — Read-only discovery and independent enrichment acceptance` (checkpoint hash recorded in `docs/STATUS.md`).**

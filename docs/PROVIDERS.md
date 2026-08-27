@@ -102,6 +102,14 @@ The adapter sends the configured API key only as the `x-api-key` header, identif
 
 The explicit `make birdeye-doctor` command performs one bounded, read-only supported-networks call when `BIRDEYE_API_URL` and `BIRDEYE_API_KEY` are configured. It reports only configuration presence, network/auth/schema status, rounded latency, safe rate-limit metadata and protected modes. Synthetic fixtures and keyless contract tests are committed under `fixtures/providers/birdeye/`; live acceptance remains `BLOCKED_EXTERNAL` when the endpoint/key configuration is absent. Reference endpoint documentation: [new listing](https://docs.birdeye.so/reference/get-defi-v2-tokens-new_listing), [market data](https://docs.birdeye.so/reference/get-defi-v3-token-market-data), [trade data](https://docs.birdeye.so/reference/get-defi-v3-token-trade-data-single), [holder data](https://docs.birdeye.so/reference/get-defi-v3-token-holder) and [supported networks](https://docs.birdeye.so/reference/get-defi-networks).
 
+## Launchpad / DEX coverage
+
+Sprint 2.4 adds provider-local `PumpFunAdapter`, `PumpSwapAdapter`, `RaydiumAdapter` and `MeteoraAdapter` in `packages/providers/src/memeradar_providers/launchpad_dex.py`. Each adapter accepts an injected untrusted event envelope, applies a venue-specific event allow-list and field-alias map, validates canonical Solana mint/pool/quote addresses, preserves event-time ordering and emits a normalized `ParsedProtocolEvent`. No protocol SDK, network call or provider payload type enters the domain layer.
+
+`CanonicalIdentityMapper` maps a mint and optional pool to deterministic UUID5 `TokenIdentity`/`PoolIdentity` values, and `CanonicalDuplicateDetector` reports token/pool key collisions with prior source IDs while retaining duplicate deliveries for downstream idempotency. Synthetic event fixtures and replay contracts for all four venues live under `fixtures/providers/launchpad_dex/`. The adapter boundary is intentionally keyless; live protocol acceptance is a separate read-only gate and remains `BLOCKED_EXTERNAL` when no provider endpoint or credentials are configured.
+
+The analysis-only manual input path is exposed at `POST /v1/manual/mints`. It requires the configured `OPERATOR_API_TOKEN` bearer credential, returns `503` when operator authentication is not configured, validates a canonical mint and creates a deterministic `manual:<mint>` discovery candidate. It reports duplicate submissions without dropping them and always returns `execution_enabled: false`; it has no signing, quote, transaction or live-money path.
+
 ## Adapter requirements
 
 Every network adapter must implement:
