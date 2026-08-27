@@ -35,23 +35,23 @@
 - Consumes: TokenIdentity, Observation, QualityState, Provenance, ReasonCode, RiskAssessment, RiskFinding, and RiskSeverity.
 - Produces: TokenSecurityPolicy, TokenSecurityEvaluator.evaluate(candidate_id, token, observations, security_findings=(), now, config_hash) -> RiskAssessment.
 
-- [ ] **Step 1: Write failing tests for the deterministic authority policy.** Cover revoked mint/freeze authorities producing a fresh PASS, either active authority producing BLOCK with the exact hard-block reason, and a missing/unknown authority observation producing UNKNOWN with no execution eligibility.
-- [ ] **Step 2: Run the focused tests and confirm they fail because the evaluator is absent.**
+- [x] **Step 1: Write failing tests for the deterministic authority policy.** Cover revoked mint/freeze authorities producing a fresh PASS, either active authority producing BLOCK with the exact hard-block reason, and a missing/unknown authority observation producing UNKNOWN with no execution eligibility.
+- [x] **Step 2: Run the focused tests and confirm they fail because the evaluator is absent.**
 
 ~~~bash
 .venv/bin/pytest tests/unit/test_token_security.py -q
 ~~~
 
-- [ ] **Step 3: Add the minimal evaluator and extend the Helius normalized observation.** Parse only the normalized onchain.token_metadata payload; recognize spl-token-2022, preserve supported extension metadata as explainable values, make malformed or conflicting critical evidence fail closed, and calculate bounded confidence/penalties/reason codes deterministically. Treat third-party BLOCK findings as uncorroborated warnings and provider verification as an informational finding. Helius will retain extension names in the normalized payload without importing application policy.
-- [ ] **Step 4: Add freshness, Token-2022 and verification regression tests.** Assert stale evidence is UNKNOWN and ineligible, Token-2022 is retained without an automatic endorsement or bypass, malformed extension metadata is not silently accepted, severe RugCheck findings do not become sole-authority hard blocks, and verification never changes eligibility.
-- [ ] **Step 5: Run the unit suite, Ruff and mypy for the touched packages.**
+- [x] **Step 3: Add the minimal evaluator and extend the Helius normalized observation.** Parse only the normalized onchain.token_metadata payload; recognize spl-token-2022, preserve supported extension metadata as explainable values, make malformed or conflicting critical evidence fail closed, and calculate bounded confidence/penalties/reason codes deterministically. Treat third-party BLOCK findings as uncorroborated warnings and provider verification as an informational finding. Helius will retain extension names in the normalized payload without importing application policy.
+- [x] **Step 4: Add freshness, Token-2022 and verification regression tests.** Assert stale evidence is UNKNOWN and ineligible, Token-2022 is retained without an automatic endorsement or bypass, malformed extension metadata is not silently accepted, severe RugCheck findings do not become sole-authority hard blocks, and verification never changes eligibility.
+- [x] **Step 5: Run the unit suite, Ruff and mypy for the touched packages.**
 
 ~~~bash
 .venv/bin/pytest tests/unit/test_token_security.py -q
 make lint typecheck
 ~~~
 
-- [ ] **Step 6: Commit the evaluator checkpoint.**
+- [x] **Step 6: Commit the evaluator checkpoint.**
 
 ~~~bash
 git add packages/application/src/memeradar_application/token_security.py tests/unit/test_token_security.py

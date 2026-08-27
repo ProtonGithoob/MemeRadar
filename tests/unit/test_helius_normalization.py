@@ -59,6 +59,10 @@ def test_token_metadata_is_normalized_to_canonical_identity_and_observation() ->
                     "supply": "1000000",
                     "mint_authority": AUTHORITY,
                     "freeze_authority": None,
+                    "extensions": [
+                        {"type": "permanentDelegate"},
+                        {"type": "transferHook"},
+                    ],
                 },
             },
         )
@@ -84,12 +88,17 @@ def test_token_metadata_is_normalized_to_canonical_identity_and_observation() ->
     assert metadata.token_program is NormalizedTokenProgram.TOKEN_2022
     assert metadata.mint_authority.state is AuthorityState.ACTIVE
     assert metadata.freeze_authority.state is AuthorityState.REVOKED
+    assert metadata.extensions == ("permanent_delegate", "transfer_hook")
     assert metadata.quality_state is QualityState.FRESH
     assert len(observations) == 1
     assert isinstance(observations[0], Observation)
     assert observations[0].provenance.provider == "helius"
     assert observations[0].quality_state is QualityState.FRESH
     assert observations[0].token_id == token.id
+    assert observations[0].normalized_payload["token_extensions"] == (
+        "permanent_delegate",
+        "transfer_hook",
+    )
 
 
 def test_missing_authorities_remain_unknown_and_do_not_become_safe() -> None:

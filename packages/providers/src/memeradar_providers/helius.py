@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -145,6 +146,39 @@ def _optional_decimal(value: object, field: str) -> Decimal | None:
     return normalized
 
 
+def _extension_name(value: object) -> str:
+    if isinstance(value, Mapping):
+        value = value.get("type", value.get("name", value.get("extension", _MISSING)))
+    if not isinstance(value, str) or not value.strip():
+        raise ProviderSchemaError("invalid token extension")
+    normalized = re.sub(r"(?<!^)(?=[A-Z])", "_", value.strip())
+    normalized = re.sub(r"[^A-Za-z0-9]+", "_", normalized).strip("_").lower()
+    if not normalized or len(normalized) > 128:
+        raise ProviderSchemaError("invalid token extension")
+    return normalized
+
+
+def _normalize_extensions(value: object = _MISSING) -> tuple[str, ...]:
+    """Normalize Token-2022 extension names without interpreting their policy."""
+
+    if value is _MISSING or value is None:
+        return ()
+    if isinstance(value, Mapping):
+        nested = value.get("items", value.get("extensions", _MISSING))
+        if nested is not _MISSING:
+            return _normalize_extensions(nested)
+        values = (_extension_name(item) for item in value)
+    elif isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        values = (_extension_name(item) for item in value)
+    else:
+        raise ProviderSchemaError("invalid token extensions")
+    normalized: list[str] = []
+    for item in values:
+        if item not in normalized:
+            normalized.append(item)
+    return tuple(normalized)
+
+
 @dataclass(frozen=True, slots=True)
 class HeliusTokenMetadata:
     token: TokenIdentity
@@ -157,6 +191,8 @@ class HeliusTokenMetadata:
     ingested_at: datetime
     provenance: Provenance
     quality_state: QualityState
+    extensions: tuple[str, ...] = ()
+    extensions_reported: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.token, TokenIdentity):
@@ -176,6 +212,16 @@ class HeliusTokenMetadata:
         if self.provenance.observed_at > observed_at:
             raise ValueError("provenance observed_at must not be later than observed_at")
         object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        if isinstance(self.extensions, str | bytes | bytearray):
+            raise TypeError("extensions must be a sequence of strings")
+        normalized_extensions: list[str] = []
+        for extension in self.extensions:
+            normalized = require_text(extension, "extension", max_length=128).lower()
+            if normalized not in normalized_extensions:
+                normalized_extensions.append(normalized)
+        object.__setattr__(self, "extensions", tuple(normalized_extensions))
+        if not isinstance(self.extensions_reported, bool):
+            raise TypeError("extensions_reported must be a boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,6 +327,8 @@ def normalize_token_metadata(
     )
     raw_decimals = result.get("decimals", token_info.get("decimals", _MISSING))
     raw_supply = result.get("supply", token_info.get("supply", _MISSING))
+    raw_extensions = result.get("extensions", token_info.get("extensions", _MISSING))
+    extensions = _normalize_extensions(raw_extensions)
     decimals = _optional_int(raw_decimals, "decimals", maximum=255)
     supply = _optional_decimal(raw_supply, "supply")
     quality_state = _quality(token_program, mint_authority.state, freeze_authority.state)
@@ -295,6 +343,8 @@ def normalize_token_metadata(
         ingested_at=ingested_at,
         provenance=provenance,
         quality_state=quality_state,
+        extensions=extensions,
+        extensions_reported=raw_extensions is not _MISSING,
     )
 
 
@@ -707,6 +757,8 @@ class HeliusRpcAdapter(OnChainPort):
                 "freeze_authority": _authority_payload(metadata.freeze_authority),
                 "decimals": metadata.decimals,
                 "supply": None if metadata.supply is None else str(metadata.supply),
+                "token_extensions": metadata.extensions,
+                "token_extensions_reported": metadata.extensions_reported,
             },
             token_id=metadata.token.id,
         )
