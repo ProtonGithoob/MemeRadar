@@ -200,6 +200,30 @@ def test_confluence_replay_seam_is_packaged_and_safe():
         assert environment["AUTO_EXECUTION"] == "false"
 
 
+def test_social_provider_and_doctor_are_explicit_and_keyless():
+    from memeradar_providers.social import (
+        SOCIAL_PARSER_VERSION,
+        SOCIAL_PROVIDER,
+        SocialRestAdapter,
+    )
+
+    assert SocialRestAdapter.provider_name == SOCIAL_PROVIDER == "social"
+    assert SOCIAL_PARSER_VERSION == "social-search-v1"
+    social_fixture_dir = ROOT / "fixtures" / "providers" / "social"
+    assert (social_fixture_dir / "README.md").is_file()
+    assert (social_fixture_dir / "search.json").is_file()
+    assert (social_fixture_dir / "health.json").is_file()
+    makefile = (ROOT / "Makefile").read_text()
+    env_example = (ROOT / ".env.example").read_text()
+    assert "social-doctor:" in makefile
+    assert "SOCIAL_API_URL=" in env_example
+    assert "SOCIAL_API_KEY=" in env_example
+    assert "ANALYSIS_ONLY=true" in env_example
+    assert "PAPER_TRADING=true" in env_example
+    assert "MANUAL_EXECUTION=false" in env_example
+    assert "AUTO_EXECUTION=false" in env_example
+
+
 def test_birdeye_market_layer_and_doctor_are_explicit_and_keyless():
     from memeradar_providers.birdeye import (
         BIRDEYE_CHAIN,
