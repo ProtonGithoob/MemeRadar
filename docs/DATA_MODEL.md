@@ -189,6 +189,16 @@ Append-oriented normalized observations.
 - weight/confidence
 - evidence_refs
 
+The warm-path `HolderGraphAnalyzer` materializes these relationships from
+provider-independent transfer/funding observations before persistence. The
+bounded analysis defaults to one graph hop, at most 100 holder rows, 500
+edges and 500 nodes. Each normalized edge retains the relation type, aggregate
+amount/count, first/last event time, confidence, reason codes and every source
+ID used to build it. Pool, program and system addresses are classified and
+retained for auditability but are not treated as holder ownership; configured
+pool addresses and the creator relation are explicit configuration/evidence,
+not inferred from an arbitrary string.
+
 ## Market / holder data
 
 ### market_snapshots
@@ -211,6 +221,16 @@ Append-oriented normalized observations.
 - clustered_top concentration nullable
 - provider
 - data JSONB for bounded top holders
+
+Holder concentration values are Decimal ratios in the inclusive `0..1` range.
+`top1`, `top5` and `top10` are nullable when valid percentage evidence is
+missing or incomplete; `top10` may use a provider-supplied normalized summary
+only when fewer than ten valid holder rows are available. The bounded data
+payload records holder ranks, amounts/percentages, address classifications,
+excluded pool/program/system addresses, graph clusters and source evidence
+references. Every snapshot also preserves quality state (`FRESH`, `STALE`,
+`UNKNOWN`, `CONFLICTED` or `INVALID`), expiry and config/version metadata;
+non-fresh states never become safe complete evidence.
 
 ## Trading
 

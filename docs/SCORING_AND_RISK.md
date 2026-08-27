@@ -80,6 +80,33 @@ The deterministic `TokenSecurityEvaluator` consumes provider-independent Helius 
 
 The initial token-security assessment is versioned as `token-security-v1`, uses a five-minute critical-evidence TTL, records all provider/source references and config hash, and preserves `PASS`, `WARN`, `BLOCK` and `UNKNOWN` as distinct outcomes. `RiskAssessment.execution_eligible()` remains true only for a fresh explicit `PASS`; warnings, unknowns and stale evidence remain fail-closed.
 
+### Sprint 3.2 holder and wallet-graph rules
+
+`HolderGraphAnalyzer` consumes only normalized `market.holder_data` and
+allow-listed transfer/funding observations. It derives Decimal `top1`, `top5`
+and `top10` ratios from descending holder percentages, using a normalized
+provider top-ten summary only when fewer than ten valid rows are present. Pool,
+program and system addresses are identified by configured/public address
+lists, recorded as exclusions and removed from ownership concentration. The
+creator is labeled explicitly when supplied and is never silently treated as
+an unrelated holder.
+
+The graph is a bounded evidence view around creator/top-holder seeds. Its
+default limits are one hop, 100 holder rows, 500 edges and 500 nodes. Duplicate
+edges aggregate amounts and transfer counts while preserving first/last event
+times, provenance-derived source IDs, confidence and reason codes. Union-find
+components identify shared-funder and related-wallet clusters; the largest
+component percentage is exposed as `clustered_top` and must never be lower
+than the raw top-holder value. Example reason codes include
+`KNOWN_ADDRESSES_EXCLUDED`, `DIRECT_FUNDING_EDGE`, `TRANSFER_EDGE` and
+`SHARED_FUNDER_CLUSTER`.
+
+Holder and graph evidence has a five-minute default TTL. Missing, stale,
+conflicted, future-dated or invalid observations produce explicit quality
+states and nullable metrics rather than fabricated concentration. These
+snapshots are explainability inputs only: they cannot grant execution
+authority, clear a token-security hard block or change any operating mode.
+
 ## 5. Initial penalties
 
 Illustrative v1 penalty classes, calibrated later:
@@ -113,7 +140,7 @@ Unique buyers/sellers, buy/sell volume, maker diversity, transaction/maker ratio
 Unique-author mention acceleration, trusted-author quality, engagement quality, duplication/spam ratio and narrative novelty. Follower count alone must not dominate.
 
 ### HolderQuality
-Top1/top5/top10 effective concentration after identifying pools/system addresses where appropriate, plus clustered ownership and creator-related holdings.
+Top1/top5/top10 effective concentration after identifying pools, programs and system addresses, plus `clustered_top`, creator-related holdings and bounded funding/transfer relationships. Suspicious clustering is an evidence-backed penalty (up to -25), not an execution permission.
 
 ### Momentum
 Multi-window return/volume acceleration adjusted for volatility and parabolic-extension risk. Pure price increase is not automatically positive.

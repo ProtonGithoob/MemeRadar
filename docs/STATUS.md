@@ -4,15 +4,16 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`PHASE_3_SPRINT_3_2_IN_PROGRESS`
+`PHASE_3_SPRINT_3_2_COMPLETE_NEXT_SPRINT_3_3`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. The live portion of Gate P2 remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1 and 3.2 are complete for their keyless implementation and replay gates; live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
 - Completed: `Phase 2 / Gate P2 — Read-only discovery and independent enrichment acceptance` (keyless portion)
 - Completed: `Phase 3 / Sprint 3.1 — Authority / Token Security` (keyless portion)
-- In progress: `Phase 3 / Sprint 3.2 — Holder Concentration / Wallet Graph`
+- Completed: `Phase 3 / Sprint 3.2 — Holder Concentration / Wallet Graph` (keyless portion)
+- Next: `Phase 3 / Sprint 3.3 — Liquidity / Sellability / Wash Trading`
 
 ## Current operating policy
 
@@ -88,7 +89,12 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Helius Token-2022 normalization preserves extension names and reported/unreported state in the on-chain observation without coupling provider code to application policy.
 - [x] Independent read-only `RugCheckRestAdapter` maps official report-summary risks into provider-neutral findings, keeps verification informational and applies shared bounded transport/error handling.
 - [x] Redacted RugCheck fixtures, adapter/provider contracts, security composition tests, key-safe `make rugcheck-doctor`, safe environment placeholders and Compose smoke coverage.
-- [x] Sprint 3.2 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-3-sprint-3-2-holder-graph.md`; holder concentration and wallet-graph implementation is in progress.
+- [x] Sprint 3.2 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-3-sprint-3-2-holder-graph.md` and completed.
+- [x] Provider-independent holder concentration snapshots derive bounded top1/top5/top10 metrics with explicit freshness, nullable incomplete evidence and Decimal range validation.
+- [x] Known creator, configured pool, SPL Token/Token-2022/associated-token program and system addresses are classified, audited and excluded from ownership concentration where appropriate.
+- [x] Bounded creator/top-holder funding and transfer graphs aggregate duplicate evidence, retain first/last times, provenance/source references, confidence and deterministic reason codes.
+- [x] Union-find wallet clustering produces explainable shared-funder/related-wallet components and concentration-after-clustering metrics without execution authority.
+- [x] Synthetic wallet-graph fixtures, credential-free replay contracts and Compose safe-mode smoke coverage are committed and pass.
 
 ## Current sprint progress
 
@@ -107,6 +113,7 @@ The configuration loader rejects attempts to override these protected values.
 - Sprint 3.1 plan evidence: the implementation plan defines the provider-independent authority evaluator, independent RugCheck seam, key-safe doctor, fixture contracts, freshness/hard-gate tests, and final sprint quality gate.
 - Sprint 3.1 gate evidence: Helius authority/Token-2022 normalization, deterministic token-security evaluation, RugCheck summary normalization, provider doctor classifications, keyless composition and safe-mode smoke checks pass; live RugCheck acceptance remains externally blocked without endpoint configuration.
 - Sprint 3.2 plan evidence: the implementation plan defines bounded holder normalization, known-address classification, creator/top-holder graph traversal, union-find clustering, concentration-after-clustering, fixture replay and the synchronized keyless gate.
+- Sprint 3.2 gate evidence: holder/graph unit tests, redacted fixture replay, canonical-address exclusion, repeated-edge aggregation, out-of-depth filtering, clustering and Compose safe-mode smoke contracts pass; no provider SDK or live execution path enters the application module.
 
 ## Verification evidence
 
@@ -126,6 +133,11 @@ All commands below were run in the current checkout on 2026-08-27.
 - `.venv/bin/pytest tests/unit/test_rugcheck_doctor.py tests/contract/test_rugcheck_provider.py tests/contract/test_phase3_sprint3_1.py -q` — `10 passed`; optional-key `/ping` doctor behavior, redacted classifications, fixture replay and Helius+RugCheck composition pass.
 - `.venv/bin/pytest tests/smoke/test_compose_contract.py -q` — `7 passed`; local topology, provider imports, RugCheck doctor wiring and all four protected modes pass.
 - `make verify` after Sprint 3.1 — exit `0`; Ruff, mypy (`39 source files`), `180 passed, 3 skipped`, total branch-aware coverage `76%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
+- `.venv/bin/pytest tests/unit/test_holder_graph.py tests/contract/test_phase3_sprint3_2.py tests/smoke/test_compose_contract.py -q` — `16 passed`; holder normalization, address exclusion, freshness, bounded graph traversal, duplicate-edge aggregation, fixture replay, clustering and all-four-mode Compose smoke contracts pass.
+- `make verify` after Sprint 3.2 — exit `0`; Ruff, mypy (`40 source files`), `189 passed, 3 skipped`, total branch-aware coverage `76%`, frontend lint, frontend typecheck, Vitest (`1` test passed), Compose config, secret scan and migration contract all completed.
+- `make doctor` after Sprint 3.2 — exit `0`; local dependencies are `not_required`, external provider checks are `not_run`, and `analysis_only=true`, `paper_trading=true`, `manual_execution=false`, `auto_execution=false` are reported.
+- `docker compose -f infra/compose/docker-compose.yml config --quiet` after Sprint 3.2 — exit `0`; Compose topology and protected service modes remain valid.
+- `.venv/bin/python scripts/secret_scan.py` after Sprint 3.2 — exit `0`; holder-graph fixtures and documentation contain no tracked secret material.
 - `.venv/bin/pytest tests/contract/test_phase2_gate.py -q` — `1 passed`; keyless discovery/enrichment composition is deterministic and provider-independent at the application boundary.
 - `.venv/bin/mypy` — `Success: no issues found in 32 source files`.
 - `.venv/bin/pytest tests/unit/test_provider_contracts.py tests/unit/test_provider_transport.py tests/unit/test_provider_health.py tests/unit/test_provider_fixtures.py tests/contract/test_provider_adapters.py -q` — `23 passed`; provider ports, resilience, health/freshness/quota, redaction/fakes and normalized adapter contracts pass.
@@ -180,11 +192,13 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Gate P2 overall live acceptance: `BLOCKED_EXTERNAL` — the required real provider calls could not be attempted without configured read-only endpoint/credential access; the keyless composition evidence is not substituted for live success.
 - Sprint 3.1 Helius authority/Token-2022 and RugCheck fixture/contract acceptance: `PASS` — deterministic keyless evaluation, redacted fixtures, provider seam and doctor classifications pass.
 - Sprint 3.1 live RugCheck read-only acceptance: `BLOCKED_EXTERNAL` — `make rugcheck-doctor` found `RUGCHECK_API_URL` missing; no live call was attempted and no live success is claimed.
+- Sprint 3.2 holder concentration/wallet graph fixture and contract acceptance: `PASS` — deterministic normalized observations, bounded graph/cluster analysis, canonical-address exclusions and all protected modes pass without live credentials.
+- Sprint 3.2 live holder/graph provider acceptance: `BLOCKED_EXTERNAL` — Helius and Birdeye endpoint/credential configuration remains absent; no live holder or wallet-graph call was attempted and no live-provider success is claimed.
 - Birdeye, social/X, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 
 ## Blockers
 
-- No current implementation blocker. Helius, Birdeye, Sprint 2.4 live protocol acceptance, the live portion of Gate P2 and Sprint 3.1 live RugCheck acceptance remain externally blocked for missing endpoint/credential configuration; all keyless implementation and gate evidence is green. No live-provider success is claimed.
+- No current implementation blocker. Helius, Birdeye, Sprint 2.4 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance and Sprint 3.2 live holder/graph acceptance remain externally blocked for missing endpoint/credential configuration; all keyless implementation and gate evidence is green. No live-provider success is claimed.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -206,7 +220,11 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 3.1 RugCheck provider checkpoint: `8d13136` (`feat: add RugCheck risk provider seam`).
 - Latest pushed Sprint 3.1 doctor/composition checkpoint: `e36c8e3` (`test: add RugCheck doctor and token security contracts`). The final Sprint 3.1 documentation/status synchronization follows this checkpoint.
 - Latest pushed Sprint 3.1 documentation checkpoint: `3844c8b` (`docs: complete Sprint 3.1 token security checkpoint`). The status synchronization follows this checkpoint.
+- Latest pushed Sprint 3.2 application checkpoint: `a355dd4` (`feat: add bounded holder concentration graph analysis`).
+- Latest pushed Sprint 3.2 clustering correction: `5345f4a` (`fix: classify holder funding clusters`).
+- Latest pushed Sprint 3.2 fixture/contract checkpoint: `f7590d0` (`test: add holder graph replay contracts`).
+- The Sprint 3.2 documentation/status synchronization is the current checkpoint and records the exact keyless gate evidence above.
 
 ## Next task
 
-Continue `Phase 3 / Sprint 3.2 — Holder Concentration / Wallet Graph`: snapshot top holders and concentration metrics, identify pool/program/system addresses, build a bounded creator/top-holder funding and transfer graph, add cluster heuristics and concentration-after-clustering metrics, and record explainable evidence edges. Preserve all four safety modes and do not enable live-money execution.
+Start `Phase 3 / Sprint 3.3 — Liquidity / Sellability / Wash Trading`: implement liquidity depth/change and supported quote-based sellability/price-impact checks, add unique-maker, transaction-maker ratio, repeated-size, circular-flow and rapid round-trip heuristics, and produce an explainable `OrganicFlowScore`. Preserve all four safety modes, fail closed on critical UNKNOWN evidence and do not enable live-money execution.

@@ -74,18 +74,18 @@ git push origin main
 - Consumes: the Birdeye holder observation shape, synthetic normalized transfer observations, and HolderGraphAnalyzer.
 - Produces: deterministic fixture replay proving raw and clustered concentrations, bounded graph edges, canonical address exclusion, provenance/evidence references, and all-four-mode safety assertions.
 
-- [ ] **Step 1: Write failing fixture/composition contracts.** Load the redacted JSON fixtures, assert there are no credential-shaped fields, build normalized Observations with explicit provenance/timestamps, and assert the analyzer produces stable concentration/cluster/edge outputs.
-- [ ] **Step 2: Run the focused contract and smoke tests to confirm the new contract fails before fixture wiring exists.**
-- [ ] **Step 3: Add deterministic redacted fixtures and a composition contract.** Include at least three holder wallets, one shared funder, one known system/program address, one creator, repeated transfer evidence and one out-of-depth edge; assert repeated evidence is aggregated and the out-of-depth edge is excluded.
-- [ ] **Step 4: Extend the Compose smoke contract.** Assert HolderGraphAnalyzer imports, the holder-graph fixture path, and all protected operating modes remain unchanged.
-- [ ] **Step 5: Run the fixture/contract/smoke suites and Compose config.**
+- [x] **Step 1: Write failing fixture/composition contracts.** Load the redacted JSON fixtures, assert there are no credential-shaped fields, build normalized Observations with explicit provenance/timestamps, and assert the analyzer produces stable concentration/cluster/edge outputs.
+- [x] **Step 2: Run the focused contract and smoke tests to confirm the new contract fails before fixture wiring exists.**
+- [x] **Step 3: Add deterministic redacted fixtures and a composition contract.** Include at least three holder wallets, one shared funder, one known system/program address, one creator, repeated transfer evidence and one out-of-depth edge; assert repeated evidence is aggregated and the out-of-depth edge is excluded.
+- [x] **Step 4: Extend the Compose smoke contract.** Assert HolderGraphAnalyzer imports, the holder-graph fixture path, and all protected operating modes remain unchanged.
+- [x] **Step 5: Run the fixture/contract/smoke suites and Compose config.**
 
 ~~~bash
 .venv/bin/pytest tests/contract/test_phase3_sprint3_2.py tests/smoke/test_compose_contract.py -q
 docker compose -f infra/compose/docker-compose.yml config --quiet
 ~~~
 
-- [ ] **Step 6: Commit the fixture and contract checkpoint.**
+- [x] **Step 6: Commit the fixture and contract checkpoint.**
 
 ~~~bash
 git add fixtures/providers/wallet_graph tests/contract/test_phase3_sprint3_2.py tests/smoke/test_compose_contract.py
@@ -103,8 +103,8 @@ git push origin main
 - Modify: docs/STATUS.md
 - Modify: docs/superpowers/plans/2026-08-27-phase-3-sprint-3-2-holder-graph.md
 
-- [ ] **Step 1: Document the normalized holder/graph contracts.** Record nullable concentration semantics, exclusion/classification policy, graph bounds, cluster interpretation, evidence references, freshness behavior and lack of execution authority.
-- [ ] **Step 2: Run the Sprint 3.2 quality gate.**
+- [x] **Step 1: Document the normalized holder/graph contracts.** Record nullable concentration semantics, exclusion/classification policy, graph bounds, cluster interpretation, evidence references, freshness behavior and lack of execution authority.
+- [x] **Step 2: Run the Sprint 3.2 quality gate.**
 
 ~~~bash
 make verify
@@ -113,8 +113,8 @@ docker compose -f infra/compose/docker-compose.yml config --quiet
 ~~~
 
 Record exact test, type, coverage, safety-mode and Compose results.
-- [ ] **Step 3: Mark Sprint 3.2 complete only after the keyless gate passes.** Update docs/STATUS.md with completed work, exact verification results, provider acceptance, blockers, safety modes, Git checkpoint/sync state, and the exact Sprint 3.3 task.
-- [ ] **Step 4: Commit and push the synchronized Sprint 3.2 documentation checkpoint.**
+- [x] **Step 3: Mark Sprint 3.2 complete only after the keyless gate passes.** Update docs/STATUS.md with completed work, exact verification results, provider acceptance, blockers, safety modes, Git checkpoint/sync state, and the exact Sprint 3.3 task.
+- [x] **Step 4: Commit and push the synchronized Sprint 3.2 documentation checkpoint.**
 
 ~~~bash
 git add docs/DATA_MODEL.md docs/SCORING_AND_RISK.md docs/PROVIDERS.md docs/ROADMAP.md docs/STATUS.md docs/superpowers/plans/2026-08-27-phase-3-sprint-3-2-holder-graph.md

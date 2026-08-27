@@ -124,11 +124,17 @@ Sprint 3.1 keyless state: complete. Helius authority/Token-2022 normalization, p
 
 ### Sprint 3.2 — Holder Concentration / Wallet Graph
 
-- [ ] Snapshot top holders and concentration metrics.
-- [ ] Exclude/identify known pool/program/system addresses where appropriate.
-- [ ] Build bounded funding/transfer graph for creator/top holders.
-- [ ] Add cluster heuristics and concentration-after-clustering metrics.
-- [ ] Record explainable evidence edges.
+- [x] Snapshot top holders and concentration metrics.
+- [x] Exclude/identify known pool/program/system addresses where appropriate.
+- [x] Build bounded funding/transfer graph for creator/top holders.
+- [x] Add cluster heuristics and concentration-after-clustering metrics.
+- [x] Record explainable evidence edges.
+
+Sprint 3.2 keyless state: complete. Bounded holder snapshots, known-address
+classification, creator/top-holder transfer graphs, duplicate-edge evidence and
+connected-wallet concentration replay deterministically from fixtures. Live
+provider acceptance remains separate and is not claimed by this application
+contract.
 
 ### Sprint 3.3 — Liquidity / Sellability / Wash Trading
 

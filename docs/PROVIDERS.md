@@ -122,6 +122,39 @@ The evaluator consumes Helius-normalized `onchain.token_metadata` observations. 
 
 Reference contract: [RugCheck API Swagger](https://api.rugcheck.xyz/swagger/index.html) and its [raw API specification](https://api.rugcheck.xyz/swagger/doc.json).
 
+## Holder concentration / wallet graph analysis
+
+Sprint 3.2 adds the provider-independent `HolderGraphAnalyzer` in
+`packages/application/src/memeradar_application/holder_graph.py`. Birdeye or
+Helius adapters may supply normalized `market.holder_data` and transfer/
+funding observations, but provider response types and SDKs do not cross into
+the application module. Holder rows accept the normalized owner/address,
+amount and percentage aliases already emitted by the market adapters.
+
+The analyzer labels creator, configured pool, known SPL Token/Token-2022/
+associated-token programs and the system address. Excluded addresses remain in
+the snapshot audit data but do not inflate holder concentration. It derives
+`top1`, `top5`, `top10` and optional `clustered_top` ratios as Decimal values,
+preserves nullable metrics for incomplete evidence, and attaches provider
+source IDs, provenance, quality state, expiry, reason codes and config hash.
+
+The wallet graph accepts only normalized transfer/funding kinds, starts from
+creator/top-holder seeds and applies explicit bounds (default: one hop, 100
+holder rows, 500 edges and 500 nodes). Repeated source events are aggregated
+into `funded_by` or `transfer` edges without losing transfer count, amount,
+first/last timestamps or evidence references. Connected components use
+explainable `SHARED_FUNDER_CLUSTER`/`RELATED_WALLET_CLUSTER` reason codes to
+calculate concentration after clustering. `FRESH` evidence expires after five
+minutes; stale, unknown, conflicted, future-dated or invalid evidence remains
+non-authoritative and fail-closed. This analysis has no quote, signing,
+execution or operating-mode authority.
+
+Keyless replay fixtures and contracts are stored under
+`fixtures/providers/wallet_graph/`. They include a shared funder, repeated
+evidence, known system/program addresses and a deliberately out-of-depth edge;
+they are synthetic and contain no credentials. Live holder/graph provider
+acceptance remains separate from this deterministic application contract.
+
 ## Adapter requirements
 
 Every network adapter must implement:
