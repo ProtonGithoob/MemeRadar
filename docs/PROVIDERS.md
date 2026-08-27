@@ -266,6 +266,37 @@ fixture fields. Live wallet-history/graph acceptance remains
 `BLOCKED_EXTERNAL` without a configured read-only chain/provider endpoint and
 credential; fixture PASS is not live-provider PASS.
 
+## Social / X read layer
+
+Sprint 5.1 adds the provider-local `SocialRestAdapter` in
+`packages/providers/src/memeradar_providers/social.py`. It is a bounded,
+read-only HTTPS adapter for a compliant social/X search service configured by
+the operator. The service contract is intentionally narrow: `GET /v1/search`
+returns post records and pagination metadata, and `GET /health` provides the
+doctor check. The adapter sends an optional configured API key only as a
+Bearer header, forwards a correlation ID, and retains only safe rate-limit
+metadata. It never uses cookies, browser sessions, brittle scraping, arbitrary
+URL fetches or write-capable social endpoints.
+
+The normalizer accepts common post/author aliases, canonicalizes UTC timestamps
+and bounded engagement/follower metrics, and preserves post/author IDs and
+provider provenance. It extracts syntactically valid Solana mint addresses,
+`$TICKER` values and HTTPS canonical links without treating a ticker as proof
+of token identity. URL/mention-insensitive SHA-256 text fingerprints identify
+copied-text clusters; exact duplicate source IDs are collapsed while
+conflicting duplicates fail as schema errors. All normalized mentions remain
+freshness-aware advisory evidence and carry no execution authority.
+
+`make social-doctor` performs one bounded read-only `/health` call when both
+`SOCIAL_API_URL` and `SOCIAL_API_KEY` are configured. The redacted JSON report
+contains configuration presence, network/auth/schema status, latency,
+rate-limit metadata and the four protected operating modes. Missing
+configuration, unavailable network access and rate limiting are
+`BLOCKED_EXTERNAL`; authentication or schema failures are `FAIL`. Synthetic
+search/health fixtures and keyless contracts live under
+`fixtures/providers/social/`. The current checkout has no social endpoint or
+credential configured, so no live provider success is claimed.
+
 ## Adapter requirements
 
 Every network adapter must implement:

@@ -121,11 +121,22 @@ Append-oriented normalized observations.
 - provider_post_id unique/provider
 - posted_at/observed_at
 - text_fingerprint
-- referenced_mint/ticker/url
+- referenced_mint/ticker/canonical_links
 - metrics JSONB
 - duplicate_cluster nullable
 - spam_probability nullable
 - source_reference nullable
+
+The Phase 5.1 warm-path `SocialMention` is the provider-independent form of a
+read-only post. It preserves the provider post ID, author ID, ordered
+`posted_at`/`observed_at`/`ingested_at` timestamps, `Provenance`, quality state,
+first referenced mint/ticker and HTTPS-only canonical links. Metrics are
+normalized to bounded non-negative integers where present; the deterministic
+`text_fingerprint` removes URL and mention presentation differences so
+copied-text posts can share a `duplicate_cluster`. Exact duplicate source IDs
+are idempotently collapsed and conflicting records are rejected. The
+`SocialRestAdapter` performs no persistence, browser scraping or write call;
+physical social tables remain the later persistence target.
 
 ### narrative_snapshots
 - id

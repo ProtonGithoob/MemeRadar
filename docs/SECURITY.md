@@ -18,6 +18,15 @@ Use environment/secret-manager references. `.env.example` contains names and saf
 
 The Sprint 3.1 RugCheck integration is read-only. `RUGCHECK_API_KEY`, when needed, is sent only as an `Authorization: Bearer ...` header; the adapter rejects credential-bearing base URLs and does not include provider response bodies in errors. `make rugcheck-doctor` reports configuration presence rather than values and returns `BLOCKED_EXTERNAL` when no endpoint is configured. RugCheck severity and verification are advisory inputs: on-chain authority evidence remains the deterministic security authority, and provider verification is never treated as an endorsement.
 
+The Sprint 5.1 social integration is also read-only. `SOCIAL_API_KEY` is sent
+only as a Bearer header; credential-bearing URLs, cookies, browser session
+state, fragments and unsupported links are rejected or ignored. The adapter
+does not scrape, fetch post-linked URLs or expose a write endpoint. Post text,
+tickers, links, author metrics and copied-text clusters are untrusted
+corroborating evidence, never token identity proof or an execution override.
+`make social-doctor` reports only presence/status metadata and never emits the
+credential.
+
 ## Operating modes
 
 Default and mandatory until roadmap gates explicitly unlock:

@@ -214,11 +214,18 @@ results remain advisory. Live wallet-history/graph acceptance remains
 
 ### Sprint 5.1 — Social Provider Seam
 
-- [ ] Define compliant X/social ingestion adapter(s).
-- [ ] Extract mint addresses, tickers and canonical links.
-- [ ] Normalize post/author metrics and timestamps.
-- [ ] Implement dedupe and copied-text fingerprinting.
-- [ ] Add provider doctor and fixtures.
+- [x] Define compliant X/social ingestion adapter(s).
+- [x] Extract mint addresses, tickers and canonical links.
+- [x] Normalize post/author metrics and timestamps.
+- [x] Implement dedupe and copied-text fingerprinting.
+- [x] Add provider doctor and fixtures.
+
+Sprint 5.1 keyless state: complete. The read-only social adapter, normalized
+`SocialMention` contract, redacted deterministic replay fixtures, provider
+doctor and contract/smoke tests pass without credentials or an LLM. Social
+evidence remains corroborating/advisory, copied-text and conflicting-duplicate
+handling is deterministic, and live social acceptance is
+`BLOCKED_EXTERNAL` when endpoint/key configuration is absent.
 
 ### Sprint 5.2 — Author Trust and Social Velocity
 
