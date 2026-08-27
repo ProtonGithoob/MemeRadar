@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "id": "So11111111111111111111111111111111111111112",
+    "interface": "Fungible",
+    "token_info": {
+      "decimals": 6,
+      "supply": "1000000",
+      "token_program": "spl-token-2022",
+      "mint_authority": "11111111111111111111111111111111",
+      "freeze_authority": null
+    }
+  }
+}

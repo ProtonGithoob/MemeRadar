@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "context": {
+      "slot": 123
+    },
+    "value": {
+      "data": [
+        "",
+        "base64"
+      ],
+      "executable": false,
+      "lamports": 42,
+      "owner": "Vote111111111111111111111111111111111111111",
+      "rentEpoch": 0
+    }
+  }
+}
