@@ -1,0 +1,32 @@
+{
+  "lpLockedPct": 0,
+  "mint": "So11111111111111111111111111111111111111112",
+  "risks": [
+    {
+      "description": "Low amount of liquidity in the token pool",
+      "level": "warn",
+      "name": "Low Liquidity",
+      "score": 771,
+      "value": "$10.00"
+    },
+    {
+      "description": "Mint authority remains configured",
+      "level": "danger",
+      "name": "Mint Authority",
+      "score": 5000,
+      "value": "configured"
+    },
+    {
+      "description": "The provider returned a level not known by this parser",
+      "level": "future-level",
+      "name": "Unclassified Signal",
+      "score": 1,
+      "value": ""
+    }
+  ],
+  "score": 5772,
+  "score_normalised": 12,
+  "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "tokenType": "",
+  "verification": "not_verified"
+}

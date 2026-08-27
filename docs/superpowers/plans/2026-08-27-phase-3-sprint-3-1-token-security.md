@@ -73,18 +73,18 @@ git push origin main
 - Consumes: RiskDataPort, RiskDataRequest, RiskFinding, RiskSeverity, ProviderRequestContext, TokenIdentity, ProviderTransport, and existing classified provider errors.
 - Produces: RugCheckRestAdapter.assess(request) -> tuple[RiskFinding, ...], RugCheckRestAdapter.check_health(context), bounded transport behavior, and deterministic report normalization.
 
-- [ ] **Step 1: Write failing adapter/fixture tests.** Assert the official summary path and correlation header, optional bearer header handling without query credentials, mapping of risks[].level to provider-neutral severities, explicit informational verification, source/provenance timestamps, invalid-schema rejection, and timeout/auth classification.
-- [ ] **Step 2: Run the focused tests and confirm the missing adapter/fixtures fail.**
-- [ ] **Step 3: Implement the adapter with an injected httpx.AsyncClient, clock, and ProviderTransport.** Validate HTTPS base URLs and token addresses, call /v1/tokens/{mint}/report/summary read-only, preserve safe rate-limit metadata, map danger/critical to BLOCK only at the provider-finding layer, map warn to WARN, and retain verification as INFO. Never include raw report bodies or credential values in errors or representations.
-- [ ] **Step 4: Add redacted deterministic fixtures and replay tests.** Include one no-risk Token-2022 summary and one summary with warning/danger risks; reject missing/non-list risks and mismatched mint identity where applicable.
-- [ ] **Step 5: Run the adapter suite and touched-package quality checks.**
+- [x] **Step 1: Write failing adapter/fixture tests.** Assert the official summary path and correlation header, optional bearer header handling without query credentials, mapping of risks[].level to provider-neutral severities, explicit informational verification, source/provenance timestamps, invalid-schema rejection, and timeout/auth classification.
+- [x] **Step 2: Run the focused tests and confirm the missing adapter/fixtures fail.**
+- [x] **Step 3: Implement the adapter with an injected httpx.AsyncClient, clock, and ProviderTransport.** Validate HTTPS base URLs and token addresses, call /v1/tokens/{mint}/report/summary read-only, preserve safe rate-limit metadata, map danger/critical to BLOCK only at the provider-finding layer, map warn to WARN, and retain verification as INFO. Never include raw report bodies or credential values in errors or representations.
+- [x] **Step 4: Add redacted deterministic fixtures and replay tests.** Include one no-risk Token-2022 summary and one summary with warning/danger risks; reject missing/non-list risks and mismatched mint identity where applicable.
+- [x] **Step 5: Run the adapter suite and touched-package quality checks.**
 
 ~~~bash
 .venv/bin/pytest tests/unit/test_rugcheck.py -q
 make lint typecheck
 ~~~
 
-- [ ] **Step 6: Commit the provider checkpoint.**
+- [x] **Step 6: Commit the provider checkpoint.**
 
 ~~~bash
 git add packages/providers/src/memeradar_providers/rugcheck.py tests/unit/test_rugcheck.py fixtures/providers/rugcheck
