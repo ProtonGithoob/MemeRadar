@@ -4,14 +4,14 @@ Last updated: 2026-08-27
 
 ## Current verdict
 
-`PHASE_2_KEYLESS_GATE_COMPLETE_NEXT_SPRINT_3_1`
+`PHASE_3_SPRINT_3_1_IN_PROGRESS`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. The live portion of Gate P2 remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
 - Completed: `Phase 2 / Gate P2 — Read-only discovery and independent enrichment acceptance` (keyless portion)
-- Next: `Phase 3 / Sprint 3.1 — Authority / Token Security`
+- In progress: `Phase 3 / Sprint 3.1 — Authority / Token Security`
 
 ## Current operating policy
 
@@ -82,6 +82,7 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Synthetic launchpad/DEX fixtures and replay contracts for all four protocol adapters with no credentials or provider SDK dependency.
 - [x] Sprint 2.4 roadmap, provider/security documentation and Compose runtime smoke checks reconciled; live protocol acceptance remains isolated as `BLOCKED_EXTERNAL`.
 - [x] Gate P2 keyless composition contract connecting Birdeye discovery to independent Helius enrichment with shared canonical token identity and separate provenance.
+- [x] Sprint 3.1 implementation plan recorded at `docs/superpowers/plans/2026-08-27-phase-3-sprint-3-1-token-security.md`; authority/token-security implementation is in progress.
 
 ## Current sprint progress
 
@@ -97,6 +98,7 @@ The configuration loader rejects attempts to override these protected values.
 - Sprint 2.4 plan recorded in `docs/superpowers/plans/2026-08-27-phase-2-sprint-2-4-launchpad-dex-coverage.md` and completed.
 - Sprint 2.4 gate evidence: protocol parser/identity tests, manual service/API tests, fixture contracts and runtime smoke checks pass; rebuilt API/worker images import all four protocol adapters and the manual API while retaining all four safe modes.
 - Gate P2 keyless acceptance evidence: `tests/contract/test_phase2_gate.py` composes a Birdeye new-listing discovery fixture with an independent Helius token-enrichment fixture; both preserve the same canonical token UUID and separate provider provenance.
+- Sprint 3.1 plan evidence: the implementation plan defines the provider-independent authority evaluator, independent RugCheck seam, key-safe doctor, fixture contracts, freshness/hard-gate tests, and final sprint quality gate.
 
 ## Verification evidence
 
