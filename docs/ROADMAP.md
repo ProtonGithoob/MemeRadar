@@ -192,12 +192,19 @@ results cannot authorize execution. Live wallet-history acceptance remains
 
 ### Sprint 4.3 — Confluence
 
-- [ ] Detect independent smart-wallet entries/exits.
-- [ ] Detect correlated/clustered wallets so one actor is not counted as many.
-- [ ] Emit confluence and distribution events.
-- [ ] Add token-level smart-money component score.
+- [x] Detect independent smart-wallet entries/exits.
+- [x] Detect correlated/clustered wallets so one actor is not counted as many.
+- [x] Emit confluence and distribution events.
+- [x] Add token-level smart-money component score.
 
 **Gate P4:** wallet score and confluence can be replayed from fixtures and explain every component.
+
+Sprint 4.3 keyless state: complete. Fresh qualified wallet scores and FIFO
+round trips replay independent entries/exits, transitive graph clusters,
+confluence and distribution events, and a bounded token-level smart-money
+component score. Missing/stale/future critical evidence fails closed and all
+results remain advisory. Live wallet-history/graph acceptance remains
+`BLOCKED_EXTERNAL` without configured read-only provider access.
 
 ---
 

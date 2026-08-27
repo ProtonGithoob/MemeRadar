@@ -239,6 +239,33 @@ the scoring seam without any live provider call. Live wallet-history acceptance
 remains `BLOCKED_EXTERNAL` until a configured read-only chain/provider path is
 available.
 
+## Smart-money confluence and clustering
+
+Sprint 4.3 adds the provider-independent `ConfluenceAnalyzer` in
+`packages/application/src/memeradar_application/confluence.py`. It consumes
+`SmartWalletScore`, `WalletTrackingSnapshot` and the existing
+`WalletGraphSnapshot`/`WalletGraphEdge` application contracts; provider SDK
+types, HTTP clients and persistence models do not cross this seam. Fresh graph
+relationships are unioned transitively, including intermediary nodes, so
+correlated wallets do not multiply token confluence. The analyzer never
+infers common control from coincident timestamps alone.
+
+The analyzer emits explainable `ENTRY`, `EXIT`, `CONFLUENCE` and `DISTRIBUTION`
+events and a bounded `TokenSmartMoneyScore` with component/penalty maps,
+cluster counts, confidence, quality, reason codes and complete provenance and
+evidence references. It rejects conflicting duplicate inputs, deduplicates
+equivalent replay deliveries and excludes future activity. Missing or
+non-fresh graph evidence for multiple qualified wallets is an explicit
+fail-closed `UNKNOWN` result; no confluence event is claimed in that state.
+
+Credential-free replay inputs are stored under
+`fixtures/providers/confluence/`, including fresh correlated-wallet and stale
+graph cases. The Sprint 4.3 contract and Compose smoke tests verify deterministic
+replay, safe modes, provider independence and absence of credential-shaped
+fixture fields. Live wallet-history/graph acceptance remains
+`BLOCKED_EXTERNAL` without a configured read-only chain/provider endpoint and
+credential; fixture PASS is not live-provider PASS.
+
 ## Adapter requirements
 
 Every network adapter must implement:

@@ -224,6 +224,34 @@ deduplicated by immutable token/wallet/timestamps/quantity/source evidence;
 future outcomes are excluded and mark the score invalid rather than becoming
 look-ahead data. A recommendation never mutates the explicit registry tier.
 
+### smart_money_confluence_snapshots
+- id
+- token_id
+- as_of/expires_at
+- confluence_version
+- smart_money_score/confidence
+- qualified_wallet_count/independent_cluster_count
+- entry/exit wallet and cluster counts
+- confluence/distribution event counts
+- components JSONB (`entry_breadth`, `entry_quality`, `independence`, `exit_pressure`)
+- penalties JSONB (`distribution`)
+- events JSONB
+- provenance/evidence_refs/reason_codes JSONB
+- config_hash
+
+Sprint 4.3's warm-path `ConfluenceAnalyzer` consumes fresh `SmartWalletScore`,
+`WalletTrackingSnapshot` and the existing bounded `WalletGraphSnapshot`
+relationship seam. Completed FIFO slices produce entry/exit event records;
+fresh graph edges are unioned transitively so wallets connected through an
+observed intermediary count as one independent cluster. Missing or non-fresh
+graph evidence for multiple qualified wallets is `UNKNOWN`, not proof of
+independence, and confluence is withheld. `TokenSmartMoneyScore` retains all
+event timestamps, cluster IDs, member addresses, provenance, evidence,
+components, penalties, confidence, quality, reasons and config/version data.
+It is advisory only and has no execution authority. No physical migration is
+required for this keyless warm-path checkpoint; persistence remains a later
+wallet-intelligence task.
+
 ### wallet_graph_edges
 - id
 - from_wallet_id/to_wallet_id

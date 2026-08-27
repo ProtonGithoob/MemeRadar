@@ -188,6 +188,51 @@ registry tier remains blocked, and no small or non-fresh sample can receive a
 Tier-A recommendation. Recommendations are returned as immutable explainable
 data and never mutate the registry or authorize execution.
 
+### Sprint 4.3 confluence and smart-money component rules
+
+`ConfluenceAnalyzer` qualifies only fresh `SmartWalletScore` records whose
+recommendation is `TIER_A` or `TIER_B`, score is at least `60`, confidence is
+at least `0.60`, and matching wallet-tracking snapshots are fresh. Completed
+FIFO round trips within the default 15-minute entry/exit windows produce
+wallet-level `ENTRY` and `EXIT` events with the wallet, cluster, quantity,
+timestamps, provenance and evidence references intact.
+
+The analyzer consumes the existing bounded `WalletGraphSnapshot` relationship
+evidence. Its union-find clustering includes non-qualifying intermediary nodes
+and is transitive, so two qualified wallets connected through one observed
+funder count as one actor cluster. Timing alone never creates a cluster. When
+multiple qualified wallets have no matching graph snapshot, or graph evidence
+is stale/unknown/conflicted/invalid, independent counts are not trusted and a
+fresh `CONFLUENCE` event is withheld. Graph-linked exits still produce
+non-fresh distribution diagnostics, never a positive execution permission.
+
+For a fresh token result, the published components are bounded to `0..100`:
+
+```text
+entry_breadth = min(100, 100 * entry_cluster_count / minimum_independent_wallets)
+entry_quality = mean(score of unique wallets with a recent entry)
+independence = 100 * entry_cluster_count / qualified_wallet_count
+exit_pressure = 100 * exit_cluster_count / max(entry_cluster_count, 1)
+distribution_penalty = min(25, 25 * exit_pressure / 100)
+smart_money_component = clamp(
+    0.40 * entry_breadth
+  + 0.30 * entry_quality
+  + 0.30 * independence
+  - distribution_penalty,
+  0,
+  100,
+)
+```
+
+At least two independent entry clusters inside the entry window emit one
+`CONFLUENCE` event. Exits emit one `DISTRIBUTION` event per exit cluster.
+Future activity is invalid and excluded; duplicate snapshots/outcomes are
+idempotent and conflicting duplicates are rejected. Any critical non-fresh
+state forces the published component score and confidence to zero while
+retaining diagnostic components, events, provenance, evidence and reason
+codes. `TokenSmartMoneyScore` is advisory and its execution predicate is
+always false.
+
 ## 5. Initial penalties
 
 Illustrative v1 penalty classes, calibrated later:
