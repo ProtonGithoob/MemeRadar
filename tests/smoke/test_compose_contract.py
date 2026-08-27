@@ -94,6 +94,22 @@ def test_token_security_and_rugcheck_seam_are_explicit_and_safe():
     assert "AUTO_EXECUTION=false" in env_example
 
 
+def test_holder_graph_replay_seam_is_packaged_and_safe():
+    from memeradar_application.holder_graph import HolderGraphAnalyzer, HolderGraphPolicy
+
+    assert HolderGraphAnalyzer
+    assert HolderGraphPolicy().max_graph_depth == 1
+    assert (ROOT / "fixtures" / "providers" / "wallet_graph" / "holder_data.json").is_file()
+    assert (ROOT / "fixtures" / "providers" / "wallet_graph" / "transfers.json").is_file()
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
+
+
 def test_birdeye_market_layer_and_doctor_are_explicit_and_keyless():
     from memeradar_providers.birdeye import (
         BIRDEYE_CHAIN,

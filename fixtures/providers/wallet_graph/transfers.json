@@ -1,0 +1,63 @@
+{
+  "schema": "memeradar-transfer-v1",
+  "captured_at": "2026-08-27T12:59:30Z",
+  "mint_address": "So11111111111111111111111111111111111111112",
+  "events": [
+    {
+      "kind": "wallet.transfer",
+      "source_id": "transfer:1",
+      "observed_at": "2026-08-27T12:59:30+00:00",
+      "from_address": "11111111111111111111111111111115",
+      "to_address": "11111111111111111111111111111112",
+      "amount": "10"
+    },
+    {
+      "kind": "wallet.transfer",
+      "source_id": "transfer:2",
+      "observed_at": "2026-08-27T12:59:31+00:00",
+      "from_address": "11111111111111111111111111111115",
+      "to_address": "11111111111111111111111111111113",
+      "amount": "12"
+    },
+    {
+      "kind": "wallet.transfer",
+      "source_id": "transfer:3",
+      "observed_at": "2026-08-27T12:59:32+00:00",
+      "from_address": "11111111111111111111111111111115",
+      "to_address": "11111111111111111111111111111113",
+      "amount": "3"
+    },
+    {
+      "kind": "wallet.transfer",
+      "source_id": "transfer:4",
+      "observed_at": "2026-08-27T12:59:33+00:00",
+      "from_address": "11111111111111111111111111111112",
+      "to_address": "11111111111111111111111111111114",
+      "amount": "1"
+    },
+    {
+      "kind": "wallet.transfer",
+      "source_id": "transfer:5-out-of-depth",
+      "observed_at": "2026-08-27T12:59:34+00:00",
+      "from_address": "11111111111111111111111111111114",
+      "to_address": "11111111111111111111111111111118",
+      "amount": "1"
+    },
+    {
+      "kind": "wallet.transfer",
+      "source_id": "transfer:system-excluded",
+      "observed_at": "2026-08-27T12:59:35+00:00",
+      "from_address": "11111111111111111111111111111111",
+      "to_address": "11111111111111111111111111111112",
+      "amount": "99"
+    },
+    {
+      "kind": "wallet.transfer",
+      "source_id": "transfer:program-excluded",
+      "observed_at": "2026-08-27T12:59:36+00:00",
+      "from_address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "to_address": "11111111111111111111111111111113",
+      "amount": "8"
+    }
+  ]
+}

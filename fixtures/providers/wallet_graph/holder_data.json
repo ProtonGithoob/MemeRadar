@@ -1,0 +1,49 @@
+{
+  "schema": "memeradar-holder-v1",
+  "captured_at": "2026-08-27T12:59:00Z",
+  "mint_address": "So11111111111111111111111111111111111111112",
+  "holder_count": 100,
+  "top10_hold_percent": 0.75,
+  "holders": [
+    {
+      "owner": "11111111111111111111111111111112",
+      "amount": "30",
+      "percentage": "0.30"
+    },
+    {
+      "owner": "11111111111111111111111111111113",
+      "amount": "20",
+      "percentage": "0.20"
+    },
+    {
+      "owner": "11111111111111111111111111111114",
+      "amount": "10",
+      "percentage": "0.10"
+    },
+    {
+      "owner": "11111111111111111111111111111116",
+      "amount": "5",
+      "percentage": "0.05"
+    },
+    {
+      "owner": "11111111111111111111111111111118",
+      "amount": "4",
+      "percentage": "0.04"
+    },
+    {
+      "owner": "11111111111111111111111111111115",
+      "amount": "3",
+      "percentage": "0.03"
+    },
+    {
+      "owner": "11111111111111111111111111111111",
+      "amount": "20",
+      "percentage": "0.20"
+    },
+    {
+      "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "amount": "8",
+      "percentage": "0.08"
+    }
+  ]
+}
