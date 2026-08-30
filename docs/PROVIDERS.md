@@ -110,6 +110,25 @@ Sprint 2.4 adds provider-local `PumpFunAdapter`, `PumpSwapAdapter`, `RaydiumAdap
 
 The analysis-only manual input path is exposed at `POST /v1/manual/mints`. It requires the configured `OPERATOR_API_TOKEN` bearer credential, returns `503` when operator authentication is not configured, validates a canonical mint and creates a deterministic `manual:<mint>` discovery candidate. It reports duplicate submissions without dropping them and always returns `execution_enabled: false`; it has no signing, quote, transaction or live-money path.
 
+The E2.5 rich lifecycle extension adds schema-v2 `ProtocolEventType` values for
+launch, trade, bonding-curve progress, graduation/migration, pool creation,
+creator-fee claims and fee-recipient changes. `ProtocolEventOrigin` keeps
+native protocol facts separate from derived classifications; for example,
+`WHALE_TRADE` is `DERIVED` only when an explicit deterministic trade-size flag
+is present. A reliable integer `bonding_curve_progress_bps` value is validated
+in the inclusive `0..10000` range and is retained as feature-ready evidence.
+
+`ParsedProtocolEvent.to_observation()` maps rich events to provider-neutral
+`protocol.lifecycle` observations with deterministic IDs, schema/parser
+versions, venue/source provenance and ordered event timestamps. The injected
+`ProtocolEventStreamFallback` consumes an async stream first, retries only
+bounded transport outages, sorts by event time, retains duplicate deliveries
+for downstream idempotency and invokes one bounded poll fallback after the
+retry budget. It has no network client, persistence, signer or execution
+authority. Synthetic Pump.fun/PumpSwap replay data and malformed/duplicate
+contracts live in `fixtures/providers/launchpad_dex/`; live protocol access
+remains a separate `BLOCKED_EXTERNAL` acceptance.
+
 ## RugCheck / token-security risk layer
 
 Sprint 3.1 adds the provider-local `RugCheckRestAdapter` in `packages/providers/src/memeradar_providers/rugcheck.py`. It performs a read-only `GET /v1/tokens/{id}/report/summary` request, validates the official summary shape, and maps each `risks[]` item into an application `RiskFinding` with the requested token, source ID, observation timestamp and `QualityState.FRESH`. The adapter accepts an optional JWT through the `Authorization: Bearer ...` header; it never places credentials in a URL, report body, fixture, exception or doctor output. The adapter uses the shared bounded transport policy and exposes only safe rate-limit metadata.

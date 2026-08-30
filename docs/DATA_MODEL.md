@@ -382,6 +382,41 @@ retained for auditability but are not treated as holder ownership; configured
 pool addresses and the creator relation are explicit configuration/evidence,
 not inferred from an arbitrary string.
 
+## Protocol lifecycle evidence
+
+### protocol_lifecycle_observations
+
+This is a logical view over the append-only `observations` table, not a new
+physical migration for the keyless extension.
+
+- kind: `protocol.lifecycle`
+- token_id (canonical UUID)
+- venue and source_id
+- raw event_type and canonical protocol_event_type
+- event_origin (`NATIVE` or `DERIVED`)
+- schema_version and parser_version
+- occurred_at/observed_at/ingested_at
+- pool_id/pool address and quote mint when present
+- normalized_payload JSONB with safe protocol fields
+- quality_state and provenance
+
+Schema-v2 lifecycle events cover launch, trade, bonding-curve progress,
+graduation, migration, pool creation, creator-fee claims and fee-recipient
+changes. A reliable `bonding_curve_progress_bps` value is retained only in the
+inclusive `0..10000` range. `WHALE_TRADE` is a derived classification and must
+never be stored or explained as a native protocol fact. Duplicate source
+deliveries retain the same deterministic observation identity so persistence
+can apply its idempotency policy without losing replay evidence; event-time
+ordering is independent of delivery order.
+
+Graduation/migration and creator-fee/recipient observations are timeline,
+risk and exit evidence only. They do not have an intrinsic positive or
+negative score, and missing or non-fresh critical evidence remains
+`UNKNOWN`. Phase 6 correlation consumes these observations alongside social,
+wallet and market evidence; no lifecycle observation can authorize execution
+or clear a deterministic hard risk gate. No physical protocol migration is
+introduced for this warm-path checkpoint.
+
 ## Market / holder data
 
 ### market_snapshots

@@ -139,7 +139,7 @@ credentials or endpoints are absent.
 
 ### Tasks
 
-- [ ] Extend typed protocol event enum/schema with supported forms of:
+- [x] Extend typed protocol event enum/schema with supported forms of:
   - `LAUNCH`;
   - `TRADE`;
   - `BONDING_CURVE_PROGRESS`;
@@ -148,16 +148,29 @@ credentials or endpoints are absent.
   - `WHALE_TRADE` (derived classification, not protocol fact when appropriate);
   - `CREATOR_FEE_CLAIM`;
   - `FEE_RECIPIENT_CHANGE`/CTO-like fee redirection.
-- [ ] Clearly distinguish native protocol facts from derived classifications.
-- [ ] Add parser/version/provenance to each normalized event.
-- [ ] Implement stream-first consumer with bounded reconnect and polling fallback where a legal/documented polling source exists.
-- [ ] Add deterministic fixture replay for event ordering, duplicates and malformed transactions.
-- [ ] Derive bonding-curve progress feature where state is reliably available.
-- [ ] Feed graduation/migration/creator-fee/fee-recipient events into timeline and risk/exit evidence without hard-coding them as positive/negative.
+- [x] Clearly distinguish native protocol facts from derived classifications.
+- [x] Add parser/version/provenance to each normalized event.
+- [x] Implement stream-first consumer with bounded reconnect and polling fallback where a legal/documented polling source exists.
+- [x] Add deterministic fixture replay for event ordering, duplicates and malformed transactions.
+- [x] Derive bonding-curve progress feature where state is reliably available.
+- [x] Feed graduation/migration/creator-fee/fee-recipient events into timeline and risk/exit evidence without hard-coding them as positive/negative.
 
 **License rule:** do not copy code from PumpKit or any repository with unclear/restrictive license. Independently implement behavior from official/public protocol contracts and transaction evidence.
 
 **Acceptance:** existing Phase 2 parser contracts remain backward compatible or receive explicit schema version migration; new event types cannot trigger execution directly.
+
+**Keyless status (2026-08-30):** `DONE` for the provider-independent event
+and replay seam. `launchpad-dex-v2` / schema v2 normalizes the rich lifecycle
+aliases, preserves parser provenance and event-time fields, validates reliable
+`bonding_curve_progress_bps` evidence and marks whale classifications as
+`DERIVED`. `ParsedProtocolEvent.to_observation()` emits deterministic
+`protocol.lifecycle` evidence, while `ProtocolEventStreamFallback` bounds
+reconnects, malformed input, duplicates, message counts and one poll fallback.
+The synthetic replay covers Pump.fun and PumpSwap lifecycle ordering and safe
+mode boundaries. Phase 6 correlation will consume these observations; rich
+events do not directly transition candidates, clear risk, or authorize
+execution. Live protocol/provider acceptance remains `BLOCKED_EXTERNAL` when
+no documented read-only endpoint and credentials are configured.
 
 ---
 

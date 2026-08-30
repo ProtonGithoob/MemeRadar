@@ -1,7 +1,7 @@
 """Keyless contracts for the synthetic launchpad and DEX event fixtures."""
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -73,11 +73,28 @@ def test_fixtures_retain_safe_event_payloads_only() -> None:
     for path in FIXTURE_DIR.glob("*.json"):
         payload = fixture(path.name)
         data = payload.get("data")
-        assert isinstance(data, Mapping)
-        serialized = json.dumps(data, sort_keys=True)
-        assert "api_key" not in serialized.lower()
-        assert "authorization" not in serialized.lower()
-        assert "private_key" not in serialized.lower()
+        if isinstance(data, Mapping):
+            serialized = json.dumps(data, sort_keys=True)
+            assert "api_key" not in serialized.lower()
+            assert "authorization" not in serialized.lower()
+            assert "private_key" not in serialized.lower()
+            continue
+        else:
+            events = payload.get("events")
+            assert isinstance(events, Sequence)
+            assert not isinstance(events, str | bytes | bytearray)
+            malformed = payload.get("malformed")
+            payloads: Sequence[object] = (
+                (*events, malformed) if malformed is not None else tuple(events)
+            )
+        for envelope in payloads:
+            assert isinstance(envelope, Mapping)
+            envelope_data = envelope.get("data")
+            assert isinstance(envelope_data, Mapping)
+            serialized = json.dumps(envelope_data, sort_keys=True)
+            assert "api_key" not in serialized.lower()
+            assert "authorization" not in serialized.lower()
+            assert "private_key" not in serialized.lower()
 
 
 def test_cross_protocol_duplicate_detection_preserves_all_source_ids() -> None:

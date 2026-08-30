@@ -6,8 +6,13 @@ import pytest
 
 from memeradar_application.provider_contracts import ProviderRequestContext
 from memeradar_providers.launchpad_dex import (
+    LAUNCHPAD_PARSER_VERSION,
+    PROTOCOL_EVENT_SCHEMA_VERSION,
+    RICH_LAUNCHPAD_PARSER_VERSION,
     MeteoraAdapter,
     ParsedProtocolEvent,
+    ProtocolEventOrigin,
+    ProtocolEventType,
     ProtocolVenue,
     PumpFunAdapter,
     PumpSwapAdapter,
@@ -155,6 +160,85 @@ def test_parser_rejects_future_or_malformed_event_time() -> None:
             },
             context(),
         )
+
+
+@pytest.mark.parametrize(
+    ("event_type", "expected_type"),
+    (
+        ("launch", ProtocolEventType.LAUNCH),
+        ("trade", ProtocolEventType.TRADE),
+        ("bonding_curve_progress", ProtocolEventType.BONDING_CURVE_PROGRESS),
+        ("graduation", ProtocolEventType.GRADUATION),
+        ("migration", ProtocolEventType.MIGRATION),
+        ("pool_created", ProtocolEventType.POOL_CREATED),
+        ("creator_fee_claim", ProtocolEventType.CREATOR_FEE_CLAIM),
+        ("fee_recipient_change", ProtocolEventType.FEE_RECIPIENT_CHANGE),
+    ),
+)
+def test_rich_pumpfun_events_are_typed_versioned_and_observable(
+    event_type: str,
+    expected_type: ProtocolEventType,
+) -> None:
+    data: dict[str, object] = {"mint": MINT}
+    if event_type == "pool_created":
+        data.update({"pool": POOL, "quote_mint": QUOTE})
+    if event_type == "bonding_curve_progress":
+        data["progress_bps"] = 4200
+    parsed = PumpFunAdapter().parse(
+        {
+            "schema_version": PROTOCOL_EVENT_SCHEMA_VERSION,
+            "event_type": event_type,
+            "source_id": f"rich-{event_type}",
+            "occurred_at": "2026-08-27T10:59:00Z",
+            "data": data,
+        },
+        context(),
+    )
+
+    assert parsed.protocol_event_type is expected_type
+    assert parsed.event_origin is ProtocolEventOrigin.NATIVE
+    assert parsed.is_derived is False
+    assert parsed.schema_version == PROTOCOL_EVENT_SCHEMA_VERSION
+    assert parsed.parser_version == RICH_LAUNCHPAD_PARSER_VERSION
+    observation = parsed.to_observation()
+    assert observation.kind == "protocol.lifecycle"
+    assert observation.provenance.parser_version == RICH_LAUNCHPAD_PARSER_VERSION
+    assert observation.normalized_payload["protocol_event_type"] == expected_type.value
+    assert observation.normalized_payload["event_origin"] == "NATIVE"
+    assert observation.token_id is not None
+    if event_type == "bonding_curve_progress":
+        assert parsed.bonding_curve_progress_bps == 4200
+        assert observation.normalized_payload["bonding_curve_progress_bps"] == 4200
+
+
+def test_legacy_discovery_event_remains_v1_and_whale_trade_is_derived() -> None:
+    legacy = PumpFunAdapter().parse(
+        {
+            "event_type": "token_created",
+            "event_id": "legacy-event",
+            "data": {"mint": MINT, "token_program": "spl-token"},
+        },
+        context(),
+    )
+    assert legacy.protocol_event_type is ProtocolEventType.TOKEN_CREATED
+    assert legacy.event_origin is ProtocolEventOrigin.NATIVE
+    assert legacy.schema_version == 1
+    assert legacy.parser_version == LAUNCHPAD_PARSER_VERSION
+
+    whale = PumpFunAdapter().parse(
+        {
+            "schema_version": PROTOCOL_EVENT_SCHEMA_VERSION,
+            "event_type": "trade",
+            "source_id": "derived-whale",
+            "occurred_at": "2026-08-27T10:59:00Z",
+            "data": {"mint": MINT, "is_whale": True, "amount": "100000"},
+        },
+        context(),
+    )
+    assert whale.protocol_event_type is ProtocolEventType.WHALE_TRADE
+    assert whale.event_origin is ProtocolEventOrigin.DERIVED
+    assert whale.is_derived is True
+    assert whale.to_observation().normalized_payload["event_origin"] == "DERIVED"
 
     with pytest.raises(ProviderSchemaError, match="timestamp"):
         MeteoraAdapter().parse(

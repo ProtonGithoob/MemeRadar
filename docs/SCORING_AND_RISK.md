@@ -389,6 +389,29 @@ weight is zero, insufficient history lowers confidence, and no call history can
 promote a registry tier, clear a deterministic risk block or make any result
 execution-eligible.
 
+### E2.5 protocol lifecycle evidence rules
+
+Rich Pump.fun/PumpSwap events are provider-neutral `protocol.lifecycle`
+observations, not direct score or transition inputs. The normalized event
+types are `LAUNCH`, `TRADE`, `BONDING_CURVE_PROGRESS`, `GRADUATION`,
+`MIGRATION`, `POOL_CREATED`, `CREATOR_FEE_CLAIM` and
+`FEE_RECIPIENT_CHANGE`; a flagged `WHALE_TRADE` is explicitly `DERIVED` and
+cannot be presented as a native protocol fact. Reliable bonding-curve progress
+is retained as validated basis points and can be converted into a feature only
+when the source supplies state, otherwise it remains missing evidence.
+
+Timeline and later Phase 6 correlation consumers sort by occurred time with
+observed/ingested/source tie-breakers, preserve duplicate deliveries for
+idempotent storage and keep all source/provenance references. Graduation,
+migration, pool, creator-fee and fee-recipient events are neither inherently
+safe nor inherently malicious: they are corroborating lifecycle evidence for
+risk/exit analysis and must be interpreted with market, on-chain, wallet and
+social evidence. A single lifecycle event, including a whale classification,
+cannot clear a hard block or produce `ENTRY_READY`; missing, stale, conflicted
+or malformed critical evidence remains fail-closed. Stream reconnect and poll
+fallback status affects freshness/confidence and never grants execution
+authority.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

@@ -1,0 +1,168 @@
+{
+  "fixture_version": "e2.5-rich-pumpfun-v1",
+  "captured_at": "2026-08-27T11:00:00Z",
+  "events": [
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "launch",
+      "source_id": "pumpfun-rich-launch-1",
+      "occurred_at": "2026-08-27T10:59:00Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "token_program": "spl-token",
+        "name": "Rich Pump Fixture",
+        "symbol": "RICH"
+      }
+    },
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "trade",
+      "source_id": "pumpfun-rich-trade-1",
+      "occurred_at": "2026-08-27T10:59:05Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "side": "buy",
+        "amount": 1250000,
+        "trader": "11111111111111111111111111111111"
+      }
+    },
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "bonding_curve_progress",
+      "source_id": "pumpfun-rich-curve-1",
+      "occurred_at": "2026-08-27T10:59:10Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "progress_bps": 4200,
+        "virtual_sol_reserves": 4200000000,
+        "virtual_token_reserves": 580000000000
+      }
+    },
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "trade",
+      "source_id": "pumpfun-rich-whale-1",
+      "occurred_at": "2026-08-27T10:59:15Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "side": "buy",
+        "amount": 75000000,
+        "trader": "Vote111111111111111111111111111111111111111",
+        "is_whale": true
+      }
+    },
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "graduation",
+      "source_id": "pumpfun-rich-graduation-1",
+      "occurred_at": "2026-08-27T10:59:20Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "progress_bps": 10000
+      }
+    },
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "migration",
+      "source_id": "pumpfun-rich-migration-1",
+      "occurred_at": "2026-08-27T10:59:25Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "pool": "11111111111111111111111111111111",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "destination": "pumpswap"
+      }
+    },
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "pool_created",
+      "source_id": "pumpfun-rich-pool-1",
+      "occurred_at": "2026-08-27T10:59:30Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "pool": "11111111111111111111111111111111",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+      }
+    },
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "creator_fee_claim",
+      "source_id": "pumpfun-rich-fee-1",
+      "occurred_at": "2026-08-27T10:59:35Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "fee_amount": 2500000,
+        "recipient": "Vote111111111111111111111111111111111111111"
+      }
+    },
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "fee_recipient_change",
+      "source_id": "pumpfun-rich-recipient-1",
+      "occurred_at": "2026-08-27T10:59:40Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "previous_recipient": "Vote111111111111111111111111111111111111111",
+        "new_recipient": "11111111111111111111111111111111"
+      }
+    },
+    {
+      "venue": "pumpswap",
+      "schema_version": 2,
+      "event_type": "pool_created",
+      "source_id": "pumpswap-rich-pool-1",
+      "occurred_at": "2026-08-27T10:59:45Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "pool": "Vote111111111111111111111111111111111111111",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+      }
+    },
+    {
+      "venue": "pumpswap",
+      "schema_version": 2,
+      "event_type": "trade",
+      "source_id": "pumpswap-rich-trade-1",
+      "occurred_at": "2026-08-27T10:59:50Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "pool": "Vote111111111111111111111111111111111111111",
+        "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "side": "sell",
+        "amount": 125000
+      }
+    },
+    {
+      "venue": "pump.fun",
+      "schema_version": 2,
+      "event_type": "trade",
+      "source_id": "pumpfun-rich-trade-1",
+      "occurred_at": "2026-08-27T10:59:05Z",
+      "data": {
+        "mint": "So11111111111111111111111111111111111111112",
+        "side": "buy",
+        "amount": 1250000,
+        "trader": "11111111111111111111111111111111"
+      }
+    }
+  ],
+  "malformed": {
+    "venue": "pump.fun",
+    "schema_version": 2,
+    "event_type": "trade",
+    "source_id": "pumpfun-rich-malformed-1",
+    "occurred_at": "2026-08-27T10:59:55Z",
+    "data": {
+      "mint": "not-a-solana-address"
+    }
+  }
+}

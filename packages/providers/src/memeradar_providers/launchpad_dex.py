@@ -9,13 +9,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from memeradar_application.provider_contracts import (
     DiscoveryCandidate,
     ProviderRequestContext,
 )
-from memeradar_domain import PoolIdentity, Provenance, TokenIdentity
+from memeradar_domain import Observation, PoolIdentity, Provenance, QualityState, TokenIdentity
 from memeradar_domain.common import (
     ensure_ordered_timestamps,
     ensure_utc,
@@ -28,6 +28,8 @@ from .transport import ProviderSchemaError
 
 LAUNCHPAD_PROVIDER = "launchpad-dex"
 LAUNCHPAD_PARSER_VERSION = "launchpad-dex-v1"
+RICH_LAUNCHPAD_PARSER_VERSION = "launchpad-dex-v2"
+PROTOCOL_EVENT_SCHEMA_VERSION = 2
 _MISSING = object()
 _SENSITIVE_KEYS = frozenset(
     {
@@ -67,24 +69,187 @@ class ProtocolVenue(str, Enum):
     METEORA = "meteora"
 
 
+class ProtocolEventType(str, Enum):
+    """Canonical lifecycle classifications retained beside raw event aliases."""
+
+    OTHER = "other"
+    LAUNCH = "launch"
+    TOKEN_CREATED = "token_created"
+    TRADE = "trade"
+    BONDING_CURVE_PROGRESS = "bonding_curve_progress"
+    GRADUATION = "graduation"
+    MIGRATION = "migration"
+    POOL_CREATED = "pool_created"
+    WHALE_TRADE = "whale_trade"
+    CREATOR_FEE_CLAIM = "creator_fee_claim"
+    FEE_RECIPIENT_CHANGE = "fee_recipient_change"
+    LIQUIDITY_ADDED = "liquidity_added"
+    LIQUIDITY_REMOVED = "liquidity_removed"
+
+
+class ProtocolEventOrigin(str, Enum):
+    """Whether an event is a native protocol fact or a derived classification."""
+
+    NATIVE = "NATIVE"
+    DERIVED = "DERIVED"
+
+
+_EVENT_ALIASES: dict[str, ProtocolEventType] = {
+    "launch": ProtocolEventType.LAUNCH,
+    "create": ProtocolEventType.LAUNCH,
+    "token_created": ProtocolEventType.TOKEN_CREATED,
+    "token_create": ProtocolEventType.TOKEN_CREATED,
+    "trade": ProtocolEventType.TRADE,
+    "swap": ProtocolEventType.TRADE,
+    "bonding_curve_created": ProtocolEventType.LAUNCH,
+    "bonding_curve_progress": ProtocolEventType.BONDING_CURVE_PROGRESS,
+    "bonding_curve_update": ProtocolEventType.BONDING_CURVE_PROGRESS,
+    "graduation": ProtocolEventType.GRADUATION,
+    "graduated": ProtocolEventType.GRADUATION,
+    "complete": ProtocolEventType.GRADUATION,
+    "migration": ProtocolEventType.MIGRATION,
+    "migrate": ProtocolEventType.MIGRATION,
+    "pool_migrated": ProtocolEventType.MIGRATION,
+    "pool_created": ProtocolEventType.POOL_CREATED,
+    "pool_create": ProtocolEventType.POOL_CREATED,
+    "whale_trade": ProtocolEventType.WHALE_TRADE,
+    "large_trade": ProtocolEventType.WHALE_TRADE,
+    "creator_fee_claim": ProtocolEventType.CREATOR_FEE_CLAIM,
+    "creator_fee_claimed": ProtocolEventType.CREATOR_FEE_CLAIM,
+    "fee_claim": ProtocolEventType.CREATOR_FEE_CLAIM,
+    "fee_recipient_change": ProtocolEventType.FEE_RECIPIENT_CHANGE,
+    "fee_recipient_updated": ProtocolEventType.FEE_RECIPIENT_CHANGE,
+    "cto": ProtocolEventType.FEE_RECIPIENT_CHANGE,
+    "creator_takeover": ProtocolEventType.FEE_RECIPIENT_CHANGE,
+    "liquidity_added": ProtocolEventType.LIQUIDITY_ADDED,
+    "liquidity_removed": ProtocolEventType.LIQUIDITY_REMOVED,
+    "initialize": ProtocolEventType.POOL_CREATED,
+    "initialize2": ProtocolEventType.POOL_CREATED,
+    "amm_initialized": ProtocolEventType.POOL_CREATED,
+    "clmm_pool_created": ProtocolEventType.POOL_CREATED,
+    "dlmm_pool_created": ProtocolEventType.POOL_CREATED,
+    "dynamic_amm_created": ProtocolEventType.POOL_CREATED,
+}
+_RICH_EVENT_NAMES = frozenset(
+    {
+        "launch",
+        "trade",
+        "bonding_curve_progress",
+        "bonding_curve_update",
+        "graduation",
+        "graduated",
+        "migration",
+        "pool_migrated",
+        "whale_trade",
+        "large_trade",
+        "creator_fee_claim",
+        "creator_fee_claimed",
+        "fee_claim",
+        "fee_recipient_change",
+        "fee_recipient_updated",
+        "cto",
+        "creator_takeover",
+    }
+)
+_DERIVED_TRADE_FLAGS = frozenset({"is_whale", "whale_trade", "derived_whale_trade", "large_trade"})
+
+
 _EVENT_TYPES: dict[ProtocolVenue, frozenset[str]] = {
     ProtocolVenue.PUMP_FUN: frozenset(
-        {"create", "token_created", "bonding_curve_created", "migrate", "pool_created"}
+        {
+            "create",
+            "launch",
+            "token_created",
+            "bonding_curve_created",
+            "bonding_curve_progress",
+            "bonding_curve_update",
+            "trade",
+            "whale_trade",
+            "large_trade",
+            "graduation",
+            "graduated",
+            "migrate",
+            "migration",
+            "pool_created",
+            "creator_fee_claim",
+            "creator_fee_claimed",
+            "fee_claim",
+            "fee_recipient_change",
+            "fee_recipient_updated",
+            "cto",
+            "creator_takeover",
+        }
     ),
     ProtocolVenue.PUMP_SWAP: frozenset(
-        {"create", "pool_created", "swap", "liquidity_added", "liquidity_removed"}
+        {
+            "create",
+            "launch",
+            "pool_created",
+            "trade",
+            "swap",
+            "whale_trade",
+            "large_trade",
+            "liquidity_added",
+            "liquidity_removed",
+            "migration",
+            "pool_migrated",
+        }
     ),
     ProtocolVenue.RAYDIUM: frozenset(
-        {"initialize", "initialize2", "pool_created", "amm_initialized", "clmm_pool_created"}
+        {
+            "initialize",
+            "initialize2",
+            "pool_created",
+            "amm_initialized",
+            "clmm_pool_created",
+            "trade",
+            "swap",
+            "whale_trade",
+            "large_trade",
+        }
     ),
     ProtocolVenue.METEORA: frozenset(
-        {"create", "pool_created", "dlmm_pool_created", "dynamic_amm_created"}
+        {
+            "create",
+            "launch",
+            "pool_created",
+            "dlmm_pool_created",
+            "dynamic_amm_created",
+            "trade",
+            "swap",
+            "whale_trade",
+            "large_trade",
+        }
     ),
 }
 
 
 def _normalized_key(value: object) -> str:
-    return str(value).strip().lower().replace("-", "_")
+    return str(value).strip().lower().replace("-", "_").replace(" ", "_").replace("/", "_")
+
+
+def _protocol_event_type(
+    event_type: str,
+    payload: Mapping[str, object],
+) -> tuple[ProtocolEventType, ProtocolEventOrigin]:
+    """Map aliases and explicit whale hints without turning derivation into fact."""
+
+    event_kind = _EVENT_ALIASES.get(event_type, ProtocolEventType.OTHER)
+    if event_kind is ProtocolEventType.WHALE_TRADE:
+        return event_kind, ProtocolEventOrigin.DERIVED
+    if event_kind is ProtocolEventType.TRADE and any(
+        _truthy(payload.get(name)) for name in _DERIVED_TRADE_FLAGS
+    ):
+        return ProtocolEventType.WHALE_TRADE, ProtocolEventOrigin.DERIVED
+    return event_kind, ProtocolEventOrigin.NATIVE
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return False
 
 
 def _field(mapping: Mapping[str, object], *names: str) -> object:
@@ -181,6 +346,18 @@ def _required_address(mapping: Mapping[str, object], field: str, *names: str) ->
     return value
 
 
+def _optional_progress_bps(mapping: Mapping[str, object]) -> int | None:
+    value = _field(mapping, "progress_bps", "bonding_curve_progress_bps")
+    if value is _MISSING or value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ProviderSchemaError("bonding-curve progress_bps must be numeric")
+    numeric = float(value)
+    if not math.isfinite(numeric) or not numeric.is_integer() or not 0 <= numeric <= 10_000:
+        raise ProviderSchemaError("bonding-curve progress_bps is outside 0..10000")
+    return int(numeric)
+
+
 @dataclass(frozen=True, slots=True)
 class ParsedProtocolEvent:
     """Validated protocol identities before canonical domain object mapping."""
@@ -197,6 +374,10 @@ class ParsedProtocolEvent:
     ingested_at: datetime
     payload: Mapping[str, object]
     parser_version: str = LAUNCHPAD_PARSER_VERSION
+    protocol_event_type: ProtocolEventType | str | None = None
+    event_origin: ProtocolEventOrigin | str = ProtocolEventOrigin.NATIVE
+    schema_version: int = 1
+    bonding_curve_progress_bps: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "venue", ProtocolVenue(self.venue))
@@ -205,6 +386,37 @@ class ParsedProtocolEvent:
             "event_type",
             require_text(self.event_type, "event_type", max_length=64).lower(),
         )
+        if not isinstance(self.payload, Mapping):
+            raise TypeError("payload must be a mapping")
+        inferred_type, inferred_origin = _protocol_event_type(self.event_type, self.payload)
+        if self.protocol_event_type is None:
+            normalized_event_type = inferred_type
+        else:
+            try:
+                normalized_event_type = ProtocolEventType(self.protocol_event_type)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("protocol_event_type is unsupported") from exc
+        try:
+            normalized_origin = ProtocolEventOrigin(self.event_origin)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("event_origin must be NATIVE or DERIVED") from exc
+        if (
+            inferred_origin is ProtocolEventOrigin.DERIVED
+            or normalized_event_type is ProtocolEventType.WHALE_TRADE
+        ) and normalized_origin is not ProtocolEventOrigin.DERIVED:
+            raise ValueError("derived protocol events must use DERIVED origin")
+        if not isinstance(self.schema_version, int) or isinstance(self.schema_version, bool):
+            raise TypeError("schema_version must be an integer")
+        if not 1 <= self.schema_version <= PROTOCOL_EVENT_SCHEMA_VERSION:
+            raise ValueError("schema_version is outside the supported range")
+        if self.bonding_curve_progress_bps is not None and (
+            isinstance(self.bonding_curve_progress_bps, bool)
+            or not isinstance(self.bonding_curve_progress_bps, int)
+            or not 0 <= self.bonding_curve_progress_bps <= 10_000
+        ):
+            raise ValueError("bonding_curve_progress_bps is outside 0..10000")
+        object.__setattr__(self, "protocol_event_type", normalized_event_type)
+        object.__setattr__(self, "event_origin", normalized_origin)
         object.__setattr__(self, "mint_address", require_solana_address(self.mint_address, "mint"))
         if self.pool_address is not None:
             object.__setattr__(
@@ -240,9 +452,59 @@ class ParsedProtocolEvent:
             "parser_version",
             require_text(self.parser_version, "parser_version", max_length=64),
         )
-        if not isinstance(self.payload, Mapping):
-            raise TypeError("payload must be a mapping")
         object.__setattr__(self, "payload", freeze_mapping(self.payload, "payload"))
+
+    @property
+    def is_derived(self) -> bool:
+        """Return whether this event is an application-derived classification."""
+
+        return self.event_origin is ProtocolEventOrigin.DERIVED
+
+    def to_observation(
+        self,
+        *,
+        token_id: UUID | None = None,
+        quality_state: QualityState = QualityState.FRESH,
+    ) -> Observation:
+        """Convert the event into a provider-neutral lifecycle observation."""
+
+        if token_id is None:
+            token_id = uuid5(NAMESPACE_URL, f"memeradar:launchpad-dex:token:{self.mint_address}")
+        assert isinstance(self.protocol_event_type, ProtocolEventType)
+        assert isinstance(self.event_origin, ProtocolEventOrigin)
+        normalized_payload = dict(self.payload)
+        normalized_payload.update(
+            {
+                "event_type": self.event_type,
+                "protocol_event_type": self.protocol_event_type.value,
+                "event_origin": self.event_origin.value,
+                "schema_version": self.schema_version,
+                "venue": self.venue.value,
+                "mint_address": self.mint_address,
+            }
+        )
+        if self.pool_address is not None:
+            normalized_payload["pool_address"] = self.pool_address
+        if self.quote_mint is not None:
+            normalized_payload["quote_mint"] = self.quote_mint
+        if self.bonding_curve_progress_bps is not None:
+            normalized_payload["bonding_curve_progress_bps"] = self.bonding_curve_progress_bps
+        return Observation(
+            id=uuid5(NAMESPACE_URL, f"memeradar:protocol-lifecycle:{self.source_id}"),
+            kind="protocol.lifecycle",
+            provenance=Provenance(
+                provider=self.venue.value,
+                source_id=self.source_id,
+                observed_at=self.observed_at,
+                parser_version=self.parser_version,
+            ),
+            occurred_at=self.occurred_at,
+            observed_at=self.observed_at,
+            ingested_at=self.ingested_at,
+            quality_state=quality_state,
+            normalized_payload=normalized_payload,
+            token_id=token_id,
+        )
 
 
 class LaunchpadDexAdapter:
@@ -260,9 +522,7 @@ class LaunchpadDexAdapter:
             raise ProviderSchemaError("protocol event type is required")
         event_type = _normalized_key(raw_type)
         if event_type not in _EVENT_TYPES[self.venue]:
-            raise ProviderSchemaError(
-                f"unsupported {self.venue.value} event type: {event_type}"
-            )
+            raise ProviderSchemaError(f"unsupported {self.venue.value} event type: {event_type}")
         return event_type
 
     def parse(
@@ -276,6 +536,37 @@ class LaunchpadDexAdapter:
             raise ProviderSchemaError("protocol event must be an object")
         event_type = self._event_type(message)
         data = _mapping(message.get("data", _MISSING), "protocol event data")
+        raw_schema_version = message.get("schema_version", _MISSING)
+        schema_version_explicit = raw_schema_version is not _MISSING
+        if raw_schema_version is _MISSING:
+            requested_schema_version = 1
+        elif (
+            not isinstance(raw_schema_version, int)
+            or isinstance(raw_schema_version, bool)
+            or not 1 <= raw_schema_version <= PROTOCOL_EVENT_SCHEMA_VERSION
+        ):
+            raise ProviderSchemaError("protocol event schema_version is invalid")
+        else:
+            requested_schema_version = raw_schema_version
+        protocol_event_type, event_origin = _protocol_event_type(event_type, data)
+        bonding_curve_progress_bps = (
+            _optional_progress_bps(data)
+            if protocol_event_type is ProtocolEventType.BONDING_CURVE_PROGRESS
+            else None
+        )
+        rich_event = requested_schema_version >= PROTOCOL_EVENT_SCHEMA_VERSION or (
+            event_type in _RICH_EVENT_NAMES
+        )
+        if (
+            schema_version_explicit
+            and requested_schema_version == 1
+            and event_type in _RICH_EVENT_NAMES
+        ):
+            raise ProviderSchemaError("rich protocol event requires schema_version 2")
+        normalized_schema_version = (
+            PROTOCOL_EVENT_SCHEMA_VERSION if rich_event else requested_schema_version
+        )
+        event_parser_version = RICH_LAUNCHPAD_PARSER_VERSION if rich_event else self.parser_version
         mint = _required_address(
             data,
             "mint",
@@ -367,8 +658,7 @@ class LaunchpadDexAdapter:
         if raw_source is _MISSING or raw_source is None:
             raw_source = hashlib.sha256(
                 (
-                    f"{self.venue.value}:{event_type}:{mint}:{pool or ''}:"
-                    f"{occurred_at.isoformat()}"
+                    f"{self.venue.value}:{event_type}:{mint}:{pool or ''}:{occurred_at.isoformat()}"
                 ).encode()
             ).hexdigest()[:32]
         if not isinstance(raw_source, str):
@@ -398,7 +688,11 @@ class LaunchpadDexAdapter:
                 observed_at=observed_at,
                 ingested_at=ingested_at,
                 payload=safe_payload,
-                parser_version=self.parser_version,
+                parser_version=event_parser_version,
+                protocol_event_type=protocol_event_type,
+                event_origin=event_origin,
+                schema_version=normalized_schema_version,
+                bonding_curve_progress_bps=bonding_curve_progress_bps,
             )
         except (TypeError, ValueError) as exc:
             raise ProviderSchemaError("protocol event failed normalization") from exc
@@ -514,8 +808,7 @@ class DuplicateResult:
         object.__setattr__(self, "duplicate_keys", tuple(self.duplicate_keys))
         object.__setattr__(self, "prior_source_ids", tuple(self.prior_source_ids))
         if any(
-            not isinstance(value, str)
-            for value in (*self.duplicate_keys, *self.prior_source_ids)
+            not isinstance(value, str) for value in (*self.duplicate_keys, *self.prior_source_ids)
         ):
             raise TypeError("duplicate evidence values must be strings")
 
@@ -569,8 +862,12 @@ __all__ = [
     "LaunchpadDexAdapter",
     "MeteoraAdapter",
     "ParsedProtocolEvent",
+    "PROTOCOL_EVENT_SCHEMA_VERSION",
+    "ProtocolEventOrigin",
+    "ProtocolEventType",
     "ProtocolVenue",
     "PumpFunAdapter",
     "PumpSwapAdapter",
     "RaydiumAdapter",
+    "RICH_LAUNCHPAD_PARSER_VERSION",
 ]

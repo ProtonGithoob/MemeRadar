@@ -275,12 +275,7 @@ def test_call_performance_replay_seam_is_packaged_and_safe():
     assert (performance_fixture_dir / "README.md").is_file()
     assert (performance_fixture_dir / "replay.json").is_file()
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "call_performance.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "call_performance.py"
     ).read_text()
     assert "memeradar_providers" not in source
     compose = yaml.safe_load(COMPOSE_PATH.read_text())
@@ -320,12 +315,7 @@ def test_narrative_llm_seam_is_optional_strict_and_safe():
     assert (narrative_fixture_dir / "malformed.json").is_file()
     assert (narrative_fixture_dir / "injection.json").is_file()
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "narrative.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "narrative.py"
     ).read_text()
     assert "memeradar_providers" not in source
     makefile = (ROOT / "Makefile").read_text()
@@ -398,3 +388,35 @@ def test_launchpad_dex_adapters_and_manual_submission_are_explicit_and_safe():
     assert "PAPER_TRADING=true" in env_example
     assert "MANUAL_EXECUTION=false" in env_example
     assert "AUTO_EXECUTION=false" in env_example
+
+
+def test_rich_protocol_lifecycle_replay_seam_is_packaged_and_safe():
+    from memeradar_providers.launchpad_dex import (
+        PROTOCOL_EVENT_SCHEMA_VERSION,
+        RICH_LAUNCHPAD_PARSER_VERSION,
+        ProtocolEventOrigin,
+        ProtocolEventType,
+    )
+    from memeradar_providers.protocol_stream import (
+        ProtocolEventStreamFallback,
+        ProtocolStreamPolicy,
+    )
+
+    assert PROTOCOL_EVENT_SCHEMA_VERSION == 2
+    assert RICH_LAUNCHPAD_PARSER_VERSION == "launchpad-dex-v2"
+    assert ProtocolEventType.WHALE_TRADE.value == "whale_trade"
+    assert ProtocolEventOrigin.DERIVED.value == "DERIVED"
+    assert ProtocolEventStreamFallback
+    assert ProtocolStreamPolicy().max_messages == 1000
+    fixture_path = ROOT / "fixtures" / "providers" / "launchpad_dex" / "rich_pumpfun_replay.json"
+    readme_path = ROOT / "fixtures" / "providers" / "launchpad_dex" / "README.md"
+    assert fixture_path.is_file()
+    assert readme_path.is_file()
+    assert "schema v2" in readme_path.read_text(encoding="utf-8").lower()
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
