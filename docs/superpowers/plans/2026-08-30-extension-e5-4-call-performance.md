@@ -14,6 +14,9 @@ false), never mutate the explicit `SocialAuthorRegistry`, and default policy
 preserves the existing `author-trust-v1` scoring behavior unless a caller
 explicitly supplies performance evidence and a non-zero performance weight.
 
+**Implementation status (2026-08-30):** complete for the keyless acceptance;
+live social/provider access is intentionally a separate external gate.
+
 **Upstream/license decision:** the PumpKit-style "caller performance tracking"
 pattern from `docs/RESEARCH_REUSE_REGISTRY.md` has unclear licensing; this
 sprint independently implements the documented behavior only. No upstream

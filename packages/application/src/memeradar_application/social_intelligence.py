@@ -21,6 +21,7 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .call_performance import CallPerformanceSnapshot
 from .provider_contracts import SocialMention
 
 _QUALITY_PRIORITY = {
@@ -90,8 +91,9 @@ class AuthorRegistryEntry:
         if (self.as_of is None) != (self.expires_at is None):
             raise ValueError("as_of and expires_at must be supplied together")
         if self.as_of is not None and self.expires_at is not None:
-            as_of, expires_at = ensure_utc(self.as_of, "as_of"), ensure_utc(
-                self.expires_at, "expires_at"
+            as_of, expires_at = (
+                ensure_utc(self.as_of, "as_of"),
+                ensure_utc(self.expires_at, "expires_at"),
             )
             if expires_at <= as_of:
                 raise ValueError("expires_at must be later than as_of")
@@ -221,6 +223,10 @@ class AuthorTrustPolicy:
     maximum_duplicate_penalty: Decimal = Decimal("5")
     maximum_spam_penalty: Decimal = Decimal("5")
     maximum_coordination_penalty: Decimal = Decimal("8")
+    performance_weight: Decimal = Decimal("0")
+    performance_minimum_sample_count: int = 5
+    performance_minimum_confidence: Decimal = Decimal("0.60")
+    performance_missing_confidence_penalty: Decimal = Decimal("0.10")
     version: str = "author-trust-v1"
 
     def __post_init__(self) -> None:
@@ -255,8 +261,43 @@ class AuthorTrustPolicy:
                 ),
             )
         object.__setattr__(
-            self, "version", require_text(self.version, "version", max_length=64)
+            self,
+            "performance_weight",
+            bounded_decimal(
+                self.performance_weight,
+                "performance_weight",
+                Decimal("0"),
+                Decimal("1"),
+            ),
         )
+        if (
+            not isinstance(self.performance_minimum_sample_count, int)
+            or isinstance(self.performance_minimum_sample_count, bool)
+            or self.performance_minimum_sample_count < 1
+            or self.performance_minimum_sample_count > 100_000
+        ):
+            raise ValueError("performance_minimum_sample_count must be a bounded positive integer")
+        object.__setattr__(
+            self,
+            "performance_minimum_confidence",
+            bounded_decimal(
+                self.performance_minimum_confidence,
+                "performance_minimum_confidence",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
+        object.__setattr__(
+            self,
+            "performance_missing_confidence_penalty",
+            bounded_decimal(
+                self.performance_missing_confidence_penalty,
+                "performance_missing_confidence_penalty",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,8 +318,9 @@ class CoordinationCluster:
         )
         object.__setattr__(self, "author_ids", normalize_texts(self.author_ids, "author_ids"))
         object.__setattr__(self, "source_ids", normalize_texts(self.source_ids, "source_ids"))
-        first, last = ensure_utc(self.first_posted_at, "first_posted_at"), ensure_utc(
-            self.last_posted_at, "last_posted_at"
+        first, last = (
+            ensure_utc(self.first_posted_at, "first_posted_at"),
+            ensure_utc(self.last_posted_at, "last_posted_at"),
         )
         if last < first:
             raise ValueError("last_posted_at must not precede first_posted_at")
@@ -474,9 +516,7 @@ class SocialVelocityPolicy:
                     getattr(self, field_name), field_name, Decimal("0"), Decimal("100")
                 ),
             )
-        object.__setattr__(
-            self, "version", require_text(self.version, "version", max_length=64)
-        )
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
 
 
 @dataclass(frozen=True, slots=True)
@@ -806,8 +846,7 @@ def _analyze_mentions(
     duplicate_sources.update(
         mention.provenance.source_id
         for mention in event_mentions
-        if mention.duplicate_cluster is not None
-        or mention.metrics.get("is_copied_text") is True
+        if mention.duplicate_cluster is not None or mention.metrics.get("is_copied_text") is True
     )
     spam_sources: set[str] = set()
     for mention in event_mentions:
@@ -866,9 +905,7 @@ def _engagement_quality(
     if impression_total == 0 and complete_count == 0:
         return None, Decimal("0"), invalid
     quality = _clamp(
-        (engagement_total / impression_total * Decimal("100"))
-        if impression_total
-        else Decimal("0")
+        (engagement_total / impression_total * Decimal("100")) if impression_total else Decimal("0")
     )
     completeness = Decimal(complete_count) / Decimal(max(1, len(mentions)))
     return _quantize(quality), _clamp(completeness, Decimal("0"), Decimal("1")), invalid
@@ -879,13 +916,13 @@ def _ratios(
 ) -> tuple[Decimal, Decimal, Decimal]:
     total = Decimal(max(1, len(mentions)))
     source_ids = [mention.provenance.source_id for mention in mentions]
-    duplicate = Decimal(
-        sum(source_id in analysis.duplicate_sources for source_id in source_ids)
-    ) / total
+    duplicate = (
+        Decimal(sum(source_id in analysis.duplicate_sources for source_id in source_ids)) / total
+    )
     spam = Decimal(sum(source_id in analysis.spam_sources for source_id in source_ids)) / total
-    coordination = Decimal(
-        sum(source_id in analysis.coordinated_sources for source_id in source_ids)
-    ) / total
+    coordination = (
+        Decimal(sum(source_id in analysis.coordinated_sources for source_id in source_ids)) / total
+    )
     return duplicate, spam, coordination
 
 
@@ -912,6 +949,33 @@ def _author_base(tier: AuthorTrustTier) -> Decimal:
     }[tier]
 
 
+def _call_history_usable(
+    snapshot: CallPerformanceSnapshot | None,
+    *,
+    author_id: str,
+    now: datetime,
+    minimum_sample_count: int,
+    minimum_confidence: Decimal,
+) -> bool:
+    """Allow only sufficiently evidenced, non-invalid caller history."""
+
+    if snapshot is None or snapshot.author_id != author_id:
+        return False
+    if snapshot.as_of > now or snapshot.expires_at <= now:
+        return False
+    if snapshot.quality_state in {
+        QualityState.STALE,
+        QualityState.CONFLICTED,
+        QualityState.INVALID,
+    }:
+        return False
+    if snapshot.sample_count < minimum_sample_count:
+        return False
+    if snapshot.confidence < minimum_confidence:
+        return False
+    return snapshot.hit_rate is not None and snapshot.median_forward_return is not None
+
+
 class AuthorTrustScorer:
     """Score authors from explicit registry policy and social evidence."""
 
@@ -925,9 +989,18 @@ class AuthorTrustScorer:
         *,
         now: datetime,
         config_hash: str,
+        performance: Mapping[str, CallPerformanceSnapshot] | None = None,
     ) -> tuple[AuthorTrustScore, ...]:
         if not isinstance(registry, SocialAuthorRegistry):
             raise TypeError("registry must be a SocialAuthorRegistry")
+        if self.policy.performance_weight > 0 and performance is not None:
+            if not isinstance(performance, Mapping):
+                raise TypeError("performance must be a mapping")
+            for author_id, snapshot in performance.items():
+                if not isinstance(author_id, str):
+                    raise TypeError("performance author IDs must be strings")
+                if not isinstance(snapshot, CallPerformanceSnapshot):
+                    raise TypeError("performance values must be CallPerformanceSnapshot values")
         checked_at = ensure_utc(now, "now")
         normalized_config_hash = require_text(config_hash, "config_hash")
         analysis = _analyze_mentions(
@@ -984,10 +1057,29 @@ class AuthorTrustScorer:
                 + self.policy.originality_weight * components["originality"]
                 - sum(penalties.values(), Decimal("0"))
             )
+            call_history = (
+                performance.get(author_id)
+                if self.policy.performance_weight > 0 and performance is not None
+                else None
+            )
+            call_history_usable = _call_history_usable(
+                call_history,
+                author_id=author_id,
+                now=checked_at,
+                minimum_sample_count=self.policy.performance_minimum_sample_count,
+                minimum_confidence=self.policy.performance_minimum_confidence,
+            )
+            if self.policy.performance_weight > 0:
+                components["performance"] = (
+                    call_history.score
+                    if call_history_usable and call_history is not None
+                    else Decimal("50")
+                )
+                if call_history_usable and call_history is not None:
+                    weight = self.policy.performance_weight
+                    raw_score = raw_score * (Decimal("1") - weight) + call_history.score * weight
             score = (
-                Decimal("0")
-                if quality is not QualityState.FRESH
-                else _quantize(_clamp(raw_score))
+                Decimal("0") if quality is not QualityState.FRESH else _quantize(_clamp(raw_score))
             )
             if entry_tier is AuthorTrustTier.BLOCKED:
                 score = Decimal("0")
@@ -1015,13 +1107,21 @@ class AuthorTrustScorer:
             if coordination_ratio > 0:
                 reasons.append("COORDINATED_PROMOTION_SUSPECTED")
                 reasons.append("BOT_LIKE_BURST_HEURISTIC")
-            author_source_ids = {
-                mention.provenance.source_id for mention in author_mentions
-            }
+            author_source_ids = {mention.provenance.source_id for mention in author_mentions}
             if analysis.future_sources & author_source_ids:
                 reasons.append("FUTURE_SOCIAL_MENTION_EXCLUDED")
             if quality is not QualityState.FRESH:
                 reasons.append("SOCIAL_EVIDENCE_NOT_FRESH")
+            if self.policy.performance_weight > 0:
+                if call_history_usable and call_history is not None:
+                    confidence = _quantize(min(confidence, call_history.confidence))
+                    reasons.append("CALL_HISTORY_USED")
+                else:
+                    confidence = _quantize(
+                        confidence
+                        * (Decimal("1") - self.policy.performance_missing_confidence_penalty)
+                    )
+                    reasons.append("CALL_HISTORY_INSUFFICIENT")
             provenance = list(entry.provenance)
             provenance.extend(mention.provenance for mention in author_mentions)
             evidence_refs = list(entry.evidence_refs)
@@ -1088,13 +1188,7 @@ class SocialVelocityScorer:
             states = [analysis.quality_by_source[source_id] for source_id in source_ids]
             quality = _combined_quality(states)
             mints = tuple(
-                sorted(
-                    {
-                        mention.referenced_mint
-                        for mention in group
-                        if mention.referenced_mint
-                    }
-                )
+                sorted({mention.referenced_mint for mention in group if mention.referenced_mint})
             )
             if len(mints) > 1:
                 quality = QualityState.CONFLICTED
@@ -1132,12 +1226,8 @@ class SocialVelocityScorer:
                 quality = QualityState.INVALID
             duplicate_ratio, spam_ratio, coordination_ratio = _ratios(event_mentions, analysis)
             components = {
-                "velocity_1m": _normalize_count(
-                    window_counts["1m"], self.policy.velocity_1m_cap
-                ),
-                "velocity_5m": _normalize_count(
-                    window_counts["5m"], self.policy.velocity_5m_cap
-                ),
+                "velocity_1m": _normalize_count(window_counts["1m"], self.policy.velocity_1m_cap),
+                "velocity_5m": _normalize_count(window_counts["5m"], self.policy.velocity_5m_cap),
                 "velocity_15m": _normalize_count(
                     window_counts["15m"], self.policy.velocity_15m_cap
                 ),
@@ -1190,10 +1280,7 @@ class SocialVelocityScorer:
                 reasons.append("FUTURE_SOCIAL_MENTION_EXCLUDED")
             if quality is not QualityState.FRESH:
                 reasons.append("SOCIAL_EVIDENCE_NOT_FRESH")
-            provenance = tuple(
-                mention.provenance
-                for mention in group
-            )
+            provenance = tuple(mention.provenance for mention in group)
             evidence_refs = tuple(mention.provenance.source_id for mention in group)
             token_id = group[0].token_id
             results.append(

@@ -206,6 +206,51 @@ fallback snapshots with explicit reason codes (`NARRATIVE_TIMEOUT`,
 is unavailable; snapshots are always advisory and never execution-eligible.
 Physical narrative persistence remains a later roadmap task.
 
+### social_calls
+- id/source post IDs
+- author_id
+- token_id/referenced_mint
+- called_at/observed_at/ingested_at
+- provenance
+- quality_state
+- evidence_refs
+- config_hash/version
+
+### social_call_outcomes
+- social_call_id
+- as_of/expires_at
+- forward_returns JSONB by fixed horizon
+- MFE/MAE JSONB by fixed horizon
+- horizon_states JSONB (`COMPLETE`, `PARTIAL`, `UNKNOWN`, `INVALID`)
+- rugged/liquidity_collapsed nullable flags
+- token_age_at_call_seconds nullable
+- quality_state/risk_quality_state
+- confidence
+- provenance/evidence_refs/reason_codes JSONB
+- config_hash/version
+
+### call_performance_snapshots
+- id/author_id
+- as_of/expires_at
+- reference_horizon
+- sample_count/known_outcome_count
+- hit_rate/median_forward_return/median_mfe/median_mae
+- rug_avoidance_rate/median_token_age_at_call_seconds
+- score/confidence/uncertainty
+- components JSONB
+- provenance/evidence_refs/reason_codes JSONB
+- config_hash/version
+
+The E5.4 provider-independent warm path models historical author calls as
+`SocialCall`, reconstructs only post-call market/risk outcomes, and keeps
+missing horizons and missing rug/liquidity evidence nullable. Future-dated
+observations are excluded and invalidate the result; equivalent duplicate calls
+are collapsed with an explicit reason code and conflicting source IDs fail
+closed. `CallPerformanceSnapshot` uses bounded shrinkage toward neutral `50` and
+minimum sample/confidence gates. These snapshots are advisory evidence only;
+they cannot promote a registry tier, clear a risk gate or authorize execution.
+No physical migration is introduced for the keyless checkpoint.
+
 ## Wallet intelligence
 
 ### wallets

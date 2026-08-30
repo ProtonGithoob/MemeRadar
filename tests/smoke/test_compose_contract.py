@@ -257,6 +257,41 @@ def test_social_intelligence_replay_seam_is_packaged_and_safe():
         assert environment["AUTO_EXECUTION"] == "false"
 
 
+def test_call_performance_replay_seam_is_packaged_and_safe():
+    from memeradar_application.call_performance import (
+        CallPerformanceAnalyzer,
+        CallPerformancePolicy,
+        CallPerformanceSnapshot,
+        SocialCall,
+        SocialCallOutcome,
+    )
+
+    assert CallPerformanceAnalyzer
+    assert CallPerformancePolicy().version == "call-performance-v1"
+    assert CallPerformanceSnapshot
+    assert SocialCall
+    assert SocialCallOutcome
+    performance_fixture_dir = ROOT / "fixtures" / "providers" / "call_performance"
+    assert (performance_fixture_dir / "README.md").is_file()
+    assert (performance_fixture_dir / "replay.json").is_file()
+    source = (
+        ROOT
+        / "packages"
+        / "application"
+        / "src"
+        / "memeradar_application"
+        / "call_performance.py"
+    ).read_text()
+    assert "memeradar_providers" not in source
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
+
+
 def test_narrative_llm_seam_is_optional_strict_and_safe():
     from memeradar_application.narrative import NarrativeAnalyzer, NarrativeCache, NarrativePolicy
     from memeradar_application.provider_contracts import (

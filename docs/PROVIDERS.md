@@ -308,6 +308,34 @@ promotion/bot-like heuristic; they are diagnostics, not identity or execution
 authority. The scorers work without an LLM or live provider and fail closed on
 future/non-fresh critical evidence.
 
+## Historical caller outcome evidence
+
+The E5.4 warm path adds provider-independent `SocialCall`,
+`SocialCallOutcome`, `CallPerformanceSnapshot` and `CallPerformanceAnalyzer`
+under `packages/application/src/memeradar_application/call_performance.py`.
+The analyzer consumes normalized `SocialMention`-derived call records plus
+provider-neutral market, risk and optional token-creation observations; no
+provider SDK, HTTP client, database session or execution port crosses this
+boundary. Existing social adapters remain responsible only for read-only
+normalization and provenance.
+
+The analyzer sorts by event time, rejects conflicting duplicate source IDs,
+collapses equivalent duplicate calls with an explicit reason code, excludes
+future observations and preserves `UNKNOWN`/`INVALID` evidence states. It
+records fixed forward-horizon returns, MFE/MAE, nullable rug/liquidity flags,
+token age, sample/confidence gates and versioned config hashes. Author history
+is an optional trust component with a default zero weight; it cannot change
+registry tiers or authorize execution. All snapshots have
+`execution_eligible() == false`.
+
+Credential-free replay data and contracts are stored under
+`fixtures/providers/call_performance/` and
+`tests/contract/test_extension_e5_4_call_performance.py`. The fixture contract
+replays records in reversed delivery order and verifies identical snapshots,
+neutral treatment of insufficient history and explicit duplicate/risk reasons.
+This is a keyless application acceptance; it does not claim live social
+provider success.
+
 ## Narrative / LLM seam
 
 Sprint 5.3 adds the provider-independent `NarrativeAnalyzer` gateway in

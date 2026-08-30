@@ -363,6 +363,32 @@ Narrative values are never AlphaScore inputs that bypass hard gates: every
 snapshot is advisory, `execution_eligible()` is always false, and an
 unavailable LLM changes nothing about deterministic evidence evaluation.
 
+### E5.4 historical caller outcome rules
+
+`SocialCall` is normalized author/token-call evidence with event-time and
+provenance metadata. `CallPerformanceAnalyzer` evaluates only market and risk
+observations strictly after each call and no later than the replay `now`; input
+delivery order must not affect the result. The default fixed horizons are 5m,
+15m, 1h, 6h and 24h. Each horizon retains nullable forward return, maximum
+favorable excursion and maximum adverse excursion values. No observation is
+treated as a zero return merely because a horizon is missing.
+
+Rug and liquidity-collapse flags require fresh, valid post-call risk evidence.
+Missing evidence remains nullable/`UNKNOWN`, and conflicting flags remain
+conflicted rather than being resolved optimistically. Future observations make
+the outcome invalid and cannot improve an author snapshot. Equivalent duplicate
+calls are idempotently collapsed with `DUPLICATE_CALL_DEDUPED`; conflicting
+source reuse fails closed.
+
+Per-author `CallPerformanceSnapshot` values use sample shrinkage toward neutral
+50, explicit minimum sample/confidence gates, bounded uncertainty, provenance,
+reason codes, config hash and version. A sparse or missing history therefore
+does not become a positive or negative trust fact. `AuthorTrustScorer` consumes
+this history only through an opt-in non-zero `performance_weight`; the default
+weight is zero, insufficient history lowers confidence, and no call history can
+promote a registry tier, clear a deterministic risk block or make any result
+execution-eligible.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

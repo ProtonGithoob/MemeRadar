@@ -26,17 +26,26 @@ Status legend: `TODO`, `IN_PROGRESS`, `BLOCKED_EXTERNAL`, `DONE`.
 
 ### Tasks
 
-- [ ] Add normalized `SocialCall` model linking author, token/mint, call/event timestamp, source post IDs and provenance.
-- [ ] Add `SocialCallOutcome` research/application model with fixed forward horizons, MFE/MAE, liquidity-collapse/rug flags and data quality.
-- [ ] Reconstruct outcomes using only observations occurring after each call; prohibit future leakage.
-- [ ] Add bounded duplicate/conflicting-call handling.
-- [ ] Add `CallPerformanceSnapshot` per author with sample count, hit rates, median forward return/MFE, rug avoidance, token-age-at-call and uncertainty.
-- [ ] Update `AuthorTrustScorer` to optionally consume historical performance with shrinkage toward neutral.
-- [ ] Do not automatically promote authors based on one/few successful calls.
-- [ ] Add fixtures for good, poor, rug-heavy, duplicated and insufficient-sample callers.
-- [ ] Add reason codes and model/config versioning.
+- [x] Add normalized `SocialCall` model linking author, token/mint, call/event timestamp, source post IDs and provenance.
+- [x] Add `SocialCallOutcome` research/application model with fixed forward horizons, MFE/MAE, liquidity-collapse/rug flags and data quality.
+- [x] Reconstruct outcomes using only observations occurring after each call; prohibit future leakage.
+- [x] Add bounded duplicate/conflicting-call handling.
+- [x] Add `CallPerformanceSnapshot` per author with sample count, hit rates, median forward return/MFE, rug avoidance, token-age-at-call and uncertainty.
+- [x] Update `AuthorTrustScorer` to optionally consume historical performance with shrinkage toward neutral.
+- [x] Do not automatically promote authors based on one/few successful calls.
+- [x] Add fixtures for good, poor, rug-heavy, duplicated and insufficient-sample callers.
+- [x] Add reason codes and model/config versioning.
 
 **Acceptance:** identical social/market event logs reproduce identical author-performance snapshots; missing outcome history lowers confidence instead of becoming a negative/positive fact.
+
+**Keyless status (2026-08-30):** `DONE` for the provider-independent application
+contract. `CallPerformanceAnalyzer` reconstructs fixed `5m`/`15m`/`1h`/`6h`/`24h`
+forward windows without look-ahead, preserves nullable risk and token-age
+evidence, applies bounded neutral shrinkage and keeps all results advisory.
+Deterministic fixtures and replay contracts cover good, poor, rug-heavy,
+duplicated and insufficient-sample callers. Live social/provider acceptance is
+not required for this extension and remains separately `BLOCKED_EXTERNAL` where
+credentials or endpoints are absent.
 
 ---
 
