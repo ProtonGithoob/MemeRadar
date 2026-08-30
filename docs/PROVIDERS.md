@@ -308,6 +308,37 @@ promotion/bot-like heuristic; they are diagnostics, not identity or execution
 authority. The scorers work without an LLM or live provider and fail closed on
 future/non-fresh critical evidence.
 
+## Narrative / LLM seam
+
+Sprint 5.3 adds the provider-independent `NarrativeAnalyzer` gateway in
+`packages/application/src/memeradar_application/narrative.py` and the
+provider-local `FixtureNarrativeAdapter`/`NarrativeRestAdapter` in
+`packages/providers/src/memeradar_providers/narrative.py`. The gateway
+canonicalizes bounded `NarrativeInput` evidence, strips secret-shaped and
+instruction/tool-shaped control text from the model view, delimits untrusted
+content as data, enforces evidence/character/token/cost budgets, and caches
+validated results by a deterministic `sha256` key over the sanitized canonical
+document with a bounded TTL and entry count.
+
+Provider output must be a strict `NarrativeSnapshot` whose schema version and
+config hash match the request, whose evidence references only cite supplied
+input IDs, whose usage stays inside the configured budgets and whose freshness
+is valid at call time; any violation, timeout or provider error degrades to a
+deterministic zero-confidence fallback snapshot with explicit reason codes and
+never raises into deterministic analysis. Non-fresh input evidence skips the
+provider call entirely. Every snapshot is advisory-only and
+`execution_eligible()` is always false.
+
+`make narrative-doctor` performs one bounded read-only structured-output check
+only when `NARRATIVE_API_URL` and `NARRATIVE_API_KEY` are configured. It
+reports configuration presence, network/auth/schema status, rounded latency,
+safe rate-limit metadata and the four protected modes, and returns
+`BLOCKED_EXTERNAL` with `CONFIGURATION_MISSING` when configuration is absent.
+The credential is sent only as a Bearer header and never appears in URLs,
+fixtures, errors or doctor output. Synthetic fixtures and keyless contracts
+live under `fixtures/providers/narrative/`; live narrative acceptance remains
+`BLOCKED_EXTERNAL` without configured safe read-only access.
+
 ## Adapter requirements
 
 Every network adapter must implement:

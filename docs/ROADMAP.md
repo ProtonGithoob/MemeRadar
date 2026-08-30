@@ -244,14 +244,31 @@ pass without credentials or an LLM. Live social acceptance remains
 
 ### Sprint 5.3 — Narrative LLM
 
-- [ ] Define provider-neutral `NarrativePort`.
-- [ ] Add strict structured-output schema.
-- [ ] Summarize narrative, novelty, organic-vs-promo evidence and sentiment uncertainty.
-- [ ] Add cost/token budgets, caching and timeouts.
-- [ ] Ensure LLM outage never blocks deterministic analysis.
-- [ ] Prompt-injection harden untrusted social content.
+- [x] Define provider-neutral `NarrativePort`.
+- [x] Add strict structured-output schema.
+- [x] Summarize narrative, novelty, organic-vs-promo evidence and sentiment uncertainty.
+- [x] Add cost/token budgets, caching and timeouts.
+- [x] Ensure LLM outage never blocks deterministic analysis.
+- [x] Prompt-injection harden untrusted social content.
 
 **Gate P5:** social features work without LLM; LLM results are visibly advisory and cannot bypass risk gates.
+
+Sprint 5.3 keyless state: complete. The provider-neutral `NarrativePort`, strict
+`NarrativeInput`/`NarrativeSnapshot` contracts, application `NarrativeAnalyzer`
+gateway with prompt-injection sanitization, deterministic cache/budget/timeout
+policy and fail-closed fallback, fixture/REST provider seams and the key-safe
+`make narrative-doctor` pass without credentials or a live LLM. Narrative
+output is advisory-only (`execution_eligible` is always false) and a missing,
+timed-out, malformed or injection-tainted result degrades to an explicit
+unavailable snapshot while deterministic analysis continues. Live narrative
+provider acceptance is `BLOCKED_EXTERNAL` when `NARRATIVE_API_URL`/
+`NARRATIVE_API_KEY` are not configured.
+
+Gate P5 keyless state: pass. Deterministic social features (Sprints 5.1/5.2)
+work with the narrative provider unavailable, narrative output is visibly
+advisory and cannot clear hard risk gates or change operating modes. Live
+narrative acceptance remains `BLOCKED_EXTERNAL` without a configured safe
+read-only endpoint/credential.
 
 ---
 

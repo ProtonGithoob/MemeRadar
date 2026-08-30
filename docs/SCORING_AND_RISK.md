@@ -341,6 +341,28 @@ provenance, evidence references and reason codes. `AuthorTrustScore` and
 `SocialVelocityScore` are advisory and their execution predicates are always
 false.
 
+### Sprint 5.3 narrative rules
+
+The optional `NarrativeAnalyzer` gateway consumes bounded `NarrativeInput`
+evidence and returns only strict `NarrativeSnapshot` output: bounded
+narrative/topic text, `0..1` novelty, organic/promotional probabilities that
+never sum above one, strict organic-assessment and sentiment enums, `0..1`
+uncertainty and confidence, validated token/cost usage and evidence references
+limited to supplied input IDs. The default policy bounds 100 evidence items,
+2,000 characters per item, 12,000 total characters, 3,000 input tokens, 500
+output tokens and a $0.05 per-call cost ceiling, with a two-second request
+timeout and five-minute evidence/snapshot/cache TTLs.
+
+Untrusted content is delimited as data after secret-shaped and
+instruction/tool-shaped text is stripped; non-fresh input evidence, provider
+timeouts, schema violations, budget breaches and outages all degrade to a
+deterministic zero-confidence `UNKNOWN` fallback snapshot with explicit reason
+codes and never raise into deterministic scoring. Fresh validated results are
+cached by a deterministic `sha256` key over the canonical sanitized input.
+Narrative values are never AlphaScore inputs that bypass hard gates: every
+snapshot is advisory, `execution_eligible()` is always false, and an
+unavailable LLM changes nothing about deterministic evidence evaluation.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

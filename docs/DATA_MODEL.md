@@ -193,6 +193,19 @@ physical social migration is required for the keyless application checkpoint.
 - prompt/config hash
 - cost/usage metadata
 
+The Sprint 5.3 warm-path `NarrativeSnapshot` is the strict advisory form of
+this record: bounded narrative/topic text, `0..1` novelty/organic/promotional/
+uncertainty/confidence values with the organic+promotional sum capped at one,
+strict organic-assessment and sentiment enums, validated token/cost usage, a
+deterministic `sha256` cache key over the canonical sanitized input, evidence
+references restricted to supplied input IDs, schema/config hashes, quality
+state and expiry. The `NarrativeAnalyzer` gateway records deterministic
+fallback snapshots with explicit reason codes (`NARRATIVE_TIMEOUT`,
+`NARRATIVE_SCHEMA_INVALID`, `NARRATIVE_PROVIDER_UNAVAILABLE`,
+`NARRATIVE_EVIDENCE_NOT_FRESH`, `NARRATIVE_UNAVAILABLE`) when the optional LLM
+is unavailable; snapshots are always advisory and never execution-eligible.
+Physical narrative persistence remains a later roadmap task.
+
 ## Wallet intelligence
 
 ### wallets

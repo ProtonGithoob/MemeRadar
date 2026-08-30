@@ -34,6 +34,17 @@ control or malicious intent. Missing or stale social evidence cannot be
 converted into a safe score, and neither social score can clear a deterministic
 risk hard gate or enable execution.
 
+Sprint 5.3 keeps the narrative seam strictly advisory. The `NarrativeAnalyzer`
+gateway sanitizes untrusted social/token content (secret-shaped and
+instruction/tool-shaped text is stripped before the model view), enforces
+bounded evidence, character, token and cost budgets, caches validated strict
+output by a deterministic content/config key, and converts timeout, malformed
+output, provider outage or non-fresh evidence into a zero-confidence
+unavailable snapshot with explicit reason codes. Narrative results carry no
+risk-gate, scoring-weight or execution authority: `execution_eligible()` is
+always false, deterministic analysis never waits on an LLM, and no narrative
+value can clear a hard block or change an operating mode.
+
 ## Operating modes
 
 Default and mandatory until roadmap gates explicitly unlock:
