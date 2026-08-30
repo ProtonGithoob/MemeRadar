@@ -1,0 +1,325 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-08-30T20:00:00+00:00",
+  "tokens": {
+    "organic": {
+      "mint_address": "So11111111111111111111111111111111111111112"
+    },
+    "wash": {
+      "mint_address": "11111111111111111111111111111113"
+    },
+    "smart": {
+      "mint_address": "11111111111111111111111111111114"
+    },
+    "social": {
+      "mint_address": "11111111111111111111111111111115"
+    },
+    "creator": {
+      "mint_address": "11111111111111111111111111111116"
+    }
+  },
+  "scenarios": {
+    "organic_acceleration": {
+      "token": "organic",
+      "observations": [
+        {
+          "source_id": "organic:trade:previous-buy",
+          "provider": "market-fixture",
+          "kind": "market.trade",
+          "occurred_at": "2026-08-30T19:59:42+00:00",
+          "payload": {
+            "maker": "11111111111111111111111111111112",
+            "side": "buy",
+            "amount": "10",
+            "quote_amount": "1",
+            "buyer": "11111111111111111111111111111112",
+            "seller": "11111111111111111111111111111115"
+          }
+        },
+        {
+          "source_id": "organic:trade:previous-sell",
+          "provider": "market-fixture",
+          "kind": "market.trade",
+          "occurred_at": "2026-08-30T19:59:43+00:00",
+          "payload": {
+            "maker": "11111111111111111111111111111115",
+            "side": "sell",
+            "amount": "10",
+            "quote_amount": "1",
+            "buyer": "11111111111111111111111111111112",
+            "seller": "11111111111111111111111111111115"
+          }
+        },
+        {
+          "source_id": "organic:trade:buy-a",
+          "provider": "market-fixture",
+          "kind": "market.trade",
+          "occurred_at": "2026-08-30T19:59:57+00:00",
+          "payload": {
+            "maker": "11111111111111111111111111111112",
+            "side": "buy",
+            "amount": "100",
+            "quote_amount": "20",
+            "buyer": "11111111111111111111111111111112",
+            "seller": "11111111111111111111111111111115"
+          }
+        },
+        {
+          "source_id": "organic:trade:buy-b",
+          "provider": "market-fixture",
+          "kind": "market.trade",
+          "occurred_at": "2026-08-30T19:59:58+00:00",
+          "payload": {
+            "maker": "11111111111111111111111111111113",
+            "side": "buy",
+            "amount": "120",
+            "quote_amount": "30",
+            "buyer": "11111111111111111111111111111113",
+            "seller": "11111111111111111111111111111115"
+          }
+        },
+        {
+          "source_id": "organic:trade:sell",
+          "provider": "market-fixture",
+          "kind": "market.trade",
+          "occurred_at": "2026-08-30T19:59:59+00:00",
+          "payload": {
+            "maker": "11111111111111111111111111111115",
+            "side": "sell",
+            "amount": "20",
+            "quote_amount": "5",
+            "buyer": "11111111111111111111111111111114",
+            "seller": "11111111111111111111111111111115"
+          }
+        },
+        {
+          "source_id": "organic:liquidity:previous",
+          "provider": "market-fixture",
+          "kind": "market.market_data",
+          "occurred_at": "2026-08-30T19:59:40+00:00",
+          "payload": {
+            "liquidity": "90",
+            "tracked_supply_pct": "0.20"
+          }
+        },
+        {
+          "source_id": "organic:liquidity:current",
+          "provider": "market-fixture",
+          "kind": "market.market_data",
+          "occurred_at": "2026-08-30T19:59:59+00:00",
+          "payload": {
+            "liquidity": "130",
+            "tracked_supply_pct": "0.25"
+          }
+        },
+        {
+          "source_id": "organic:protocol:curve",
+          "provider": "pump.fun",
+          "kind": "protocol.lifecycle",
+          "occurred_at": "2026-08-30T19:59:58+00:00",
+          "payload": {
+            "protocol_event_type": "bonding_curve_progress",
+            "event_origin": "NATIVE",
+            "bonding_curve_progress_bps": 4200
+          }
+        }
+      ],
+      "duplicate_observation_source_id": "organic:trade:buy-a",
+      "mentions": [
+        {
+          "source_id": "organic:mention:1",
+          "author_id": "organic-author",
+          "text_fingerprint": "organic-fingerprint",
+          "posted_at": "2026-08-30T19:59:59+00:00",
+          "metrics": {
+            "like_count": 8
+          }
+        }
+      ],
+      "risk": {
+        "source_id": "risk:organic",
+        "disposition": "PASS"
+      }
+    },
+    "wash_burst": {
+      "token": "wash",
+      "observations": [
+        {
+          "source_id": "wash:trade:1",
+          "provider": "market-fixture",
+          "kind": "market.trade",
+          "occurred_at": "2026-08-30T19:59:56+00:00",
+          "payload": {
+            "maker": "11111111111111111111111111111112",
+            "side": "buy",
+            "amount": "10",
+            "quote_amount": "2",
+            "buyer": "11111111111111111111111111111112",
+            "seller": "11111111111111111111111111111113"
+          }
+        },
+        {
+          "source_id": "wash:trade:2",
+          "provider": "market-fixture",
+          "kind": "market.trade",
+          "occurred_at": "2026-08-30T19:59:57+00:00",
+          "payload": {
+            "maker": "11111111111111111111111111111112",
+            "side": "sell",
+            "amount": "10",
+            "quote_amount": "2",
+            "buyer": "11111111111111111111111111111113",
+            "seller": "11111111111111111111111111111112"
+          }
+        },
+        {
+          "source_id": "wash:trade:3",
+          "provider": "market-fixture",
+          "kind": "market.trade",
+          "occurred_at": "2026-08-30T19:59:58+00:00",
+          "payload": {
+            "maker": "11111111111111111111111111111113",
+            "side": "buy",
+            "amount": "10",
+            "quote_amount": "2",
+            "buyer": "11111111111111111111111111111113",
+            "seller": "11111111111111111111111111111112"
+          }
+        },
+        {
+          "source_id": "wash:trade:4",
+          "provider": "market-fixture",
+          "kind": "market.trade",
+          "occurred_at": "2026-08-30T19:59:59+00:00",
+          "payload": {
+            "maker": "11111111111111111111111111111113",
+            "side": "sell",
+            "amount": "10",
+            "quote_amount": "2",
+            "buyer": "11111111111111111111111111111112",
+            "seller": "11111111111111111111111111111113"
+          }
+        }
+      ],
+      "risk": {
+        "source_id": "risk:wash",
+        "disposition": "PASS"
+      }
+    },
+    "smart_wallet_only_burst": {
+      "token": "smart",
+      "smart_money": [
+        {
+          "event_type": "ENTRY",
+          "cluster_id": "smart-cluster-a",
+          "wallet_address": "11111111111111111111111111111112",
+          "score_contribution": "80",
+          "source_id": "smart:event:a",
+          "occurred_at": "2026-08-30T19:59:56+00:00"
+        },
+        {
+          "event_type": "ENTRY",
+          "cluster_id": "smart-cluster-a",
+          "wallet_address": "11111111111111111111111111111113",
+          "score_contribution": "60",
+          "source_id": "smart:event:b",
+          "occurred_at": "2026-08-30T19:59:57+00:00"
+        },
+        {
+          "event_type": "ENTRY",
+          "cluster_id": "smart-cluster-b",
+          "wallet_address": "11111111111111111111111111111114",
+          "score_contribution": "70",
+          "source_id": "smart:event:c",
+          "occurred_at": "2026-08-30T19:59:58+00:00"
+        }
+      ],
+      "risk": {
+        "source_id": "risk:smart",
+        "disposition": "PASS"
+      }
+    },
+    "social_only_burst": {
+      "token": "social",
+      "mentions": [
+        {
+          "source_id": "social:mention:1",
+          "author_id": "social-author-1",
+          "text_fingerprint": "social-fingerprint-1",
+          "posted_at": "2026-08-30T19:59:58+00:00",
+          "metrics": {
+            "like_count": 3
+          }
+        },
+        {
+          "source_id": "social:mention:2",
+          "author_id": "social-author-2",
+          "text_fingerprint": "social-fingerprint-2",
+          "posted_at": "2026-08-30T19:59:59+00:00",
+          "metrics": {
+            "like_count": 4
+          }
+        }
+      ],
+      "risk": {
+        "source_id": "risk:social",
+        "disposition": "PASS"
+      }
+    },
+    "creator_dump": {
+      "token": "creator",
+      "wallet_activities": [
+        {
+          "source_id": "creator:wallet:creator",
+          "wallet_address": "Vote111111111111111111111111111111111111111",
+          "action": "SELL",
+          "quantity": "10",
+          "quote_amount": "40",
+          "occurred_at": "2026-08-30T19:59:57+00:00"
+        },
+        {
+          "source_id": "creator:wallet:related",
+          "wallet_address": "11111111111111111111111111111112",
+          "action": "SELL",
+          "quantity": "10",
+          "quote_amount": "20",
+          "occurred_at": "2026-08-30T19:59:58+00:00"
+        },
+        {
+          "source_id": "creator:wallet:other",
+          "wallet_address": "11111111111111111111111111111113",
+          "action": "SELL",
+          "quantity": "10",
+          "quote_amount": "40",
+          "occurred_at": "2026-08-30T19:59:59+00:00"
+        }
+      ],
+      "creator_wallets": [
+        "Vote111111111111111111111111111111111111111"
+      ],
+      "related_wallets": [
+        "11111111111111111111111111111112"
+      ],
+      "risk": {
+        "source_id": "risk:creator",
+        "disposition": "WARN"
+      }
+    }
+  },
+  "future_observation": {
+    "token": "social",
+    "source_id": "social:future",
+    "provider": "social-fixture",
+    "kind": "market.trade",
+    "occurred_at": "2026-08-30T20:00:01+00:00",
+    "observed_at": "2026-08-30T20:00:01+00:00",
+    "payload": {
+      "maker": "11111111111111111111111111111112",
+      "side": "buy",
+      "amount": "999",
+      "quote_amount": "999",
+      "buyer": "11111111111111111111111111111112",
+      "seller": "11111111111111111111111111111113"
+    }
+  }
+}

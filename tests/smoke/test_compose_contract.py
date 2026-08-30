@@ -420,3 +420,46 @@ def test_rich_protocol_lifecycle_replay_seam_is_packaged_and_safe():
         assert environment["PAPER_TRADING"] == "true"
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
+
+
+def test_correlation_replay_seam_is_packaged_provider_free_and_safe():
+    from memeradar_application.correlation import (
+        CORRELATION_VERSION,
+        DEFAULT_CORRELATION_WINDOWS,
+        CorrelationWindowBuilder,
+        CorrelationWindowPolicy,
+    )
+
+    assert CorrelationWindowBuilder
+    assert CorrelationWindowPolicy().version == CORRELATION_VERSION
+    assert tuple(name for name, _ in DEFAULT_CORRELATION_WINDOWS) == (
+        "5s",
+        "15s",
+        "30s",
+        "60s",
+        "1m",
+        "5m",
+        "15m",
+    )
+    correlation_fixture_dir = ROOT / "fixtures" / "providers" / "correlation"
+    assert (correlation_fixture_dir / "README.md").is_file()
+    assert (correlation_fixture_dir / "replay.json").is_file()
+    source = (
+        ROOT
+        / "packages"
+        / "application"
+        / "src"
+        / "memeradar_application"
+        / "correlation.py"
+    ).read_text(encoding="utf-8")
+    assert "memeradar_providers" not in source
+    assert "httpx" not in source
+    assert "sign(" not in source.lower()
+    assert "submit(" not in source.lower()
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
