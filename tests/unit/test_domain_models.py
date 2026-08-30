@@ -373,6 +373,8 @@ def test_feature_risk_and_score_snapshots_keep_explainability_and_fail_closed() 
     assert risk.execution_eligible(NOW)
     assert score.alpha_score == Decimal("78")
     assert score.feature_snapshot_id == feature.id
+    assert score.strategy_name == "legacy"
+    assert score.strategy_version == "legacy"
     assert not risk.execution_eligible(NOW + timedelta(minutes=6))
     assert not RiskAssessment(
         candidate_id=candidate.id,

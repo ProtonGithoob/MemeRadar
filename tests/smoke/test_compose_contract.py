@@ -463,3 +463,49 @@ def test_correlation_replay_seam_is_packaged_provider_free_and_safe():
         assert environment["PAPER_TRADING"] == "true"
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
+
+
+def test_alpha_strategy_replay_seam_is_versioned_provider_free_and_safe():
+    from memeradar_application.alpha_strategy import (
+        ALPHA_SCORE_V1_VERSION,
+        ALPHA_SCORE_V1_WEIGHTS,
+        AlphaScoreV1Strategy,
+        ReferenceStrategy,
+        StrategyPolicy,
+        StrategySnapshot,
+    )
+
+    assert AlphaScoreV1Strategy
+    assert ReferenceStrategy
+    assert StrategySnapshot
+    assert StrategyPolicy().version == ALPHA_SCORE_V1_VERSION
+    assert tuple(ALPHA_SCORE_V1_WEIGHTS) == (
+        "SmartMoney",
+        "OnChainSafety",
+        "LiquidityQuality",
+        "OrganicFlow",
+        "SocialVelocity",
+        "HolderQuality",
+        "Momentum",
+    )
+    alpha_fixture_dir = ROOT / "fixtures" / "providers" / "alpha_strategy"
+    assert (alpha_fixture_dir / "README.md").is_file()
+    assert (alpha_fixture_dir / "replay.json").is_file()
+    source = (
+        ROOT
+        / "packages"
+        / "application"
+        / "src"
+        / "memeradar_application"
+        / "alpha_strategy.py"
+    ).read_text(encoding="utf-8")
+    assert "memeradar_providers" not in source
+    assert "memeradar_persistence" not in source
+    assert "ExecutionPort" not in source
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"

@@ -194,6 +194,8 @@ class ScoreSnapshot:
     expires_at: datetime
     config_hash: str
     quality_state: QualityState = QualityState.FRESH
+    strategy_name: str = "legacy"
+    strategy_version: str = "legacy"
     id: UUID = field(default_factory=uuid4)
 
     def __post_init__(self) -> None:
@@ -239,6 +241,12 @@ class ScoreSnapshot:
         )
         object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
         object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        object.__setattr__(self, "strategy_name", require_text(self.strategy_name, "strategy_name"))
+        object.__setattr__(
+            self,
+            "strategy_version",
+            require_text(self.strategy_version, "strategy_version", max_length=64),
+        )
 
     @property
     def freshness(self) -> Freshness:

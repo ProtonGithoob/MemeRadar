@@ -83,6 +83,14 @@ def test_outbox_processing_columns_support_leases_and_dead_letters() -> None:
     assert columns["status"].nullable is False
 
 
+def test_score_snapshot_persists_explicit_strategy_identity() -> None:
+    columns = Base.metadata.tables["score_snapshots"].c
+
+    assert {"strategy_name", "strategy_version"} <= {column.name for column in columns}
+    assert columns["strategy_name"].nullable is False
+    assert columns["strategy_version"].nullable is False
+
+
 def test_domain_source_has_no_persistence_or_framework_imports() -> None:
     forbidden = ("sqlalchemy", "fastapi", "asyncpg", "memeradar_persistence")
     domain_root = ROOT / "packages" / "domain" / "src"

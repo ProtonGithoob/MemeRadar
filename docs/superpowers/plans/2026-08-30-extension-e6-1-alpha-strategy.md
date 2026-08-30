@@ -69,13 +69,13 @@ session, signer, execution port or live credential is introduced.
   risk_assessment_id, config_hash, quality_state, execution_eligible=False)`.
 - `AlphaStrategy` as a provider-free `Protocol` with `evaluate(...)`.
 
-- [ ] Write failing unit tests for policy weight normalization/bounds, frozen
+- [x] Write failing unit tests for policy weight normalization/bounds, frozen
   mappings, output identity/version/config fields and permanent no-execution.
-- [ ] Run the focused unit test file and confirm the expected missing-module
+- [x] Run the focused unit test file and confirm the expected missing-module
   collection failure.
-- [ ] Implement the contracts using existing UTC/freshness/Decimal/reason-code
+- [x] Implement the contracts using existing UTC/freshness/Decimal/reason-code
   helpers and recursive immutable mappings.
-- [ ] Re-run unit tests before adding score arithmetic.
+- [x] Re-run unit tests before adding score arithmetic.
 
 ## Task 2: Implement deterministic AlphaScore v1 arithmetic and risk boundary
 
@@ -88,24 +88,24 @@ session, signer, execution port or live credential is introduced.
   *, now, config_hash) -> StrategySnapshot`.
 - `ReferenceStrategy` implements the same protocol only for framework tests.
 
-- [ ] Add failing golden tests for exact weighted components, raw weighted
+- [x] Add failing golden tests for exact weighted components, raw weighted
   average, penalty subtraction/clamping and confidence calculation.
-- [ ] Add failing tests for feature-key aliases, missing component evidence,
+- [x] Add failing tests for feature-key aliases, missing component evidence,
   non-finite/out-of-range values, stale/invalid feature snapshots and future
   evaluation timestamps.
-- [ ] Add failing tests proving BLOCK, UNKNOWN, stale critical evidence and
+- [x] Add failing tests proving BLOCK, UNKNOWN, stale critical evidence and
   hard-block penalties remain visible and cannot become PASS or execution
   eligible; strategy output must remain advisory.
-- [ ] Implement deterministic component extraction from `FeatureSnapshot.values`
+- [x] Implement deterministic component extraction from `FeatureSnapshot.values`
   without importing providers or runtime settings.  Keep all seven component
   keys present in stable order, preserve explicitly supplied penalties and add
   only policy-bounded strategy penalties.
-- [ ] Implement confidence as feature confidence × risk confidence × quality
+- [x] Implement confidence as feature confidence × risk confidence × quality
   factor, then apply bounded missing/staleness adjustments with explicit
   reason codes; do not make score magnitude stand in for confidence.
-- [ ] Ensure policy/config and strategy identity are retained on every output,
+- [x] Ensure policy/config and strategy identity are retained on every output,
   and validate candidate/risk/feature identity alignment.
-- [ ] Run focused unit tests and static checks.
+- [x] Run focused unit tests and static checks.
 
 ## Task 3: Add score persistence identity and golden replay contracts
 
@@ -118,17 +118,17 @@ session, signer, execution port or live credential is introduced.
 - Create: `fixtures/providers/alpha_strategy/README.md`
 - Create: `fixtures/providers/alpha_strategy/replay.json`
 
-- [ ] Extend `ScoreSnapshot` and `ScoreSnapshotRow` with explicit
+- [x] Extend `ScoreSnapshot` and `ScoreSnapshotRow` with explicit
   `strategy_name` and `strategy_version` while retaining backward-compatible
   `model_version` semantics; update the initial logical model documentation.
-- [ ] Add a reversible migration with bounded non-null defaults that preserves
+- [x] Add a reversible migration with bounded non-null defaults that preserves
   existing rows and passes migration parity.
-- [ ] Build keyless golden scenarios for strong correlated evidence, sparse
+- [x] Build keyless golden scenarios for strong correlated evidence, sparse
   evidence, penalty clamp, blocked risk and unknown risk.
-- [ ] Assert original/reversed feature mapping equality, exact weighted score,
+- [x] Assert original/reversed feature mapping equality, exact weighted score,
   stable reason/evidence ordering, strategy-switch visibility and no-lookahead
   rejection.
-- [ ] Assert the reference strategy is callable through the protocol but is not
+- [x] Assert the reference strategy is callable through the protocol but is not
   registered as production ranking.
 
 ## Task 4: Reconcile docs, Compose smoke and phase gate

@@ -207,6 +207,12 @@ class ScoreSnapshotRow(Base):
     )
     as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    strategy_name: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="legacy", server_default="legacy"
+    )
+    strategy_version: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="legacy", server_default="legacy"
+    )
     alpha_score: Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False)
     confidence: Mapped[Decimal] = mapped_column(Numeric(6, 5), nullable=False)
     components: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)

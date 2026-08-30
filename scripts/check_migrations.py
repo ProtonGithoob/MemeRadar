@@ -40,8 +40,11 @@ def main() -> int:
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0002_outbox_processing"]:
-        print("migration_error: expected exactly one 0002_outbox_processing head", file=sys.stderr)
+    if heads != ["0003_score_strategy_identity"]:
+        print(
+            "migration_error: expected exactly one 0003_score_strategy_identity head",
+            file=sys.stderr,
+        )
         return 1
     if metadata_tables != expected_tables:
         print("migration_error: metadata table set does not match core schema", file=sys.stderr)

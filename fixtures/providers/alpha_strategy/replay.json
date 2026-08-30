@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "config_hash": "alpha-strategy-fixture-v1",
+  "scenarios": {
+    "correlated": {
+      "components": {
+        "SmartMoney": "80",
+        "OnChainSafety": "90",
+        "LiquidityQuality": "75",
+        "OrganicFlow": "70",
+        "SocialVelocity": "65",
+        "HolderQuality": "85",
+        "Momentum": "60"
+      },
+      "feature_confidence": "0.95",
+      "risk": {
+        "disposition": "PASS",
+        "confidence": "0.90",
+        "penalties": {
+          "wash_trading": "2",
+          "liquidity_decay": "3"
+        }
+      }
+    },
+    "sparse": {
+      "components": {
+        "SmartMoney": "75",
+        "LiquidityQuality": "65",
+        "OrganicFlow": "60"
+      },
+      "feature_confidence": "0.70",
+      "risk": {
+        "disposition": "PASS",
+        "confidence": "0.80",
+        "penalties": {}
+      }
+    },
+    "penalty_clamp": {
+      "components": {
+        "SmartMoney": "100",
+        "OnChainSafety": "100",
+        "LiquidityQuality": "100",
+        "OrganicFlow": "100",
+        "SocialVelocity": "100",
+        "HolderQuality": "100",
+        "Momentum": "100"
+      },
+      "feature_confidence": "1",
+      "risk": {
+        "disposition": "PASS",
+        "confidence": "1",
+        "penalties": {
+          "first": "100",
+          "second": "100"
+        }
+      }
+    },
+    "blocked": {
+      "components": {
+        "SmartMoney": "80",
+        "OnChainSafety": "80",
+        "LiquidityQuality": "80",
+        "OrganicFlow": "80",
+        "SocialVelocity": "80",
+        "HolderQuality": "80",
+        "Momentum": "80"
+      },
+      "feature_confidence": "0.90",
+      "risk": {
+        "disposition": "BLOCK",
+        "hard_blocks": ["FREEZE_AUTHORITY_ACTIVE"],
+        "confidence": "0.95",
+        "penalties": {
+          "freeze_authority": "30"
+        }
+      }
+    },
+    "unknown": {
+      "components": {
+        "SmartMoney": "80",
+        "OnChainSafety": "80",
+        "LiquidityQuality": "80",
+        "OrganicFlow": "80",
+        "SocialVelocity": "80",
+        "HolderQuality": "80",
+        "Momentum": "80"
+      },
+      "feature_confidence": "0.90",
+      "risk": {
+        "disposition": "UNKNOWN",
+        "confidence": "0",
+        "critical_evidence_state": "UNKNOWN",
+        "penalties": {}
+      }
+    }
+  }
+}
