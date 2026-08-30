@@ -1,0 +1,92 @@
+{
+  "metadata": {
+    "provider": "fixture.external_wallet",
+    "capability": "external_wallet_intelligence",
+    "schema_version": "external-wallet-v1",
+    "parser_version": "external-wallet-fixture-v1",
+    "redacted": true
+  },
+  "tokens": {
+    "meme": {
+      "mint_address": "So11111111111111111111111111111111111111112"
+    }
+  },
+  "scenarios": {
+    "agreement": {
+      "labels": [
+        {
+          "wallet_address": "11111111111111111111111111111112",
+          "label": "SMART_MONEY",
+          "source": "external-fixture",
+          "source_confidence": 0.9,
+          "observed_at": "2026-08-30T19:59:30+00:00",
+          "expires_at": "2026-08-30T20:04:30+00:00",
+          "raw_source_id": "label:a"
+        },
+        {
+          "wallet_address": "11111111111111111111111111111113",
+          "label": "SMART_MONEY",
+          "source": "external-fixture",
+          "source_confidence": 0.9,
+          "observed_at": "2026-08-30T19:59:30+00:00",
+          "expires_at": "2026-08-30T20:04:30+00:00",
+          "raw_source_id": "label:b"
+        }
+      ],
+      "token_signals": [
+        {
+          "wallet_address": "11111111111111111111111111111112",
+          "signal_type": "TOKEN_INTELLIGENCE",
+          "source": "external-fixture",
+          "source_confidence": 0.8,
+          "observed_at": "2026-08-30T19:59:40+00:00",
+          "expires_at": "2026-08-30T20:04:40+00:00",
+          "raw_source_id": "signal:a",
+          "tracked_supply_pct": 0.25,
+          "bundle_confidence": 0.7,
+          "side_wallet_cluster_confidence": 0.8,
+          "security_flags": ["RUG_WARNING"]
+        }
+      ]
+    },
+    "stale": {
+      "labels": [
+        {
+          "wallet_address": "11111111111111111111111111111112",
+          "label": "SMART_MONEY",
+          "source": "external-fixture",
+          "source_confidence": 0.9,
+          "observed_at": "2026-08-30T19:45:00+00:00",
+          "expires_at": "2026-08-30T19:55:00+00:00",
+          "raw_source_id": "label:stale"
+        }
+      ],
+      "token_signals": []
+    },
+    "disagreement": {
+      "labels": [
+        {
+          "wallet_address": "11111111111111111111111111111112",
+          "label": "RUGGER",
+          "source": "external-fixture",
+          "source_confidence": 0.9,
+          "observed_at": "2026-08-30T19:59:30+00:00",
+          "expires_at": "2026-08-30T20:04:30+00:00",
+          "raw_source_id": "label:rugger"
+        }
+      ],
+      "token_signals": [
+        {
+          "wallet_address": "11111111111111111111111111111112",
+          "signal_type": "SECURITY",
+          "source": "external-fixture",
+          "source_confidence": 0.8,
+          "observed_at": "2026-08-30T19:59:40+00:00",
+          "expires_at": "2026-08-30T20:04:40+00:00",
+          "raw_source_id": "signal:security",
+          "security_flags": ["RUG_WARNING"]
+        }
+      ]
+    }
+  }
+}

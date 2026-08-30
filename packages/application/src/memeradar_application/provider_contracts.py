@@ -44,6 +44,7 @@ class ProviderCapability(str, Enum):
     QUOTE = "quote"
     EXECUTION = "execution"
     NOTIFICATION = "notification"
+    EXTERNAL_WALLET_INTELLIGENCE = "external_wallet_intelligence"
 
 
 @dataclass(frozen=True, slots=True)

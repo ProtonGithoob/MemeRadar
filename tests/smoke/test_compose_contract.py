@@ -175,6 +175,37 @@ def test_wallet_scoring_replay_seam_is_packaged_and_safe():
         assert environment["AUTO_EXECUTION"] == "false"
 
 
+def test_external_wallet_intelligence_replay_seam_is_packaged_and_safe():
+    from memeradar_application.external_wallet import (
+        EXTERNAL_WALLET_VERSION,
+        ExternalWalletCrossValidationPolicy,
+        ExternalWalletIntelligencePort,
+        ExternalWalletReconciler,
+    )
+    from memeradar_providers.external_wallet import FixtureExternalWalletIntelligenceAdapter
+
+    assert EXTERNAL_WALLET_VERSION == "external-wallet-v1"
+    assert ExternalWalletCrossValidationPolicy().version
+    assert ExternalWalletIntelligencePort
+    assert ExternalWalletReconciler
+    assert FixtureExternalWalletIntelligenceAdapter.provider_name == "fixture.external_wallet"
+    fixture_dir = ROOT / "fixtures" / "providers" / "external_wallet"
+    assert (fixture_dir / "README.md").is_file()
+    assert (fixture_dir / "replay.json").is_file()
+    makefile = (ROOT / "Makefile").read_text()
+    env_example = (ROOT / ".env.example").read_text()
+    assert "external-wallet-doctor:" in makefile
+    assert "EXTERNAL_WALLET_API_URL=" in env_example
+    assert "EXTERNAL_WALLET_API_KEY=" in env_example
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())["services"]
+    for service_name in ("api", "worker"):
+        environment = compose[service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
+
+
 def test_confluence_replay_seam_is_packaged_and_safe():
     from memeradar_application.confluence import (
         ConfluenceAnalyzer,

@@ -70,6 +70,7 @@ def test_all_documented_provider_ports_expose_async_application_methods() -> Non
         "quote",
         "execution",
         "notification",
+        "external_wallet_intelligence",
     }
     for port, method_name in methods.items():
         method = getattr(port, method_name)
