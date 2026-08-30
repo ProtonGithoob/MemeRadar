@@ -45,6 +45,17 @@ risk-gate, scoring-weight or execution authority: `execution_eligible()` is
 always false, deterministic analysis never waits on an LLM, and no narrative
 value can clear a hard block or change an operating mode.
 
+The E6.2 external-wallet seam is read-only corroboration. Labels and token
+signals preserve source confidence, observed/expiry times, raw source IDs and
+provenance, but external labels cannot replace the internal `SmartWalletScore`
+or holder-graph actor clustering. Fresh agreement can add only a bounded
+confidence bonus; stale labels are ignored for positive confidence and
+disagreement is `CONFLICTED_EXTERNAL_WALLET_LABEL`. External security/rug
+fields remain advisory evidence and cannot create or clear deterministic
+on-chain hard gates. The fixture adapter never accesses the network, and
+`make external-wallet-doctor` reports presence only and never emits secrets or
+probes an unapproved URL. No live GMGN/CabalSpy adapter is enabled.
+
 ## Operating modes
 
 Default and mandatory until roadmap gates explicitly unlock:

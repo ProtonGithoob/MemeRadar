@@ -467,6 +467,34 @@ and risk references, components, penalties, reason codes and provenance so
 changing strategy versions is explicit in audit/replay. The keyless
 `ReferenceStrategy` is test-only and is not a production ranking strategy.
 
+### E6.2 external wallet cross-validation rules
+
+`ExternalWalletReconciler` treats external wallet labels and token signals as
+corroborating evidence only. A fresh positive external label contributes to
+the bounded `confidence_bonus` only when the same canonical wallet has a fresh,
+qualified internal `SmartWalletScore` (Tier A/B, score and confidence above
+the configured thresholds). The external source confidence is preserved
+separately as `external_label_confidence`; it is not substituted for the
+internal score. The default total agreement bonus is capped at `0.10`.
+
+Different fresh labels for one wallet, conflicting reuse of a source ID, or an
+external negative label that conflicts with a qualified internal score produce
+`CONFLICTED_EXTERNAL_WALLET_LABEL` and zero agreement bonus. Stale labels are
+retained for audit but are ignored for positive confidence. Future, invalid,
+unknown and conflicted evidence never becomes safe evidence. When multiple
+wallets are present, the existing fresh holder graph is unioned before
+`independent_external_wallet_clusters` is counted; no graph-derived or
+external label can promote internal wallet authority.
+
+Fresh token signals may expose bounded `tracked_supply_pct`,
+`bundle_confidence` and `side_wallet_cluster_confidence` features. Security or
+rug flags are emitted as `EXTERNAL_SECURITY_CORROBORATION_ONLY`; they do not
+become hard blocks or replace deterministic on-chain authority evaluation.
+Removing the external provider therefore leaves internal wallet scores and
+`RiskAssessment` values unchanged and only removes corroborating features or
+confidence. Every external-wallet result remains advisory and has
+`execution_eligible() == false`.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

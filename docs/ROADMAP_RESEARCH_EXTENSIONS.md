@@ -142,19 +142,35 @@ acceptance remains separately `BLOCKED_EXTERNAL`.
 
 ### Tasks
 
-- [ ] Define normalized `ExternalWalletLabel` and `ExternalWalletTokenSignal` contracts.
-- [ ] Preserve source, source confidence, observed time, expiry/TTL and raw source identifier.
-- [ ] Implement `ExternalWalletIntelligencePort` adapter seam.
-- [ ] Add keyless fake/fixture provider.
-- [ ] Add optional GMGN-style adapter only against documented/legal endpoints available to the operator; no brittle scraping.
-- [ ] Reconcile external labels with internal `SmartWalletScore`:
+- [x] Define normalized `ExternalWalletLabel` and `ExternalWalletTokenSignal` contracts.
+- [x] Preserve source, source confidence, observed time, expiry/TTL and raw source identifier.
+- [x] Implement `ExternalWalletIntelligencePort` adapter seam.
+- [x] Add keyless fake/fixture provider.
+- [x] Add optional GMGN-style adapter only against documented/legal endpoints available to the operator; no brittle scraping.
+- [x] Reconcile external labels with internal `SmartWalletScore`:
   - agreement -> bounded confidence bonus;
   - disagreement -> `CONFLICTED_EXTERNAL_WALLET_LABEL`;
   - stale label -> ignored for positive confidence;
   - internal graph correlation still collapses actor clusters.
-- [ ] Add token-level features: `external_label_confidence`, `tracked_supply_pct`, `bundle_confidence`, `side_wallet_cluster_confidence` when evidence exists.
-- [ ] External security/rug fields map only to corroborating risk evidence and never replace deterministic hard gates.
-- [ ] Add provider doctor and fixture/live-acceptance split.
+- [x] Add token-level features: `external_label_confidence`, `tracked_supply_pct`, `bundle_confidence`, `side_wallet_cluster_confidence` when evidence exists.
+- [x] External security/rug fields map only to corroborating risk evidence and never replace deterministic hard gates.
+- [x] Add provider doctor and fixture/live-acceptance split.
+
+**Keyless status (2026-08-30):** `DONE` for the provider-independent
+external-wallet corroboration seam. `ExternalWalletLabel` and
+`ExternalWalletTokenSignal` retain canonical wallet/token identity, source,
+source confidence, observed/expiry timestamps, raw source IDs, provenance,
+evidence references and quality state. `ExternalWalletIntelligencePort` and
+the network-free `FixtureExternalWalletIntelligenceAdapter` provide bounded
+replay without a live provider call. `ExternalWalletReconciler` uses fresh
+internal `SmartWalletScore` evidence for bounded agreement confidence,
+fail-closes disagreement as `CONFLICTED_EXTERNAL_WALLET_LABEL`, ignores stale
+labels for positive confidence and collapses external wallets through the
+internal holder graph. Tracked supply, bundle, side-wallet and security flags
+remain corroborating token features; no external result mutates internal score
+or risk records and every result is permanently non-executable. No documented
+and legally approved GMGN/CabalSpy endpoint is configured, so no live adapter
+or live-provider success is claimed.
 
 **Acceptance:** removing the external provider cannot change deterministic internal risk results; it only removes corroborating features/confidence.
 

@@ -484,6 +484,40 @@ rows carry explicit strategy identity through migration
 `0003_score_strategy_identity`; final candidate recomputation and decision
 state orchestration remain later Phase 6 work.
 
+## External wallet intelligence / cross validation
+
+Research extension E6.2 adds provider-independent immutable
+`ExternalWalletLabel` and `ExternalWalletTokenSignal` records under
+`packages/application/src/memeradar_application/external_wallet.py`. A wallet
+label preserves the canonical wallet, normalized label, external source,
+source confidence, observed/expiry timestamps, raw source ID, provenance,
+evidence references, parser version and quality state. A token signal adds the
+token identity and optional wallet identity plus bounded `0..1` values for
+`tracked_supply_pct`, `bundle_confidence` and
+`side_wallet_cluster_confidence`; external security/rug fields are retained as
+flags only.
+
+`ExternalWalletIntelligenceRequest`/`ExternalWalletIntelligenceResult` and
+the `ExternalWalletIntelligencePort` keep provider transport outside the
+application contract. `ExternalWalletReconciler` emits an immutable
+`ExternalWalletReconciliationSnapshot` with fresh external-label confidence,
+bounded agreement bonus, graph-collapsed independent wallet clusters,
+token-level corroborating features, security flags, internal/external evidence
+references, reason codes, freshness and config hash. Agreement is counted only
+when a fresh external positive label matches a qualified internal
+`SmartWalletScore`; disagreement is `CONFLICTED_EXTERNAL_WALLET_LABEL`, and
+stale/future/unknown evidence cannot add positive confidence. The snapshot
+does not mutate `SmartWalletScore` or `RiskAssessment` and its execution
+eligibility is permanently false.
+
+The keyless replay path is the network-free
+`FixtureExternalWalletIntelligenceAdapter` and
+`fixtures/providers/external_wallet/replay.json`. No physical migration is
+needed for this application evidence seam; persistence of external raw
+payloads/features remains a later Phase 6 projection task. No live GMGN,
+CabalSpy or scraping adapter is claimed without a documented/legal operator
+endpoint.
+
 ## Market / holder data
 
 ### market_snapshots

@@ -161,6 +161,36 @@ predicate. The synthetic fixture under
 `fixtures/providers/alpha_strategy/` is the keyless acceptance path; no live
 provider success is implied.
 
+## External wallet intelligence / cross validation
+
+Research extension E6.2 adds the provider-neutral
+`ExternalWalletIntelligencePort` plus bounded request/result contracts in
+`packages/application/src/memeradar_application/external_wallet.py`.
+`ExternalWalletLabel` and `ExternalWalletTokenSignal` retain source name,
+source confidence, observed time, expiry/TTL, raw source ID, provenance,
+evidence references and quality state. Token signals can carry tracked-supply,
+bundle, side-wallet-cluster and security/rug fields as bounded corroborating
+evidence.
+
+The application `ExternalWalletReconciler` accepts fresh internal
+`SmartWalletScore` records and the existing `WalletGraphSnapshot`. Only
+agreement with a qualified internal score receives a bounded confidence bonus;
+different/conflicting labels become `CONFLICTED_EXTERNAL_WALLET_LABEL`, stale
+labels cannot add positive confidence, and graph-connected wallets count as one
+actor cluster. External fields never mutate internal wallet scores, replace
+deterministic token-security hard gates or authorize execution.
+
+`FixtureExternalWalletIntelligenceAdapter` in
+`packages/providers/src/memeradar_providers/external_wallet.py` is the
+network-free replay adapter. Its redacted fixture lives under
+`fixtures/providers/external_wallet/` and contains no credentials. No GMGN,
+CabalSpy or other live adapter is enabled: this checkout has no documented and
+legally approved operator endpoint contract, so adding a brittle scraper would
+violate the provider and security boundaries. `make external-wallet-doctor`
+reports configuration presence and returns `BLOCKED_EXTERNAL` for missing or
+unsupported live configuration without probing arbitrary URLs or emitting
+secrets. Live acceptance is separate from the keyless fixture PASS.
+
 ## RugCheck / token-security risk layer
 
 Sprint 3.1 adds the provider-local `RugCheckRestAdapter` in `packages/providers/src/memeradar_providers/rugcheck.py`. It performs a read-only `GET /v1/tokens/{id}/report/summary` request, validates the official summary shape, and maps each `risks[]` item into an application `RiskFinding` with the requested token, source ID, observation timestamp and `QualityState.FRESH`. The adapter accepts an optional JWT through the `Authorization: Bearer ...` header; it never places credentials in a URL, report body, fixture, exception or doctor output. The adapter uses the shared bounded transport policy and exposes only safe rate-limit metadata.

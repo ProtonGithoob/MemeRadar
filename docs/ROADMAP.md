@@ -281,8 +281,11 @@ read-only endpoint/credential.
 Research extension E6.0 supplies the provider-independent, keyless correlation
 seam for these windows and the launch micro-features. Research extension E6.1
 now supplies the provider-independent, versioned AlphaStrategy and AlphaScore
-v1 arithmetic seam. Feature-snapshot orchestration and final decision-state
-wiring remain core Sprint 6.1/6.3 work.
+v1 arithmetic seam. Research extension E6.2 now supplies an advisory,
+provider-independent external-wallet cross-validation seam; it cannot replace
+internal SmartWalletScore/graph authority or deterministic risk gates.
+Feature-snapshot orchestration and final decision-state wiring remain core
+Sprint 6.1/6.3 work.
 
 - [ ] Implement 1m/5m/15m rolling feature aggregation.
 - [ ] Add market, liquidity, holder, wallet, social and momentum feature families.
