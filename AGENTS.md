@@ -47,14 +47,26 @@ Before changing code, read in order:
 2. `docs/MASTER_SPEC.md`
 3. `docs/ARCHITECTURE.md`
 4. `docs/ROADMAP.md`
-5. `docs/DATA_MODEL.md`
-6. `docs/SCORING_AND_RISK.md`
-7. `docs/PROVIDERS.md`
-8. `docs/SECURITY.md`
-9. `docs/TESTING.md`
-10. `docs/STATUS.md`
+5. `docs/ROADMAP_RESEARCH_EXTENSIONS.md`
+6. `docs/RESEARCH_REUSE_REGISTRY.md`
+7. `docs/DATA_MODEL.md`
+8. `docs/SCORING_AND_RISK.md`
+9. `docs/PROVIDERS.md`
+10. `docs/SECURITY.md`
+11. `docs/TESTING.md`
+12. `docs/STATUS.md`
 
 Then inspect the actual repository and environment. Repository truth overrides assumptions.
+
+## Roadmap precedence and extension execution
+
+- `docs/ROADMAP.md` remains the core product roadmap.
+- `docs/ROADMAP_RESEARCH_EXTENSIONS.md` is an accepted supplementary executable backlog derived from later repository/protocol research.
+- Completed core tasks must not be restarted or rewritten merely to fit a new idea.
+- Finish the exact current task from `docs/STATUS.md` first, then execute research extensions at the insertion points documented in `ROADMAP_RESEARCH_EXTENSIONS.md`.
+- `docs/RESEARCH_REUSE_REGISTRY.md` explains the upstream pattern and licensing constraints; it is a reference registry, not permission to copy restricted code.
+- When a researched pattern conflicts with a safety, deterministic-scoring, provider-independence or no-live-money invariant, the invariant wins.
+- Low-latency/Rust/Yellowstone work is conditional on measured need and must not distract from unfinished core intelligence, replay or safety work.
 
 ## Autonomous working rules
 
@@ -72,12 +84,14 @@ Then inspect the actual repository and environment. Repository truth overrides a
 - Preserve provider independence in domain/application code.
 - All externally sourced events must carry provenance, timestamps and freshness state.
 - All decisions must carry reason codes and enough inputs for replay/explanation.
+- Third-party wallet labels, KOL signals, GMGN-like risk/market signals and protocol-derived classifications are evidence only; they do not become execution authority.
+- Do not directly copy code from upstream repositories until license compatibility is explicitly verified. When license is unclear/restrictive, independently implement the documented behavior/pattern.
 
 ## Implementation discipline
 
 For each task:
 
-1. Confirm current task and acceptance criteria from `docs/ROADMAP.md`.
+1. Confirm current task and acceptance criteria from `docs/ROADMAP.md` and, when applicable, `docs/ROADMAP_RESEARCH_EXTENSIONS.md`.
 2. Inspect related existing code/tests before editing.
 3. Add or update tests first where practical.
 4. Implement the minimum coherent change.
@@ -99,7 +113,10 @@ For each task:
 - Critical risk evidence has TTL/freshness semantics.
 - Missing critical evidence is not equivalent to safe evidence.
 - LLM narrative output is advisory and can never override a deterministic hard gate.
+- External KOL/smart-money labels are corroborating evidence; internal wallet scoring/graph independence remains authoritative for MemeRadar's own component calculations.
+- A social-only, wallet-only, provider-only or launch-event-only burst cannot independently authorize `ENTRY_READY`.
 - Real execution uses a separate permission boundary from analysis/paper modes.
+- Optional low-latency sidecars may ingest/decode only; they cannot score risk, change modes, sign or authorize trades.
 
 ## Definition of Done
 
@@ -113,6 +130,14 @@ A task is done only when:
 - docs are reconciled;
 - `docs/STATUS.md` records evidence and remaining blockers;
 - no secret or unsafe live default was introduced.
+
+For research-extension tasks, Definition of Done also requires:
+
+- upstream license/reuse decision documented when relevant;
+- fixtures/replay demonstrate deterministic behavior;
+- no-lookahead tests where historical/rolling windows are involved;
+- third-party disagreement/UNKNOWN behavior tested;
+- feature/strategy/parser version and config hash persisted where specified.
 
 ## Blockers
 
