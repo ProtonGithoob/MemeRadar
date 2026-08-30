@@ -4,9 +4,9 @@ Last updated: 2026-08-30
 
 ## Current verdict
 
-`RESEARCH_EXTENSION_E5_4_COMPLETE_KEYLESS_PASS`
+`RESEARCH_EXTENSION_E2_5_COMPLETE_KEYLESS_PASS`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5 and research extension E5.4 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extension E5.4 and research extension E2.5 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
@@ -22,7 +22,8 @@ Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verif
 - Completed: `Phase 5 / Sprint 5.3 — Narrative LLM` (keyless portion)
 - Completed: `Gate P5` (keyless acceptance: social features work without an LLM; narrative output is advisory and cannot bypass risk gates)
 - Completed: `Research extension E5.4 — Historical Caller/KOL Outcome Evidence` (keyless portion)
-- Next: research extension `E2.5 / E6.3 — Rich Pump.fun Protocol Lifecycle Events` from `docs/ROADMAP_RESEARCH_EXTENSIONS.md`, before E6.0 correlation work; live social/narrative/provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
+- Completed: `Research extension E2.5 / E6.3 — Rich Pump.fun Protocol Lifecycle Events` (keyless portion)
+- Next: research extension `E6.0 — Correlation and Launch Micro-Features` from `docs/ROADMAP_RESEARCH_EXTENSIONS.md`; live social/narrative/protocol/provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
 
 ## Current operating policy
 
@@ -141,6 +142,11 @@ The configuration loader rejects attempts to override these protected values.
 - [x] `CallPerformanceSnapshot` aggregates per-author historical outcomes with neutral shrinkage, minimum sample/confidence gates, uncertainty and replay evidence; duplicate calls are idempotent with `DUPLICATE_CALL_DEDUPED`, while conflicts fail closed.
 - [x] `AuthorTrustScorer` consumes caller performance only through an opt-in non-zero weight; default trust output is unchanged, insufficient history lowers confidence without moving score, and registry tiers/execution authority remain unchanged.
 - [x] Credential-free E5.4 fixture replay, contract tests, Compose safe-mode smoke coverage and provider-independence checks pass for good, poor, rug-heavy, duplicated and insufficient-sample callers.
+- [x] Research extension E2.5 implementation plan recorded at `docs/superpowers/plans/2026-08-30-extension-e2-5-pumpfun-lifecycle.md` and completed.
+- [x] Schema-v2 rich Pump.fun/PumpSwap lifecycle events normalize launch, trade, bonding-curve progress, graduation/migration, pool creation, creator-fee and fee-recipient events with parser/version/provenance metadata.
+- [x] Native protocol facts remain distinct from `DERIVED` whale-trade classifications; reliable `bonding_curve_progress_bps` evidence is validated and retained for later feature windows.
+- [x] Stream-first `ProtocolEventStreamFallback` provides bounded reconnects, malformed-message counting, event-time ordering, duplicate preservation, cancellation propagation and one bounded poll fallback without a network or execution client.
+- [x] Credential-free rich lifecycle replay fixture/contracts cover Pump.fun/PumpSwap ordering, duplicate delivery, malformed input, deterministic `protocol.lifecycle` observations, provider independence and all four protected modes.
 
 ## Current sprint progress
 
@@ -176,6 +182,9 @@ The configuration loader rejects attempts to override these protected values.
 - Sprint 5.3 gate evidence: strict contract, sanitization, budget/cache/timeout, deterministic fallback, fixture/REST seam, doctor, replay, provider-contract and safe-mode smoke tests pass; `make verify` is green (`259 passed, 3 skipped`, branch-aware total coverage `79%`, Ruff, mypy `48 source files`, frontend lint/typecheck/Vitest, Compose config, secret scan and migration parity); documentation reconciliation is complete. Gate P5 keyless acceptance passes: deterministic social features work with the narrative provider unavailable, and narrative output is visibly advisory with `execution_eligible()` always false.
 - E5.4 plan recorded at `docs/superpowers/plans/2026-08-30-extension-e5-4-call-performance.md` and completed for the keyless acceptance; the implementation is independent of the unclear-license upstream caller-performance pattern.
 - E5.4 gate evidence: focused unit, replay contract and Compose smoke tests pass; fixed `5m`/`15m`/`1h`/`6h`/`24h` horizons, no-lookahead exclusion, reversed-delivery determinism, nullable missing evidence, risk flags, token age, duplicate/conflict handling, neutral shrinkage, trust opt-in and all four protected modes are covered. E5.4 results remain advisory and have no execution authority.
+- E2.5 plan recorded at `docs/superpowers/plans/2026-08-30-extension-e2-5-pumpfun-lifecycle.md` and completed; no unclear-license upstream code was copied.
+- E2.5 gate evidence: schema/alias/origin unit tests, stream reconnect/fallback/cancellation tests, rich Pump.fun/PumpSwap fixture replay, deterministic event-time ordering, duplicate preservation, malformed rejection, curve-progress validation, lifecycle observation mapping, provider-independence checks and Compose safe-mode smoke tests pass.
+- E2.5 live protocol acceptance remains isolated from the keyless seam; no provider SDK, network client, endpoint or credential was introduced.
 - Environment note (2026-08-30): the local `.venv` had been rebuilt with host Python 3.14.4, which is incompatible with the pinned SQLAlchemy 2.0.37; the venv was recreated with the pinned `.python-version` (3.12.13) from `requirements.lock`, restoring `scripts/check_migrations.py` and the full gate. No dependency or source change was required.
 - Verification note (2026-08-30): sandboxed test execution cannot wake the AnyIO/TestClient event-loop socket (`EPERM`) and stalls on pre-existing API TestClient tests; the same pinned environment passes the complete gate when run at the permitted external execution boundary. No application workaround was introduced for this host restriction.
 
@@ -200,6 +209,14 @@ All commands below were run in the current checkout on 2026-08-30 unless they re
 - `docker compose -p memeradar -f /tmp/memeradar-compose.yml up -d --build api worker` after E5.4 — exit `0`; rebuilt API/worker images include `call_performance.py` and the trust integration while retaining the protected modes. The temporary Compose copy remaps host ports to `15432`/`16379` because unrelated host projects publish `5432`/`6379`.
 - Compose E5.4 runtime probes — worker `e5_4_worker_runtime_import_ok CallPerformanceAnalyzer SocialCall SocialCallOutcome CallPerformanceSnapshot call-performance-v1`; API `e5_4_api_runtime_import_ok AuthorTrustScorer call-performance-v1`; both asserted all four protected mode values. Compose API, Postgres and Redis were healthy, and worker was running.
 - `GET http://127.0.0.1:8000/health/live` after E5.4 — HTTP `200`, `{"status":"alive","service":"api","version":"0.1.0"}`; `GET /health/ready` — HTTP `200` with database and Redis reachable.
+- `.venv/bin/pytest tests/unit/test_launchpad_dex.py tests/unit/test_launchpad_dex_identity.py tests/unit/test_protocol_stream.py tests/contract/test_extension_e2_5_pumpfun_lifecycle.py tests/contract/test_launchpad_dex_provider.py tests/smoke/test_compose_contract.py -q` — `54 passed`; rich schema, stream fallback, backward-compatible v1 parser, all venue contracts, fixture replay, malformed/duplicate handling and protected modes pass.
+- `make lint` after E2.5 — exit `0`; Ruff passed for all applications, packages, tests and scripts.
+- `make typecheck` after E2.5 — exit `0`; mypy reported `Success: no issues found in 50 source files`.
+- `make secret-scan`, `./.venv/bin/python scripts/check_migrations.py` and `docker compose -f infra/compose/docker-compose.yml config --quiet` after E2.5 — all exit `0`; no tracked secrets, migration parity reports `{"heads": ["0002_outbox_processing"], "table_count": 13}`, and Compose config is valid.
+- `make verify` after E2.5 — exit `0`; `287 passed, 3 skipped`, total branch-aware coverage `79%`, Ruff, mypy (`50 source files`), frontend lint/typecheck/Vitest, Compose config, secret scan and migration parity all completed. The gate ran at the permitted external execution boundary because the restricted sandbox cannot wake the pre-existing AnyIO/TestClient event-loop socket.
+- `docker compose -p memeradar -f /tmp/memeradar-compose.yml up -d --build api worker` after E2.5 — exit `0`; rebuilt API/worker images include the rich lifecycle parser and stream fallback while retaining all four protected modes. The temporary Compose copy remaps host ports to `15432`/`16379` because unrelated host projects publish `5432`/`6379`.
+- Compose E2.5 runtime probes — worker `e2_5_worker_runtime_import_ok launchpad-dex-v2 2 whale_trade DERIVED ProtocolEventStreamFallback`; API `e2_5_api_runtime_import_ok pump.fun pumpswap 1000`; both asserted all four protected mode values. Compose API, Postgres and Redis were healthy, and worker was running.
+- `GET http://127.0.0.1:8000/health/live` after E2.5 — HTTP `200`, `{"status":"alive","service":"api","version":"0.1.0"}`.
 
 Earlier dated evidence:
 - `.venv/bin/pytest tests/unit/test_event_processing.py tests/unit/test_telemetry.py tests/unit/test_persistence_contract.py tests/unit/test_migration_contract.py -q` — `18 passed` before the final synthetic replay/idempotency additions; the final full gate below includes those additions.
@@ -353,11 +370,13 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Gate P5 keyless acceptance: `PASS` — deterministic social features (Sprints 5.1/5.2) work with the narrative provider unavailable; narrative output is visibly advisory with `execution_eligible()` always false and cannot bypass risk gates.
 - Sprint 5.3 live narrative provider acceptance: `BLOCKED_EXTERNAL` — `NARRATIVE_API_URL` and `NARRATIVE_API_KEY` are missing; `make narrative-doctor` did not attempt a live call and no live-provider success is claimed.
 - E5.4 keyless historical caller-performance acceptance: `PASS` — deterministic credential-free fixture replay, no-lookahead and duplicate/conflict contracts, neutral shrinkage, opt-in trust integration and protected-mode checks pass.
+- E2.5 keyless rich protocol lifecycle acceptance: `PASS` — schema-v2 typed events, native/derived origin separation, validated curve-progress evidence, deterministic stream/fallback replay, malformed/duplicate/order contracts, lifecycle observation mapping and protected-mode checks pass without credentials or protocol SDKs.
+- E2.5 live Pump.fun/PumpSwap/Raydium/Meteora acceptance: `BLOCKED_EXTERNAL` — no documented read-only protocol endpoint/credential configuration is present; no live call was attempted and no live-provider success is claimed.
 - Birdeye, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 
 ## Blockers
 
-- No blocker affects E5.4, Sprint 5.3 or the keyless Gate P5 acceptance. Helius, Birdeye, Sprint 2.4 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance, Sprint 5.1/Sprint 5.2 live social/X acceptance and Sprint 5.3 live narrative acceptance remain externally blocked for missing endpoint/credential configuration; no live-provider success is claimed.
+- No blocker affects E2.5, E5.4, Sprint 5.3 or the keyless Gate P5 acceptance. Helius, Birdeye, E2.5 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance, Sprint 5.1/Sprint 5.2 live social/X acceptance and Sprint 5.3 live narrative acceptance remain externally blocked for missing endpoint/credential configuration; no live-provider success is claimed.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -372,6 +391,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 5.2 remains a provider-independent warm-path social intelligence contract; no physical migration is introduced. Logical `author_trust_snapshots` and `social_velocity_snapshots` targets remain for a later persistence task, and trust/velocity scoring does not write business state automatically.
 - The Sprint 5.3 keyless narrative slice remains a provider-independent warm-path advisory contract; no physical migration is introduced. Narrative evidence/snapshot persistence remains a later roadmap task, and narrative analysis does not write business state or authorize execution automatically.
 - The E5.4 caller-performance slice remains a provider-independent warm-path advisory contract; no physical migration is introduced. `SocialCall`, outcomes and author snapshots are replay/application records only, and the analyzer does not write business state, mutate registry tiers or authorize execution.
+- The E2.5 rich protocol slice remains a provider-independent warm-path observation contract; no physical protocol migration is introduced. Schema-v2 `protocol.lifecycle` observations and stream results are replay/application records only, and lifecycle evidence does not write business state, clear risk, transition candidates or authorize execution.
 - Sprint 5.3 documentation reconciliation updated `ROADMAP.md` (Sprint 5.3 checkboxes and Gate P5 state), `DATA_MODEL.md` (narrative snapshot contract), `PROVIDERS.md` (narrative gateway/adapter/doctor seam), `SCORING_AND_RISK.md` (Sprint 5.3 narrative rules) and `SECURITY.md` (LLM safety boundary); no behavior contract changed.
 
 ## Git state
@@ -424,7 +444,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed research-docs checkpoints: `abefc21` (research reuse registry), `36be4dd` (architecture extensions), `22ebc96` (research extension roadmap), `19214bb` (Codex backlog instructions).
 - Latest research extension E5.4 plan checkpoint: `6e6e012` (`docs: plan extension E5.4 call performance`).
 - Latest pushed E5.4 implementation/fixture/contract/documentation checkpoint: `f8aa710` (`feat: add historical caller performance evidence`); full verification and Compose runtime evidence are recorded above.
+- Latest pushed E2.5 implementation/fixture/contract/documentation checkpoint: `a06ae95` (`feat: add rich protocol lifecycle events`); full verification and Compose runtime evidence are recorded above.
 
 ## Next task
 
-Execute research extension `E2.5 / E6.3 — Rich Pump.fun Protocol Lifecycle Events` from `docs/ROADMAP_RESEARCH_EXTENSIONS.md` (insertion point: after E5.4 and before E6.0): extend normalized lifecycle event types, preserve native-versus-derived classifications, add stream/fallback seams and deterministic duplicate/malformed replay contracts, and feed lifecycle evidence into later feature/risk timelines without execution authority. Preserve all four safety modes and provider independence. After E2.5, continue the extension backlog in the documented order: E6.0, E6.1, E6.2, then Phase 6 core score/decision work. Live social, narrative and protocol provider acceptance remains `BLOCKED_EXTERNAL` without configured safe read-only endpoint/credential access.
+Execute research extension `E6.0 — Correlation and Launch Micro-Features` from `docs/ROADMAP_RESEARCH_EXTENSIONS.md`: add the `5s`/`15s`/`30s`/`60s` alongside `1m`/`5m`/`15m` feature-window configuration, correlate social/protocol/market/wallet/risk evidence by token and event time, enforce independent actor-cluster and minimum-sample rules, and add no-lookahead golden replay fixtures. Preserve all four safety modes, provider independence and the rule that no social, wallet, protocol or market burst can independently authorize `ENTRY_READY`. After E6.0, continue E6.1, E6.2, then Phase 6 core score/decision work. Live social, narrative and protocol provider acceptance remains `BLOCKED_EXTERNAL` without configured safe read-only endpoint/credential access.
