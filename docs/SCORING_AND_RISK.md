@@ -412,6 +412,34 @@ or malformed critical evidence remains fail-closed. Stream reconnect and poll
 fallback status affects freshness/confidence and never grants execution
 authority.
 
+### E6.0 correlation and launch micro-feature rules
+
+The provider-independent `CorrelationWindowBuilder` joins normalized social,
+protocol, market, wallet, smart-money and risk evidence in the seven ordered
+event-time windows `5s`, `15s`, `30s`, `60s`, `1m`, `5m` and `15m`.
+Membership is `(as_of - duration, as_of]`; delivery order never changes the
+result. `60s` and `1m` are retained as separate named views for
+compatibility with micro-flow and normal rolling-window consumers.
+
+The feature set includes buyer/seller arrival, quote flow and acceleration,
+maker/transaction and wash diagnostics, liquidity deltas, protocol lifecycle
+counts/curve progress, social/market/wallet counts, actor-cluster smart-money
+entry quality, tracked supply and creator/related-wallet sell pressure. Quote-
+or row-dependent values remain nullable when the input does not support them.
+Distinct smart-money events sharing a cluster ID count as one independent
+entry cluster; third-party or protocol labels remain corroborating evidence.
+
+Source diversity counts distinct evidence categories rather than raw records
+and caps confidence at the configured target. Fewer than the minimum sample
+size or independent source count produces low confidence/`UNKNOWN`. Missing,
+stale, conflicted, malformed or future critical evidence never becomes safe
+evidence; future/conflicting data makes the correlation snapshot `INVALID`.
+The snapshot retains source IDs, timestamps, parser provenance, evidence
+references, quality, reason codes, version and config hash. Correlation
+features cannot clear a hard risk block, create `ENTRY_READY` or authorize
+execution; the later AlphaStrategy/AlphaScore layer must reapply all hard
+gates.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

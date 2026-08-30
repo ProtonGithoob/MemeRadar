@@ -57,8 +57,8 @@ credentials or endpoints are absent.
 
 ### Tasks
 
-- [ ] Extend feature-window configuration to support `5s`, `15s`, `30s`, `60s`, `1m`, `5m`, `15m`.
-- [ ] Add micro-flow features:
+- [x] Extend feature-window configuration to support `5s`, `15s`, `30s`, `60s`, `1m`, `5m`, `15m`.
+- [x] Add micro-flow features:
   - unique buyers/sellers;
   - buyer arrival rate;
   - buy/sell quote volume;
@@ -68,18 +68,35 @@ credentials or endpoints are absent.
   - transaction/maker ratio;
   - liquidity delta and acceleration;
   - repeated-size/circular/rapid-round-trip diagnostics where row data exists.
-- [ ] Add smart-wallet micro-features after actor-cluster dedupe:
+- [x] Add smart-wallet micro-features after actor-cluster dedupe:
   - independent entry clusters;
   - weighted entry quality;
   - tracked-supply percentage when evidence supports it;
   - creator/related-wallet sell pressure.
-- [ ] Implement `CorrelationWindowBuilder` joining social, protocol, market, wallet and risk evidence by token and event time.
-- [ ] Add source-independence count and source-diversity confidence component.
-- [ ] Add minimum sample rules for ultra-short windows; insufficient samples become low confidence/UNKNOWN, never strong momentum.
-- [ ] Add no-lookahead and out-of-order tests.
-- [ ] Add golden fixtures representing organic acceleration, bot/wash burst, smart-wallet-only burst, social-only burst and creator dump.
+- [x] Implement `CorrelationWindowBuilder` joining social, protocol, market, wallet and risk evidence by token and event time.
+- [x] Add source-independence count and source-diversity confidence component.
+- [x] Add minimum sample rules for ultra-short windows; insufficient samples become low confidence/UNKNOWN, never strong momentum.
+- [x] Add no-lookahead and out-of-order tests.
+- [x] Add golden fixtures representing organic acceleration, bot/wash burst, smart-wallet-only burst, social-only burst and creator dump.
 
 **Acceptance:** a social-only or wallet-only burst cannot reach `ENTRY_READY`; correlated independent evidence can improve score/confidence only after hard risk requirements are satisfied.
+
+**Keyless status (2026-08-30):** `DONE` for the provider-independent
+correlation/replay seam. `CorrelationWindowPolicy` exposes the seven required
+event-time windows, including the intentionally equivalent `60s` and `1m`
+views. `CorrelationWindowBuilder` normalizes existing observations, social
+mentions, wallet activities, smart-money events and risk assessments; sorts
+by `(event_at, observed_at, ingested_at, provider, source_id, kind)`;
+deduplicates equivalent source deliveries; rejects conflicting source reuse;
+excludes future timestamps; and emits immutable, versioned features with
+provenance, evidence references, freshness, source diversity and config hash.
+Flow, liquidity, protocol lifecycle, social, wallet, actor-cluster and
+creator/related-wallet features remain advisory. Missing/stale/unknown or
+single-source evidence becomes low-confidence/`UNKNOWN`, malformed or
+conflicting/future evidence is `INVALID`, and `execution_eligible()` is
+permanently false. Synthetic golden scenarios and reverse-delivery replay
+contracts live under `fixtures/providers/correlation/`; no physical migration
+or final AlphaScore/decision wiring is introduced by E6.0.
 
 ---
 

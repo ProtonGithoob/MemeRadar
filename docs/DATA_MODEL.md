@@ -417,6 +417,39 @@ wallet and market evidence; no lifecycle observation can authorize execution
 or clear a deterministic hard risk gate. No physical protocol migration is
 introduced for this warm-path checkpoint.
 
+## Correlation and launch micro-features
+
+### correlation_window_snapshots (logical E6.0 view)
+
+E6.0 emits immutable application snapshots over the existing append-only
+observations and application contracts. This is a logical replay view; it
+does not add a physical table or migration.
+
+- token identity/mint
+- as_of/expires_at
+- required windows: `5s`, `15s`, `30s`, `60s`, `1m`, `5m`, `15m`
+- event/source counts and source-diversity confidence
+- unique buyers/sellers and buyer arrival rate
+- buy/sell quote volumes, ratio, net flow and net-flow acceleration
+- transaction/maker ratio and repeated-size/circular/rapid-round-trip ratios
+- liquidity, liquidity delta/acceleration and nullable tracked-supply percentage
+- protocol lifecycle counts and nullable bonding-curve progress basis points
+- independent smart-money entry clusters and weighted entry quality
+- creator/related-wallet sell pressure
+- risk disposition and critical evidence quality
+- feature/snapshot confidence, quality state, reason codes and version
+- provenance, evidence references and configuration hash
+
+Window membership is inclusive of the end and exclusive of the start:
+`(as_of - duration, as_of]`. Event time is authoritative, with observed,
+ingested, provider and source tie-breakers. Equivalent duplicate deliveries
+are idempotently collapsed; conflicting reuse is invalid. Future event,
+observed or ingested timestamps are excluded and invalidate confidence.
+Missing critical risk evidence, insufficient samples and fewer than the
+configured independent source categories remain `UNKNOWN`/low confidence.
+Correlation is advisory and has no execution authority; persistence and
+final score/decision snapshots remain later Phase 6 work.
+
 ## Market / holder data
 
 ### market_snapshots

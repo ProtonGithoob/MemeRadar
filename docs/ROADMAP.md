@@ -278,6 +278,10 @@ read-only endpoint/credential.
 
 ### Sprint 6.1 — Feature Windows
 
+Research extension E6.0 supplies the provider-independent, keyless correlation
+seam for these windows and the launch micro-features. Persistence of feature
+snapshots and final AlphaScore/decision wiring remain Sprint 6.1/6.2 work.
+
 - [ ] Implement 1m/5m/15m rolling feature aggregation.
 - [ ] Add market, liquidity, holder, wallet, social and momentum feature families.
 - [ ] Persist snapshots with provenance/freshness.

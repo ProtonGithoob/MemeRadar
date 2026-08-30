@@ -25,16 +25,16 @@ test:
 	$(PYTHON) -m pytest -q --cov=apps --cov=packages --cov-report=term-missing
 
 frontend-lint:
-	npm --prefix $(WEB_DIR) run lint
+	cd $(WEB_DIR) && npm run lint
 
 frontend-typecheck:
-	npm --prefix $(WEB_DIR) run typecheck
+	cd $(WEB_DIR) && npm run typecheck
 
 frontend-test:
-	npm --prefix $(WEB_DIR) run test
+	cd $(WEB_DIR) && npm run test
 
 frontend-build:
-	npm --prefix $(WEB_DIR) run build
+	cd $(WEB_DIR) && npm run build
 
 compose-config:
 	$(COMPOSE) config --quiet

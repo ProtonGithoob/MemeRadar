@@ -4,9 +4,9 @@ Last updated: 2026-08-30
 
 ## Current verdict
 
-`RESEARCH_EXTENSION_E2_5_COMPLETE_KEYLESS_PASS`
+`RESEARCH_EXTENSION_E6_0_COMPLETE_KEYLESS_PASS`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extension E5.4 and research extension E2.5 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extension E5.4, research extension E2.5 and research extension E6.0 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
@@ -23,7 +23,8 @@ Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verif
 - Completed: `Gate P5` (keyless acceptance: social features work without an LLM; narrative output is advisory and cannot bypass risk gates)
 - Completed: `Research extension E5.4 — Historical Caller/KOL Outcome Evidence` (keyless portion)
 - Completed: `Research extension E2.5 / E6.3 — Rich Pump.fun Protocol Lifecycle Events` (keyless portion)
-- Next: research extension `E6.0 — Correlation and Launch Micro-Features` from `docs/ROADMAP_RESEARCH_EXTENSIONS.md`; live social/narrative/protocol/provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
+- Completed: `Research extension E6.0 — Correlation and Launch Micro-Features` (keyless portion)
+- Next: research extension `E6.1 — Versioned AlphaStrategy Interface` from `docs/ROADMAP_RESEARCH_EXTENSIONS.md`; live social/narrative/protocol/provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
 
 ## Current operating policy
 
@@ -445,7 +446,10 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest research extension E5.4 plan checkpoint: `6e6e012` (`docs: plan extension E5.4 call performance`).
 - Latest pushed E5.4 implementation/fixture/contract/documentation checkpoint: `f8aa710` (`feat: add historical caller performance evidence`); full verification and Compose runtime evidence are recorded above.
 - Latest pushed E2.5 implementation/fixture/contract/documentation checkpoint: `a06ae95` (`feat: add rich protocol lifecycle events`); full verification and Compose runtime evidence are recorded above.
+- Latest pushed E6.0 implementation/fixture/contract checkpoint: `8ae2391` (`feat: add launch correlation micro-features`).
+- E6.0 verification: focused correlation unit/contract/Compose smoke `31 passed`; full backend test `301 passed, 3 skipped`, branch-aware coverage `79%`; `make lint`, `make typecheck`, `make secret-scan`, migration parity (head `0002_outbox_processing`, 13 tables), Compose config, frontend lint/typecheck/test/build all pass. The frontend Makefile recipes now execute from `apps/web` so Next receives the correct project root.
+- E6.0 replay evidence: seven named event-time windows `5s`, `15s`, `30s`, `60s`, `1m`, `5m`, `15m`; reverse-delivery equality; duplicate-source collapse; future evidence exclusion with `INVALID`/zero confidence; source/sample-limited social and wallet bursts; wash diagnostics; smart-money actor-cluster dedupe; creator/related-wallet pressure; and permanent `execution_eligible() == false`.
 
 ## Next task
 
-Execute research extension `E6.0 — Correlation and Launch Micro-Features` from `docs/ROADMAP_RESEARCH_EXTENSIONS.md`: add the `5s`/`15s`/`30s`/`60s` alongside `1m`/`5m`/`15m` feature-window configuration, correlate social/protocol/market/wallet/risk evidence by token and event time, enforce independent actor-cluster and minimum-sample rules, and add no-lookahead golden replay fixtures. Preserve all four safety modes, provider independence and the rule that no social, wallet, protocol or market burst can independently authorize `ENTRY_READY`. After E6.0, continue E6.1, E6.2, then Phase 6 core score/decision work. Live social, narrative and protocol provider acceptance remains `BLOCKED_EXTERNAL` without configured safe read-only endpoint/credential access.
+Execute research extension `E6.1 — Versioned AlphaStrategy Interface` from `docs/ROADMAP_RESEARCH_EXTENSIONS.md`: define the provider-free strategy seam, implement deterministic AlphaScore v1 strategy components against fixed correlation/risk inputs, retain hard gates above strategy output, and add golden replay tests. Preserve all four safety modes and provider independence. Then continue E6.2 and Phase 6 core persistence/score/decision work. Live social, narrative and protocol provider acceptance remains `BLOCKED_EXTERNAL` without configured safe read-only endpoint/credential access.

@@ -129,6 +129,23 @@ authority. Synthetic Pump.fun/PumpSwap replay data and malformed/duplicate
 contracts live in `fixtures/providers/launchpad_dex/`; live protocol access
 remains a separate `BLOCKED_EXTERNAL` acceptance.
 
+## Correlation / launch micro-feature seam
+
+Research extension E6.0 consumes only application-facing normalized
+`Observation`, `SocialMention`, `WalletActivity`,
+`TokenSmartMoneyScore` and `RiskAssessment` values.
+`CorrelationWindowBuilder` is provider-independent; provider adapters do not
+cross into it and no SDK, HTTP client, persistence session, signer or
+execution port is available in the module.
+
+The builder supports event-time windows `5s`/`15s`/`30s`/`60s` plus
+`1m`/`5m`/`15m`, deterministic reverse-delivery replay, bounded input
+counts, equivalent duplicate collapse and fail-closed future/conflict/
+malformed handling. Its output preserves provenance, evidence IDs, freshness,
+reason codes, source-category diversity, version and config hash. It is an
+advisory feature seam only; a social, market, protocol, wallet or external
+label burst cannot authorize `ENTRY_READY`.
+
 ## RugCheck / token-security risk layer
 
 Sprint 3.1 adds the provider-local `RugCheckRestAdapter` in `packages/providers/src/memeradar_providers/rugcheck.py`. It performs a read-only `GET /v1/tokens/{id}/report/summary` request, validates the official summary shape, and maps each `risks[]` item into an application `RiskFinding` with the requested token, source ID, observation timestamp and `QualityState.FRESH`. The adapter accepts an optional JWT through the `Authorization: Bearer ...` header; it never places credentials in a URL, report body, fixture, exception or doctor output. The adapter uses the shared bounded transport policy and exposes only safe rate-limit metadata.
