@@ -422,7 +422,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 5.3 keyless implementation/fixture/doctor checkpoint: `2bf7338` (`feat: add narrative analysis safety seam`).
 - Sprint 5.3 stop-state record: `738b28b` (`docs: synchronize Sprint 5.3 stop state`).
 - Latest pushed research-docs checkpoints: `abefc21` (research reuse registry), `36be4dd` (architecture extensions), `22ebc96` (research extension roadmap), `19214bb` (Codex backlog instructions).
-- Latest research extension E5.4 plan checkpoint: `6e6e012` (`docs: plan extension E5.4 call performance`); implementation, fixture/contract and documentation synchronization follow in this checkpoint.
+- Latest research extension E5.4 plan checkpoint: `6e6e012` (`docs: plan extension E5.4 call performance`).
+- Latest pushed E5.4 implementation/fixture/contract/documentation checkpoint: `f8aa710` (`feat: add historical caller performance evidence`); full verification and Compose runtime evidence are recorded above.
 
 ## Next task
 
