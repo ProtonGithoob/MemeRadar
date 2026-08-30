@@ -81,6 +81,8 @@ Append-oriented normalized observations.
 - candidate_id
 - as_of
 - model_version
+- strategy_name
+- strategy_version
 - alpha_score numeric 0..100
 - confidence numeric 0..1
 - components JSONB
@@ -89,6 +91,13 @@ Append-oriented normalized observations.
 - feature_snapshot_id
 - risk_assessment_id
 - config_hash
+
+`strategy_name` and `strategy_version` identify the deterministic strategy
+that produced the score; `model_version` remains for backward compatibility.
+Existing rows are backfilled as `legacy` by migration
+`0003_score_strategy_identity`. Every new score projection must retain all
+three identity/config fields so strategy switching is explicit in replay and
+audit records.
 
 ### state_transitions
 - id
@@ -449,6 +458,31 @@ Missing critical risk evidence, insufficient samples and fewer than the
 configured independent source categories remain `UNKNOWN`/low confidence.
 Correlation is advisory and has no execution authority; persistence and
 final score/decision snapshots remain later Phase 6 work.
+
+## AlphaStrategy and AlphaScore v1
+
+Research extension E6.1 emits an immutable logical `StrategySnapshot` from a
+`FeatureSnapshot`, matching `RiskAssessment` and an explicit mode-safe
+`StrategyPolicy`. The snapshot retains:
+
+- strategy name/version and configuration hash;
+- candidate, feature-snapshot and risk-assessment references;
+- the seven normalized components: `SmartMoney`, `OnChainSafety`,
+  `LiquidityQuality`, `OrganicFlow`, `SocialVelocity`, `HolderQuality` and
+  `Momentum`;
+- weighted components, pre-penalty raw score, post-penalty score suggestion,
+  bounded penalties, confidence and confidence adjustment;
+- risk disposition/hard blocks, quality, reason codes, evidence references and
+  provenance.
+
+The initial weights are 25%/20%/15%/15%/10%/10%/5% in the order above. Missing
+components use an explicit neutral value only with a confidence reduction;
+malformed values fail closed. Risk `BLOCK`, `UNKNOWN`, stale and conflicted
+evidence remain visible and cannot be cleared by the strategy. The result is
+always advisory and `execution_eligible()` is permanently false. Physical score
+rows carry explicit strategy identity through migration
+`0003_score_strategy_identity`; final candidate recomputation and decision
+state orchestration remain later Phase 6 work.
 
 ## Market / holder data
 

@@ -146,6 +146,21 @@ reason codes, source-category diversity, version and config hash. It is an
 advisory feature seam only; a social, market, protocol, wallet or external
 label burst cannot authorize `ENTRY_READY`.
 
+## Versioned AlphaStrategy seam
+
+Research extension E6.1 is intentionally outside the provider layer.
+`AlphaStrategy`, `StrategyPolicy`, `AlphaScoreV1Strategy` and
+`StrategySnapshot` live in
+`packages/application/src/memeradar_application/alpha_strategy.py` and
+consume only immutable domain snapshots. The module imports no provider SDK,
+HTTP client, persistence session, signer or execution port. It applies the
+documented AlphaScore v1 weights and risk penalties, preserves hard-block and
+freshness/UNKNOWN semantics, and records strategy/version/config identity for
+replay. Its output is advisory with a permanently false execution-eligibility
+predicate. The synthetic fixture under
+`fixtures/providers/alpha_strategy/` is the keyless acceptance path; no live
+provider success is implied.
+
 ## RugCheck / token-security risk layer
 
 Sprint 3.1 adds the provider-local `RugCheckRestAdapter` in `packages/providers/src/memeradar_providers/rugcheck.py`. It performs a read-only `GET /v1/tokens/{id}/report/summary` request, validates the official summary shape, and maps each `risks[]` item into an application `RiskFinding` with the requested token, source ID, observation timestamp and `QualityState.FRESH`. The adapter accepts an optional JWT through the `Authorization: Bearer ...` header; it never places credentials in a URL, report body, fixture, exception or doctor output. The adapter uses the shared bounded transport policy and exposes only safe rate-limit metadata.

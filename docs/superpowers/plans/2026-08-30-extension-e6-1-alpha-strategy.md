@@ -142,13 +142,13 @@ session, signer, execution port or live credential is introduced.
 - Modify: `docs/PROVIDERS.md`
 - Modify: `docs/STATUS.md`
 
-- [ ] Add Compose/import smoke coverage for strategy identity, protected modes,
+- [x] Add Compose/import smoke coverage for strategy identity, protected modes,
   fixture presence and no-provider imports.
-- [ ] Document strategy inputs/outputs, hard-gate ordering, missing evidence,
+- [x] Document strategy inputs/outputs, hard-gate ordering, missing evidence,
   score weights, version/config persistence and no-execution boundary.
-- [ ] Run focused unit/contract/smoke checks, `make lint`, `make typecheck`,
+- [x] Run focused unit/contract/smoke checks, `make lint`, `make typecheck`,
   `make secret-scan`, migration parity, Compose config and full `make verify`.
-- [ ] Rebuild API/worker images and run import/mode/health probes without
+- [x] Rebuild API/worker images and run import/mode/health probes without
   claiming live provider success.
-- [ ] Update `docs/STATUS.md` with exact evidence, protected modes, external
+- [x] Update `docs/STATUS.md` with exact evidence, protected modes, external
   blockers and the next uncompleted task; commit and push coherent checkpoints.

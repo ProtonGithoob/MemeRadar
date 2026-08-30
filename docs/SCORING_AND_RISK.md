@@ -440,6 +440,33 @@ features cannot clear a hard risk block, create `ENTRY_READY` or authorize
 execution; the later AlphaStrategy/AlphaScore layer must reapply all hard
 gates.
 
+### E6.1 versioned AlphaStrategy rules
+
+`AlphaStrategy` is a provider-free application protocol over immutable
+`FeatureSnapshot` and `RiskAssessment` inputs plus an explicit mode-safe
+`StrategyPolicy`. `AlphaScoreV1Strategy` uses the initial weights exactly as
+documented above: `SmartMoney` 25%, `OnChainSafety` 20%, `LiquidityQuality`
+15%, `OrganicFlow` 15%, `SocialVelocity` 10%, `HolderQuality` 10% and
+`Momentum` 5%. Components are bounded to 0..100; the weighted average is the
+raw score, risk penalties are subtracted, and the suggestion is clamped to
+0..100.
+
+Missing component values may use a configured neutral 50 only as an explicit
+unknown-evidence fallback and reduce confidence. Malformed, out-of-range or
+conflicting aliases become invalid/zero-confidence evidence. Confidence is
+separate from score magnitude and combines feature/risk confidence with
+freshness and completeness adjustments. Stale, unknown, conflicted or future
+inputs never become fresh.
+
+Hard risk assessment disposition and hard-block codes remain above the
+strategy. A `BLOCK` or `UNKNOWN` assessment is retained in the strategy
+snapshot; no score, penalty or strategy version can clear it. Strategy output
+is always advisory and `execution_eligible()` is permanently false. Every
+projection records strategy name/version, model version/config hash, feature
+and risk references, components, penalties, reason codes and provenance so
+changing strategy versions is explicit in audit/replay. The keyless
+`ReferenceStrategy` is test-only and is not a production ranking strategy.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

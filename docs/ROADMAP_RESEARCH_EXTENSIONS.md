@@ -108,15 +108,27 @@ or final AlphaScore/decision wiring is introduced by E6.0.
 
 ### Tasks
 
-- [ ] Define provider-free `AlphaStrategy` protocol/interface in application layer.
-- [ ] Inputs: immutable feature snapshot, risk assessment, current mode-safe policy/config.
-- [ ] Output: versioned strategy snapshot with components, raw score suggestion, penalties, confidence adjustments, reason codes and config hash.
-- [ ] Implement `AlphaScoreV1Strategy` matching `SCORING_AND_RISK.md`.
-- [ ] Hard risk blocks are evaluated outside/above the strategy and cannot be cleared by strategy output.
-- [ ] Strategy cannot access network, DB session, provider SDK, signer or execution port.
-- [ ] Persist strategy name/version/config hash with score/decision snapshots.
-- [ ] Add deterministic golden tests.
-- [ ] Add a second trivial/reference strategy only for framework tests, not production ranking.
+- [x] Define provider-free `AlphaStrategy` protocol/interface in application layer.
+- [x] Inputs: immutable feature snapshot, risk assessment, current mode-safe policy/config.
+- [x] Output: versioned strategy snapshot with components, raw score suggestion, penalties, confidence adjustments, reason codes and config hash.
+- [x] Implement `AlphaScoreV1Strategy` matching `SCORING_AND_RISK.md`.
+- [x] Hard risk blocks are evaluated outside/above the strategy and cannot be cleared by strategy output.
+- [x] Strategy cannot access network, DB session, provider SDK, signer or execution port.
+- [x] Persist strategy name/version/config hash with score/decision snapshots.
+- [x] Add deterministic golden tests.
+- [x] Add a second trivial/reference strategy only for framework tests, not production ranking.
+
+**Keyless status (2026-08-30):** `DONE` for the provider-independent strategy
+contract. `AlphaScoreV1Strategy` consumes immutable `FeatureSnapshot` and
+`RiskAssessment` records, applies the documented seven weighted components and
+bounded risk penalties, preserves hard blocks above the score, and emits an
+advisory `StrategySnapshot` with strategy identity, confidence adjustments,
+reason/evidence references and config hash. `ReferenceStrategy` exists only for
+protocol tests. Score snapshots now persist explicit strategy name/version via
+the reversible `0003_score_strategy_identity` migration. Golden replay covers
+reverse mapping determinism, sparse evidence, penalty clamping, blocked and
+unknown risk, strategy switching and no-provider imports. Live provider
+acceptance remains separately `BLOCKED_EXTERNAL`.
 
 **Acceptance:** same event/features/config produce byte-equivalent logical strategy output; switching strategy versions requires explicit config and is visible in audit/replay.
 

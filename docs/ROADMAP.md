@@ -279,8 +279,10 @@ read-only endpoint/credential.
 ### Sprint 6.1 — Feature Windows
 
 Research extension E6.0 supplies the provider-independent, keyless correlation
-seam for these windows and the launch micro-features. Persistence of feature
-snapshots and final AlphaScore/decision wiring remain Sprint 6.1/6.2 work.
+seam for these windows and the launch micro-features. Research extension E6.1
+now supplies the provider-independent, versioned AlphaStrategy and AlphaScore
+v1 arithmetic seam. Feature-snapshot orchestration and final decision-state
+wiring remain core Sprint 6.1/6.3 work.
 
 - [ ] Implement 1m/5m/15m rolling feature aggregation.
 - [ ] Add market, liquidity, holder, wallet, social and momentum feature families.
@@ -294,6 +296,11 @@ snapshots and final AlphaScore/decision wiring remain Sprint 6.1/6.2 work.
 - [ ] Return score, confidence, components, penalties and reason codes.
 - [ ] Persist model version/config hash.
 - [ ] Add golden fixtures and boundary tests.
+
+Research extension E6.1 provides the keyless strategy arithmetic, golden
+fixtures and explicit strategy identity used by this sprint; the core sprint
+checkboxes remain open until score recomputation is wired into the candidate
+pipeline and decision state machine.
 
 ### Sprint 6.3 — Decision State Machine
 
