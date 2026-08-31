@@ -70,8 +70,18 @@ operation. The score ID, strategy identity and persisted config hash provide
 replay/audit identity only; they are not permission grants. Repository-backed
 recomputation preserves hard-risk references and fail-closed freshness, and a
 blocked or unknown risk result cannot be upgraded by component weights,
-penalties or score magnitude. Candidate transitions remain behind the later
-decision-state gate.
+penalties or score magnitude.
+
+Core Sprint 6.3 `DecisionEngine` is a second deterministic safety boundary. It
+requires candidate/score/risk identity and event-time validity, rechecks
+critical risk freshness, hard blocks, configuration, confidence and the
+explicit risk eligibility predicate, and maps unsafe evidence to
+`RISK_REJECTED` where the lifecycle permits. Hysteresis/cooldown logic only
+suppresses upward state churn; safety downgrades and risk escalation are not
+suppressed. The engine can recommend `ENTRY_READY` but has no paper/live
+position, wallet, signer, provider or execution dependency. Score-delta and
+risk-escalation events are audit evidence, never permission grants; LLM and
+external-wallet evidence remain advisory.
 
 ## Operating modes
 

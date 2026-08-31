@@ -540,6 +540,27 @@ components/penalties, reasons, freshness, model/strategy identity and config
 hash. The score remains advisory and has no execution or state-transition
 authority.
 
+### Core Sprint 6.3 DecisionEngine
+
+`DecisionEngine` re-applies the risk and freshness gates above the score before
+mapping one lifecycle step. Its initial versioned `DecisionPolicy` defaults to
+watch/strong/entry thresholds of `40`/`75`/`85`, downward hysteresis floors of
+`35`/`70`/`80`, minimum decision confidence `0.60` and a 30-second cooldown.
+Candidates advance sequentially from `ENRICHING` to `WATCH`, then
+`STRONG_SETUP`, then `ENTRY_READY`; a score cannot skip lifecycle states.
+
+`BLOCK`, `UNKNOWN`, hard-blocked or non-fresh critical risk, and config
+identity mismatch fail closed to `RISK_REJECTED` where the lifecycle allows
+it. `WARN` risk, low confidence, non-fresh scores and failed execution gates
+cannot produce `ENTRY_READY`. Hysteresis holds a current state until its
+configured floor is crossed; safety downgrades and risk rejection bypass the
+cooldown. The engine never creates `PAPER_OPEN`, `OPEN` or a live approval.
+
+Each evaluation carries reason codes, evidence references, score/risk IDs,
+confidence, policy version and config hash. Non-zero score changes emit an
+`AlphaScoreDelta` event; worsening disposition/quality or an initial unsafe
+risk emits `RiskEscalation`. Both are advisory, deterministic and replayable.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

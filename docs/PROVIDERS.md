@@ -166,6 +166,18 @@ enters score evaluation. The redacted golden fixture under
 hard-risk explanations and strategy/config identity without implying live
 provider success.
 
+## Decision state and timeline projection
+
+Core Sprint 6.3 is also outside the provider layer. `DecisionEngine` consumes
+only immutable domain snapshots and an application-facing candidate store;
+`EvidenceTimelineProjector` consumes normalized events and snapshots. Neither
+module imports provider SDKs or network clients, and neither can sign, submit,
+open a position or enable a trading mode. Provider disagreement, stale or
+unknown critical risk and missing eligibility evidence remain fail-closed at
+the decision boundary. The keyless replay fixture under
+`fixtures/providers/decision/` is the acceptance path; no live provider PASS
+is implied.
+
 ## Versioned AlphaStrategy seam
 
 Research extension E6.1 is intentionally outside the provider layer.

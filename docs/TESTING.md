@@ -153,6 +153,16 @@ pre-boundary rejection. The opt-in Postgres path persists feature, risk and
 score rows together and verifies duplicate acceptance plus JSON-safe
 round-trips.
 
+Sprint 6.3 adds decision-state replay for sequential `WATCH`, `STRONG_SETUP`
+and `ENTRY_READY` transitions, fail-closed blocked/unknown/stale risk,
+confidence caps, hysteresis floors, cooldown suppression, deterministic
+score-delta/risk-escalation events and an event-time timeline projection. The
+contract compares repeated fixture replay and reversed timeline delivery,
+checks separate occurred/observed/ingested timestamps, provenance and an
+`as_of` no-lookahead boundary, and verifies that the application seam has no
+provider/persistence/execution imports. The opt-in Postgres suite also
+rehydrates a multi-transition candidate with stable decision identity.
+
 Add regression thresholds only after a stable baseline exists.
 
 ## Failure tests

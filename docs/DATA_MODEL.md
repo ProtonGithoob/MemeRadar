@@ -457,8 +457,9 @@ are idempotently collapsed; conflicting reuse is invalid. Future event,
 observed or ingested timestamps are excluded and invalidate confidence.
 Missing critical risk evidence, insufficient samples and fewer than the
 configured independent source categories remain `UNKNOWN`/low confidence.
-Correlation is advisory and has no execution authority; persistence and
-decision-state snapshots remain later Phase 6 work.
+Correlation is advisory and has no execution authority; feature, score and
+decision-state snapshots are projected through the subsequent Phase 6
+application seams.
 
 ### feature-window snapshots (core Sprint 6.1)
 
@@ -500,6 +501,30 @@ converted into an execution-eligible result. No physical migration is needed
 for this slice because migration `0003_score_strategy_identity` already
 provides the strategy identity columns.
 
+### decision projections (core Sprint 6.3)
+
+`DecisionEngine` consumes a candidate plus immutable `ScoreSnapshot` and
+`RiskAssessment` records and applies at most one allow-listed transition per
+evaluation. `DecisionPolicy` persists the policy version and uses configurable
+40/75/85 upward thresholds, 35/70/80 hysteresis floors, a 0.60 minimum
+confidence and a 30-second default cooldown. Every transition carries score
+and risk IDs, policy/config identity, confidence, reason codes and evidence
+references. `PAPER_OPEN`, `LIVE_PENDING_APPROVAL`, signing and execution are
+outside this application seam.
+
+`AlphaScoreDelta` and `RiskEscalation` are replayable event-envelope
+projections. Their deterministic IDs/idempotency keys include the candidate,
+snapshot identities, policy/config and evaluation context. A decision result
+also exposes the score delta, escalation flag and evidence references. The
+caller owns transaction/outbox persistence through application-facing ports.
+
+`EvidenceTimelineProjector` is a logical projection, not a new table. It
+retains separate `occurred_at`, `observed_at` and `ingested_at` values plus
+quality state, provenance, reason codes, evidence references and normalized
+payload for candidate transitions, internal events and feature/risk/score
+snapshots. Entries are sorted by event time with deterministic tie-breakers;
+an optional `as_of` boundary excludes future evidence for replay.
+
 ## AlphaStrategy and AlphaScore v1
 
 Research extension E6.1 emits an immutable logical `StrategySnapshot` from a
@@ -522,8 +547,9 @@ malformed values fail closed. Risk `BLOCK`, `UNKNOWN`, stale and conflicted
 evidence remain visible and cannot be cleared by the strategy. The result is
 always advisory and `execution_eligible()` is permanently false. Physical score
 rows carry explicit strategy identity through migration
-`0003_score_strategy_identity`; final candidate recomputation and decision
-state orchestration remain later Phase 6 work.
+`0003_score_strategy_identity`; core Sprint 6.2 recomputation and Sprint 6.3
+decision-state orchestration consume these records without granting execution
+authority.
 
 ## External wallet intelligence / cross validation
 

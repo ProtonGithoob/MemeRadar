@@ -304,17 +304,26 @@ recomputation; decision-state wiring remains Sprint 6.3 work.
 Research extension E6.1 provides the keyless strategy arithmetic, golden
 fixtures and explicit strategy identity used by this sprint. Core Sprint 6.2
 now wires that strategy through deterministic repository-backed score
-recomputation; candidate state transitions and decision hysteresis remain
-Sprint 6.3 work.
+recomputation; candidate state transitions and decision hysteresis are
+implemented by Sprint 6.3 below.
 
 ### Sprint 6.3 — Decision State Machine
 
-- [ ] Map score+risk+confidence to WATCH/STRONG_SETUP/ENTRY_READY transitions.
-- [ ] Add hysteresis/cooldowns to prevent alert thrash.
-- [ ] Add score-delta and risk-escalation events.
-- [ ] Implement full evidence timeline projection.
+- [x] Map score+risk+confidence to WATCH/STRONG_SETUP/ENTRY_READY transitions.
+- [x] Add hysteresis/cooldowns to prevent alert thrash.
+- [x] Add score-delta and risk-escalation events.
+- [x] Implement full evidence timeline projection.
 
 **Gate P6:** deterministic replay reproduces identical decisions from identical event log/config.
+
+The keyless Gate P6 acceptance is complete. `DecisionEngine` applies one
+allow-listed transition at a time, rechecks risk/freshness/config/confidence
+above score, and keeps `PAPER_OPEN`/live execution outside its authority.
+`DecisionPolicy` defaults to the documented 40/75/85 bands, 35/70/80
+hysteresis floors, 0.60 minimum confidence and a 30-second cooldown. Stable
+decision/event identities, fixture replay and the opt-in persistence round
+trip demonstrate deterministic results; live provider acceptance remains
+`BLOCKED_EXTERNAL`.
 
 ---
 

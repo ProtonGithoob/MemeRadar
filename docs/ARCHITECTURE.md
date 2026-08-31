@@ -68,6 +68,8 @@ Core events:
 - RiskAssessmentUpdated
 - FeaturesUpdated
 - AlphaScoreUpdated
+- AlphaScoreDelta
+- RiskEscalation
 - CandidateStateChanged
 - AlertRequested/Delivered
 - PaperOrderRequested/Filled/Rejected
@@ -246,7 +248,23 @@ Core Sprint 6.2 uses `AlphaScoreRecomputer` to load immutable feature/risk
 records through application-facing repository protocols, delegate evaluation
 to the selected strategy, assign a replay-stable score identity and persist
 through the caller-owned unit of work. It exposes no provider or execution
-dependency; candidate transitions and alert decisions remain Sprint 6.3.
+dependency.
+
+Core Sprint 6.3 uses `DecisionEngine` and a versioned `DecisionPolicy` to
+consume score/risk snapshots and apply one lifecycle transition at a time.
+The default score bands are 40/75/85 with 35/70/80 downward hysteresis floors,
+0.60 minimum decision confidence and a 30-second cooldown. Critical risk
+freshness, hard blocks, config identity, score freshness and risk execution
+eligibility are rechecked above the score. Unsafe risk becomes
+`RISK_REJECTED`; warnings cap progression before `ENTRY_READY`. The engine
+only reaches `ENTRY_READY`, never opens a paper/live position, and persists
+through caller-owned `CandidateStore`/snapshot ports when requested.
+
+Score-delta and risk-escalation `EventEnvelope` values carry stable
+idempotency identities, timestamps, reason codes, snapshot references and
+config/policy identity. `EvidenceTimelineProjector` produces a deterministic
+event-time projection of transitions, events and feature/risk/score snapshots;
+its optional `as_of` boundary excludes future evidence.
 
 ## Persistence
 
