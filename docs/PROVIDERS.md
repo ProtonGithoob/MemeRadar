@@ -146,6 +146,16 @@ reason codes, source-category diversity, version and config hash. It is an
 advisory feature seam only; a social, market, protocol, wallet or external
 label burst cannot authorize `ENTRY_READY`.
 
+## Feature-window aggregation
+
+Core Sprint 6.1 is intentionally outside the provider layer. The
+provider-independent `FeatureWindowAggregator` consumes only normalized
+application contracts and emits deterministic `FeatureSnapshot` values for
+`1m`, `5m` and `15m`. It retains source provenance and freshness, fails closed
+on future evidence, and leaves missing families unknown. The replay fixture
+under `fixtures/providers/feature_windows/` is credential-free; no provider
+doctor or live-provider PASS is implied by this application-level checkpoint.
+
 ## Versioned AlphaStrategy seam
 
 Research extension E6.1 is intentionally outside the provider layer.

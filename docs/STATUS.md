@@ -1,12 +1,12 @@
 # MemeRadar Status
 
-Last updated: 2026-08-30
+Last updated: 2026-08-31
 
 ## Current verdict
 
-`RESEARCH_EXTENSION_E6_2_COMPLETE_KEYLESS_PASS`
+`PHASE_6_SPRINT_6_1_COMPLETE_KEYLESS_PASS`
 
-Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
+Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprint 6.1 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 
 ## Current phase and sprint
 
@@ -26,7 +26,8 @@ Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verif
 - Completed: `Research extension E6.0 — Correlation and Launch Micro-Features` (keyless portion)
 - Completed: `Research extension E6.1 — Versioned AlphaStrategy Interface` (keyless portion)
 - Completed: `Research extension E6.2 — External Wallet Intelligence / Cross Validation` (keyless portion)
-- Next: `Phase 6 / Sprint 6.1 — Feature Windows`; live social/narrative/protocol/external-wallet/provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
+- Completed: `Phase 6 / Sprint 6.1 — Feature Windows` (keyless portion)
+- Next: `Phase 6 / Sprint 6.2 — AlphaScore v1`; live social/narrative/protocol/external-wallet/provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
 
 ## Current operating policy
 
@@ -57,6 +58,8 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Candidate lifecycle aggregate with explicit allow-listed transitions, reason codes and idempotent replay behavior.
 - [x] Event envelope, observation provenance and freshness quality states preserving occurred/observed/ingested timestamps.
 - [x] Versioned feature, risk, score, alert and position models with confidence, penalties, evidence references and config hashes.
+- [x] Core Phase 6 / Sprint 6.1 feature-window aggregation for exact `1m`, `5m` and `15m` snapshots, including market, liquidity, holder, wallet, social, momentum and on-chain safety families with bounded AlphaStrategy components.
+- [x] Provider-independent `FeatureSnapshotRepository` and unit-of-work seam with JSON-safe value/provenance round trips, deterministic identity idempotency and conflicting-reuse rejection; no migration was required because the Phase 1 table already contains the contract.
 - [x] Fail-closed risk execution-eligibility predicate for stale, unknown, warned or blocked evidence.
 - [x] Roadmap checkboxes reconciled for Sprint 1.1.
 - [x] SQLAlchemy 2 async persistence models for the core Phase 1 entities, with domain-independent repositories and explicit unit-of-work transactions.
@@ -392,11 +395,13 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - E2.5 live Pump.fun/PumpSwap/Raydium/Meteora acceptance: `BLOCKED_EXTERNAL` — no documented read-only protocol endpoint/credential configuration is present; no live call was attempted and no live-provider success is claimed.
 - E6.2 keyless external-wallet acceptance: `PASS` — deterministic label/token-signal replay, internal-score agreement/disagreement, stale/future/conflict handling, holder-graph actor collapse, bounded token features, security corroboration, provider removal and permanent non-execution behavior pass without credentials or network calls.
 - E6.2 live external-wallet acceptance: `BLOCKED_EXTERNAL` — no documented/legal GMGN/CabalSpy-style endpoint and reviewed adapter is configured; `make external-wallet-doctor` reports configuration presence only and does not probe arbitrary URLs.
+- Sprint 6.1 keyless feature-window acceptance: `PASS` — exact `1m`/`5m`/`15m` snapshots, seven bounded family maps, normalized AlphaStrategy components, sparse/unknown handling, future/pre-boundary invalidation, provenance/freshness, reverse-delivery determinism and permanent non-execution behavior pass with the redacted fixture.
+- Sprint 6.1 persistence acceptance: `PASS` — feature snapshot values and provenance round-trip through the existing table contract; equivalent snapshot replay is idempotent and conflicting identity reuse raises `IdempotencyConflict`. No migration was required.
 - Birdeye, Jupiter and Telegram checks: `NOT_RUN`; no live-provider PASS is claimed.
 
 ## Blockers
 
-- No blocker affects E2.5, E5.4, E6.2, Sprint 5.3 or the keyless Gate P5 acceptance. Helius, Birdeye, E2.5 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance, Sprint 5.1/Sprint 5.2 live social/X acceptance, Sprint 5.3 live narrative acceptance and E6.2 live external-wallet acceptance remain externally blocked for missing endpoint/credential configuration; no live-provider success is claimed.
+- No blocker affects E2.5, E5.4, E6.2, Sprint 5.3, Sprint 6.1 or the keyless Gate P5 acceptance. Helius, Birdeye, E2.5 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance, Sprint 5.1/Sprint 5.2 live social/X acceptance, Sprint 5.3 live narrative acceptance and E6.2 live external-wallet acceptance remain externally blocked for missing endpoint/credential configuration; no live-provider success is claimed.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -404,7 +409,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - `packages/persistence` contains the provider-independent SQLAlchemy 2 async models, candidate/outbox repositories and explicit unit-of-work boundary.
 - `infra/alembic/versions/0001_initial.py` creates the 13 core Phase 1 tables represented by the current metadata; `0002_outbox_processing.py` adds leased processing/dead-letter columns and indexes. Social, wallet, extended market, research and execution tables remain later roadmap extensions.
 - `infra/alembic/versions/0003_score_strategy_identity.py` adds bounded non-null `strategy_name` and `strategy_version` columns to `score_snapshots`, backfilling existing rows as `legacy`; migration parity now reports head `0003_score_strategy_identity` with 13 tables.
-- Local Postgres upgrade/downgrade/upgrade, migration parity and repository integration checks pass. The API and worker images include the persistence and event-processing packages, but the current API/worker composition still does not write business state automatically.
+- Local Postgres upgrade/downgrade/upgrade, migration parity and repository integration checks pass. The API and worker images include the persistence and event-processing packages plus the feature-snapshot repository, but the current API/worker composition still does not write candidate, feature or other business state automatically.
 - Sprint 4.1 remains a provider-independent warm-path application contract; no physical wallet migration is introduced. The existing future wallet tables remain the persistence target for a later roadmap task, and the current API/worker composition still does not write wallet business state automatically.
 - Sprint 4.2 remains a provider-independent warm-path score contract; no physical wallet-performance migration is introduced. The existing future `wallet_performance_snapshots` table remains the persistence target for a later roadmap task, and scoring does not write business state automatically.
 - Sprint 4.3 remains a provider-independent warm-path confluence contract; no physical smart-money migration is introduced. The logical `smart_money_confluence_snapshots` target remains for a later persistence task, and event/score analysis does not write business state automatically.
@@ -415,6 +420,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - The E2.5 rich protocol slice remains a provider-independent warm-path observation contract; no physical protocol migration is introduced. Schema-v2 `protocol.lifecycle` observations and stream results are replay/application records only, and lifecycle evidence does not write business state, clear risk, transition candidates or authorize execution.
 - The E6.1 strategy slice is a provider-independent warm-path score contract. It projects to the existing score snapshot identity fields but does not wire automatic candidate recomputation or decision transitions; strategy output remains advisory and cannot authorize execution.
 - The E6.2 external-wallet slice remains a provider-independent warm-path corroboration contract; no physical migration is introduced. Labels/signals are replay/application records only, do not mutate internal wallet or risk records, and cannot authorize execution. Live provider acceptance is isolated behind the key-safe doctor.
+- Core Sprint 6.1 adds the provider-independent feature-window aggregator and persistence repository over the existing `feature_snapshots` table; no physical migration is introduced. Automatic candidate recomputation, AlphaScore orchestration and decision transitions remain later Phase 6 work, and feature snapshots remain advisory/non-executable.
 - E6.2 documentation reconciliation updated `ROADMAP.md` (Phase 6 seam note), `ROADMAP_RESEARCH_EXTENSIONS.md` (E6.2 completion), `DATA_MODEL.md` (external label/signal and reconciliation snapshot contract), `PROVIDERS.md` (fixture adapter/doctor seam), `SCORING_AND_RISK.md` (cross-validation rules), `SECURITY.md` (external evidence boundary) and `.env.example`/`Makefile` (safe doctor configuration); no unsafe live-provider behavior was introduced.
 
 ## Git state
@@ -481,18 +487,24 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - E6.1 migration runtime check: temporary Postgres completed `upgrade head`, `downgrade 0002_outbox_processing`, and `upgrade head` successfully, confirming the new strategy-identity revision is reversible and leaves the database at the current head.
 - Latest pushed E6.2 plan checkpoint: `9a28469` (`docs: plan E6.2 external wallet intelligence`).
 - Latest pushed E6.2 implementation checkpoint: `ca3ca18` (`feat: add external wallet intelligence seam`), including normalized contracts, fixture adapter, replay data, doctor, protected-mode configuration and tests.
+- Latest pushed core Sprint 6.1 implementation checkpoint: `c3811ca` (`feat: add feature window snapshots`), including the provider-independent aggregator, replay fixture/contracts and feature-snapshot persistence seam.
 - E6.2 focused verification: `.venv/bin/pytest tests/unit/test_external_wallet.py tests/contract/test_extension_e6_2_external_wallet.py tests/unit/test_external_wallet_doctor.py tests/smoke/test_compose_contract.py tests/unit/test_provider_contracts.py -q` — `38 passed`; immutable contracts, deterministic replay, fixture adapter, doctor, provider capability and protected-mode checks pass.
 - E6.2 full repository gate: `make verify` exit `0`; Ruff, mypy (`54 source files`), `331 passed, 3 skipped`, branch-aware coverage `79%`, frontend lint/typecheck/Vitest, Compose config, secret scan and migration parity all completed successfully. Migration parity reports `{"heads": ["0003_score_strategy_identity"], "table_count": 13}`.
 - E6.2 provider doctor: `make external-wallet-doctor` exit `2` as expected; status is `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, only configuration presence and protected modes are reported, and no network call or credential output occurs.
 - E6.2 rebuilt runtime: temporary Compose API/worker images rebuilt successfully; worker probe `e6_2_worker_runtime_import_ok external-wallet-v1 ... fixture.external_wallet True True False False`, API probe `e6_2_api_runtime_import_ok ExternalWalletTokenSignal ExternalWalletReconciliationSnapshot ... True True False False`, and `/health/live` plus `/health/ready` on port `18000` returned HTTP `200` with Postgres/Redis reachable. No external provider or live-money call was made.
 - E6.2 keyless fixture/contract acceptance: `PASS` — deterministic external-wallet labels/signals replay in reverse delivery order; agreement, disagreement, stale evidence, graph clustering, token features, security corroboration, provider removal and permanent non-execution behavior pass without credentials or network calls.
+- Sprint 6.1 focused verification: `39 passed` across feature-window, feature-persistence, persistence-contract, sprint-contract and Compose smoke tests; `make lint` and `make typecheck` pass with mypy reporting `55 source files`.
+- Sprint 6.1 full repository gate: `make verify` exit `0`; Ruff, mypy (`55 source files`), `344 passed, 3 skipped`, branch-aware coverage `80%`, frontend lint/typecheck/Vitest, Compose config, secret scan and migration parity all completed successfully. Migration parity reports `{"heads": ["0003_score_strategy_identity"], "table_count": 13}`.
+- Sprint 6.1 Postgres/runtime verification: the opt-in `tests/integration/test_persistence_postgres.py` run passed `3 tests`; temporary Compose API/worker images rebuilt successfully, worker/API feature-window and repository import probes passed, and `/health/live` plus `/health/ready` on port `18000` returned HTTP `200` with Postgres/Redis reachable.
+- Sprint 6.1 safe doctor state: `make doctor` exited `0` with all protected modes asserted; `make external-wallet-doctor` exited `2` as expected with `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, no network probe and no credential output.
+- Sprint 6.1 replay acceptance: `PASS` — redacted synthetic feature-window evidence reproduces stable IDs, values, provenance, quality and config identity for exact `1m`/`5m`/`15m` windows independent of delivery order; future evidence fails closed as `INVALID` with zero confidence.
 
 ## Next task
 
-Continue core `Phase 6 / Sprint 6.1 — Feature Windows`: wire the existing
-correlation and external-wallet corroboration seams into provider-independent
-feature-snapshot orchestration, persist the required feature evidence when the
-core roadmap calls for it, and preserve event-time/no-lookahead behavior.
-Live social, narrative, protocol and external-wallet provider acceptance
-remains `BLOCKED_EXTERNAL` without configured safe read-only endpoint/credential
-access.
+Begin core `Phase 6 / Sprint 6.2 — AlphaScore v1`: wire the completed
+`AlphaScoreV1Strategy` arithmetic seam to persisted feature/risk inputs and the
+score recomputation contract, preserving configurable weights, penalties, hard
+blocks, confidence, reason codes, strategy identity and advisory-only output.
+Decision-state transitions remain Sprint 6.3. Live social, narrative,
+protocol and external-wallet provider acceptance remains `BLOCKED_EXTERNAL`
+without configured safe read-only endpoint/credential access.

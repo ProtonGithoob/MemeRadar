@@ -55,11 +55,22 @@ provider client, score/decision transition, signer, or execution path.
 
 ### 3. Gate and reconciliation
 
-- [ ] Run focused tests, Ruff, mypy, full `make verify`, migration parity,
+- [x] Run focused tests, Ruff, mypy, full `make verify`, migration parity,
   Compose config/runtime imports and the safe doctor.
-- [ ] Reconcile roadmap/data-model/provider/security/status documentation with
+- [x] Reconcile roadmap/data-model/provider/security/status documentation with
   exact evidence and the next unfinished task, then commit and push coherent
   checkpoints.
+
+## Completion evidence
+
+- Focused feature/persistence/replay/smoke tests: `39 passed`.
+- Full `make verify`: `344 passed, 3 skipped`, branch-aware coverage `80%`,
+  Ruff, mypy (`55 source files`), frontend checks, Compose config, secret scan
+  and migration parity all passed.
+- Opt-in Postgres persistence integration: `3 passed`; temporary Compose
+  runtime imports and both health endpoints passed.
+- Safe doctor: `PASS`; external-wallet doctor: expected
+  `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING` with exit `2`.
 
 ## Acceptance criteria
 

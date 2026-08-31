@@ -135,6 +135,14 @@ Rules:
 - correlated wallets are de-duplicated into actor clusters before smart-money breadth is calculated;
 - all evidence remains traceable to source IDs and timestamps.
 
+`FeatureWindowAggregator` consumes the immutable correlation output and
+normalized application evidence to emit the canonical `1m`, `5m` and `15m`
+`FeatureSnapshot` records. It is provider-, persistence- and execution-port
+free; `FeatureSnapshotRepository` and the unit-of-work own durable writes.
+Future evidence invalidates the derived snapshots, and missing family evidence
+remains unknown. This seam prepares AlphaScore input but does not evaluate a
+decision transition or authorize execution.
+
 ## Provider adapters
 
 Each provider adapter implements a small port such as:
@@ -239,6 +247,12 @@ The initial strategy remains AlphaScore v1 from `SCORING_AND_RISK.md`.
 Repositories should be aggregate-oriented, not generic CRUD abstractions. Use transaction boundaries around state transitions/decision persistence. Adopt outbox semantics before any external side effect that must not be lost (alerts/execution).
 
 Persist enough normalized event/feature history for deterministic historical replay. Raw provider payload retention is optional and must be bounded/redacted; normalized event truth is mandatory for research.
+
+The core Sprint 6.1 feature-window slice uses the existing
+`feature_snapshots` table. Its aggregate repository preserves deterministic
+snapshot identity, JSON-safe values, provenance, freshness and config
+identity, while callers retain transaction ownership through the unit of
+work.
 
 ## Data paths
 

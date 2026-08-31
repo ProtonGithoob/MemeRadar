@@ -56,6 +56,15 @@ on-chain hard gates. The fixture adapter never accesses the network, and
 `make external-wallet-doctor` reports presence only and never emits secrets or
 probes an unapproved URL. No live GMGN/CabalSpy adapter is enabled.
 
+Core Sprint 6.1 feature windows are also analysis-only derived records. Their
+stable IDs and persisted JSON values are replay identities, not authorization
+tokens. The aggregator uses the correlation event-time boundary, invalidates
+future evidence, preserves `UNKNOWN`/`STALE`/`CONFLICTED`/`INVALID` states and
+does not fabricate missing families. Feature snapshots and external-wallet
+corroboration carry `execution_eligible=false`; only later deterministic risk
+and decision gates can evaluate eligibility, and the protected operating
+modes remain unchanged.
+
 ## Operating modes
 
 Default and mandatory until roadmap gates explicitly unlock:

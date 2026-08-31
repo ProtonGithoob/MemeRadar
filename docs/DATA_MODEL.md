@@ -63,6 +63,7 @@ Append-oriented normalized observations.
 - values JSONB
 - provenance JSONB
 - config_hash
+- quality_state: FRESH/STALE/UNKNOWN/CONFLICTED/INVALID
 
 ### risk_assessments
 - id
@@ -458,6 +459,26 @@ Missing critical risk evidence, insufficient samples and fewer than the
 configured independent source categories remain `UNKNOWN`/low confidence.
 Correlation is advisory and has no execution authority; persistence and
 final score/decision snapshots remain later Phase 6 work.
+
+### feature-window snapshots (core Sprint 6.1)
+
+`FeatureWindowAggregator` projects each validated `CorrelationSnapshot` into
+one immutable `FeatureSnapshot` for exactly `1m`, `5m` and `15m`. The existing
+`feature_snapshots` table is sufficient; no new migration is required. The
+JSON `values` payload retains the window boundaries, all seven family maps
+(`market`, `liquidity`, `holder`, `wallet`, `social`, `momentum` and
+`on_chain_safety`), normalized AlphaStrategy component aliases, reason codes,
+evidence references and a permanently false `execution_eligible` marker.
+
+Family values are bounded and carry explicit availability, confidence and
+quality state. Missing family evidence remains absent/unknown and does not
+become a fabricated safe value. External-wallet reconciliation is nested as
+wallet corroboration; it never replaces the internal wallet component or risk
+assessment. Snapshot IDs are deterministic for candidate, event-time window,
+feature version and config hash, so reverse-delivery replay is idempotent.
+`FeatureSnapshotRepository` round-trips JSON-safe values, provenance,
+freshness, version and config identity and rejects conflicting reuse of an
+existing snapshot ID.
 
 ## AlphaStrategy and AlphaScore v1
 

@@ -138,6 +138,13 @@ Measure:
 - replay throughput;
 - queue/outbox backlog recovery.
 
+Sprint 6.1 adds credential-free feature-window replay and persistence checks:
+the fixture must reproduce identical `1m`/`5m`/`15m` snapshot IDs, values,
+provenance, quality and config identity regardless of delivery order; future
+evidence must produce `INVALID`/zero-confidence snapshots; and the opt-in
+Postgres repository test must round-trip JSON-safe values and provenance while
+accepting an equivalent duplicate and rejecting conflicting snapshot reuse.
+
 Add regression thresholds only after a stable baseline exists.
 
 ## Failure tests

@@ -284,13 +284,14 @@ now supplies the provider-independent, versioned AlphaStrategy and AlphaScore
 v1 arithmetic seam. Research extension E6.2 now supplies an advisory,
 provider-independent external-wallet cross-validation seam; it cannot replace
 internal SmartWalletScore/graph authority or deterministic risk gates.
-Feature-snapshot orchestration and final decision-state wiring remain core
-Sprint 6.1/6.3 work.
+Feature-snapshot orchestration is now complete for the keyless Sprint 6.1
+acceptance. Final AlphaScore recomputation and decision-state wiring remain
+core Sprint 6.2/6.3 work.
 
-- [ ] Implement 1m/5m/15m rolling feature aggregation.
-- [ ] Add market, liquidity, holder, wallet, social and momentum feature families.
-- [ ] Persist snapshots with provenance/freshness.
-- [ ] Prevent future-data leakage in replay.
+- [x] Implement 1m/5m/15m rolling feature aggregation.
+- [x] Add market, liquidity, holder, wallet, social and momentum feature families.
+- [x] Persist snapshots with provenance/freshness.
+- [x] Prevent future-data leakage in replay.
 
 ### Sprint 6.2 — AlphaScore v1
 

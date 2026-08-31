@@ -495,6 +495,31 @@ Removing the external provider therefore leaves internal wallet scores and
 confidence. Every external-wallet result remains advisory and has
 `execution_eligible() == false`.
 
+### Core Sprint 6.1 feature windows
+
+`FeatureWindowAggregator` emits exactly three immutable snapshots at the
+correlation event-time boundary: `1m`, `5m` and `15m`. The correlation builder
+owns event membership; this layer only projects its normalized output and
+already-derived risk, holder, wallet, social and flow evidence. Each snapshot
+retains the seven bounded families `market`, `liquidity`, `holder`, `wallet`,
+`social`, `momentum` and `on_chain_safety`, plus the AlphaStrategy-compatible
+components `SmartMoney`, `OnChainSafety`, `LiquidityQuality`, `OrganicFlow`,
+`SocialVelocity`, `HolderQuality` and `Momentum` when their evidence is
+available.
+
+Family availability, completeness and confidence are explicit. A missing or
+non-fresh family remains unknown and reduces completeness; it is never
+converted into a neutral safe value at this layer. Evidence after the
+correlation `as_of`, a pre-boundary evaluation, missing canonical windows or
+incorrect window boundaries produces `INVALID` snapshots with zero confidence
+and reason codes. Stable IDs include candidate, window, event time, feature
+version and config hash, making replay independent of delivery order.
+
+External-wallet values remain nested corroboration under the wallet family and
+cannot replace internal SmartMoney, on-chain risk or holder-graph authority.
+Feature snapshots have no execution predicate or transition authority;
+AlphaScore and decision layers must reapply every hard risk and freshness gate.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:
