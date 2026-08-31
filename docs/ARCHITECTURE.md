@@ -546,6 +546,21 @@ Phase 10 research must replay normalized events by event time with no future-dat
 - outcome labels such as MFE/MAE, time-to-2x/3x, rug/liquidity-collapse and realized paper exit;
 - fast bulk replay, with optional Rust extraction only if profiling justifies it.
 
+Sprint 10.1 implements this boundary in
+`packages/application/src/memeradar_application/replay_harness.py`. A
+`ReplayDataset` stores normalized `Observation` records with parser/registry/
+schema provenance and explicit signal checkpoints; its deterministic
+date/venue/token partition index is included in the dataset digest. Each
+checkpoint passes only evidence whose occurred, observed and ingested times
+are known by that boundary into the existing `CorrelationWindowBuilder` and
+`FeatureWindowAggregator`. `OutcomeLabeler` consumes the later evidence only
+for outcome labels, never for features or strategy input. The result includes
+stable cohort dimensions, a future-event exclusion list, canonical JSON and
+flat CSV projections, while `ReplayStrategyComparison` reruns alternate
+strategies against the same dataset digest and checkpoint boundaries. The
+local profile command measures throughput; it does not introduce a provider,
+database, signer or execution dependency.
+
 ## Failure behavior
 
 - Provider timeout: bounded retry + jitter, then degrade feature/provider state.

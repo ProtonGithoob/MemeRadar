@@ -1,0 +1,136 @@
+{
+  "manifest": {
+    "schema_version": 1,
+    "dataset_id": "fixture-research-dataset",
+    "dataset_version": "fixture-v1",
+    "as_of": "2026-08-31T12:00:00+00:00",
+    "parser_version": "fixture-parser-v1",
+    "registry_version": "registry-v1",
+    "event_schema_version": 1,
+    "strategy_name": "none",
+    "strategy_version": "none-v1",
+    "config_hash": "config-fixture",
+    "outcome_policy_version": "outcome-labels-v1",
+    "feature_window": "1m"
+  },
+  "dataset": {
+    "schema_version": 1,
+    "dataset_id": "fixture-research-dataset",
+    "dataset_version": "fixture-v1",
+    "tokens": [
+      {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "chain": "solana",
+        "mint_address": "So11111111111111111111111111111111111111112",
+        "token_program": "spl-token"
+      }
+    ],
+    "events": [
+      {
+        "id": "00000000-0000-0000-0000-000000000101",
+        "token_id": "00000000-0000-0000-0000-000000000001",
+        "candidate_id": "00000000-0000-0000-0000-000000000002",
+        "kind": "protocol.lifecycle",
+        "occurred_at": "2026-08-31T11:59:50+00:00",
+        "observed_at": "2026-08-31T11:59:50+00:00",
+        "ingested_at": "2026-08-31T11:59:50+00:00",
+        "quality_state": "FRESH",
+        "normalized_payload": {
+          "mint_address": "So11111111111111111111111111111111111111112",
+          "event_type": "create",
+          "venue": "pumpfun"
+        },
+        "provenance": {
+          "provider": "fixture",
+          "source_id": "launch-1",
+          "observed_at": "2026-08-31T11:59:50+00:00",
+          "parser_version": "fixture-parser-v1"
+        },
+        "registry_version": "registry-v1",
+        "venue": "pumpfun",
+        "event_schema_version": 1
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000102",
+        "token_id": "00000000-0000-0000-0000-000000000001",
+        "candidate_id": "00000000-0000-0000-0000-000000000002",
+        "kind": "market.market_data",
+        "occurred_at": "2026-08-31T11:59:55+00:00",
+        "observed_at": "2026-08-31T11:59:55+00:00",
+        "ingested_at": "2026-08-31T11:59:55+00:00",
+        "quality_state": "FRESH",
+        "normalized_payload": {
+          "mint_address": "So11111111111111111111111111111111111111112",
+          "price_usd": "1",
+          "liquidity_usd": "50000"
+        },
+        "provenance": {
+          "provider": "fixture",
+          "source_id": "market-1",
+          "observed_at": "2026-08-31T11:59:55+00:00",
+          "parser_version": "fixture-parser-v1"
+        },
+        "registry_version": "registry-v1",
+        "venue": "pumpfun",
+        "event_schema_version": 1
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000103",
+        "token_id": "00000000-0000-0000-0000-000000000001",
+        "candidate_id": "00000000-0000-0000-0000-000000000002",
+        "kind": "market.market_data",
+        "occurred_at": "2026-08-31T12:00:30+00:00",
+        "observed_at": "2026-08-31T12:00:30+00:00",
+        "ingested_at": "2026-08-31T12:00:30+00:00",
+        "quality_state": "FRESH",
+        "normalized_payload": {
+          "mint_address": "So11111111111111111111111111111111111111112",
+          "price_usd": "1.6",
+          "liquidity_usd": "12000"
+        },
+        "provenance": {
+          "provider": "fixture",
+          "source_id": "market-2",
+          "observed_at": "2026-08-31T12:00:30+00:00",
+          "parser_version": "fixture-parser-v1"
+        },
+        "registry_version": "registry-v1",
+        "venue": "pumpfun",
+        "event_schema_version": 1
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000104",
+        "token_id": "00000000-0000-0000-0000-000000000001",
+        "candidate_id": "00000000-0000-0000-0000-000000000002",
+        "kind": "risk.rug_event",
+        "occurred_at": "2026-08-31T12:02:00+00:00",
+        "observed_at": "2026-08-31T12:02:00+00:00",
+        "ingested_at": "2026-08-31T12:02:00+00:00",
+        "quality_state": "FRESH",
+        "normalized_payload": {
+          "mint_address": "So11111111111111111111111111111111111111112",
+          "rugged": true
+        },
+        "provenance": {
+          "provider": "fixture",
+          "source_id": "risk-1",
+          "observed_at": "2026-08-31T12:02:00+00:00",
+          "parser_version": "fixture-parser-v1"
+        },
+        "registry_version": "registry-v1",
+        "venue": "pumpfun",
+        "event_schema_version": 1
+      }
+    ],
+    "checkpoints": [
+      {
+        "id": "00000000-0000-0000-0000-000000000201",
+        "token_id": "00000000-0000-0000-0000-000000000001",
+        "candidate_id": "00000000-0000-0000-0000-000000000002",
+        "as_of": "2026-08-31T12:00:00+00:00",
+        "venue": "pumpfun",
+        "risk_assessment": null
+      }
+    ]
+  }
+}

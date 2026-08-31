@@ -683,3 +683,18 @@ an alert or authorize an exit.
 - Keep previous score versions replayable.
 - New model runs in shadow before promotion.
 - Codex must never auto-promote a live trading model based solely on backtest performance.
+
+## Phase 10.1 replay and calibration boundary
+
+The research replay harness reconstructs features at event-time checkpoints
+through the same normalized observation/correlation/feature contracts used by
+the application. Future observations are retained only by the independent
+outcome labeler; they cannot enter the earlier feature snapshot, risk
+assessment or strategy input. Parser, registry, event-schema, strategy,
+configuration and outcome-policy identities are pinned in the replay manifest.
+
+Replay cohort dimensions and forward-outcome metrics are descriptive research
+projections. Healthy stream completeness does not add score, an unresolved or
+non-fresh evidence state remains non-safe, and every replay strategy snapshot
+is advisory with `execution_eligible() == false`. Positive backtest or cohort
+results cannot change protected modes or authorize `ENTRY_READY`.

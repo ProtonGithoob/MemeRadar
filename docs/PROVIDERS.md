@@ -33,6 +33,20 @@ timeline boundary. External wallet-distribution alerts are corroboration only;
 missing live market access remains `BLOCKED_EXTERNAL` and cannot be converted
 into a provider PASS by configuration presence.
 
+## Phase 10.1 provider-free replay
+
+`ReplayDataset` and `ReplayHarness` are cold-path application contracts, not
+provider adapters. They consume persisted/fixture normalized observations and
+rehydrate them without network access, provider SDKs or live credentials.
+Live, backfill and historical data must already have converged through the
+canonical decoder/normalizer path before entering a replay dataset. The
+manifest pins parser, protocol registry, event schema, strategy and config
+identity; provider disagreement or non-fresh evidence remains explicit and
+cannot become a provider PASS. `make replay-dataset` produces canonical JSON,
+`--format csv` produces a flat outcome export, and `make profile-replay`
+measures local throughput only. Live market/provider acceptance remains
+`BLOCKED_EXTERNAL`.
+
 ## Ports
 
 ### CandidateDiscoveryPort

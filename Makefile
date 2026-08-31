@@ -5,8 +5,11 @@ PIP ?= .venv/bin/pip
 WEB_DIR ?= apps/web
 COMPOSE_FILE ?= infra/compose/docker-compose.yml
 COMPOSE ?= docker compose -f $(COMPOSE_FILE)
+REPLAY_INPUT ?= fixtures/research/replay_dataset.json
+REPLAY_OUTPUT ?=
+PROFILE_ITERATIONS ?= 10
 
-.PHONY: bootstrap lint typecheck test frontend-lint frontend-typecheck frontend-test frontend-e2e \
+.PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor
@@ -24,6 +27,12 @@ typecheck:
 
 test:
 	$(PYTHON) -m pytest -q --cov=apps --cov=packages --cov-report=term-missing
+
+replay-dataset:
+	$(PYTHON) scripts/replay_dataset.py --input $(REPLAY_INPUT) $(if $(REPLAY_OUTPUT),--output $(REPLAY_OUTPUT),)
+
+profile-replay:
+	$(PYTHON) scripts/profile_replay.py --input $(REPLAY_INPUT) --iterations $(PROFILE_ITERATIONS)
 
 frontend-lint:
 	cd $(WEB_DIR) && npm run lint

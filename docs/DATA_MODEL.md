@@ -930,6 +930,17 @@ provenance and pinned strategy/config metadata.
 - liquidity/rug/failure labels
 - methodology version
 
+The keyless Phase 10.1 research seam represents these records as immutable
+`OutcomeLabel` values generated from future-only normalized observations. Each
+`OutcomeHorizonLabel` preserves nullable forward return, MFE, MAE,
+time-to-1.5x/2x/3x, time-to-drawdown, liquidity-collapse, rug/security,
+creator-dump and paper-exit fields with explicit quality, reason and evidence
+references. `ReplayDataset` stores compact event records partitioned by
+`date/venue/token`; `ResearchReplayManifest` pins dataset, parser, protocol
+registry, event schema, strategy, config and outcome-policy versions. Cohort
+summaries are derived projections rather than new score authority, and replay
+artifacts retain the four protected operating modes.
+
 ## Indexing baseline
 
 At minimum index:

@@ -542,10 +542,21 @@ Live market-data and Telegram acceptance remains `BLOCKED_EXTERNAL`.
 
 ### Sprint 10.1 — Replay Harness
 
-- [ ] Deterministic event replay CLI/job.
-- [ ] Historical feature reconstruction without lookahead.
-- [ ] Outcome labeling: forward returns, MFE, MAE, liquidity failure/rug labels.
-- [ ] Reproducible dataset manifests.
+- [x] Deterministic event replay CLI/job.
+- [x] Historical feature reconstruction without lookahead.
+- [x] Outcome labeling: forward returns, MFE, MAE, liquidity failure/rug labels.
+- [x] Reproducible dataset manifests.
+
+Sprint 10.1 keyless state: complete. The provider-free `ReplayDataset` and
+`ResearchReplayManifest` retain normalized observations, parser/registry/schema
+identity, date/venue/token partitions, event-time checkpoints and protected
+modes. `ReplayHarness` reuses the existing correlation and feature builders,
+records excluded future evidence, emits future-only MFE/MAE/return, target,
+drawdown, liquidity, rug, creator-dump and paper-exit labels, and projects
+cohorts plus alternate-strategy comparison artifacts. Canonical JSON and flat
+CSV exports contain no raw provider response or credential-shaped field;
+`make profile-replay` records local throughput without adding provider or
+execution access. Live market/Telegram acceptance remains `BLOCKED_EXTERNAL`.
 
 ### Sprint 10.2 — Backtesting
 

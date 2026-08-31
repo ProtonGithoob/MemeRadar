@@ -132,6 +132,35 @@ configuration presence. Migration parity, full repository quality gates and
 the opt-in Postgres stream-state round trip are required before E8.4 is
 marked complete.
 
+## Phase 10.1 replay harness
+
+The keyless replay suite covers normalized dataset round trips, deterministic
+event-time ordering, source deduplication/conflict rejection, partition
+metadata, malformed/secret-shaped input rejection and manifest identity
+pinning. It verifies that the same correlation/feature path is used for
+reverse-delivered events, that future events are excluded from feature input,
+and that outcome labels alone may inspect later prices, liquidity, security,
+creator and paper-exit evidence. Cohort dimensions, stable JSON/CSV artifact
+digests, alternate-strategy comparison on identical event boundaries and
+protected non-execution modes are covered. A bounded profile command records
+local throughput before any Rust/Yellowstone decision.
+
+Focused command:
+
+```text
+./.venv/bin/pytest tests/unit/test_replay_harness.py tests/contract/test_phase10_sprint10_1.py -q
+```
+
+Fixture commands:
+
+```text
+make replay-dataset
+make profile-replay PROFILE_ITERATIONS=25
+```
+
+The fixture is redacted and provider-free; missing external market/Telegram
+acceptance remains `BLOCKED_EXTERNAL`.
+
 ## Phase 9.1 paper execution
 
 The keyless paper suite covers Decimal risk-budget sizing, quote freshness and

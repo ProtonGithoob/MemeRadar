@@ -255,11 +255,11 @@ provider calls.
 
 ### Tasks
 
-- [ ] Persist/export compact normalized launch/event streams partitioned by date/venue/token.
-- [ ] Implement deterministic event-time replay with tie-break rules.
-- [ ] Pin provider parser version, strategy version and config hash for each run.
-- [ ] Reconstruct all windows without future leakage.
-- [ ] Add outcome labels:
+- [x] Persist/export compact normalized launch/event streams partitioned by date/venue/token.
+- [x] Implement deterministic event-time replay with tie-break rules.
+- [x] Pin provider parser version, strategy version and config hash for each run.
+- [x] Reconstruct all windows without future leakage.
+- [x] Add outcome labels:
   - MFE/MAE after 1m/5m/15m/1h/6h/24h as data permits;
   - time-to-1.5x/2x/3x;
   - time-to-50% drawdown;
@@ -267,10 +267,23 @@ provider calls.
   - rug/security event;
   - creator dump;
   - paper exit result.
-- [ ] Add cohorts by launch venue, liquidity band, token age at signal, AlphaScore band, confidence band, smart-wallet confluence and social velocity.
-- [ ] Compare AlphaStrategy versions against the identical event set.
-- [ ] Export reproducible research artifacts (JSON/CSV/Parquet as appropriate) without secrets/raw credentials.
-- [ ] Profile replay throughput before considering Rust extraction.
+- [x] Add cohorts by launch venue, liquidity band, token age at signal, AlphaScore band, confidence band, smart-wallet confluence and social velocity.
+- [x] Compare AlphaStrategy versions against the identical event set.
+- [x] Export reproducible research artifacts (JSON/CSV/Parquet as appropriate) without secrets/raw credentials.
+- [x] Profile replay throughput before considering Rust extraction.
+
+**Keyless status (2026-08-31):** `DONE` for the provider-independent replay
+contract. `ReplayDataset` rehydrates compact normalized events and explicit
+checkpoints, validates date/venue/token partitions, deduplicates equivalent
+source deliveries and rejects conflicting or secret-shaped payload fields.
+`ReplayHarness` applies deterministic event-time tie-breaks, passes the same
+normalized observations through the existing correlation/feature path, pins
+parser/registry/schema/strategy/config identities, labels only future evidence,
+and emits stable JSON/CSV artifacts with cohort summaries. `compare_strategies`
+proves alternate `AlphaStrategy` versions share the same event boundaries, and
+`make profile-replay` records a local throughput baseline before any optional
+Rust/Yellowstone consideration. No live provider call, signer or execution
+authority is available; live acceptance remains `BLOCKED_EXTERNAL`.
 
 **Acceptance:** replay run is reproducible from dataset + config + versions, and metrics are generated without live provider calls.
 

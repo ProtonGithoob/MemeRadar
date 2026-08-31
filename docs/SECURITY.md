@@ -272,6 +272,16 @@ transaction. The stream doctor reports endpoint presence and local contract
 status only; missing/unverified external access is `BLOCKED_EXTERNAL` and no
 credential values are printed.
 
+Phase 10.1 research artifacts are also untrusted input/output boundaries.
+`ReplayDataset` rejects credential-shaped normalized fields, validates event
+identity and partition metadata, and retains provenance without raw provider
+responses. Replay uses the same normalized event objects as live/backfill
+processing, but future observations are isolated to outcome labels. JSON/CSV
+exports contain only allow-listed normalized/evidence projections; alternate
+strategy comparison remains advisory and permanently non-executable. The
+throughput profiler reports counts and timing only and has no provider,
+database, wallet, signing or transaction-submission capability.
+
 ## Supply chain
 
 CI should include:
