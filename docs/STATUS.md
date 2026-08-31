@@ -4,7 +4,7 @@ Last updated: 2026-08-31
 
 ## Current verdict
 
-`PHASE_9_SPRINT_9_2_COMPLETE_KEYLESS_GATE_P8_PASS`
+`PHASE_9_SPRINT_9_3_COMPLETE_KEYLESS_GATE_P9_BLOCKED_EXTERNAL`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
@@ -27,6 +27,15 @@ partial take-profit context, append-oriented in-memory timeline, durable SQL
 timeline adapter and event-time replay contracts are implemented and verified.
 Live read-only market-data acceptance remains `BLOCKED_EXTERNAL`; no exit
 recommendation mutates a position or grants execution authority.
+Phase 9 / Sprint 9.3 is complete for its keyless implementation: the
+provider-free position read projection, observed-mark provenance, derived
+performance fields, advisory exit-risk and closed-trade explanation are
+available through GET-only API routes and a server-rendered `/positions`
+dashboard. Exit and paper-exit events reuse the existing alert/outbox/Telegram
+path with persisted-reason handling, core-trigger filtering and external-only
+corroboration suppression. Live market-data and Telegram acceptance remains
+`BLOCKED_EXTERNAL`; no browser, alert or notification path grants execution
+authority.
 
 ## Current phase and sprint
 
@@ -59,8 +68,10 @@ recommendation mutates a position or grants execution authority.
 - Completed: `Research extension E8.4 — Stream Integrity / Protocol Verification` (keyless implementation and replay/persistence gate)
 - Completed: `Phase 9 / Sprint 9.1 — Paper Execution` (keyless portion and sprint gate)
 - Completed: `Phase 9 / Sprint 9.2 — Exit Engine` (keyless implementation and sprint gate)
-- Next checkpoint: begin `Phase 9 / Sprint 9.3 — Position UI / Telegram`; keep live-provider acceptance
-  `BLOCKED_EXTERNAL` and all protected modes unchanged.
+- Completed: `Phase 9 / Sprint 9.3 — Position UI / Telegram` (keyless portion)
+- Next checkpoint: begin `Phase 10 / Sprint 10.1 — Replay Harness`; keep Gate P9
+  live read-only market-data acceptance and Telegram acceptance
+  `BLOCKED_EXTERNAL`, and preserve all protected modes.
 
 ## Current operating policy
 
@@ -73,16 +84,17 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: begin Phase 9 / Sprint 9.3 Position UI / Telegram after the Sprint 9.2
-  keyless gate.
-- Design: `docs/superpowers/specs/2026-08-31-phase-9-sprint-9-2-exit-engine-design.md`.
-- Plan: `docs/superpowers/plans/2026-08-31-phase-9-sprint-9-2-exit-engine.md`.
-- Current state: Sprint 9.2 contracts, deterministic evaluator, durable
-  domain-event timeline and replay pass focused/full verification. Sprint 9.3
-  design and implementation are the next checkpoint.
-- External blockers: live quote/provider and all live execution acceptance are
-  `BLOCKED_EXTERNAL`; keyless fixtures/fakes are required and sufficient for
-  this sprint.
+- Task: begin Phase 10 / Sprint 10.1 Replay Harness after the Sprint 9.3
+  keyless checkpoint.
+- Design: `docs/superpowers/specs/2026-08-31-phase-9-sprint-9-3-position-ui-telegram-design.md`.
+- Plan: `docs/superpowers/plans/2026-08-31-phase-9-sprint-9-3-position-ui-telegram.md`.
+- Current state: Sprint 9.3 position projections, GET-only API, server-rendered
+  dashboard, core-trigger exit alerts and existing Telegram outbox routing pass
+  focused and full keyless verification. Gate P9 real read-only market-data
+  acceptance remains externally blocked.
+- External blockers: live quote/market, Telegram and all live execution
+  acceptance are `BLOCKED_EXTERNAL`; keyless fixtures/fakes are required and
+  sufficient for Sprint 9.3 and the next replay work.
 - Protected modes: `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
   `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
 
@@ -150,6 +162,15 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Phase 9.2 append-oriented in-memory and SQLAlchemy exit-evaluation timeline
   with before/after evidence references, idempotency/conflict handling,
   deterministic event-time replay and no-lookahead contracts.
+- [x] Phase 9.3 provider-free position projection over persisted paper positions
+  and market observations, with observed-mark provenance, derived performance,
+  advisory exit risk and closed-trade explanations.
+- [x] Phase 9.3 GET-only position API and server-rendered `/positions` dashboard;
+  missing, stale, invalid and future evidence remain explicit and no browser
+  mutation or execution authority is exposed.
+- [x] Phase 9.3 exit and paper-exit alert projection through the existing
+  alert/outbox/Telegram seam, including persisted reason-code rehydration,
+  core-trigger filtering, external-only suppression and bounded payloads.
 - [x] Roadmap checkboxes reconciled for Sprint 1.1.
 - [x] SQLAlchemy 2 async persistence models for the core Phase 1 entities, with domain-independent repositories and explicit unit-of-work transactions.
 - [x] Initial Alembic revision `0001_initial` for 13 core tables, including provenance, explainability, event and outbox fields.
@@ -492,7 +513,7 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 ## Blockers
 
-- No blocker affects E2.5, E5.4, E6.2, Sprint 5.3, Sprint 6.1, Sprint 6.2, Sprint 6.3, Sprint 7.1 or the keyless Gate P5/Gate P6 acceptance. Helius, Birdeye, E2.5 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance, Sprint 5.1/Sprint 5.2 live social/X acceptance, Sprint 5.3 live narrative acceptance, E6.2 live external-wallet acceptance and Sprint 7.1 live Telegram acceptance remain externally blocked for missing endpoint/credential configuration; no live-provider success is claimed.
+- No blocker affects E2.5, E5.4, E6.2, Sprint 5.3, Sprint 6.1, Sprint 6.2, Sprint 6.3, Sprint 7.1, Sprint 9.3 or the keyless Gate P5/Gate P6 acceptance. Helius, Birdeye, E2.5 live protocol acceptance, the live portion of Gate P2, Sprint 3.1 live RugCheck acceptance, Sprint 3.2 live holder/graph acceptance, Sprint 3.3 live market/quote acceptance, Sprint 4.1 live wallet/rug acceptance, Sprint 4.2 live wallet-history acceptance, Sprint 4.3 live wallet-history/graph acceptance, Sprint 5.1/Sprint 5.2 live social/X acceptance, Sprint 5.3 live narrative acceptance, E6.2 live external-wallet acceptance, Sprint 7.1 live Telegram acceptance, Sprint 9.1/9.2 live quote acceptance and Sprint 9.3 live market/Telegram acceptance remain externally blocked for missing endpoint/credential configuration; no live-provider success is claimed.
 - The GitHub Actions workflow is committed but its hosted run result has not been independently observed in this session; local equivalents are green.
 
 ## Migration and schema state
@@ -517,10 +538,25 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 6.2 documentation reconciliation updated `ROADMAP.md`, `DATA_MODEL.md`, `ARCHITECTURE.md`, `PROVIDERS.md`, `SCORING_AND_RISK.md`, `SECURITY.md`, `TESTING.md` and `STATUS.md`; no migration or unsafe execution behavior was introduced.
 - Sprint 6.3 adds no physical migration: existing candidate/state-transition persistence is sufficient, and `CandidateRepository` now rehydrates multi-transition history from the discovery boundary before checking final denormalized state. Decision event/outbox writes remain caller-owned.
 - Sprint 7.1 adds no physical migration: the existing `alerts` table and leased `outbox` contract are sufficient. `AlertRepository` preserves typed alert state and dedupe identity; notification claims are filtered by `side_effect_kind=notification`, and provider delivery remains downstream of advisory decisions.
+- Sprint 9.1 and Sprint 9.2 use migration `0006_paper_execution` and its
+  append-oriented paper ledger/exit timeline; no additional schema change was
+  required for Sprint 9.3.
+- Sprint 9.3 reads the existing `positions`/`market_observations` records and
+  persisted domain-event timeline through provider-independent projections; it
+  does not create a second position store or mutate business state. Observed
+  marks retain provider/source/parser and occurred/observed/ingested timestamps,
+  while derived PnL is withheld for missing, non-fresh, invalid, conflicted or
+  future marks.
 
 ## Git state
 
 - Intended branch: `main`.
+- Sprint 9.3 focused verification: `./.venv/bin/pytest tests/contract/test_phase7_sprint7_2.py tests/contract/test_phase9_sprint9_3.py tests/unit/test_position_read.py tests/unit/test_alert_pipeline.py tests/unit/test_read_persistence.py -q` passes `24 tests`; position projections, persisted reason codes, GET-only routes, future-mark exclusion, exit-alert filtering and browser-boundary contracts pass.
+- Sprint 9.3 Postgres verification: with the isolated local database at migration `0006_paper_execution`, `MEMERADAR_TEST_DATABASE_URL=postgresql+asyncpg://... ./.venv/bin/pytest tests/integration/test_position_read_postgres.py -q` passes `1 test`; persisted position/observation/exit projections round-trip and the `as_of` boundary excludes future marks.
+- Sprint 9.3 full repository quality gate: `make verify` exits `0`; Ruff, mypy (`75 source files`), `566 passed, 10 skipped`, branch-aware coverage (`78%`), frontend lint/typecheck/Vitest (`13 files / 37 tests`), Compose config, secret scan and migration parity all complete successfully. Migration parity reports `{"heads": ["0006_paper_execution"], "table_count": 22}`.
+- Sprint 9.3 frontend/runtime verification: `make frontend-build` exits `0` and exposes `/positions` alongside the existing operator routes; `make doctor` exits `0` with all four protected modes unchanged. `make telegram-doctor` exits `2` as expected with `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, no credential values and no live call.
+- Sprint 9.3 safety acceptance: `PASS` for observed-versus-derived position data, event-time/no-lookahead marks, GET-only/server-rendered read boundaries, advisory exit notifications, allow-listed alert payloads and permanent absence of signing, submission or execution authority. Live read-only market-data and Telegram acceptance remain `BLOCKED_EXTERNAL`.
+- Latest pushed Sprint 9.2 checkpoint: `312b642` (`feat: complete Phase 9.2 exit intelligence`); Sprint 9.3 remains uncommitted locally until this status reconciliation and checkpoint commit complete.
 - Latest pushed Sprint 2.2 checkpoint: `039bb06` (`docs: synchronize sprint 2.2 status`), including the Helius implementation, smoke/runtime checks and completion documentation.
 - Latest pushed Sprint 2.3 implementation checkpoints: `d1bb83a` (adapter), `337e60d` (stream fallback), `38cb4de` (reconciliation), `f804011` (fixtures/contracts) and `68c96ed` (doctor).
 - Latest pushed Sprint 2.3 gate/status documentation checkpoint: `2233125` (`docs: complete Sprint 2.3 Birdeye checkpoint`); this status synchronization follows it.
@@ -670,8 +706,8 @@ The worker container initially exited because `__main__.py` was missing. The fai
 
 ## Next task
 
-Begin `Phase 9 / Sprint 9.3 — Position UI / Telegram` from `docs/ROADMAP.md`.
-Keep live-provider acceptance `BLOCKED_EXTERNAL`, preserve
-append-only/auditable evidence and all four protected operating modes, and do
-not introduce signing, live-money submission or execution authority outside the
-approved paper boundary.
+Begin `Phase 10 / Sprint 10.1 — Replay Harness` from `docs/ROADMAP.md`.
+Keep Gate P9 live read-only market-data and Telegram acceptance
+`BLOCKED_EXTERNAL`, preserve append-only/auditable evidence and all four
+protected operating modes, and do not introduce signing, live-money submission
+or execution authority outside the approved paper boundary.

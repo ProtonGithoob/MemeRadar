@@ -90,6 +90,9 @@ async def _run_alert_outbox(
             "CandidateStateChanged": handle_alert_event,
             "ProviderHealthChanged": handle_alert_event,
             "RiskEscalation": handle_alert_event,
+            "ExitSignal": handle_alert_event,
+            "ExitEvaluation": handle_alert_event,
+            "PaperExit": handle_alert_event,
             "SystemHealthChanged": handle_alert_event,
             "SystemKillSwitch": handle_alert_event,
         }

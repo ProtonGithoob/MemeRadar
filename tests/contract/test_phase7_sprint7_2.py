@@ -128,10 +128,12 @@ def test_read_api_route_surface_is_bounded_get_only_and_provider_free_at_applica
         "/v1/tokens/{token_id}/timeline",
         "/v1/wallets",
         "/v1/wallets/{address}",
-        "/v1/providers/health",
-        "/v1/audit/events",
-        "/v1/config/versions",
-    }
+            "/v1/providers/health",
+            "/v1/audit/events",
+            "/v1/config/versions",
+            "/v1/positions",
+            "/v1/positions/{position_id}",
+        }
     read_routes = {
         route.path
         for route in app.routes

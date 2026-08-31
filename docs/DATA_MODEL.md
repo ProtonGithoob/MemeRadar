@@ -777,6 +777,18 @@ timeline without introducing a second exit table.
 - entry_decision_ref
 - exit_decision_ref nullable
 
+Sprint 9.3 does not add a second position table. The read projection joins each
+position to the latest allow-listed normalized market observation for its token
+and exposes the observed mark's provider, source ID, parser version,
+`occurred_at`, `observed_at`, `ingested_at`, quality and evidence references.
+Current value, unrealized/total PnL and return are derived only from a fresh,
+positive mark; missing or non-fresh marks retain realized PnL/MFE/MAE but leave
+current PnL fields null with their quality state explicit. An optional `as_of`
+boundary excludes observations and exit evaluations not known by that boundary.
+The projection also attaches the latest immutable `ExitEvaluation` and, for a
+closed position, its before/after evidence and reason-code explanation. API
+pagination is bounded and read-only; `execution_eligible` is always false.
+
 ### exit_signals
 - id
 - position_id

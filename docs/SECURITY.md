@@ -138,6 +138,17 @@ alerts can be recorded as corroboration but cannot force an exit alone. Exit
 timeline persistence is append-only and retains before/after evidence
 references for audit and replay. The protected modes remain unchanged.
 
+Sprint 9.3 keeps the position dashboard and position API behind the existing
+server-side read boundary. They expose observed market provenance and derived
+paper performance only; every response is permanently non-authorizing and the
+browser has no mutation, signing or transaction-submission path. Exit and
+paper-exit notifications reuse the existing bounded alert renderer/outbox.
+Only deterministic/core exit triggers may notify; external wallet labels alone
+are ignored. Exit payloads are allow-listed before alert persistence, and
+missing/stale/invalid market evidence remains explicit rather than being
+upgraded to a safe mark. Telegram credentials remain server-side and live
+market/Telegram acceptance is `BLOCKED_EXTERNAL` without configuration.
+
 ## Wallet/signing isolation
 
 When Phase 12 is implemented:

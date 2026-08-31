@@ -517,10 +517,20 @@ acceptance remains `BLOCKED_EXTERNAL`.
 
 ### Sprint 9.3 — Position UI / Telegram
 
-- [ ] Positions dashboard.
-- [ ] Live MFE/MAE/PnL evidence.
-- [ ] Exit-risk alerts and reason codes.
-- [ ] Closed-trade explanation.
+- [x] Positions dashboard.
+- [x] Live MFE/MAE/PnL evidence.
+- [x] Exit-risk alerts and reason codes.
+- [x] Closed-trade explanation.
+
+The keyless Sprint 9.3 implementation projects existing paper `PositionRow`
+records, normalized market observations and immutable exit evaluations through
+the provider-free read port. The GET-only position API and server-rendered
+dashboard distinguish observed marks from derived PnL/MFE/MAE, preserve
+freshness and explicit unknown states, and expose closed-trade reasons and
+evidence without execution controls. `ExitSignal`, `ExitEvaluation` and
+`PaperExit` events reuse the existing alert, notification outbox and Telegram
+adapter path; HOLD and external-only corroboration do not create alerts.
+Live market-data and Telegram acceptance remains `BLOCKED_EXTERNAL`.
 
 **Gate P9:** paper engine runs on real read-only market data, survives restarts, and reconciles positions deterministically.
 

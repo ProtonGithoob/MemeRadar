@@ -178,6 +178,37 @@ MEMERADAR_TEST_DATABASE_URL=postgresql+asyncpg://... ./.venv/bin/pytest tests/in
 Live market-data and execution acceptance remains `BLOCKED_EXTERNAL`; no exit
 test may grant execution authority or change the protected operating modes.
 
+## Phase 9.3 position UI / Telegram
+
+The keyless Sprint 9.3 suite covers bounded position views, fresh/stale/unknown
+mark behavior, event-time/no-lookahead filtering, deterministic ordering and
+pagination, observed mark provenance, derived PnL/MFE/MAE, exit-risk reason and
+evidence projection, closed-trade explanation, persisted exit-event
+rehydration, GET-only API routes, bounded frontend parsing/rendering and the
+absence of browser execution authority. Exit alert contracts cover
+non-HOLD/core-trigger routing for `ExitSignal`, `ExitEvaluation` and
+`PaperExit`, persisted reason-object handling, payload allow-listing,
+external-only corroboration suppression and safe concise rendering. The
+existing notification outbox and Telegram adapter remain the delivery path;
+live Telegram and live market-data acceptance are `BLOCKED_EXTERNAL`.
+
+The focused backend command is:
+
+```text
+./.venv/bin/pytest tests/contract/test_phase9_sprint9_3.py tests/unit/test_position_read.py tests/unit/test_alert_pipeline.py tests/unit/test_read_persistence.py tests/contract/test_phase7_sprint7_2.py -q
+```
+
+The opt-in persistence command is:
+
+```text
+MEMERADAR_TEST_DATABASE_URL=postgresql+asyncpg://... ./.venv/bin/pytest tests/integration/test_position_read_postgres.py -q
+```
+
+The web checks include the full Vitest suite, lint, typecheck and production
+build. The build must expose `/positions` as a server-rendered route, and the
+position gateway must remain server-only with no browser credential or mutation
+path.
+
 ## Live provider acceptance
 
 Live tests are opt-in and read-only until Phase 12. They must be clearly marked and never make CI depend on paid credentials.
@@ -279,7 +310,7 @@ Compose smoke/runtime checks verify the worker import and health seam. Missing
 Telegram configuration is a key-safe `BLOCKED_EXTERNAL` doctor result, not a
 fabricated provider PASS.
 
-Sprint 7.2 adds strict TestClient coverage for all nine read routes, response
+Sprint 7.2 adds strict TestClient coverage for all eleven read routes, response
 page envelopes, ranking/filter conversion, cursor traversal, correlation
 headers, missing-resource `404`, unconfigured-storage `503`, invalid UUID or
 address `422`, extra-query rejection, bounded time windows, unknown provider

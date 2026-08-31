@@ -7,6 +7,8 @@ import {
   fetchControlConfig,
   fetchControlState,
   fetchProviderHealth,
+  fetchPositions,
+  fetchPosition,
   fetchTimeline,
   fetchToken,
   fetchWallet,
@@ -19,6 +21,8 @@ import {
 const VIEWER_TOKEN = "viewer-server-secret";
 const CANDIDATE_ID = "11111111-1111-4111-8111-111111111111";
 const TOKEN_ID = "22222222-2222-4222-8222-222222222222";
+const PORTFOLIO_ID = "33333333-3333-4333-8333-333333333333";
+const POSITION_ID = "44444444-4444-4444-8444-444444444444";
 
 const candidatePayload: CandidateRecord = {
   id: CANDIDATE_ID,
@@ -217,6 +221,71 @@ describe("server-side read gateway", () => {
     );
 
     expect(await fetchTimeline(TOKEN_ID)).toEqual({ ok: false, reason: "INVALID_RESPONSE" });
+  });
+
+  it("fetches and validates read-only position projections", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    const position = {
+      id: POSITION_ID,
+      portfolio_id: PORTFOLIO_ID,
+      token_id: TOKEN_ID,
+      mint_address: candidatePayload.mintAddress,
+      symbol: "MOON",
+      name: "Moon Fixture",
+      mode: "PAPER",
+      state: "OPEN",
+      quantity: "100",
+      average_entry: "1",
+      opened_at: "2026-08-31T12:00:00.000Z",
+      closed_at: null,
+      average_exit: null,
+      realized_pnl: "0",
+      high_watermark: "1.2",
+      mfe: "0.2",
+      mae: "-0.1",
+      current_mark: {
+        price: "1.1",
+        occurred_at: "2026-08-31T12:05:00.000Z",
+        observed_at: "2026-08-31T12:05:01.000Z",
+        ingested_at: "2026-08-31T12:05:02.000Z",
+        provider: "fixture-market",
+        source_id: "market:position",
+        parser_version: "fixture-v1",
+        quality_state: "FRESH",
+        evidence_refs: ["observation:1"]
+      },
+      performance: {
+        as_of: "2026-08-31T12:05:01.000Z",
+        quality_state: "FRESH",
+        realized_pnl: "0",
+        mfe: "0.2",
+        mae: "-0.1",
+        high_watermark: "1.2",
+        current_value: "110",
+        unrealized_pnl: "10",
+        total_pnl: "10",
+        return_ratio: "0.1",
+        evidence_refs: ["observation:1"]
+      },
+      exit_risk: null,
+      closed_trade: null,
+      latest_activity_at: "2026-08-31T12:05:01.000Z",
+      execution_eligible: false
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ items: [position], limit: 50, has_more: false, next_cursor: null }))
+      .mockResolvedValueOnce(response(position));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const page = await fetchPositions({ portfolioId: PORTFOLIO_ID, mode: "PAPER", state: "OPEN" });
+    const detail = await fetchPosition(POSITION_ID);
+
+    expect(page.ok && page.data.items[0]?.performance.unrealizedPnl).toBe(10);
+    expect(detail.ok && detail.data.currentMark?.qualityState).toBe("FRESH");
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      `http://api.internal:8000/v1/positions?limit=50&portfolio_id=${PORTFOLIO_ID}&mode=PAPER&state=OPEN`,
+      `http://api.internal:8000/v1/positions/${POSITION_ID}`
+    ]);
   });
 
   it("reads the remaining bounded operator catalogs and control projections", async () => {

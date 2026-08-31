@@ -664,6 +664,16 @@ independent distribution-cluster corroboration, creator/holder pressure,
 micro/macro flow collapse, liquidity/quote deterioration, score degradation,
 time stops, trailing/break-even and configured partial take-profit levels.
 
+Sprint 9.3 projects position performance separately from AlphaScore. Observed
+market marks retain provider/source/parser and all observation timestamps;
+current value and unrealized/total PnL are derived only from fresh valid marks.
+Stale, unknown, invalid or conflicted marks reduce data quality and leave
+current PnL unknown rather than creating a safe or zero value. Realized PnL,
+MFE and MAE remain visible with explicit quality. Position exit alerts reuse
+the deterministic exit reason/evidence contract; healthy or fresh stream state
+does not increase AlphaScore and external-only exit corroboration cannot create
+an alert or authorize an exit.
+
 ## 13. Calibration rules
 
 - No lookahead leakage.

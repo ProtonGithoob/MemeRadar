@@ -139,6 +139,16 @@ clear a kill switch, mutate protected modes or authorize execution. Missing
 provider or role credentials are configuration blockers for their live
 acceptance, not provider PASS results.
 
+Sprint 9.3 position views are not a provider adapter. The SQLAlchemy read
+projection consumes existing normalized `ObservationRow` market records and
+paper `PositionRow` values, allow-lists price fields, and preserves source,
+parser and timestamp provenance. Exit evaluations are rehydrated from the
+existing domain-event timeline. Position reads make no provider calls and
+never infer a mark when the source is missing or non-fresh. Exit events enter
+the existing alert/outbox path; `TelegramNotificationAdapter` remains the only
+network delivery boundary, while fixture delivery keeps keyless replay and
+tests credential-free. No Telegram or market-data live acceptance is claimed.
+
 ## Helius / Solana read layer
 
 Sprint 2.2 implements the read-only Helius adapter in `packages/providers/src/memeradar_providers/helius.py`. `HeliusRpcAdapter` maps `getAsset`, `getAccountInfo` and `getTransaction` JSON-RPC/DAS responses into canonical `TokenIdentity`, account and transaction records plus application `Observation` values. It validates Solana base58 identities, preserves `occurred_at`/`observed_at`/`ingested_at`, attaches Helius/source/parser provenance, forwards request correlation IDs, and classifies timeout, availability, authentication, rate-limit and schema failures without retaining raw response text.

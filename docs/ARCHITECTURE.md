@@ -459,6 +459,28 @@ sorts by event time and excludes future observations while pinning policy,
 configuration and schema identity. External distribution labels remain
 corroboration only and live market-data acceptance remains `BLOCKED_EXTERNAL`.
 
+### Phase 9.3 position projections and Telegram alerts
+
+The position read surface extends the existing application `ReadQueryPort` over
+`PositionRow`, token identity and normalized market observations. It selects an
+allow-listed latest mark at or before the optional event-time boundary, keeps
+provider/source/parser and all observation timestamps visible, and derives
+current value and PnL only when the mark is fresh and valid. Missing, stale,
+invalid or conflicted marks leave current PnL unknown; persisted realized PnL,
+MFE and MAE remain visible as explicitly qualified evidence. Exit evaluations
+are rehydrated through the same immutable domain-event contract, so the
+dashboard can show advisory exit risk and closed-trade explanations without a
+second position store or invisible history mutation.
+
+`ExitSignal`, `ExitEvaluation` and `PaperExit` events reuse the existing
+`AlertEventProjector`, alert repository, notification outbox and
+`NotificationPort`/Telegram adapter. Only non-HOLD events with a core
+deterministic trigger produce `EXIT_RISK` or `PAPER_EXIT`; external-only wallet
+intelligence remains corroboration and cannot create a notification by itself.
+The server-rendered `/positions` route and API are GET-only and permanently
+non-authorizing. No browser or notification path can mutate a position, change
+operating modes, sign or submit a transaction.
+
 ## Data paths
 
 ### Hot path

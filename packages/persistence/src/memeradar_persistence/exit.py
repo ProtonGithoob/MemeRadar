@@ -96,7 +96,11 @@ def _parse_datetime(value: object, field_name: str) -> datetime:
     return datetime.fromisoformat(_required_string(value, field_name))
 
 
-def _evaluation_from_row(row: DomainEventRow) -> ExitEvaluation:
+def evaluation_from_row(row: DomainEventRow) -> ExitEvaluation:
+    """Rehydrate one persisted evaluation through the canonical exit contract."""
+
+    if not isinstance(row, DomainEventRow):
+        raise TypeError("row must be a DomainEventRow")
     payload = _required_mapping(row.payload, "payload")
     position_id = UUID(_required_string(payload.get("position_id"), "position_id"))
     risk_payload = _required_mapping(payload.get("risk_score"), "risk_score")
@@ -270,6 +274,12 @@ class SqlAlchemyExitEvaluationStore:
             return tuple(_evaluation_from_row(row) for row in rows)
 
 
+# Kept as a compatibility alias for the existing persistence contract tests and
+# callers that used the original private helper before the read projection was
+# added.  New adapters should use the public canonical rehydrator above.
+_evaluation_from_row = evaluation_from_row
+
+
 def assert_exit_evaluation_store_contract(store: object) -> ExitEvaluationStore:
     """Type-checking helper for callers composing the durable timeline port."""
 
@@ -278,4 +288,8 @@ def assert_exit_evaluation_store_contract(store: object) -> ExitEvaluationStore:
     return store
 
 
-__all__ = ["SqlAlchemyExitEvaluationStore", "assert_exit_evaluation_store_contract"]
+__all__ = [
+    "SqlAlchemyExitEvaluationStore",
+    "assert_exit_evaluation_store_contract",
+    "evaluation_from_row",
+]

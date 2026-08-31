@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from memeradar_application.exit_engine import ExitEvaluation
 from memeradar_application.read_api import (
     AuditEventView,
     AuditQuery,
@@ -19,6 +22,9 @@ from memeradar_application.read_api import (
     InMemoryReadQueryService,
     Page,
     PoolView,
+    PositionMarkView,
+    PositionQuery,
+    PositionView,
     ProvenanceView,
     ProviderHealthQuery,
     ProviderHealthView,
@@ -28,17 +34,27 @@ from memeradar_application.read_api import (
     TokenView,
     WalletQuery,
     WalletView,
+    build_position_view,
 )
-from memeradar_domain import CandidateState, QualityState
+from memeradar_domain import (
+    CandidateState,
+    Position,
+    PositionMode,
+    PositionState,
+    QualityState,
+)
 
+from .exit import evaluation_from_row
 from .models import (
     AlertRow,
     AuditEventRow,
     CandidateRow,
     ConfigVersionRow,
+    DomainEventRow,
     FeatureSnapshotRow,
     ObservationRow,
     PoolRow,
+    PositionRow,
     RiskAssessmentRow,
     ScoreSnapshotRow,
     StateTransitionRow,
@@ -47,10 +63,105 @@ from .models import (
 from .serialization import reason_codes_from_json
 
 MAX_STORAGE_ROWS = 5_000
+_POSITION_MARK_KINDS = (
+    "market.snapshot",
+    "market.market_data",
+    "market.observation",
+    "market.quote",
+    "market.trade",
+)
+_PRICE_KEYS = ("price", "price_usd", "token_price", "close")
 
 
 def _reason_codes(value: object) -> tuple[str, ...]:
     return tuple(reason.code for reason in reason_codes_from_json(value))
+
+
+def _position_from_row(row: PositionRow) -> Position:
+    """Map the durable ledger snapshot back to the provider-free position model."""
+
+    return Position(
+        id=row.id,
+        portfolio_id=row.portfolio_id,
+        token_id=row.token_id,
+        mode=PositionMode(row.mode),
+        state=PositionState(row.state),
+        opened_at=row.opened_at,
+        closed_at=row.closed_at,
+        quantity=row.quantity,
+        average_entry=row.average_entry,
+        average_exit=row.average_exit,
+        realized_pnl=row.realized_pnl,
+        high_watermark=row.high_watermark,
+        mfe=row.mfe,
+        mae=row.mae,
+        entry_decision_ref=row.entry_decision_ref,
+        exit_decision_ref=row.exit_decision_ref,
+        exit_signal_id=row.exit_signal_id,
+    )
+
+
+def _quality_state(value: object) -> QualityState:
+    """Keep malformed persisted quality from becoming falsely fresh evidence."""
+
+    try:
+        return QualityState(value)
+    except (TypeError, ValueError):
+        return QualityState.UNKNOWN
+
+
+def _price_from_payload(payload: Mapping[str, object]) -> Decimal | None:
+    """Extract only allow-listed price fields from normalized market payloads."""
+
+    mappings: list[Mapping[str, object]] = [payload]
+    for key in ("values", "metrics", "snapshot"):
+        nested = payload.get(key)
+        if isinstance(nested, Mapping):
+            mappings.append(nested)
+    for values in mappings:
+        for key in _PRICE_KEYS:
+            if key not in values:
+                continue
+            raw_price = values[key]
+            try:
+                price = Decimal(str(raw_price))
+            except (ValueError, ArithmeticError):
+                return None
+            if price.is_finite() and price > 0:
+                return price
+            return None
+    return None
+
+
+def _mark_evidence_refs(row: ObservationRow) -> tuple[str, ...]:
+    references = [f"observation:{row.id}", f"source:{row.source_id}"]
+    provenance = row.provenance
+    if isinstance(provenance, list):
+        references.extend(
+            str(value.get("source_id"))
+            for value in provenance
+            if isinstance(value, Mapping) and isinstance(value.get("source_id"), str)
+        )
+    return tuple(dict.fromkeys(references))
+
+
+def _position_mark(row: ObservationRow) -> PositionMarkView:
+    occurred_at = row.occurred_at or row.observed_at
+    quality_state = _quality_state(row.quality_state)
+    price = _price_from_payload(row.normalized_payload)
+    if price is None:
+        quality_state = QualityState.INVALID
+    return PositionMarkView(
+        price=price,
+        occurred_at=occurred_at,
+        observed_at=row.observed_at,
+        ingested_at=row.ingested_at,
+        provider=row.provider,
+        source_id=row.source_id,
+        parser_version=row.parser_version,
+        quality_state=quality_state,
+        evidence_refs=_mark_evidence_refs(row),
+    )
 
 
 def _candidate_view(
@@ -382,6 +493,135 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                 else await self._candidate_view_for_row(session, row.candidate)
             )
             return _token_view(row, candidate)
+
+    async def _position_mark_for_token(
+        self,
+        session: AsyncSession,
+        token_id: UUID,
+        *,
+        as_of: datetime | None,
+    ) -> PositionMarkView | None:
+        statement = (
+            select(ObservationRow)
+            .where(
+                ObservationRow.token_id == token_id,
+                ObservationRow.kind.in_(_POSITION_MARK_KINDS),
+            )
+            .order_by(
+                func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at).desc(),
+                ObservationRow.observed_at.desc(),
+                ObservationRow.id.desc(),
+            )
+        )
+        if as_of is not None:
+            statement = statement.where(
+                ObservationRow.observed_at <= as_of,
+                ObservationRow.ingested_at <= as_of,
+                or_(
+                    ObservationRow.occurred_at <= as_of,
+                    ObservationRow.occurred_at.is_(None)
+                    & (ObservationRow.observed_at <= as_of),
+                )
+            )
+        statement = statement.limit(1)
+        row = await session.scalar(statement)
+        return None if row is None else _position_mark(row)
+
+    async def _position_exit_evaluations(
+        self,
+        session: AsyncSession,
+        position_id: UUID,
+        *,
+        as_of: datetime | None,
+    ) -> tuple[ExitEvaluation, ...]:
+        rows = (
+            await session.scalars(
+                select(DomainEventRow)
+                .where(
+                    DomainEventRow.kind == "ExitEvaluation",
+                    DomainEventRow.aggregate_type == "Position",
+                    DomainEventRow.aggregate_id == str(position_id),
+                )
+                .order_by(DomainEventRow.occurred_at, DomainEventRow.id)
+                .limit(MAX_STORAGE_ROWS)
+            )
+        ).all()
+        evaluations = []
+        for row in rows:
+            try:
+                evaluation = evaluation_from_row(row)
+            except (TypeError, ValueError):
+                # A malformed advisory event cannot make a position look safer;
+                # omit it from the derived projection and retain the raw log.
+                continue
+            if as_of is None or evaluation.evaluated_at <= as_of:
+                evaluations.append(evaluation)
+        return tuple(evaluations)
+
+    async def _position_view_for_row(
+        self,
+        session: AsyncSession,
+        row: PositionRow,
+        *,
+        as_of: datetime | None,
+    ) -> PositionView:
+        token = await session.get(TokenRow, row.token_id)
+        if token is None:
+            raise ValueError("position row is missing its token")
+        mark = await self._position_mark_for_token(session, row.token_id, as_of=as_of)
+        evaluations = await self._position_exit_evaluations(
+            session,
+            row.id,
+            as_of=as_of,
+        )
+        return build_position_view(
+            _position_from_row(row),
+            mint_address=token.mint_address,
+            symbol=token.symbol,
+            name=token.name,
+            mark=mark,
+            exit_evaluations=evaluations,
+        )
+
+    async def list_positions(self, query: PositionQuery) -> Page[PositionView]:
+        if not isinstance(query, PositionQuery):
+            raise TypeError("query must be a PositionQuery")
+        statement = select(PositionRow)
+        if query.portfolio_id is not None:
+            statement = statement.where(PositionRow.portfolio_id == query.portfolio_id)
+        if query.mode is not None:
+            statement = statement.where(PositionRow.mode == PositionMode(query.mode).value)
+        if query.state is not None:
+            statement = statement.where(PositionRow.state == PositionState(query.state).value)
+        if query.as_of is not None:
+            statement = statement.where(
+                or_(
+                    PositionRow.opened_at.is_(None),
+                    PositionRow.opened_at <= query.as_of,
+                ),
+                or_(PositionRow.closed_at.is_(None), PositionRow.closed_at <= query.as_of),
+            )
+        statement = statement.limit(MAX_STORAGE_ROWS)
+        async with self._session_factory() as session:
+            rows = (await session.scalars(statement)).all()
+            values = tuple(
+                [
+                    await self._position_view_for_row(session, row, as_of=query.as_of)
+                    for row in rows
+                ]
+            )
+        return await InMemoryReadQueryService(positions=values).list_positions(query)
+
+    async def get_position(self, position_id: UUID) -> PositionView | None:
+        if not isinstance(position_id, UUID):
+            raise TypeError("position_id must be a UUID")
+        async with self._session_factory() as session:
+            row = await session.get(PositionRow, position_id)
+            return (
+                None
+                if row is None
+                else await self._position_view_for_row(session, row, as_of=None)
+            )
 
     async def list_timeline(self, token_id: UUID, query: TimelineQuery) -> Page[TimelineEntryView]:
         if not isinstance(query, TimelineQuery) or query.token_id != token_id:

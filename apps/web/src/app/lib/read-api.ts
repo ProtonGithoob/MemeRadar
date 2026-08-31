@@ -210,6 +210,96 @@ export interface ControlConfigRecord {
   config: Record<string, unknown>;
 }
 
+export type PositionMode = "PAPER" | "LIVE";
+export type PositionState = "PENDING" | "OPEN" | "EXIT_SIGNALLED" | "CLOSED";
+
+export interface PositionMarkRecord {
+  price: number | null;
+  occurredAt: string;
+  observedAt: string;
+  ingestedAt: string;
+  provider: string;
+  sourceId: string;
+  parserVersion: string;
+  qualityState: TimelineQuality;
+  evidenceRefs: string[];
+}
+
+export interface PositionPerformanceRecord {
+  asOf: string;
+  qualityState: TimelineQuality;
+  realizedPnl: number;
+  mfe: number;
+  mae: number;
+  highWatermark: number;
+  currentValue: number | null;
+  unrealizedPnl: number | null;
+  totalPnl: number | null;
+  returnRatio: number | null;
+  evidenceRefs: string[];
+}
+
+export interface PositionExitRiskRecord {
+  evaluationId: string;
+  evaluatedAt: string;
+  action: string;
+  exitFraction: number;
+  score: number;
+  confidence: number;
+  qualityState: TimelineQuality;
+  triggeredRules: string[];
+  reasonCodes: string[];
+  evidenceRefs: string[];
+  policyVersion: string;
+  configHash: string;
+}
+
+export interface ClosedTradeExplanationRecord {
+  evaluationId: string | null;
+  closedAt: string;
+  averageExit: number;
+  realizedPnl: number;
+  action: string;
+  reasonCodes: string[];
+  evidenceRefs: string[];
+  beforeEvidenceRefs: string[];
+  afterEvidenceRefs: string[];
+  policyVersion: string | null;
+  configHash: string | null;
+}
+
+export interface PositionRecord {
+  id: string;
+  portfolioId: string;
+  tokenId: string;
+  mintAddress: string;
+  symbol: string | null;
+  name: string | null;
+  mode: PositionMode;
+  state: PositionState;
+  quantity: number;
+  averageEntry: number;
+  openedAt: string | null;
+  closedAt: string | null;
+  averageExit: number | null;
+  realizedPnl: number;
+  highWatermark: number;
+  mfe: number;
+  mae: number;
+  currentMark: PositionMarkRecord | null;
+  performance: PositionPerformanceRecord;
+  exitRisk: PositionExitRiskRecord | null;
+  closedTrade: ClosedTradeExplanationRecord | null;
+  latestActivityAt: string | null;
+}
+
+export interface PositionFilters {
+  portfolioId?: string;
+  mode?: PositionMode;
+  state?: PositionState;
+  asOf?: string;
+}
+
 const DEFAULT_LIMIT = 50;
 const MAX_PAGE_LIMIT = 100;
 const MAX_STRING_LENGTH = 512;
@@ -256,6 +346,13 @@ const PROVIDER_HEALTH_STATES = new Set<ProviderHealthState>([
   "DEGRADED",
   "DOWN",
   "UNKNOWN"
+]);
+const POSITION_MODES = new Set<PositionMode>(["PAPER", "LIVE"]);
+const POSITION_STATES = new Set<PositionState>([
+  "PENDING",
+  "OPEN",
+  "EXIT_SIGNALLED",
+  "CLOSED"
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -663,6 +760,233 @@ function parseConfigVersion(value: unknown): ConfigVersionRecord | null {
   return { id, version, createdAt, actor, configHash, decisionAffecting, config };
 }
 
+function parseOptionalPositionNumber(
+  value: unknown,
+  minimum: number,
+  maximum: number
+): number | null | undefined {
+  return optionalFiniteNumber(value, minimum, maximum);
+}
+
+function parsePositionMark(value: unknown): PositionMarkRecord | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const rawPrice = parseOptionalPositionNumber(value.price, 0, 1e24);
+  if (rawPrice === undefined) return undefined;
+  const price = rawPrice;
+  const occurredAt = timestamp(value.occurred_at);
+  const observedAt = timestamp(value.observed_at);
+  const ingestedAt = timestamp(value.ingested_at);
+  const provider = boundedString(value.provider, 128);
+  const sourceId = boundedString(value.source_id, 256);
+  const parserVersion = boundedString(value.parser_version, 128);
+  const qualityState = optionalQuality(value.quality_state);
+  const evidenceRefs = stringArray(value.evidence_refs, 256);
+  if (
+    (price !== null && price <= 0) || occurredAt === null ||
+    observedAt === null || ingestedAt === null || provider === null || sourceId === null ||
+    parserVersion === null || qualityState === null || qualityState === undefined ||
+    evidenceRefs === null || Date.parse(occurredAt) > Date.parse(observedAt) ||
+    Date.parse(observedAt) > Date.parse(ingestedAt)
+  ) {
+    return undefined;
+  }
+  return {
+    price,
+    occurredAt,
+    observedAt,
+    ingestedAt,
+    provider,
+    sourceId,
+    parserVersion,
+    qualityState,
+    evidenceRefs
+  };
+}
+
+function parsePositionPerformance(value: unknown): PositionPerformanceRecord | null {
+  if (!isRecord(value)) return null;
+  const asOf = timestamp(value.as_of);
+  const qualityState = optionalQuality(value.quality_state);
+  const realizedPnl = finiteNumber(value.realized_pnl, -1e24, 1e24);
+  const mfe = finiteNumber(value.mfe, -1e24, 1e24);
+  const mae = finiteNumber(value.mae, -1e24, 1e24);
+  const highWatermark = finiteNumber(value.high_watermark, 0, 1e24);
+  const currentValue = parseOptionalPositionNumber(value.current_value, 0, 1e24);
+  const unrealizedPnl = parseOptionalPositionNumber(value.unrealized_pnl, -1e24, 1e24);
+  const totalPnl = parseOptionalPositionNumber(value.total_pnl, -1e24, 1e24);
+  const returnRatio = parseOptionalPositionNumber(value.return_ratio, -1e12, 1e12);
+  const evidenceRefs = stringArray(value.evidence_refs, 256);
+  if (
+    asOf === null || qualityState === null || qualityState === undefined ||
+    realizedPnl === null || mfe === null || mae === null || highWatermark === null ||
+    currentValue === undefined || unrealizedPnl === undefined || totalPnl === undefined ||
+    returnRatio === undefined || evidenceRefs === null
+  ) {
+    return null;
+  }
+  return {
+    asOf,
+    qualityState,
+    realizedPnl,
+    mfe,
+    mae,
+    highWatermark,
+    currentValue,
+    unrealizedPnl,
+    totalPnl,
+    returnRatio,
+    evidenceRefs
+  };
+}
+
+function parsePositionExitRisk(value: unknown): PositionExitRiskRecord | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const evaluationId = uuid(value.evaluation_id);
+  const evaluatedAt = timestamp(value.evaluated_at);
+  const action = boundedString(value.action, 16);
+  const exitFraction = finiteNumber(value.exit_fraction, 0, 1);
+  const score = finiteNumber(value.score, 0, 100);
+  const confidence = finiteNumber(value.confidence, 0, 1);
+  const qualityState = optionalQuality(value.quality_state);
+  const triggeredRules = stringArray(value.triggered_rules, 128);
+  const reasonCodes = stringArray(value.reason_codes, 128);
+  const evidenceRefs = stringArray(value.evidence_refs, 256);
+  const policyVersion = boundedString(value.policy_version, 128);
+  const configHash = boundedString(value.config_hash, 128);
+  if (
+    evaluationId === null || evaluatedAt === null || action === null || exitFraction === null ||
+    score === null || confidence === null || qualityState === null || qualityState === undefined ||
+    triggeredRules === null || reasonCodes === null || evidenceRefs === null ||
+    policyVersion === null || configHash === null
+  ) {
+    return undefined;
+  }
+  return {
+    evaluationId,
+    evaluatedAt,
+    action,
+    exitFraction,
+    score,
+    confidence,
+    qualityState,
+    triggeredRules,
+    reasonCodes,
+    evidenceRefs,
+    policyVersion,
+    configHash
+  };
+}
+
+function parseClosedTrade(value: unknown): ClosedTradeExplanationRecord | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const evaluationId = value.evaluation_id === null || value.evaluation_id === undefined
+    ? null
+    : uuid(value.evaluation_id);
+  const closedAt = timestamp(value.closed_at);
+  const averageExit = finiteNumber(value.average_exit, 0, 1e24);
+  const realizedPnl = finiteNumber(value.realized_pnl, -1e24, 1e24);
+  const action = boundedString(value.action, 16);
+  const reasonCodes = stringArray(value.reason_codes, 128);
+  const evidenceRefs = stringArray(value.evidence_refs, 256);
+  const beforeEvidenceRefs = stringArray(value.before_evidence_refs, 256);
+  const afterEvidenceRefs = stringArray(value.after_evidence_refs, 256);
+  const policyVersion = nullableString(value.policy_version, 128);
+  const configHash = nullableString(value.config_hash, 128);
+  if (
+    (value.evaluation_id !== null && value.evaluation_id !== undefined && evaluationId === null) ||
+    closedAt === null || averageExit === null || averageExit <= 0 || realizedPnl === null ||
+    action === null || reasonCodes === null || reasonCodes.length === 0 || evidenceRefs === null ||
+    evidenceRefs.length === 0 || beforeEvidenceRefs === null || afterEvidenceRefs === null ||
+    policyVersion === undefined || configHash === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    evaluationId,
+    closedAt,
+    averageExit,
+    realizedPnl,
+    action,
+    reasonCodes,
+    evidenceRefs,
+    beforeEvidenceRefs,
+    afterEvidenceRefs,
+    policyVersion,
+    configHash
+  };
+}
+
+function parsePosition(value: unknown): PositionRecord | null {
+  if (!isRecord(value)) return null;
+  const id = uuid(value.id);
+  const portfolioId = uuid(value.portfolio_id);
+  const tokenId = uuid(value.token_id);
+  const mintAddress = boundedString(value.mint_address, 128);
+  const symbol = nullableString(value.symbol, 64);
+  const name = nullableString(value.name, 256);
+  const mode = boundedString(value.mode, 16);
+  const state = boundedString(value.state, 24);
+  const quantity = finiteNumber(value.quantity, 0, 1e24);
+  const averageEntry = finiteNumber(value.average_entry, 0, 1e24);
+  const openedAt = value.opened_at === null || value.opened_at === undefined
+    ? null
+    : timestamp(value.opened_at);
+  const closedAt = value.closed_at === null || value.closed_at === undefined
+    ? null
+    : timestamp(value.closed_at);
+  const averageExit = parseOptionalPositionNumber(value.average_exit, 0, 1e24);
+  const realizedPnl = finiteNumber(value.realized_pnl, -1e24, 1e24);
+  const highWatermark = finiteNumber(value.high_watermark, 0, 1e24);
+  const mfe = finiteNumber(value.mfe, -1e24, 1e24);
+  const mae = finiteNumber(value.mae, -1e24, 1e24);
+  const currentMark = parsePositionMark(value.current_mark);
+  const performance = parsePositionPerformance(value.performance);
+  const exitRisk = parsePositionExitRisk(value.exit_risk);
+  const closedTrade = parseClosedTrade(value.closed_trade);
+  const latestActivityAt = value.latest_activity_at === null || value.latest_activity_at === undefined
+    ? null
+    : timestamp(value.latest_activity_at);
+  if (
+    id === null || portfolioId === null || tokenId === null || mintAddress === null ||
+    mode === null || !POSITION_MODES.has(mode as PositionMode) || state === null ||
+    !POSITION_STATES.has(state as PositionState) || quantity === null || averageEntry === null ||
+    averageEntry <= 0 || openedAt === undefined || closedAt === undefined ||
+    averageExit === undefined || (averageExit !== null && averageExit <= 0) || realizedPnl === null ||
+    highWatermark === null || mfe === null || mae === null || currentMark === undefined ||
+    performance === null || exitRisk === undefined || closedTrade === undefined ||
+    latestActivityAt === undefined || value.execution_eligible === true
+  ) {
+    return null;
+  }
+  return {
+    id,
+    portfolioId,
+    tokenId,
+    mintAddress,
+    symbol,
+    name,
+    mode: mode as PositionMode,
+    state: state as PositionState,
+    quantity,
+    averageEntry,
+    openedAt,
+    closedAt,
+    averageExit,
+    realizedPnl,
+    highWatermark,
+    mfe,
+    mae,
+    currentMark,
+    performance,
+    exitRisk,
+    closedTrade,
+    latestActivityAt
+  };
+}
+
 function parseControlState(value: unknown): ControlStateRecord | null {
   if (!isRecord(value)) return null;
   const apiVersion = boundedString(value.api_version, 64);
@@ -855,6 +1179,28 @@ export async function fetchTimeline(
   if (!isValidTokenId(tokenId)) return { ok: false, reason: "INVALID_RESPONSE" };
   const url = endpoint(`/v1/tokens/${tokenId}/timeline`, singleQuery());
   return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parseTimeline));
+}
+
+export async function fetchPositions(
+  filters: PositionFilters = {}
+): Promise<ReadResult<ReadPage<PositionRecord>>> {
+  const query = singleQuery();
+  if (filters.portfolioId && UUID_PATTERN.test(filters.portfolioId)) {
+    query.set("portfolio_id", filters.portfolioId);
+  }
+  if (filters.mode && POSITION_MODES.has(filters.mode)) query.set("mode", filters.mode);
+  if (filters.state && POSITION_STATES.has(filters.state)) query.set("state", filters.state);
+  if (filters.asOf && timestamp(filters.asOf) !== null) query.set("as_of", filters.asOf);
+  const url = endpoint("/v1/positions", query);
+  return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parsePosition));
+}
+
+export async function fetchPosition(
+  positionId: string
+): Promise<ReadResult<PositionRecord>> {
+  if (!isValidTokenId(positionId)) return { ok: false, reason: "INVALID_RESPONSE" };
+  const url = endpoint(`/v1/positions/${positionId}`);
+  return url === null ? configuredFailure() : request(url, parsePosition);
 }
 
 function setBoundedNumber(

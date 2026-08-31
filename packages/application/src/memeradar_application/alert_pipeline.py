@@ -249,6 +249,22 @@ class AlertRenderer:
             if delta:
                 score_line += f" ({delta if delta.startswith(('+', '-')) else '+' + delta})"
             lines.append(score_line)
+        if alert.type in {AlertType.EXIT_RISK, AlertType.PAPER_EXIT}:
+            action = _safe_display(payload.get("action"))
+            fraction = _safe_display(payload.get("exit_fraction"))
+            if action:
+                lines.append(f"Exit: {action}" + (f" ({fraction})" if fraction else ""))
+            pnl_value = next(
+                (
+                    payload[key]
+                    for key in ("total_pnl", "pnl", "realized_pnl")
+                    if key in payload and payload[key] is not None
+                ),
+                None,
+            )
+            pnl = _safe_display(pnl_value)
+            if pnl:
+                lines.append(f"PnL: {pnl}")
         for key, label in (
             ("age", "Age"),
             ("liquidity_usd", "Liquidity"),
@@ -333,6 +349,186 @@ def _event_reasons(event: EventEnvelope, payload: Mapping[str, object]) -> tuple
     return normalize_reason_codes(values, required=True)
 
 
+_EXTERNAL_ONLY_EXIT_REASONS = frozenset(
+    {
+        "EXTERNAL_EXIT_CORROBORATION_ONLY",
+        "EXTERNAL_EXIT_SIGNAL_ONLY",
+    }
+)
+
+
+def _exit_reason_values(event: EventEnvelope, payload: Mapping[str, object]) -> tuple[object, ...]:
+    """Collect the flattened and nested reasons carried by exit events."""
+
+    values: list[object] = list(event.reason_codes)
+    for key in ("reason_codes", "triggered_rules"):
+        raw_values = payload.get(key, ())
+        if isinstance(raw_values, str):
+            raw_values = (raw_values,)
+        if isinstance(raw_values, list | tuple):
+            values.extend(raw_values)
+    risk_score = payload.get("risk_score")
+    if isinstance(risk_score, Mapping):
+        raw_values = risk_score.get("reason_codes", ())
+        if isinstance(raw_values, str):
+            raw_values = (raw_values,)
+        if isinstance(raw_values, list | tuple):
+            values.extend(raw_values)
+    return tuple(values)
+
+
+def _reason_code_text(value: object) -> str | None:
+    if isinstance(value, ReasonCode):
+        return value.code
+    if isinstance(value, str):
+        return value
+    if isinstance(value, Mapping):
+        code = value.get("code")
+        return code if isinstance(code, str) else None
+    return None
+
+
+def _reason_code(value: object) -> ReasonCode | None:
+    if isinstance(value, ReasonCode):
+        return value
+    if isinstance(value, str):
+        try:
+            return ReasonCode(value)
+        except (TypeError, ValueError):
+            return None
+    if not isinstance(value, Mapping):
+        return None
+    code = value.get("code")
+    if not isinstance(code, str):
+        return None
+    detail = value.get("detail")
+    if detail is not None and not isinstance(detail, str):
+        detail = None
+    raw_refs = value.get("evidence_refs", ())
+    if isinstance(raw_refs, str):
+        raw_refs = (raw_refs,)
+    evidence_refs = (
+        tuple(reference for reference in raw_refs if isinstance(reference, str))
+        if isinstance(raw_refs, list | tuple)
+        else ()
+    )
+    try:
+        return ReasonCode(code, detail=detail, evidence_refs=evidence_refs)
+    except (TypeError, ValueError):
+        return None
+
+
+def _has_core_exit_trigger(values: tuple[object, ...]) -> bool:
+    """Return whether an exit event contains a deterministic/core trigger."""
+
+    for value in values:
+        code = _reason_code_text(value)
+        if code is None:
+            continue
+        normalized = code.upper()
+        if normalized in _EXTERNAL_ONLY_EXIT_REASONS or normalized.startswith("EXTERNAL_"):
+            continue
+        return True
+    return False
+
+
+def _exit_alert_payload(payload: Mapping[str, object]) -> dict[str, object]:
+    """Expose only bounded, allow-listed exit fields to alert persistence."""
+
+    scalar_keys = {
+        "position_id",
+        "candidate_id",
+        "token_id",
+        "mint",
+        "symbol",
+        "name",
+        "action",
+        "exit_fraction",
+        "pnl",
+        "realized_pnl",
+        "unrealized_pnl",
+        "total_pnl",
+        "score",
+        "alpha_score",
+        "score_before",
+        "score_after",
+        "score_delta",
+        "confidence",
+        "quality_state",
+        "policy_version",
+        "config_hash",
+    }
+    list_keys = {
+        "reason_codes",
+        "triggered_rules",
+        "before_evidence_refs",
+        "after_evidence_refs",
+    }
+    result: dict[str, object] = {}
+    for key in scalar_keys:
+        if key not in payload:
+            continue
+        display = _safe_display(payload[key], max_length=256)
+        if display:
+            result[key] = display
+    for key in list_keys:
+        values = _safe_lines(payload.get(key), max_items=8)
+        if values:
+            result[key] = values
+
+    risk_score = payload.get("risk_score")
+    if isinstance(risk_score, Mapping):
+        for source_key, output_key in (
+            ("score", "score"),
+            ("confidence", "confidence"),
+            ("quality_state", "quality_state"),
+        ):
+            if output_key not in result and source_key in risk_score:
+                display = _safe_display(risk_score[source_key], max_length=256)
+                if display:
+                    result[output_key] = display
+
+    evidence: list[str] = []
+    for key in ("evidence_refs", "after_evidence_refs", "before_evidence_refs"):
+        raw_values = payload.get(key, ())
+        if isinstance(raw_values, str):
+            raw_values = (raw_values,)
+        if isinstance(raw_values, list | tuple):
+            evidence.extend(value for value in raw_values if isinstance(value, str))
+    if isinstance(risk_score, Mapping):
+        raw_values = risk_score.get("evidence_refs", ())
+        if isinstance(raw_values, str):
+            raw_values = (raw_values,)
+        if isinstance(raw_values, list | tuple):
+            evidence.extend(value for value in raw_values if isinstance(value, str))
+    if evidence:
+        result["evidence_refs"] = tuple(dict.fromkeys(evidence))
+    return result
+
+
+def _exit_alert_reasons(
+    event: EventEnvelope,
+    payload: Mapping[str, object],
+    values: tuple[object, ...],
+) -> tuple[ReasonCode, ...]:
+    normalized: list[ReasonCode | str] = []
+    for value in values:
+        reason = _reason_code(value)
+        if reason is not None:
+            normalized.append(reason)
+    evidence_refs = payload.get("after_evidence_refs", ())
+    if isinstance(evidence_refs, str):
+        evidence_refs = (evidence_refs,)
+    if isinstance(evidence_refs, list | tuple):
+        normalized.extend(
+            ReasonCode("EXIT_EVIDENCE", evidence_refs=(value,))
+            for value in evidence_refs
+            if isinstance(value, str)
+        )
+    normalized.append(ReasonCode("ALERT_SOURCE_EVENT", evidence_refs=(f"event:{event.id}",)))
+    return normalize_reason_codes(normalized, required=True)
+
+
 def _dedupe_key(alert_type: AlertType, event_key: str) -> str:
     material = f"alert:{alert_type.value}:{event_key}"
     if len(material) <= 256:
@@ -407,6 +603,35 @@ class AlertEventProjector:
                 **payload,
                 "health_state": health_state,
             }
+        elif event.kind in {"ExitSignal", "ExitEvaluation", "PaperExit"}:
+            action = _safe_display(payload.get("action")).upper()
+            if action not in {"REDUCE", "CLOSE"}:
+                return None
+            exit_reasons = _exit_reason_values(event, payload)
+            if not _has_core_exit_trigger(exit_reasons):
+                # External intelligence can corroborate an exit recommendation but
+                # cannot create an operator alert by itself.
+                return None
+            alert_type = AlertType.PAPER_EXIT if event.kind == "PaperExit" else AlertType.EXIT_RISK
+            raw_severity = payload.get("severity")
+            if raw_severity is None:
+                signal_payload = payload.get("signal")
+                if isinstance(signal_payload, Mapping):
+                    raw_severity = signal_payload.get("severity")
+            try:
+                severity = (
+                    AlertSeverity(raw_severity)
+                    if raw_severity is not None
+                    else (
+                        AlertSeverity.CRITICAL
+                        if action == "CLOSE"
+                        else AlertSeverity.WARNING
+                    )
+                )
+            except ValueError:
+                severity = AlertSeverity.CRITICAL if action == "CLOSE" else AlertSeverity.WARNING
+            alert_payload = _exit_alert_payload(payload)
+            alert_reasons = _exit_alert_reasons(event, payload, exit_reasons)
         elif event.kind in {"SystemKillSwitch", "SystemHealthChanged"}:
             alert_type = AlertType.SYSTEM_KILL_SWITCH
             severity = AlertSeverity.CRITICAL
@@ -425,7 +650,11 @@ class AlertEventProjector:
             requested_at=event.ingested_at,
             candidate_id=candidate_id,
             position_id=position_id,
-            reason_codes=_event_reasons(event, payload),
+            reason_codes=(
+                alert_reasons
+                if event.kind in {"ExitSignal", "ExitEvaluation", "PaperExit"}
+                else _event_reasons(event, payload)
+            ),
         )
 
 
