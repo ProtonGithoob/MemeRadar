@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "MemeRadar Operator",
-  description: "Evidence-first Solana memecoin intelligence"
+  description: "Evidence-first Solana memecoin intelligence operator console"
 };
 
 export default function RootLayout({
