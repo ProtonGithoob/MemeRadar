@@ -561,6 +561,18 @@ strategies against the same dataset digest and checkpoint boundaries. The
 local profile command measures throughput; it does not introduce a provider,
 database, signer or execution dependency.
 
+Phase 10.2 implements the downstream
+`packages/application/src/memeradar_application/backtesting.py` projection.
+It consumes only the immutable replay result, uses fresh advisory strategy
+snapshots with explicit PASS risk evidence for entry selection, and evaluates
+exit rules independently from entry thresholds. Both trade legs reuse the
+existing `paper-fill-v1` model with bounded fee/slippage assumptions. Reports
+are fixed-notional research artifacts with explicit unknown/skip states,
+score-bucket calibration and deterministic segment metrics for venue,
+liquidity, token age, market regime, social velocity and smart-wallet
+confluence. Backtest output cannot mutate paper positions, create alerts,
+authorize `ENTRY_READY` or change protected operating modes.
+
 ## Failure behavior
 
 - Provider timeout: bounded retry + jitter, then degrade feature/provider state.

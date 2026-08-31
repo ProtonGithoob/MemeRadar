@@ -282,6 +282,15 @@ strategy comparison remains advisory and permanently non-executable. The
 throughput profiler reports counts and timing only and has no provider,
 database, wallet, signing or transaction-submission capability.
 
+Phase 10.2 backtesting preserves the same boundary. `BacktestPolicy` rejects
+unsafe operating-mode values, `BacktestHarness` consumes only normalized replay
+artifacts, and the report contains no raw provider payload or credential-shaped
+field. Unknown safety/price evidence produces a skip with a reason code; it is
+never assigned a zero/positive outcome. The report, CLI and paper fill model
+cannot sign, submit, mutate a position, authorize `ENTRY_READY` or change
+`ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false` or
+`AUTO_EXECUTION=false`.
+
 ## Supply chain
 
 CI should include:

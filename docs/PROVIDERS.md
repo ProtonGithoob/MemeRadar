@@ -592,6 +592,16 @@ fixtures, errors or doctor output. Synthetic fixtures and keyless contracts
 live under `fixtures/providers/narrative/`; live narrative acceptance remains
 `BLOCKED_EXTERNAL` without configured safe read-only access.
 
+## Research backtesting boundary
+
+Phase 10.2 backtesting is intentionally provider-free. It consumes normalized
+`ResearchReplayResult` artifacts and does not call a market, social, wallet,
+quote or execution provider. Fee/slippage assumptions come from the existing
+provider-neutral `PaperFillModel`; an unavailable or non-fresh replay outcome
+is recorded as an explicit skip. Live market and Telegram acceptance remains
+`BLOCKED_EXTERNAL` when credentials or network access are unavailable; no
+backtest report is treated as provider acceptance or execution authority.
+
 ## Adapter requirements
 
 Every network adapter must implement:

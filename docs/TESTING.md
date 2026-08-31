@@ -271,6 +271,26 @@ A live provider acceptance report records:
 - Record dataset manifest, code commit and config hash.
 - Report distribution, drawdown and score-bucket calibration, not only total return.
 
+Phase 10.2 adds `tests/unit/test_backtesting.py` and
+`tests/contract/test_phase10_sprint10_2.py`. The deterministic fixture covers
+target/stop and safety/horizon exits, separate entry thresholds, adverse
+two-leg fee/slippage arithmetic, unknown future/safety evidence, empty
+denominators, drawdown/profit factor, score buckets, all required segment
+dimensions, canonical artifact identity and protected modes. The contract
+also checks the application/CLI boundary for provider, persistence, signer and
+submission dependencies.
+
+Run the keyless projection with:
+
+```text
+make backtest-replay
+```
+
+The default redacted replay fixture has no strategy snapshot, so the command
+must emit an explicit empty report with an entry rejection rather than invent a
+trade. A configured strategy still has to be reconstructed through
+`ReplayHarness`; backtesting never adds a replay-only decoder or provider call.
+
 ## Quality gates
 
 Phase 0 should expose a single command such as `make verify` that eventually includes:

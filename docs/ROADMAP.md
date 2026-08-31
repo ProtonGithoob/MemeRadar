@@ -560,10 +560,22 @@ execution access. Live market/Telegram acceptance remains `BLOCKED_EXTERNAL`.
 
 ### Sprint 10.2 — Backtesting
 
-- [ ] Backtest signal and exit policies.
-- [ ] Include realistic fee/slippage assumptions.
-- [ ] Calculate precision, hit rate, expectancy, drawdown, profit factor and calibration by score bucket.
-- [ ] Segment by launch venue, liquidity, token age, market regime and social/smart-wallet conditions.
+- [x] Backtest signal and exit policies.
+- [x] Include realistic fee/slippage assumptions.
+- [x] Calculate precision, hit rate, expectancy, drawdown, profit factor and calibration by score bucket.
+- [x] Segment by launch venue, liquidity, token age, market regime and social/smart-wallet conditions.
+
+Sprint 10.2 keyless state: complete. The provider-free
+`memeradar_application.backtesting` projection consumes only immutable Phase
+10.1 replay results, selects fresh advisory PASS signals, evaluates
+configurable target/stop/safety/horizon exits independently, and reuses the
+`paper-fill-v1` fee/slippage model. Deterministic JSON/CSV reports include
+explicit unknown/skip reasons, precision/hit rate/expectancy, fixed-notional
+drawdown and profit factor, score-bucket calibration, and venue/liquidity/
+token-age/market-regime/social/smart-wallet segments. The keyless CLI and
+fixture contracts preserve all protected modes; positive research output does
+not authorize `ENTRY_READY` or unlock live trading. Live market/Telegram
+acceptance remains `BLOCKED_EXTERNAL`.
 
 ### Sprint 10.3 — Score Calibration
 

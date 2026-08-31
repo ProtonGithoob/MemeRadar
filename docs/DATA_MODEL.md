@@ -941,6 +941,26 @@ registry, event schema, strategy, config and outcome-policy versions. Cohort
 summaries are derived projections rather than new score authority, and replay
 artifacts retain the four protected operating modes.
 
+### backtest_reports
+
+- replay dataset/manifest identity and digest
+- backtest policy version/config hash
+- paper fill-model version
+- protected operating modes
+- aggregate metrics and score-bucket calibration
+- deterministic trade rows with entry/exit, fees, slippage, PnL, return,
+  reason codes and evidence references
+- explicit entry/exit skips with unknown/non-safe reasons
+- segment keys and metrics for venue, liquidity, token age, market regime,
+  social velocity and smart-wallet confluence
+
+Phase 10.2 represents these rows as immutable provider-free
+`BacktestReport` projections. They are reproducible from a `ResearchReplayResult`
+and policy alone; no raw provider response, credential, signer or execution
+request is part of the model. Unknown future price/safety evidence is excluded
+from executed-trade metrics rather than converted to a safe or profitable
+value.
+
 ## Indexing baseline
 
 At minimum index:

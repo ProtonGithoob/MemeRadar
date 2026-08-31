@@ -7,12 +7,19 @@ COMPOSE_FILE ?= infra/compose/docker-compose.yml
 COMPOSE ?= docker compose -f $(COMPOSE_FILE)
 REPLAY_INPUT ?= fixtures/research/replay_dataset.json
 REPLAY_OUTPUT ?=
+BACKTEST_INPUT ?= $(REPLAY_INPUT)
+BACKTEST_OUTPUT ?=
+BACKTEST_ENTRY_SCORE_THRESHOLD ?= 50
+BACKTEST_MIN_CONFIDENCE ?= 0.60
+BACKTEST_OUTCOME_HORIZON ?= 24h
+BACKTEST_FEE_BPS ?= 30
+BACKTEST_SLIPPAGE_BPS ?= 25
 PROFILE_ITERATIONS ?= 10
 
 .PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
-	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor
+	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor backtest-replay
 
 bootstrap:
 	python3 -m venv .venv
@@ -33,6 +40,15 @@ replay-dataset:
 
 profile-replay:
 	$(PYTHON) scripts/profile_replay.py --input $(REPLAY_INPUT) --iterations $(PROFILE_ITERATIONS)
+
+backtest-replay:
+	$(PYTHON) scripts/backtest_replay.py --input $(BACKTEST_INPUT) \
+		--entry-score-threshold $(BACKTEST_ENTRY_SCORE_THRESHOLD) \
+		--min-confidence $(BACKTEST_MIN_CONFIDENCE) \
+		--outcome-horizon $(BACKTEST_OUTCOME_HORIZON) \
+		--fee-bps $(BACKTEST_FEE_BPS) \
+		--slippage-bps $(BACKTEST_SLIPPAGE_BPS) \
+		$(if $(BACKTEST_OUTPUT),--output $(BACKTEST_OUTPUT),)
 
 frontend-lint:
 	cd $(WEB_DIR) && npm run lint

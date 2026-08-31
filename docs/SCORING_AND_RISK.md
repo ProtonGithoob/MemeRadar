@@ -698,3 +698,20 @@ projections. Healthy stream completeness does not add score, an unresolved or
 non-fresh evidence state remains non-safe, and every replay strategy snapshot
 is advisory with `execution_eligible() == false`. Positive backtest or cohort
 results cannot change protected modes or authorize `ENTRY_READY`.
+
+## Phase 10.2 backtest boundary
+
+`BacktestHarness` treats the strategy snapshot as an advisory entry hypothesis,
+not execution authority. It requires fresh feature/risk evidence, explicit
+`RiskDisposition.PASS`, configured score/confidence thresholds and a known
+liquidity constraint when one is configured. Exit policy selection is
+independent and uses only the selected future outcome horizon. Fee and adverse
+slippage are applied on both legs through `PaperFillModel`.
+
+Reports expose precision, end-to-end hit rate, net-return/PnL expectancy,
+fixed-notional maximum drawdown, profit factor and calibration by score bucket.
+They also segment by launch venue, liquidity band, token age, event-time market
+regime, social velocity and smart-wallet confluence. Unknown future price or
+critical safety labels create explicit skips and reduce measurable coverage;
+they never count as safe evidence or increase AlphaScore. A positive report is
+research evidence only and cannot promote a score version or enable trading.
