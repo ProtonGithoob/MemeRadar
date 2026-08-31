@@ -41,7 +41,7 @@
 - [x] **Step 2: Run the focused tests** with `.venv/bin/pytest tests/unit/test_control.py tests/unit/test_health.py -q`; the initial run exposed the absent module and a draft syntax issue before the isolated control suite passed.
 - [x] **Step 3: Implement the provider-free contracts and in-memory control plane** with immutable safe DTOs, shared authorization helpers, no secret-shaped config fields and explicit protected-mode enforcement.
 - [x] **Step 4: Re-run focused tests plus application lint/typecheck** and verify no FastAPI/SQLAlchemy/provider import enters the application module. Evidence: control `15 passed`, health `9 passed`, Ruff clean, mypy `63 source files` clean.
-- [ ] **Step 5: Commit** with `git add packages/application/src/memeradar_application/control.py packages/application/src/memeradar_application/config.py tests/unit/test_control.py tests/unit/test_health.py && git commit -m "feat: define control plane contracts"`.
+- [x] **Step 5: Commit** — `6b88714` (`feat: define control plane contracts`).
 
 ### Task 2: Persist control state, config versions and audit events
 
@@ -66,7 +66,7 @@
 - [x] **Step 3: Implement `SqlAlchemyControlPlane`** using shared application validation/authorization, row locking for state updates, monotonic versions and paired audit writes.
 - [x] **Step 4: Extend the read adapter** to query and safely map persisted audit/config rows under the existing `MAX_STORAGE_ROWS` bound.
 - [x] **Step 5: Run migration metadata checks and opt-in Postgres tests**, including upgrade from the current `0003_score_strategy_identity` head and downgrade/upgrade reversibility. Evidence: migration metadata `0004_control_plane`/16 tables, Postgres control/read integration `2 passed`, downgrade and upgrade both passed.
-- [ ] **Step 6: Commit** with `git add packages/persistence infra/alembic scripts/check_migrations.py tests/unit/test_migration_contract.py tests/integration && git commit -m "feat: persist control plane audit state"`.
+- [x] **Step 6: Commit** — `930595b` (`feat: persist control plane audit state`).
 
 ### Task 3: Add role authentication and control routes
 
@@ -83,11 +83,11 @@
 - Strict `/v1/control/state`, `/v1/control/config`, `/v1/control/analysis-kill-switch`, `/v1/control/execution-kill-switch` and `/v1/control/config` routes.
 - `create_app(..., control_plane=None)` composes an injected or in-memory control plane and shares one SQLAlchemy engine with the read adapter when configured.
 
-- [ ] **Step 1: Write failing TestClient tests** for `503` unconfigured auth, `401` missing/wrong/malformed bearer credentials, `403` role separation, successful state/config reads, analysis pause, kill activation, protected clear `409`, admin config mutation, strict bodies, correlation IDs and secret non-disclosure.
-- [ ] **Step 2: Implement the authenticator and strict control response/request models**; keep token values out of principals, audit actors, errors, logs and response serialization.
-- [ ] **Step 3: Implement the control routes and app composition** with stable error mapping, safe mode response fields, shared engine ownership and clean shutdown.
-- [ ] **Step 4: Re-run API/manual tests and add route-surface/provider-boundary contracts** proving no new execution or signing path exists.
-- [ ] **Step 5: Commit** with `git add apps/api/src/memeradar_api tests/unit/test_control_api.py tests/unit/test_manual_api.py && git commit -m "feat: add authenticated control API"`.
+- [x] **Step 1: Write failing TestClient tests** for `503` unconfigured auth, `401` missing/wrong/malformed bearer credentials, `403` role separation, successful state/config reads, analysis pause, kill activation, protected clear `409`, admin config mutation, strict bodies, correlation IDs and secret non-disclosure.
+- [x] **Step 2: Implement the authenticator and strict control response/request models**; keep token values out of principals, audit actors, errors, logs and response serialization.
+- [x] **Step 3: Implement the control routes and app composition** with stable error mapping, safe mode response fields, shared engine ownership and clean shutdown. Configured role credentials also require authentication on the existing read surface.
+- [x] **Step 4: Re-run API/manual tests and add route-surface/provider-boundary contracts** proving no new execution or signing path exists. Evidence: control API `8 passed`; control/manual/read/health regression `32 passed`; Ruff and mypy clean.
+- [x] **Step 5: Commit** — `cc8c442` (`feat: add authenticated control API`).
 
 ### Task 4: Complete Sprint 7.3 quality gate and documentation
 
@@ -101,11 +101,11 @@
 - Contract/replay tests cover deterministic control transitions, role matrix, audit/config persistence projections, protected modes, and safe UNKNOWN/external-blocker handling.
 - Provider doctor/runtime checks remain keyless and honest; missing role/provider credentials are reported as blocked configuration, never fabricated PASS.
 
-- [ ] **Step 1: Add replay, route-boundary, safe-mode, migration and secret-scan contracts** before the phase gate.
-- [ ] **Step 2: Run focused tests, full `make verify`, opt-in integration/migration checks, Compose rebuild/runtime probes and doctor checks.**
-- [ ] **Step 3: Reconcile all documentation and mark Sprint 7.3 complete only with exact evidence; record that control config is versioned and consumers retain startup reload semantics until a future hot-reload task.**
-- [ ] **Step 4: Commit docs/status and push coherent implementation and documentation checkpoints.**
-- [ ] **Step 5: Continue automatically to the next unblocked roadmap or approved research-extension task after this checkpoint.**
+- [x] **Step 1: Add replay, route-boundary, safe-mode, migration and secret-scan contracts** before the phase gate.
+- [x] **Step 2: Run focused tests, full `make verify`, opt-in integration/migration checks, Compose rebuild/runtime probes and doctor checks.** Evidence: focused suites pass; full gate `454 passed, 6 skipped`; opt-in integration `6 passed`; migration head `0004_control_plane`; Compose/runtime/doctor checks are recorded in `docs/STATUS.md`.
+- [x] **Step 3: Reconcile all documentation and mark Sprint 7.3 complete only with exact evidence; record that control config is versioned and consumers retain startup reload semantics until a future hot-reload task.**
+- [x] **Step 4: Commit docs/status and push coherent implementation and documentation checkpoints.**
+- [x] **Step 5: Continue automatically to the next unblocked roadmap or approved research-extension task after this checkpoint.**
 
 ## Protected modes
 

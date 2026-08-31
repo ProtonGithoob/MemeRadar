@@ -190,6 +190,19 @@ Keyless focused evidence before the full gate: route regression `29 passed`,
 Sprint 7.2 replay/Compose contracts `29 passed`, read application/persistence
 unit tests `14 passed`, and the opt-in Postgres read adapter test `1 passed`.
 
+Sprint 7.3 adds role-token/RBAC coverage for viewer, operator, admin and
+execution principals, including `503` unconfigured auth, `401` malformed or
+wrong bearer values, `403` permission separation, strict mutation bodies,
+correlation IDs and secret non-disclosure. Control replay covers safe defaults,
+idempotent kill activation, protected clear refusal, allow-listed config
+validation, canonical hashes and audit pairing. The opt-in Postgres suite
+round-trips the singleton state, immutable config version and audit rows,
+rehydrates them through a new adapter and projects them through the read API;
+the `0003` to `0004` downgrade/upgrade path is verified. Configured role
+credentials also protect existing read routes while keyless local development
+remains available. No control test can change the four protected modes or
+introduce signing/submission authority.
+
 Add regression thresholds only after a stable baseline exists.
 
 ## Failure tests

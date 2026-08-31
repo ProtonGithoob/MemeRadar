@@ -290,13 +290,30 @@ candidate, send an alert, change configuration or authorize execution.
 
 `SqlAlchemyReadQueryService` reads the existing normalized token, pool,
 candidate, observation, feature, risk, score, transition and alert tables with
-bounded storage reads. Wallet/provider-health/audit/config data is injected as
-an application catalog until the corresponding physical persistence work is
-scheduled; an empty catalog is explicit and never fabricated as healthy. Read
-payloads are copied through a recursive bounded redactor, raw provider body
-references are not returned, and malformed queries or unavailable storage fail
-with safe public errors. Timeline ordering uses occurred time plus a stable ID
-tie-breaker, and `as_of` excludes future evidence.
+bounded storage reads. Audit/config views now project the physical Sprint 7.3
+control-plane tables; wallet/provider-health remain injectable catalogs until
+their physical persistence task. An empty catalog is explicit and never
+fabricated as healthy. Read payloads are copied through a recursive bounded
+redactor, raw provider body references are not returned, and malformed queries
+or unavailable storage fail with safe public errors. Timeline ordering uses
+occurred time plus a stable ID tie-breaker, and `as_of` excludes future
+evidence. If any role credential is configured, all read routes require a
+valid role bearer token; an unconfigured development process retains its
+keyless read behavior.
+
+## Authenticated control plane
+
+Sprint 7.3 adds an application-facing control port with explicit viewer,
+operator, admin and execution roles. The API resolves static role-scoped
+bearer tokens only at the boundary, compares them in constant time and emits
+non-secret principals. Viewer roles can read control state/config; operators
+can pause/resume analysis and activate the restrictive execution kill switch;
+admins can mutate validated config; the execution role can only read and
+activate the execution stop. Config changes are allow-listed, hash-stable,
+versioned and paired with immutable audit events. The SQLAlchemy adapter writes
+state/config/audit changes transactionally. The default execution kill switch
+is active, and protected modes prevent clearing it. No control route changes
+the four operating modes or grants execution/signing authority.
 
 ## Persistence
 
@@ -321,6 +338,14 @@ timestamps; equivalent dedupe keys are idempotent and conflicting alert
 identity is rejected. Notification outbox claims are filtered by side-effect
 kind and retain bounded retry/error metadata. Telegram is an adapter concern;
 the keyless fixture and doctor allow local verification without credentials.
+
+Sprint 7.3 adds `control_state`, `config_versions` and `audit_events` through
+reversible migration `0004_control_plane`. The singleton state row is the
+durable restrictive control projection; config versions contain only validated
+non-secret values and unique canonical hashes; audit rows retain actor,
+action, target, safe before/after values, timestamp and correlation identity.
+Control mutations and their audit records share a transaction, while read
+queries remain bounded and append-oriented.
 
 ## Data paths
 

@@ -361,19 +361,31 @@ configuration is absent.
 Sprint 7.2 keyless state: complete. The versioned `ReadQueryPort`, immutable
 safe views, bounded query DTOs and resource-scoped cursor codec are exposed
 through typed GET-only FastAPI routes. Candidate/token/timeline reads use the
-existing normalized SQLAlchemy records; wallet, provider-health, audit and
-config catalogs are injectable and remain explicitly empty until their
-physical persistence tasks. Raw provider references are omitted, payloads are
-bounded/redacted, event-time and `as_of` behavior are deterministic, and no
-read response can authorize execution. Focused route, persistence, replay and
-Compose contracts pass; the full quality gate is recorded in `docs/STATUS.md`.
+existing normalized SQLAlchemy records; wallet and provider-health catalogs
+remain injectable until their physical persistence tasks, while audit and
+config now project the Sprint 7.3 control-plane tables. Raw provider references
+are omitted, payloads are bounded/redacted, event-time and `as_of` behavior
+are deterministic, and no read response can authorize execution. Focused
+route, persistence, replay and Compose contracts pass; the full quality gate
+is recorded in `docs/STATUS.md`.
 
 ### Sprint 7.3 — Auth / Control API
 
-- [ ] Implement operator auth/RBAC.
-- [ ] Separate viewer/operator/admin/execution permissions.
-- [ ] Add validated config mutation with audit events.
-- [ ] Add emergency analysis/execution kill-switch controls.
+- [x] Implement operator auth/RBAC.
+- [x] Separate viewer/operator/admin/execution permissions.
+- [x] Add validated config mutation with audit events.
+- [x] Add emergency analysis/execution kill-switch controls.
+
+Sprint 7.3 keyless state: complete. Role-scoped bearer authentication is
+constant-time and fail-closed; viewer/operator/admin/execution permissions are
+explicit, and configured credentials also protect the read surface. The
+control plane persists a safe singleton state, immutable validated config
+versions and paired audit events. Analysis pause and restrictive execution
+kill-switch activation are auditable; clearing the execution switch remains
+blocked by the protected modes. No endpoint changes operating modes, creates a
+decision, signs, submits or authorizes execution. Focused and full quality
+gates, migration round-trip, Postgres integration and Compose/runtime evidence
+are recorded in `docs/STATUS.md`; live credentials remain external blockers.
 
 **Gate P7:** analysis-only deployment can run continuously and deliver deduplicated explainable alerts.
 

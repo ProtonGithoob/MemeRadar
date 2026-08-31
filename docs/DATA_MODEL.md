@@ -735,12 +735,13 @@ never presented as historical truth. Observation `raw_payload_ref` values and
 raw provider bodies are not part of the public projection; normalized payloads
 are recursively bounded and secret-shaped fields are redacted.
 
-Wallet, provider-health, audit and config read views use injectable catalogs
-until their physical tables are implemented. The adapter returns an explicit
-empty page for an empty catalog rather than inventing provider health or wallet
-state. All collection projections use bounded page envelopes and opaque,
-versioned resource cursors; these cursors are pagination positions, not
-authorization tokens.
+Wallet and provider-health read views use injectable catalogs until their
+physical persistence tasks are implemented. Audit/config views project the
+physical control-plane tables when present and retain injectable catalogs for
+keyless tests. The adapter returns an explicit empty page for an empty catalog
+rather than inventing provider health or wallet state. All collection
+projections use bounded page envelopes and opaque, versioned resource cursors;
+these cursors are pagination positions, not authorization tokens.
 
 ### provider_health
 - provider + capability key
@@ -766,6 +767,23 @@ Immutable operator/system-sensitive audit log.
 - config_hash unique
 - decision_affecting flag
 - config JSONB with secrets excluded
+
+The Sprint 7.3 control plane persists only the validated allow-listed alert and
+decision fields. Canonical JSON produces a unique `sha256:` config hash;
+decision-threshold changes are marked `decision_affecting`. Snapshots are
+immutable and expose no bearer/provider/database/wallet credentials.
+
+### control_state
+- singleton id (`global`)
+- analysis_paused
+- execution_kill_switch (active by default)
+- monotonic version
+- updated_at/updated_by/correlation_id
+
+The control state is restrictive by default. Analysis pause and activation of
+the execution kill switch are authenticated, role-checked and audit-paired.
+Clearing the execution switch is unavailable while the four protected modes
+remain in force; this state does not authorize or submit any transaction.
 
 ### domain_events
 - event envelope fields from ARCHITECTURE

@@ -181,6 +181,17 @@ Do not blindly fetch arbitrary token/social URLs from backend. Use allowlists or
 
 The analysis-only manual mint endpoint requires `Authorization: Bearer <OPERATOR_API_TOKEN>` when `OPERATOR_API_TOKEN` is configured and fails closed with `503` when it is not configured. It accepts only a canonical Solana mint, never accepts signing material, and returns `execution_enabled: false`; the bearer value is compared in constant time and is not logged or returned.
 
+Sprint 7.3 adds optional `VIEWER_API_TOKEN`, `ADMIN_API_TOKEN` and
+`EXECUTION_API_TOKEN` credentials alongside the existing operator token.
+Configured role tokens are unique, compared in constant time and converted to
+role-only principals; values never enter audit actors, errors, logs or
+responses. The `/v1/control` state/config reads require any configured role,
+analysis pause/resume requires operator/admin, config mutation requires admin,
+and execution-role access can only activate the restrictive execution
+kill-switch. If any role token is configured, the existing read API also
+requires a valid role bearer token; with no configured token, local development
+read behavior remains unchanged.
+
 ## Supply chain
 
 CI should include:
@@ -221,6 +232,13 @@ Never curl-and-execute arbitrary installer scripts in CI without review/pinning.
 ## Kill switch behavior
 
 Global execution kill switch must prevent all new live submissions immediately while preserving monitoring/reconciliation. It must not blindly abandon already-submitted transactions. A separate analysis pause may stop ingestion if needed.
+
+The current protected deployment starts with the execution kill switch active.
+Its clear endpoint is deliberately rejected while `ANALYSIS_ONLY=true`,
+`PAPER_TRADING=true`, `MANUAL_EXECUTION=false` and `AUTO_EXECUTION=false`.
+Control config mutation is limited to validated allow-listed alert/decision
+fields; attempts to mutate modes, credentials, provider URLs, database URLs or
+wallet material fail validation and create no audit/config record.
 
 ## Incident response baseline
 

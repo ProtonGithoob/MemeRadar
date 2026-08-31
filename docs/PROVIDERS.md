@@ -106,12 +106,20 @@ analysis and cannot authorize execution.
 The Sprint 7.2 read API is not a provider adapter. Its application
 `ReadQueryPort` consumes normalized views, and the SQLAlchemy implementation
 reads persisted normalized records without importing provider SDKs or making
-network calls. Wallet, provider-health, audit and config records are injected
-as explicit catalogs until their physical persistence tasks; an empty catalog
-does not imply provider health or live acceptance. Public read projections
-retain source/timestamp/freshness and reason evidence while omitting raw
-provider bodies and secret-shaped fields. Provider disagreement and unknown
-health therefore remain visible evidence, never execution authority.
+network calls. Sprint 7.3 projects audit/config rows from the physical control
+plane; wallet/provider-health records remain explicit injectable catalogs until
+their persistence tasks. An empty catalog does not imply provider health or
+live acceptance. Public/local read projections retain source/timestamp/
+freshness and reason evidence while omitting raw provider bodies and
+secret-shaped fields; configured operator deployments require a valid role
+token. Provider disagreement and unknown health therefore remain visible
+evidence, never execution authority.
+
+The authenticated control plane has no provider dependency. Provider health,
+external labels, smart-money evidence and LLM narratives cannot grant a role,
+clear a kill switch, mutate protected modes or authorize execution. Missing
+provider or role credentials are configuration blockers for their live
+acceptance, not provider PASS results.
 
 ## Helius / Solana read layer
 

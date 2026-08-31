@@ -715,3 +715,45 @@ def test_read_api_surface_is_packaged_and_safe():
         assert environment["PAPER_TRADING"] == "true"
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
+
+
+def test_control_api_rbac_and_kill_switch_are_packaged_and_safe():
+    from memeradar_api.auth import RoleTokenAuthenticator
+    from memeradar_api.control import build_control_router
+    from memeradar_api.main import create_app
+    from memeradar_application.config import Settings
+    from memeradar_application.control import ControlRole, InMemoryControlPlane
+
+    settings = Settings.from_env({})
+    app = create_app(settings)
+    route_paths = {route.path for route in app.routes}
+    assert "/v1/control/state" in route_paths
+    assert "/v1/control/config" in route_paths
+    assert "/v1/control/analysis-kill-switch" in route_paths
+    assert "/v1/control/execution-kill-switch" in route_paths
+    assert RoleTokenAuthenticator
+    assert build_control_router
+    assert ControlRole.EXECUTION.value == "EXECUTION"
+    assert InMemoryControlPlane().execution_clear_allowed is False
+    env_example = (ROOT / ".env.example").read_text()
+    for name in (
+        "VIEWER_API_TOKEN=",
+        "OPERATOR_API_TOKEN=",
+        "ADMIN_API_TOKEN=",
+        "EXECUTION_API_TOKEN=",
+    ):
+        assert name in env_example
+    control_source = (
+        ROOT / "apps" / "api" / "src" / "memeradar_api" / "control.py"
+    ).read_text()
+    auth_source = (ROOT / "apps" / "api" / "src" / "memeradar_api" / "auth.py").read_text()
+    assert "sign_transaction" not in control_source
+    assert "private_key" not in control_source
+    assert "compare_digest" in auth_source
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
