@@ -163,6 +163,18 @@ checks separate occurred/observed/ingested timestamps, provenance and an
 provider/persistence/execution imports. The opt-in Postgres suite also
 rehydrates a multi-transition candidate with stable decision identity.
 
+Sprint 7.1 adds alert-pipeline contracts for deterministic projection of
+meaningful decision/risk/provider-health events, bounded reason/evidence
+rendering, secret-shaped text redaction, alert dedupe, suppression and
+per-destination rate limiting. Telegram provider tests use an injected HTTP
+client and cover `sendMessage`, `getMe`, authentication, rate-limit, timeout,
+transport/schema failures and HTTPS/credential boundaries. The fixture replay
+exercises the `NotificationPort` without credentials; the opt-in Postgres
+suite verifies alert round-trip plus notification outbox delivery/dedupe, and
+Compose smoke/runtime checks verify the worker import and health seam. Missing
+Telegram configuration is a key-safe `BLOCKED_EXTERNAL` doctor result, not a
+fabricated provider PASS.
+
 Add regression thresholds only after a stable baseline exists.
 
 ## Failure tests

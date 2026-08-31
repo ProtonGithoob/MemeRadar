@@ -82,6 +82,27 @@ Sprint 2.1 defines the provider ports in `packages/application/src/memeradar_app
 
 Shared request contexts carry a bounded correlation ID and optional deadline. The keyless provider framework in `packages/providers/src/memeradar_providers/` supplies callback-based transport resilience, health/quota/freshness projections, recursively redacted fixture recording and deterministic fake responses. These seams are tested without provider credentials; live acceptance remains a separate adapter-phase concern.
 
+## Telegram notification adapter
+
+Sprint 7.1 implements `TelegramNotificationAdapter` in
+`packages/providers/src/memeradar_providers/telegram.py`. It is an
+HTTPS-only, bounded adapter for Telegram Bot API `sendMessage` and `getMe`,
+using the shared transport timeout/retry/rate-limit policy and forwarding a
+bounded correlation ID. It validates destination/text fields, keeps the bot
+token out of representations and error messages, and maps authentication,
+rate-limit, timeout, transport and schema failures to provider error classes
+without retaining response bodies or raw provider text. A successful send
+returns only a safe provider message ID and delivery timestamp.
+
+`FixtureNotificationAdapter` provides deterministic credential-free delivery
+for replay and local integration tests. `make telegram-doctor` reports only
+configuration presence, safe health metadata and protected modes; missing
+endpoint/token/chat configuration is `BLOCKED_EXTERNAL`, while configured
+health failures are classified without printing credentials. The current
+checkout has no Telegram configuration, so no live provider success is
+claimed. Telegram notification state remains downstream of deterministic
+analysis and cannot authorize execution.
+
 ## Helius / Solana read layer
 
 Sprint 2.2 implements the read-only Helius adapter in `packages/providers/src/memeradar_providers/helius.py`. `HeliusRpcAdapter` maps `getAsset`, `getAccountInfo` and `getTransaction` JSON-RPC/DAS responses into canonical `TokenIdentity`, account and transaction records plus application `Observation` values. It validates Solana base58 identities, preserves `occurred_at`/`observed_at`/`ingested_at`, attaches Helius/source/parser provenance, forwards request correlation IDs, and classifies timeout, availability, authentication, rate-limit and schema failures without retaining raw response text.

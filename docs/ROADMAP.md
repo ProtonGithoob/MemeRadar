@@ -333,10 +333,21 @@ trip demonstrate deterministic results; live provider acceptance remains
 
 ### Sprint 7.1 — Alert Pipeline
 
-- [ ] Implement Telegram notification adapter.
-- [ ] Implement outbox delivery, retries, dedupe and rate limiting.
-- [ ] Render concise alerts with reasons and score delta.
-- [ ] Add provider/system degradation alerts.
+- [x] Implement Telegram notification adapter.
+- [x] Implement outbox delivery, retries, dedupe and rate limiting.
+- [x] Render concise alerts with reasons and score delta.
+- [x] Add provider/system degradation alerts.
+
+Sprint 7.1 keyless state: complete. The provider-independent alert projector,
+bounded renderer, durable alert repository, leased notification outbox handler,
+fixed-window destination limiter, Telegram Bot API adapter, fixture adapter and
+key-safe doctor are implemented. Decision, risk, provider-health and system
+health events produce explainable alerts without execution authority; provider
+failure, duplicate delivery and rate-limit behavior remain fail-safe. The
+credential-free fixture, provider contracts, Postgres outbox integration and
+Compose/runtime checks pass with all protected modes unchanged. Live Telegram
+acceptance remains `BLOCKED_EXTERNAL` when safe endpoint, bot token or chat
+configuration is absent.
 
 ### Sprint 7.2 — Read API
 

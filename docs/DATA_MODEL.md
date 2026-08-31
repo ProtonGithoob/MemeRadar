@@ -714,6 +714,15 @@ authorize orders.
 - requested_at/delivered_at
 - attempts
 
+Sprint 7.1 uses `AlertRepository` to preserve the aggregate's typed state,
+reason codes and evidence references while retaining the existing table
+contract. `dedupe_key` is the idempotency boundary: an equivalent replay is a
+no-op and conflicting identity is rejected. `AlertDeliveryService` moves an
+alert through `PENDING`, `DELIVERED`, `FAILED` or `SUPPRESSED` without changing
+candidate state or execution eligibility. Rendered notification text is
+bounded and generated from an allow-listed payload view; provider response
+bodies and credentials are never stored.
+
 ### provider_health
 - provider + capability key
 - checked_at
@@ -753,6 +762,13 @@ Immutable operator/system-sensitive audit log.
 - available_at
 - delivered_at nullable
 - attempts/error metadata
+
+Notification deliveries use `side_effect_kind=notification` and are claimed
+through the same leased processor as other durable side effects. Claims retain
+bounded retry/error metadata and an optional provider/rate-limit retry time;
+the notification worker filters this kind so ordinary domain-event handlers
+cannot consume notification messages. A deferred rate-limited message stays
+durable and does not block candidate processing.
 
 ## Research
 

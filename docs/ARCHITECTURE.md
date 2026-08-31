@@ -266,6 +266,18 @@ config/policy identity. `EvidenceTimelineProjector` produces a deterministic
 event-time projection of transitions, events and feature/risk/score snapshots;
 its optional `as_of` boundary excludes future evidence.
 
+The Sprint 7.1 alert path projects meaningful decision, risk, provider-health
+and system-health events through the provider-independent
+`AlertEventProjector`. `AlertRenderer` emits bounded, plain-text messages with
+reason codes and evidence references; it allow-lists payload fields and
+redacts secret-shaped values. `AlertDeliveryService` persists the existing
+`Alert` aggregate by `dedupe_key`, applies protected alert policy and a
+per-destination fixed-window limiter, then sends through `NotificationPort`.
+Notification work is enqueued as `side_effect_kind=notification` and consumed
+by the leased outbox processor, so transient failures and provider rate limits
+remain retryable without holding up candidate processing. Delivery state never
+changes a candidate, risk gate, operating mode or execution permission.
+
 ## Persistence
 
 Repositories should be aggregate-oriented, not generic CRUD abstractions. Use transaction boundaries around state transitions/decision persistence. Adopt outbox semantics before any external side effect that must not be lost (alerts/execution).
@@ -282,6 +294,13 @@ The core Sprint 6.2 score slice similarly uses the existing risk and score
 tables. Risk/score repositories preserve hard-block references, penalties,
 reason codes, strategy identity and config hashes while equivalent replay is
 accepted and conflicting identity reuse fails closed.
+
+Sprint 7.1 reuses the existing `alerts` and `outbox` tables. Alert repository
+writes preserve typed severity/state, payload, reasons, evidence and delivery
+timestamps; equivalent dedupe keys are idempotent and conflicting alert
+identity is rejected. Notification outbox claims are filtered by side-effect
+kind and retain bounded retry/error metadata. Telegram is an adapter concern;
+the keyless fixture and doctor allow local verification without credentials.
 
 ## Data paths
 
@@ -359,6 +378,9 @@ Phase 10 research must replay normalized events by event time with no future-dat
 - DB unavailable: stop side effects and fail readiness.
 - Redis unavailable: degrade optional caching; do not lose business truth.
 - Telegram unavailable: retain outbox/retry; do not block candidate processing.
+- Notification authentication/schema failure: record only a bounded error
+  class, retry only according to the provider policy, and never persist the
+  response body, token or raw provider text.
 - LLM unavailable: narrative becomes unavailable; deterministic scoring continues.
 - Critical risk provider unavailable: analysis may continue with UNKNOWN; live execution blocked.
 

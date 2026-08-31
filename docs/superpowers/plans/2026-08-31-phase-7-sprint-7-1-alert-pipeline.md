@@ -1,5 +1,10 @@
 # Phase 7 / Sprint 7.1 — Alert Pipeline
 
+## Status
+
+Complete. Implementation checkpoint `980e785`; documentation and final gate
+checkpoint follows this plan.
+
 ## Objective
 
 Complete the Telegram-first, analysis-only alert path around the existing
@@ -29,13 +34,13 @@ Telegram or allowing notification state to authorize execution.
 
 ## Implementation sequence
 
-1. Add red domain/application tests for suppression, renderer/projector,
+1. [x] Add red domain/application tests for suppression, renderer/projector,
    dedupe/rate-limit behavior and outbox retry timing.
-2. Implement the provider-independent alert projector, renderer, policy,
+2. [x] Implement the provider-independent alert projector, renderer, policy,
    limiter and delivery handler.
-3. Add `AlertRepository`/UoW wiring and Telegram plus fixture adapters.
-4. Add provider doctor/configuration and keyless replay/runtime contracts.
-5. Run focused checks and the full quality gate, reconcile docs/status, commit
+3. [x] Add `AlertRepository`/UoW wiring and Telegram plus fixture adapters.
+4. [x] Add provider doctor/configuration and keyless replay/runtime contracts.
+5. [x] Run focused checks and the full quality gate, reconcile docs/status, commit
    and push the checkpoint.
 
 ## Protected modes

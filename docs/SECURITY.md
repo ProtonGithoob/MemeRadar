@@ -56,6 +56,19 @@ on-chain hard gates. The fixture adapter never accesses the network, and
 `make external-wallet-doctor` reports presence only and never emits secrets or
 probes an unapproved URL. No live GMGN/CabalSpy adapter is enabled.
 
+Sprint 7.1 keeps Telegram behind the application-facing `NotificationPort`.
+`TelegramNotificationAdapter` accepts only HTTPS base URLs, sends the bot
+token only in the Telegram request path, and never includes it in `repr`,
+fixtures, errors, logs or doctor output. Alert rendering uses an allow-list of
+bounded fields, strips control characters and redacts secret-shaped values;
+provider response bodies and raw error text are not persisted. Authentication,
+schema and transport failures are classified safely, and rate limits defer
+the leased notification outbox rather than causing a retry storm. A Telegram
+notification cannot mutate candidates, clear risk, change modes, sign or
+submit a transaction. The fixture adapter and doctor make the path testable
+without credentials; live Telegram acceptance is `BLOCKED_EXTERNAL` when
+configuration is absent.
+
 Core Sprint 6.1 feature windows are also analysis-only derived records. Their
 stable IDs and persisted JSON values are replay identities, not authorization
 tokens. The aggregator uses the correlation event-time boundary, invalidates
