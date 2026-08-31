@@ -2,8 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchCandidates,
+  fetchAuditEvents,
+  fetchConfigVersions,
+  fetchControlConfig,
+  fetchControlState,
+  fetchProviderHealth,
   fetchTimeline,
   fetchToken,
+  fetchWallet,
+  fetchWallets,
   parseRadarFilters,
   type CandidateRecord,
   type ReadPage
@@ -210,5 +217,142 @@ describe("server-side read gateway", () => {
     );
 
     expect(await fetchTimeline(TOKEN_ID)).toEqual({ ok: false, reason: "INVALID_RESPONSE" });
+  });
+
+  it("reads the remaining bounded operator catalogs and control projections", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    const walletAddress = "Vote111111111111111111111111111111111111111";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({
+        items: [{
+          address: walletAddress,
+          label: "Fixture smart wallet",
+          registry_tier: "TIER_A",
+          recommended_tier: "TIER_A",
+          as_of: "2026-08-31T12:00:00.000Z",
+          expires_at: "2026-08-31T13:00:00.000Z",
+          score: "91",
+          confidence: "0.88",
+          sample_count: 12,
+          known_outcome_count: 8,
+          win_rate: "0.75",
+          realized_pnl: "12.5",
+          quality_state: "FRESH",
+          reason_codes: ["POSITIVE_OUTCOMES"],
+          evidence_refs: ["wallet:fixture"],
+          execution_eligible: false
+        }],
+        limit: 50,
+        has_more: false,
+        next_cursor: null
+      }))
+      .mockResolvedValueOnce(response({
+        items: [{
+          provider: "fixture-market",
+          capability: "market_data",
+          state: "DEGRADED",
+          checked_at: "2026-08-31T12:01:00.000Z",
+          latency_ms: 125,
+          quota: { remaining: 4, limit: 10 },
+          freshness_state: "STALE",
+          error_class: "rate_limited",
+          consecutive_failures: 2
+        }],
+        limit: 50,
+        has_more: false,
+        next_cursor: null
+      }))
+      .mockResolvedValueOnce(response({
+        items: [{
+          id: CANDIDATE_ID,
+          actor: "operator",
+          action: "control.analysis_pause",
+          target: "analysis",
+          occurred_at: "2026-08-31T12:02:00.000Z",
+          correlation_id: "corr-fixture",
+          before: {},
+          after: { analysis_paused: true, authorization: "Bearer hidden" }
+        }],
+        limit: 50,
+        has_more: false,
+        next_cursor: null
+      }))
+      .mockResolvedValueOnce(response({
+        items: [{
+          id: CANDIDATE_ID,
+          version: "control-config-v1",
+          created_at: "2026-08-31T12:03:00.000Z",
+          actor: "admin",
+          config_hash: "sha256:fixture",
+          decision_affecting: true,
+          config: {
+            decision_entry_ready_threshold: 85,
+            password: "should-not-render"
+          }
+        }],
+        limit: 50,
+        has_more: false,
+        next_cursor: null
+      }))
+      .mockResolvedValueOnce(response({
+        api_version: "control-api-v1",
+        analysis_paused: false,
+        execution_kill_switch: true,
+        version: 2,
+        updated_at: "2026-08-31T12:04:00.000Z",
+        updated_by: "system",
+        correlation_id: "control-fixture",
+        protected_modes: {
+          analysis_only: true,
+          paper_trading: true,
+          manual_execution: false,
+          auto_execution: false
+        }
+      }))
+      .mockResolvedValueOnce(response({
+        api_version: "control-api-v1",
+        id: CANDIDATE_ID,
+        version: "control-config-v1",
+        created_at: "2026-08-31T12:03:00.000Z",
+        actor: "admin",
+        config_hash: "sha256:fixture",
+        decision_affecting: true,
+        config: {
+          alert_max_messages_per_window: 20,
+          alert_rate_limit_window_seconds: 60,
+          decision_watch_threshold: 40,
+          decision_strong_setup_threshold: 75,
+          decision_entry_ready_threshold: 85,
+          decision_minimum_confidence: 0.6
+        }
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wallets = await fetchWallets({ tier: "TIER_A", minScore: 80 });
+    const health = await fetchProviderHealth({ state: "DEGRADED" });
+    const audits = await fetchAuditEvents({ action: "control.analysis_pause" });
+    const configs = await fetchConfigVersions({ decisionAffecting: true });
+    const state = await fetchControlState();
+    const config = await fetchControlConfig();
+
+    expect(wallets.ok && wallets.data.items[0]?.score).toBe(91);
+    expect(health.ok && health.data.items[0]?.state).toBe("DEGRADED");
+    expect(audits.ok && audits.data.items[0]?.action).toBe("control.analysis_pause");
+    expect(configs.ok && configs.data.items[0]?.configHash).toBe("sha256:fixture");
+    expect(state.ok && state.data.executionKillSwitch).toBe(true);
+    expect(config.ok && config.data.config.decision_entry_ready_threshold).toBe(85);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://api.internal:8000/v1/wallets?limit=50&tier=TIER_A&min_score=80",
+      "http://api.internal:8000/v1/providers/health?limit=50&state=DEGRADED",
+      "http://api.internal:8000/v1/audit/events?limit=50&action=control.analysis_pause",
+      "http://api.internal:8000/v1/config/versions?limit=50&decision_affecting=true",
+      "http://api.internal:8000/v1/control/state",
+      "http://api.internal:8000/v1/control/config"
+    ]);
+    expect(JSON.stringify(audits)).not.toContain("should-not-render");
+    expect(await fetchWallet("not-a-solana-address")).toEqual({
+      ok: false,
+      reason: "INVALID_RESPONSE"
+    });
   });
 });

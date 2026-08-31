@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { RealtimeStatus } from "./realtime-status";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -13,6 +15,13 @@ export function OperatorHeader() {
         <RealtimeStatus />
         <ThemeToggle />
       </div>
+      <nav className="operator-nav" aria-label="Operator sections">
+        <Link href="/">Radar</Link>
+        <Link href="/wallets">Wallets</Link>
+        <Link href="/providers">Providers</Link>
+        <Link href="/settings">Settings</Link>
+        <Link href="/audit">Audit</Link>
+      </nav>
     </header>
   );
 }

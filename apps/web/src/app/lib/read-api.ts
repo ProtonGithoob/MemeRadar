@@ -103,6 +103,113 @@ export interface TimelineRecord {
   provenance: ProvenanceRecord[];
 }
 
+export type WalletTier = "CANDIDATE" | "TIER_A" | "TIER_B" | "BLOCKED" | "UNKNOWN";
+
+export interface WalletRecord {
+  address: string;
+  label: string;
+  registryTier: WalletTier;
+  recommendedTier: WalletTier;
+  asOf: string;
+  expiresAt: string;
+  score: number | null;
+  confidence: number | null;
+  sampleCount: number;
+  knownOutcomeCount: number;
+  winRate: number | null;
+  realizedPnl: number | null;
+  qualityState: TimelineQuality;
+  reasonCodes: string[];
+  evidenceRefs: string[];
+}
+
+export type ProviderHealthState = "HEALTHY" | "DEGRADED" | "DOWN" | "UNKNOWN";
+
+export interface ProviderHealthRecord {
+  provider: string;
+  capability: string;
+  state: ProviderHealthState;
+  checkedAt: string;
+  latencyMs: number | null;
+  quota: Record<string, unknown>;
+  freshnessState: TimelineQuality | null;
+  errorClass: string | null;
+  consecutiveFailures: number;
+}
+
+export interface AuditEventRecord {
+  id: string;
+  actor: string;
+  action: string;
+  target: string;
+  occurredAt: string;
+  correlationId: string;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+}
+
+export interface ConfigVersionRecord {
+  id: string;
+  version: string;
+  createdAt: string;
+  actor: string;
+  configHash: string;
+  decisionAffecting: boolean;
+  config: Record<string, unknown>;
+}
+
+export interface WalletFilters {
+  tier?: Exclude<WalletTier, "UNKNOWN">;
+  minScore?: number;
+  minConfidence?: number;
+  qualityState?: TimelineQuality;
+}
+
+export interface ProviderHealthFilters {
+  provider?: string;
+  capability?: string;
+  state?: ProviderHealthState;
+}
+
+export interface AuditFilters {
+  actor?: string;
+  action?: string;
+  target?: string;
+}
+
+export interface ConfigFilters {
+  decisionAffecting?: boolean;
+}
+
+export interface ProtectedModesRecord {
+  analysisOnly: boolean;
+  paperTrading: boolean;
+  manualExecution: boolean;
+  autoExecution: boolean;
+}
+
+export interface ControlStateRecord {
+  apiVersion: string;
+  analysisPaused: boolean;
+  executionKillSwitch: boolean;
+  version: number;
+  updatedAt: string;
+  updatedBy: string;
+  correlationId: string;
+  protectedModes: ProtectedModesRecord;
+}
+
+export interface ControlConfigRecord {
+  apiVersion: string;
+  id: string;
+  version: string;
+  createdAt: string;
+  actor: string;
+  configHash: string;
+  decisionAffecting: boolean;
+  config: Record<string, unknown>;
+}
+
 const DEFAULT_LIMIT = 50;
 const MAX_PAGE_LIMIT = 100;
 const MAX_STRING_LENGTH = 512;
@@ -110,9 +217,12 @@ const MAX_ARRAY_LENGTH = 64;
 const MAX_PAYLOAD_KEYS = 64;
 const MAX_PAYLOAD_DEPTH = 4;
 const REQUEST_TIMEOUT_MS = 4_000;
+const SECRET_KEY_PATTERN =
+  /(?:api[_ -]?key|access[_ -]?token|authorization|bearer|bot[_ -]?token|client[_ -]?secret|cookie|password|private[_ -]?key|seed(?:[_ -]?phrase)?|session[_ -]?token)/i;
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SOLANA_ADDRESS_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,64}$/;
 const CANDIDATE_STATES = new Set([
   "DISCOVERED",
   "ENRICHING",
@@ -133,6 +243,19 @@ const QUALITY_STATES = new Set<CandidateQuality>([
   "UNKNOWN",
   "INVALID",
   "CONFLICTED"
+]);
+const WALLET_TIERS = new Set<WalletTier>([
+  "CANDIDATE",
+  "TIER_A",
+  "TIER_B",
+  "BLOCKED",
+  "UNKNOWN"
+]);
+const PROVIDER_HEALTH_STATES = new Set<ProviderHealthState>([
+  "HEALTHY",
+  "DEGRADED",
+  "DOWN",
+  "UNKNOWN"
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -170,7 +293,8 @@ function optionalFiniteNumber(
   maximum: number
 ): number | null | undefined {
   if (value === null || value === undefined) return null;
-  return finiteNumber(value, minimum, maximum);
+  const parsed = finiteNumber(value, minimum, maximum);
+  return parsed === null ? undefined : parsed;
 }
 
 function stringArray(value: unknown, maxLength = MAX_STRING_LENGTH): string[] | null {
@@ -198,6 +322,10 @@ function safePayloadValue(value: unknown, depth: number): unknown | undefined {
   const result: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
     const safeKey = boundedString(key, 128);
+    if (safeKey !== null && SECRET_KEY_PATTERN.test(safeKey)) {
+      result[safeKey] = "[REDACTED]";
+      continue;
+    }
     const parsed = safePayloadValue(item, depth + 1);
     if (safeKey === null || parsed === undefined) return undefined;
     result[safeKey] = parsed;
@@ -391,6 +519,209 @@ function parseTimeline(value: unknown): TimelineRecord | null {
   };
 }
 
+function optionalTimestamp(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return null;
+  const parsed = timestamp(value);
+  return parsed === null ? undefined : parsed;
+}
+
+function optionalBoundedString(value: unknown, maxLength = MAX_STRING_LENGTH): string | null | undefined {
+  if (value === null || value === undefined) return null;
+  const parsed = boundedString(value, maxLength);
+  return parsed === null ? undefined : parsed;
+}
+
+function integer(value: unknown, minimum: number, maximum: number): number | null {
+  const parsed = finiteNumber(value, minimum, maximum);
+  return parsed !== null && Number.isInteger(parsed) ? parsed : null;
+}
+
+function optionalQuality(value: unknown): TimelineQuality | null | undefined {
+  if (value === null || value === undefined) return null;
+  const parsed = boundedString(value, 16);
+  return parsed !== null && QUALITY_STATES.has(parsed as TimelineQuality)
+    ? parsed as TimelineQuality
+    : undefined;
+}
+
+function parseWallet(value: unknown): WalletRecord | null {
+  if (!isRecord(value)) return null;
+  const address = boundedString(value.address, 64);
+  const label = boundedString(value.label, 256);
+  const registryTier = boundedString(value.registry_tier, 32);
+  const recommendedTier = boundedString(value.recommended_tier, 32);
+  const asOf = timestamp(value.as_of);
+  const expiresAt = timestamp(value.expires_at);
+  const score = optionalFiniteNumber(value.score, 0, 100);
+  const confidence = optionalFiniteNumber(value.confidence, 0, 1);
+  const sampleCount = integer(value.sample_count, 0, 1_000_000);
+  const knownOutcomeCount = integer(value.known_outcome_count, 0, 1_000_000);
+  const winRate = optionalFiniteNumber(value.win_rate, 0, 1);
+  const realizedPnl = optionalFiniteNumber(value.realized_pnl, -1_000_000_000_000, 1_000_000_000_000);
+  const qualityState = optionalQuality(value.quality_state);
+  const reasonCodes = stringArray(value.reason_codes, 128);
+  const evidenceRefs = stringArray(value.evidence_refs, 256);
+
+  if (
+    address === null || !SOLANA_ADDRESS_PATTERN.test(address) || label === null ||
+    registryTier === null || !WALLET_TIERS.has(registryTier as WalletTier) ||
+    recommendedTier === null || !WALLET_TIERS.has(recommendedTier as WalletTier) ||
+    asOf === null || expiresAt === null || Date.parse(expiresAt) <= Date.parse(asOf) ||
+    score === undefined || confidence === undefined || sampleCount === null ||
+    knownOutcomeCount === null || winRate === undefined || realizedPnl === undefined ||
+    qualityState === null || qualityState === undefined || reasonCodes === null ||
+    evidenceRefs === null || value.execution_eligible === true
+  ) {
+    return null;
+  }
+
+  return {
+    address,
+    label,
+    registryTier: registryTier as WalletTier,
+    recommendedTier: recommendedTier as WalletTier,
+    asOf,
+    expiresAt,
+    score,
+    confidence,
+    sampleCount,
+    knownOutcomeCount,
+    winRate,
+    realizedPnl,
+    qualityState,
+    reasonCodes,
+    evidenceRefs
+  };
+}
+
+function parseProviderHealth(value: unknown): ProviderHealthRecord | null {
+  if (!isRecord(value)) return null;
+  const provider = boundedString(value.provider, 128);
+  const capability = boundedString(value.capability, 128);
+  const state = boundedString(value.state, 16);
+  const checkedAt = timestamp(value.checked_at);
+  const latencyMs = optionalFiniteNumber(value.latency_ms, 0, 300_000);
+  const quota = safePayload(value.quota ?? {});
+  const freshnessState = optionalQuality(value.freshness_state);
+  const errorClass = optionalBoundedString(value.error_class, 128);
+  const consecutiveFailures = integer(value.consecutive_failures, 0, 1_000_000);
+  if (
+    provider === null || capability === null || state === null ||
+    !PROVIDER_HEALTH_STATES.has(state as ProviderHealthState) || checkedAt === null ||
+    latencyMs === undefined || quota === null || freshnessState === undefined ||
+    errorClass === undefined || consecutiveFailures === null
+  ) {
+    return null;
+  }
+  return {
+    provider,
+    capability,
+    state: state as ProviderHealthState,
+    checkedAt,
+    latencyMs,
+    quota,
+    freshnessState,
+    errorClass,
+    consecutiveFailures
+  };
+}
+
+function parseAuditEvent(value: unknown): AuditEventRecord | null {
+  if (!isRecord(value)) return null;
+  const id = uuid(value.id);
+  const actor = boundedString(value.actor, 256);
+  const action = boundedString(value.action, 256);
+  const target = boundedString(value.target, 256);
+  const occurredAt = timestamp(value.occurred_at);
+  const correlationId = boundedString(value.correlation_id, 128);
+  const before = safePayload(value.before ?? {});
+  const after = safePayload(value.after ?? {});
+  if (
+    id === null || actor === null || action === null || target === null ||
+    occurredAt === null || correlationId === null || before === null || after === null
+  ) {
+    return null;
+  }
+  return { id, actor, action, target, occurredAt, correlationId, before, after };
+}
+
+function parseConfigVersion(value: unknown): ConfigVersionRecord | null {
+  if (!isRecord(value)) return null;
+  const id = uuid(value.id);
+  const version = boundedString(value.version, 64);
+  const createdAt = timestamp(value.created_at);
+  const actor = boundedString(value.actor, 256);
+  const configHash = boundedString(value.config_hash, 128);
+  const decisionAffecting = value.decision_affecting;
+  const config = safePayload(value.config ?? {});
+  if (
+    id === null || version === null || createdAt === null || actor === null ||
+    configHash === null || typeof decisionAffecting !== "boolean" || config === null
+  ) {
+    return null;
+  }
+  return { id, version, createdAt, actor, configHash, decisionAffecting, config };
+}
+
+function parseControlState(value: unknown): ControlStateRecord | null {
+  if (!isRecord(value)) return null;
+  const apiVersion = boundedString(value.api_version, 64);
+  const analysisPaused = value.analysis_paused;
+  const executionKillSwitch = value.execution_kill_switch;
+  const version = integer(value.version, 0, 1_000_000);
+  const updatedAt = timestamp(value.updated_at);
+  const updatedBy = boundedString(value.updated_by, 256);
+  const correlationId = boundedString(value.correlation_id, 128);
+  const modes = value.protected_modes;
+  if (!isRecord(modes)) return null;
+  const protectedModes = {
+    analysisOnly: modes.analysis_only,
+    paperTrading: modes.paper_trading,
+    manualExecution: modes.manual_execution,
+    autoExecution: modes.auto_execution
+  };
+  if (
+    apiVersion === null || typeof analysisPaused !== "boolean" ||
+    typeof executionKillSwitch !== "boolean" || version === null || updatedAt === null ||
+    updatedBy === null || correlationId === null ||
+    Object.values(protectedModes).some((mode) => typeof mode !== "boolean") ||
+    protectedModes.analysisOnly !== true || protectedModes.paperTrading !== true ||
+    protectedModes.manualExecution !== false || protectedModes.autoExecution !== false
+  ) {
+    return null;
+  }
+  return {
+    apiVersion,
+    analysisPaused,
+    executionKillSwitch,
+    version,
+    updatedAt,
+    updatedBy,
+    correlationId,
+    protectedModes: protectedModes as ProtectedModesRecord
+  };
+}
+
+function parseControlConfig(value: unknown): ControlConfigRecord | null {
+  if (!isRecord(value)) return null;
+  const apiVersion = boundedString(value.api_version, 64);
+  const id = uuid(value.id);
+  const version = boundedString(value.version, 64);
+  const createdAt = timestamp(value.created_at);
+  const actor = boundedString(value.actor, 256);
+  const configHash = boundedString(value.config_hash, 128);
+  const decisionAffecting = value.decision_affecting;
+  const config = safePayload(value.config ?? {});
+  if (
+    apiVersion === null || id === null || version === null || createdAt === null ||
+    actor === null || configHash === null || typeof decisionAffecting !== "boolean" ||
+    config === null
+  ) {
+    return null;
+  }
+  return { apiVersion, id, version, createdAt, actor, configHash, decisionAffecting, config };
+}
+
 function parsePage<T>(value: unknown, parseItem: (item: unknown) => T | null): ReadPage<T> | null {
   if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > MAX_PAGE_LIMIT) {
     return null;
@@ -524,4 +855,102 @@ export async function fetchTimeline(
   if (!isValidTokenId(tokenId)) return { ok: false, reason: "INVALID_RESPONSE" };
   const url = endpoint(`/v1/tokens/${tokenId}/timeline`, singleQuery());
   return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parseTimeline));
+}
+
+function setBoundedNumber(
+  query: URLSearchParams,
+  name: string,
+  value: number | undefined,
+  minimum: number,
+  maximum: number
+): void {
+  if (value === undefined) return;
+  const parsed = finiteNumber(value, minimum, maximum);
+  if (parsed !== null) query.set(name, String(value));
+}
+
+function setBoundedText(query: URLSearchParams, name: string, value: string | undefined): void {
+  if (value === undefined) return;
+  const parsed = boundedString(value, 256);
+  if (parsed !== null) query.set(name, parsed);
+}
+
+export function isValidWalletAddress(address: string): boolean {
+  return typeof address === "string" && SOLANA_ADDRESS_PATTERN.test(address);
+}
+
+export async function fetchWallets(
+  filters: WalletFilters = {}
+): Promise<ReadResult<ReadPage<WalletRecord>>> {
+  const query = singleQuery();
+  if (filters.tier && WALLET_TIERS.has(filters.tier)) {
+    query.set("tier", filters.tier);
+  }
+  setBoundedNumber(query, "min_score", filters.minScore, 0, 100);
+  setBoundedNumber(query, "min_confidence", filters.minConfidence, 0, 1);
+  if (filters.qualityState && QUALITY_STATES.has(filters.qualityState)) {
+    query.set("quality_state", filters.qualityState);
+  }
+  const url = endpoint("/v1/wallets", query);
+  return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parseWallet));
+}
+
+export async function fetchWallet(address: string): Promise<ReadResult<WalletRecord | null>> {
+  if (!isValidWalletAddress(address)) return { ok: false, reason: "INVALID_RESPONSE" };
+  const url = endpoint(`/v1/wallets/${address}`);
+  return url === null ? configuredFailure() : request(url, parseWalletNullable);
+}
+
+function parseWalletNullable(value: unknown): WalletRecord | null {
+  if (value === null) return null;
+  return parseWallet(value);
+}
+
+export async function fetchProviderHealth(
+  filters: ProviderHealthFilters = {}
+): Promise<ReadResult<ReadPage<ProviderHealthRecord>>> {
+  const query = singleQuery();
+  setBoundedText(query, "provider", filters.provider);
+  setBoundedText(query, "capability", filters.capability);
+  if (filters.state && PROVIDER_HEALTH_STATES.has(filters.state)) query.set("state", filters.state);
+  const url = endpoint("/v1/providers/health", query);
+  return url === null
+    ? configuredFailure()
+    : request(url, (value) => parsePage(value, parseProviderHealth));
+}
+
+export async function fetchAuditEvents(
+  filters: AuditFilters = {}
+): Promise<ReadResult<ReadPage<AuditEventRecord>>> {
+  const query = singleQuery();
+  setBoundedText(query, "actor", filters.actor);
+  setBoundedText(query, "action", filters.action);
+  setBoundedText(query, "target", filters.target);
+  const url = endpoint("/v1/audit/events", query);
+  return url === null
+    ? configuredFailure()
+    : request(url, (value) => parsePage(value, parseAuditEvent));
+}
+
+export async function fetchConfigVersions(
+  filters: ConfigFilters = {}
+): Promise<ReadResult<ReadPage<ConfigVersionRecord>>> {
+  const query = singleQuery();
+  if (filters.decisionAffecting !== undefined) {
+    query.set("decision_affecting", String(filters.decisionAffecting));
+  }
+  const url = endpoint("/v1/config/versions", query);
+  return url === null
+    ? configuredFailure()
+    : request(url, (value) => parsePage(value, parseConfigVersion));
+}
+
+export async function fetchControlState(): Promise<ReadResult<ControlStateRecord>> {
+  const url = endpoint("/v1/control/state");
+  return url === null ? configuredFailure() : request(url, parseControlState);
+}
+
+export async function fetchControlConfig(): Promise<ReadResult<ControlConfigRecord>> {
+  const url = endpoint("/v1/control/config");
+  return url === null ? configuredFailure() : request(url, parseControlConfig);
 }
