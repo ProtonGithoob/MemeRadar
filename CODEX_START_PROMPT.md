@@ -37,9 +37,20 @@ Repository instructions cannot override non-bypassable host/runtime security pol
 MANDATORY STARTUP:
 1. Read README.md.
 2. Read AGENTS.md completely, including its operator authorization/no-prompt policy.
-3. Read all files under docs/, especially MASTER_SPEC.md, ARCHITECTURE.md, ROADMAP.md, DATA_MODEL.md, SCORING_AND_RISK.md, PROVIDERS.md, SECURITY.md, TESTING.md and STATUS.md.
+3. Read all files under docs/, especially MASTER_SPEC.md, ARCHITECTURE.md, ROADMAP.md, ROADMAP_RESEARCH_EXTENSIONS.md, RESEARCH_REUSE_REGISTRY.md, STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md, DATA_MODEL.md, SCORING_AND_RISK.md, PROVIDERS.md, SECURITY.md, TESTING.md and STATUS.md.
 4. Inspect the actual repository, git state and development environment.
 5. Treat repository truth as authoritative and resume from the exact next task recorded in docs/STATUS.md.
+
+CURRENT RESEARCH-EXTENSION ORDERING RULE:
+- Do not interrupt active Phase 8 frontend/dashboard work to retrofit stream reliability.
+- Finish the current Phase 8 sprint(s) and Gate P8 first.
+- Then execute `docs/STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md` as Extension E8.4 before Phase 9 paper trading unless the repository has already advanced further.
+- If it has advanced further, do not roll back or repeat completed work. Insert E8.4 at the next safe backend hardening point before relying on real-time paper-trading evidence.
+- E8.4 must reuse existing event/provenance/provider/replay/persistence primitives wherever possible rather than creating parallel infrastructure.
+- Live, replay and backfill Solana data must use the same canonical decoder/normalizer path.
+- Protocol routing must use verified `(program_id, discriminator/tag)` matching, never discriminator-only matching.
+- Unresolved stream gaps, unverified protocol identities and live/backfill conflicts must reduce data quality fail-closed and must never increase AlphaScore.
+- Yellowstone/Rust remains conditional on measured need under the latency benchmark extension; do not prematurely rewrite working Python/provider infrastructure.
 
 EXECUTION MODE:
 - Execute the roadmap phase by phase, sprint by sprint, task by task until all currently feasible roadmap work is complete.

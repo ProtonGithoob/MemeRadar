@@ -49,12 +49,13 @@ Before changing code, read in order:
 4. `docs/ROADMAP.md`
 5. `docs/ROADMAP_RESEARCH_EXTENSIONS.md`
 6. `docs/RESEARCH_REUSE_REGISTRY.md`
-7. `docs/DATA_MODEL.md`
-8. `docs/SCORING_AND_RISK.md`
-9. `docs/PROVIDERS.md`
-10. `docs/SECURITY.md`
-11. `docs/TESTING.md`
-12. `docs/STATUS.md`
+7. `docs/STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md`
+8. `docs/DATA_MODEL.md`
+9. `docs/SCORING_AND_RISK.md`
+10. `docs/PROVIDERS.md`
+11. `docs/SECURITY.md`
+12. `docs/TESTING.md`
+13. `docs/STATUS.md`
 
 Then inspect the actual repository and environment. Repository truth overrides assumptions.
 
@@ -62,11 +63,12 @@ Then inspect the actual repository and environment. Repository truth overrides a
 
 - `docs/ROADMAP.md` remains the core product roadmap.
 - `docs/ROADMAP_RESEARCH_EXTENSIONS.md` is an accepted supplementary executable backlog derived from later repository/protocol research.
+- `docs/STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md` is an accepted Phase-8-post-gate reliability extension derived from Solana stream/indexer research. It must not interrupt active Phase 8 UI work; execute it after Gate P8 and before Phase 9 unless actual repository state has already advanced, in which case insert it at the next safe backend checkpoint before relying on real-time paper-trading evidence.
 - Completed core tasks must not be restarted or rewritten merely to fit a new idea.
-- Finish the exact current task from `docs/STATUS.md` first, then execute research extensions at the insertion points documented in `ROADMAP_RESEARCH_EXTENSIONS.md`.
+- Finish the exact current task from `docs/STATUS.md` first, then execute research extensions at the insertion points documented in the accepted extension specifications.
 - `docs/RESEARCH_REUSE_REGISTRY.md` explains the upstream pattern and licensing constraints; it is a reference registry, not permission to copy restricted code.
 - When a researched pattern conflicts with a safety, deterministic-scoring, provider-independence or no-live-money invariant, the invariant wins.
-- Low-latency/Rust/Yellowstone work is conditional on measured need and must not distract from unfinished core intelligence, replay or safety work.
+- Low-latency/Rust/Yellowstone work is conditional on measured need and must not distract from unfinished core intelligence, replay or safety work. Stream integrity, gap recovery and protocol verification contracts must be implemented provider-independently before any optional Rust extraction.
 
 ## Autonomous working rules
 
@@ -86,12 +88,15 @@ Then inspect the actual repository and environment. Repository truth overrides a
 - All decisions must carry reason codes and enough inputs for replay/explanation.
 - Third-party wallet labels, KOL signals, GMGN-like risk/market signals and protocol-derived classifications are evidence only; they do not become execution authority.
 - Do not directly copy code from upstream repositories until license compatibility is explicitly verified. When license is unclear/restrictive, independently implement the documented behavior/pattern.
+- Solana protocol routing must use verified `(program_id, discriminator/tag)` identity, never discriminator-only matching.
+- Live, replay and backfill chain data must converge through the same canonical decoder/normalizer path.
+- An unresolved stream gap or unverified decoder identity must reduce data quality/freshness fail-closed; it must never increase AlphaScore.
 
 ## Implementation discipline
 
 For each task:
 
-1. Confirm current task and acceptance criteria from `docs/ROADMAP.md` and, when applicable, `docs/ROADMAP_RESEARCH_EXTENSIONS.md`.
+1. Confirm current task and acceptance criteria from `docs/ROADMAP.md` and, when applicable, accepted research-extension specifications.
 2. Inspect related existing code/tests before editing.
 3. Add or update tests first where practical.
 4. Implement the minimum coherent change.
@@ -117,6 +122,9 @@ For each task:
 - A social-only, wallet-only, provider-only or launch-event-only burst cannot independently authorize `ENTRY_READY`.
 - Real execution uses a separate permission boundary from analysis/paper modes.
 - Optional low-latency sidecars may ingest/decode only; they cannot score risk, change modes, sign or authorize trades.
+- Chain backfill/recovery must use the same decoder registry and normalized event contracts as live ingestion.
+- Durable chain progress must not advance past an unresolved gap as if data were contiguous.
+- Pre-confirmation/processed chain evidence must retain commitment/finality state and may not silently become finalized truth.
 
 ## Definition of Done
 
@@ -137,7 +145,9 @@ For research-extension tasks, Definition of Done also requires:
 - fixtures/replay demonstrate deterministic behavior;
 - no-lookahead tests where historical/rolling windows are involved;
 - third-party disagreement/UNKNOWN behavior tested;
-- feature/strategy/parser version and config hash persisted where specified.
+- feature/strategy/parser version and config hash persisted where specified;
+- for stream-integrity work, synthetic gap detection, recovery, same-decoder replay equivalence and verification tests pass;
+- protocol identity entries used for authoritative routing are independently verified or explicitly remain `TODO_VERIFY`.
 
 ## Blockers
 
