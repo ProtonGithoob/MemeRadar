@@ -2,7 +2,7 @@ import type { RealtimeStatus } from "../lib/realtime";
 
 type SafetyTone = "safe" | "paper" | "disabled" | "advisory";
 type RiskState = "PASS" | "WARN" | "BLOCK" | "UNKNOWN";
-type FreshnessState = "FRESH" | "STALE" | "UNKNOWN" | "INVALID";
+type FreshnessState = "FRESH" | "STALE" | "UNKNOWN" | "INVALID" | "CONFLICTED";
 
 const riskDescriptions: Record<RiskState, string> = {
   PASS: "evidence acceptable",
@@ -15,7 +15,8 @@ const freshnessDescriptions: Record<FreshnessState, string> = {
   FRESH: "current",
   STALE: "not current",
   UNKNOWN: "not safe",
-  INVALID: "invalid evidence"
+  INVALID: "invalid evidence",
+  CONFLICTED: "provider disagreement"
 };
 
 function boundedReason(reason: string | undefined): string | undefined {

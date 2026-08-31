@@ -1,11 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import Home from "./page";
+import { RadarDashboard } from "./components/radar";
 
 describe("operator shell", () => {
   it("shows the product identity and protected operating modes", () => {
-    render(<Home />);
+    render(<RadarDashboard filters={{}} result={{ ok: false, reason: "NOT_CONFIGURED" }} />);
 
     expect(screen.getByRole("heading", { name: "MemeRadar" })).toBeInTheDocument();
     expect(screen.getByText("ANALYSIS ONLY")).toBeInTheDocument();
