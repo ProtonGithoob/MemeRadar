@@ -691,3 +691,27 @@ def test_alert_pipeline_and_telegram_adapter_are_explicit_and_safe():
         assert environment["PAPER_TRADING"] == "true"
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
+
+
+def test_read_api_surface_is_packaged_and_safe():
+    from memeradar_api.read import build_read_router
+    from memeradar_application.read_api import ReadQueryPort
+
+    assert build_read_router
+    assert ReadQueryPort
+    read_source = (ROOT / "apps" / "api" / "src" / "memeradar_api" / "read.py").read_text()
+    application_source = (
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "read_api.py"
+    ).read_text()
+    assert "POST" not in read_source
+    assert "memeradar_providers" not in application_source
+    assert "fastapi" not in application_source
+    assert "sqlalchemy" not in application_source
+    assert "execution_eligible: bool = False" in read_source
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())
+    for service_name in ("api", "worker"):
+        environment = compose["services"][service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"

@@ -103,6 +103,16 @@ checkout has no Telegram configuration, so no live provider success is
 claimed. Telegram notification state remains downstream of deterministic
 analysis and cannot authorize execution.
 
+The Sprint 7.2 read API is not a provider adapter. Its application
+`ReadQueryPort` consumes normalized views, and the SQLAlchemy implementation
+reads persisted normalized records without importing provider SDKs or making
+network calls. Wallet, provider-health, audit and config records are injected
+as explicit catalogs until their physical persistence tasks; an empty catalog
+does not imply provider health or live acceptance. Public read projections
+retain source/timestamp/freshness and reason evidence while omitting raw
+provider bodies and secret-shaped fields. Provider disagreement and unknown
+health therefore remain visible evidence, never execution authority.
+
 ## Helius / Solana read layer
 
 Sprint 2.2 implements the read-only Helius adapter in `packages/providers/src/memeradar_providers/helius.py`. `HeliusRpcAdapter` maps `getAsset`, `getAccountInfo` and `getTransaction` JSON-RPC/DAS responses into canonical `TokenIdentity`, account and transaction records plus application `Observation` values. It validates Solana base58 identities, preserves `occurred_at`/`observed_at`/`ingested_at`, attaches Helius/source/parser provenance, forwards request correlation IDs, and classifies timeout, availability, authentication, rate-limit and schema failures without retaining raw response text.

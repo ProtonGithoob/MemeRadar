@@ -723,6 +723,25 @@ candidate state or execution eligibility. Rendered notification text is
 bounded and generated from an allow-listed payload view; provider response
 bodies and credentials are never stored.
 
+### Read API projections
+
+Sprint 7.2 does not add a migration. `SqlAlchemyReadQueryService` projects
+bounded operator views from the existing normalized tables: candidates resolve
+their denormalized latest score/risk IDs, token detail includes pools and its
+candidate projection, and timelines combine observations, state transitions,
+feature/risk/score snapshots and alerts by occurred time. The optional `as_of`
+boundary is applied after normalized event-time ordering so future evidence is
+never presented as historical truth. Observation `raw_payload_ref` values and
+raw provider bodies are not part of the public projection; normalized payloads
+are recursively bounded and secret-shaped fields are redacted.
+
+Wallet, provider-health, audit and config read views use injectable catalogs
+until their physical tables are implemented. The adapter returns an explicit
+empty page for an empty catalog rather than inventing provider health or wallet
+state. All collection projections use bounded page envelopes and opaque,
+versioned resource cursors; these cursors are pagination positions, not
+authorization tokens.
+
 ### provider_health
 - provider + capability key
 - checked_at

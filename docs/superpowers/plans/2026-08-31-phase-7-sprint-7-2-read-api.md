@@ -42,11 +42,11 @@
 - `InMemoryReadQueryService` implements the port for keyless replay and API
   tests, with deterministic sorting and `Page` results.
 
-- [ ] **Step 1: Write failing contract tests** for cursor version/resource validation, limit/time-window bounds, candidate ranking/filtering, timeline `as_of` exclusion, deterministic pagination, unknown provider health, secret-shaped payload redaction, and permanent `execution_eligible=False`.
-- [ ] **Step 2: Run the focused tests** with `.venv/bin/pytest -q tests/unit/test_read_api.py`; expect import/contract failures.
-- [ ] **Step 3: Implement the bounded DTOs, cursor codec, safe payload normalizer, in-memory query service and port.** Use score-descending candidate ordering, event-time timeline ordering, and explicit empty pages for catalogs without records.
-- [ ] **Step 4: Re-run the focused tests** and add edge cases for cursor mismatch, invalid date order, `UNKNOWN` health and oversized payloads.
-- [ ] **Step 5: Commit** with `git add packages/application/src/memeradar_application/read_api.py tests/unit/test_read_api.py && git commit -m "feat: define read API contracts"`.
+- [x] **Step 1: Write failing contract tests** for cursor version/resource validation, limit/time-window bounds, candidate ranking/filtering, timeline `as_of` exclusion, deterministic pagination, unknown provider health, secret-shaped payload redaction, and permanent `execution_eligible=False`.
+- [x] **Step 2: Run the focused tests** with `.venv/bin/pytest -q tests/unit/test_read_api.py`; expect import/contract failures.
+- [x] **Step 3: Implement the bounded DTOs, cursor codec, safe payload normalizer, in-memory query service and port.** Use score-descending candidate ordering, event-time timeline ordering, and explicit empty pages for catalogs without records.
+- [x] **Step 4: Re-run the focused tests** and add edge cases for cursor mismatch, invalid date order, `UNKNOWN` health and oversized payloads.
+- [x] **Step 5: Commit** with `git add packages/application/src/memeradar_application/read_api.py tests/unit/test_read_api.py && git commit -m "feat: define read API contracts"`.
 
 ### Task 2: Add the SQLAlchemy read adapter over persisted core records
 
@@ -62,11 +62,11 @@
 - Token detail resolves the token, candidate, pools and latest score/risk; timeline combines observations, transitions, snapshots and alerts using event-time ordering and the supplied `as_of` boundary.
 - Wallet/provider/audit/config catalogs remain injectable until their later physical tables exist; empty catalogs are explicit, not fabricated health.
 
-- [ ] **Step 1: Add fake-session/unit tests** proving the adapter maps persisted rows without raw provider bodies or secret fields and returns explicit empty non-persisted catalogs.
-- [ ] **Step 2: Add an opt-in Postgres integration test** that persists one candidate, score/risk/feature record, observation, transition and alert, then verifies ranking, token detail and timeline pagination.
-- [ ] **Step 3: Implement SQLAlchemy queries and mapping helpers** with maximum result bounds, deterministic tie-breakers, `selectinload` only where needed and no writes/commits.
-- [ ] **Step 4: Run unit and opt-in Postgres tests**; verify no migration is required and that `UNKNOWN`/non-fresh states survive mapping.
-- [ ] **Step 5: Commit** with `git add packages/persistence/src/memeradar_persistence tests/unit/test_read_persistence.py tests/integration/test_persistence_postgres.py && git commit -m "feat: add persisted read query adapter"`.
+- [x] **Step 1: Add fake-session/unit tests** proving the adapter maps persisted rows without raw provider bodies or secret fields and returns explicit empty non-persisted catalogs.
+- [x] **Step 2: Add an opt-in Postgres integration test** that persists one candidate, score/risk/feature record, observation, transition and alert, then verifies ranking, token detail and timeline pagination.
+- [x] **Step 3: Implement SQLAlchemy queries and mapping helpers** with maximum result bounds, deterministic tie-breakers, `selectinload` only where needed and no writes/commits.
+- [x] **Step 4: Run unit and opt-in Postgres tests**; verify no migration is required and that `UNKNOWN`/non-fresh states survive mapping.
+- [x] **Step 5: Commit** with `git add packages/persistence/src/memeradar_persistence tests/unit/test_read_persistence.py tests/integration/test_persistence_postgres.py && git commit -m "feat: add persisted read query adapter"`.
 
 ### Task 3: Compose typed FastAPI read routes
 
@@ -90,11 +90,11 @@
   SQLAlchemy adapter when `DATABASE_URL` is configured, disposing its engine on
   shutdown; no database URL leaves routes safely unavailable.
 
-- [ ] **Step 1: Write failing TestClient tests** for every route, response shape, filters/cursors, 404/422/503 behavior, correlation headers, safe modes and no execution fields.
-- [ ] **Step 2: Implement response models, query-model validation, route mapping and app composition.** Use FastAPI `response_model` filtering and `HTTPException` for bounded public errors.
-- [ ] **Step 3: Re-run route tests** and add tests for invalid UUID/address, extra query parameters, future timeline evidence and secret-shaped config/audit values.
-- [ ] **Step 4: Run API lint/typecheck and the API-focused regression suite.**
-- [ ] **Step 5: Commit** with `git add apps/api/src/memeradar_api tests/unit/test_read_api_routes.py && git commit -m "feat: expose bounded read API"`.
+- [x] **Step 1: Write failing TestClient tests** for every route, response shape, filters/cursors, 404/422/503 behavior, correlation headers, safe modes and no execution fields.
+- [x] **Step 2: Implement response models, query-model validation, route mapping and app composition.** Use FastAPI `response_model` filtering and `HTTPException` for bounded public errors.
+- [x] **Step 3: Re-run route tests** and add tests for invalid UUID/address, extra query parameters, future timeline evidence and secret-shaped config/audit values.
+- [x] **Step 4: Run API lint/typecheck and the API-focused regression suite.**
+- [x] **Step 5: Commit** with `git add apps/api/src/memeradar_api tests/unit/test_read_api_routes.py && git commit -m "feat: expose bounded read API"`.
 
 ### Task 4: Add Sprint 7.2 replay/Compose contracts and documentation
 
@@ -110,10 +110,10 @@
 - Contract checks prove application/persistence boundaries, GET-only route surface,
   bounded query controls, protected modes and no execution/provider authority.
 
-- [ ] **Step 1: Add replay and route-boundary contracts** before the phase gate.
-- [ ] **Step 2: Run focused, full, migration, Compose and runtime checks** and record exact evidence.
-- [ ] **Step 3: Mark Sprint 7.2 complete only after the keyless gate passes;** record physical wallet/provider-health/audit/config persistence as a later schema boundary when catalogs are empty.
-- [ ] **Step 4: Commit docs/status and push both coherent implementation and documentation checkpoints.**
+- [x] **Step 1: Add replay and route-boundary contracts** before the phase gate.
+- [x] **Step 2: Run focused, full, migration, Compose and runtime checks** and record exact evidence.
+- [x] **Step 3: Mark Sprint 7.2 complete only after the keyless gate passes;** record physical wallet/provider-health/audit/config persistence as a later schema boundary when catalogs are empty.
+- [x] **Step 4: Commit docs/status and push both coherent implementation and documentation checkpoints.**
 
 ## Protected modes
 

@@ -175,6 +175,21 @@ Compose smoke/runtime checks verify the worker import and health seam. Missing
 Telegram configuration is a key-safe `BLOCKED_EXTERNAL` doctor result, not a
 fabricated provider PASS.
 
+Sprint 7.2 adds strict TestClient coverage for all nine read routes, response
+page envelopes, ranking/filter conversion, cursor traversal, correlation
+headers, missing-resource `404`, unconfigured-storage `503`, invalid UUID or
+address `422`, extra-query rejection, bounded time windows, unknown provider
+health and permanent non-authorizing response fields. Application and
+persistence contract tests assert that FastAPI/SQLAlchemy/provider imports do
+not cross the application read boundary, all read routes are GET-only, and
+secret-shaped values/raw references do not escape. The opt-in Postgres test
+round-trips a candidate, latest score/risk, transition, feature, observation
+and alert through the read adapter and verifies event-time timeline pagination
+and no-lookahead. Replay repeats identical output and cursor traversal.
+Keyless focused evidence before the full gate: route regression `29 passed`,
+Sprint 7.2 replay/Compose contracts `29 passed`, read application/persistence
+unit tests `14 passed`, and the opt-in Postgres read adapter test `1 passed`.
+
 Add regression thresholds only after a stable baseline exists.
 
 ## Failure tests

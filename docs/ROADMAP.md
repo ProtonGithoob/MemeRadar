@@ -351,12 +351,22 @@ configuration is absent.
 
 ### Sprint 7.2 — Read API
 
-- [ ] Candidate ranking/filter API.
-- [ ] Token detail/timeline API.
-- [ ] Wallet intelligence API.
-- [ ] Provider health API.
-- [ ] Audit/config read API.
-- [ ] Cursor pagination and bounded query controls.
+- [x] Candidate ranking/filter API.
+- [x] Token detail/timeline API.
+- [x] Wallet intelligence API.
+- [x] Provider health API.
+- [x] Audit/config read API.
+- [x] Cursor pagination and bounded query controls.
+
+Sprint 7.2 keyless state: complete. The versioned `ReadQueryPort`, immutable
+safe views, bounded query DTOs and resource-scoped cursor codec are exposed
+through typed GET-only FastAPI routes. Candidate/token/timeline reads use the
+existing normalized SQLAlchemy records; wallet, provider-health, audit and
+config catalogs are injectable and remain explicitly empty until their
+physical persistence tasks. Raw provider references are omitted, payloads are
+bounded/redacted, event-time and `as_of` behavior are deterministic, and no
+read response can authorize execution. Focused route, persistence, replay and
+Compose contracts pass; the full quality gate is recorded in `docs/STATUS.md`.
 
 ### Sprint 7.3 — Auth / Control API
 

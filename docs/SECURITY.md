@@ -69,6 +69,18 @@ submit a transaction. The fixture adapter and doctor make the path testable
 without credentials; live Telegram acceptance is `BLOCKED_EXTERNAL` when
 configuration is absent.
 
+Sprint 7.2 keeps the operator read surface strictly GET-only and behind the
+application `ReadQueryPort`. Query DTOs reject unknown parameters, oversized
+limits, malformed cursors and unbounded time windows. Responses are mapped
+through strict models with bounded pages, no raw provider body/reference,
+recursive secret-shaped redaction and a permanently false
+`execution_eligible` flag where a view reports that field. A read of
+`ENTRY_READY` is informational only: it cannot transition a candidate, send a
+notification, mutate config, open a paper/live position, sign or submit a
+transaction. Missing storage returns a safe `503` and empty non-persisted
+catalogs remain empty; `UNKNOWN`, `STALE`, `CONFLICTED` and `INVALID` evidence
+are preserved rather than upgraded to safe.
+
 Core Sprint 6.1 feature windows are also analysis-only derived records. Their
 stable IDs and persisted JSON values are replay identities, not authorization
 tokens. The aggregator uses the correlation event-time boundary, invalidates

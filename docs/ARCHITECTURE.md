@@ -278,6 +278,26 @@ by the leased outbox processor, so transient failures and provider rate limits
 remain retryable without holding up candidate processing. Delivery state never
 changes a candidate, risk gate, operating mode or execution permission.
 
+## Read API
+
+Sprint 7.2 exposes a typed, GET-only operator read surface over the
+application-facing `ReadQueryPort`. Candidate ranking/filtering, token detail,
+event-time timeline, wallet intelligence, provider health and audit/config
+queries return bounded page envelopes with versioned, resource-scoped opaque
+keyset cursors. The FastAPI layer maps immutable application views into strict
+response models; it does not invoke providers, mutate state, transition a
+candidate, send an alert, change configuration or authorize execution.
+
+`SqlAlchemyReadQueryService` reads the existing normalized token, pool,
+candidate, observation, feature, risk, score, transition and alert tables with
+bounded storage reads. Wallet/provider-health/audit/config data is injected as
+an application catalog until the corresponding physical persistence work is
+scheduled; an empty catalog is explicit and never fabricated as healthy. Read
+payloads are copied through a recursive bounded redactor, raw provider body
+references are not returned, and malformed queries or unavailable storage fail
+with safe public errors. Timeline ordering uses occurred time plus a stable ID
+tie-breaker, and `as_of` excludes future evidence.
+
 ## Persistence
 
 Repositories should be aggregate-oriented, not generic CRUD abstractions. Use transaction boundaries around state transitions/decision persistence. Adopt outbox semantics before any external side effect that must not be lost (alerts/execution).

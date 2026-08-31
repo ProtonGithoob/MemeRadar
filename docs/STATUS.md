@@ -4,10 +4,11 @@ Last updated: 2026-08-31
 
 ## Current verdict
 
-`PHASE_7_SPRINT_7_1_COMPLETE_KEYLESS_PASS`
+`PHASE_7_SPRINT_7_2_COMPLETE_KEYLESS_PASS`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
+Phase 7 / Sprint 7.2 is now complete for its keyless implementation and replay gate: the bounded application read port, persisted core-record adapter, injectable non-persisted catalogs and typed GET-only FastAPI surface are implemented. Cursor pagination, event-time/no-lookahead timelines, strict query bounds, safe redaction, unknown-state preservation, missing-resource errors and unconfigured-storage fail-closed behavior are covered. No read response grants execution authority. Live provider and Telegram acceptance remains externally blocked; no live-money execution has been enabled.
 
 ## Current phase and sprint
 
@@ -31,7 +32,8 @@ Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and rep
 - Completed: `Phase 6 / Sprint 6.2 — AlphaScore v1` (keyless portion)
 - Completed: `Phase 6 / Sprint 6.3 — Decision State Machine` (keyless portion)
 - Completed: `Phase 7 / Sprint 7.1 — Alert Pipeline` (keyless portion)
-- Next: `Phase 7 / Sprint 7.2 — Read API`; live social/narrative/protocol/external-wallet/Telegram provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
+- Completed: `Phase 7 / Sprint 7.2 — Read API` (keyless portion)
+- Next: `Phase 7 / Sprint 7.3 — Auth / Control API`; live social/narrative/protocol/external-wallet/Telegram provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
 
 ## Current operating policy
 
@@ -71,6 +73,10 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Core Phase 6 / Sprint 6.3 `EvidenceTimelineProjector` with separate event timestamps, provenance, quality, reasons, references, deterministic ordering and an optional no-lookahead `as_of` boundary.
 - [x] Core Phase 7 / Sprint 7.1 alert pipeline with provider-independent event projection/rendering, bounded reason/evidence text, durable alert dedupe/suppression, per-destination rate limiting and leased notification outbox delivery.
 - [x] HTTPS-only Telegram `sendMessage`/`getMe` adapter, deterministic fixture adapter, safe provider error classification and key-safe `make telegram-doctor`; notification state has no candidate, risk or execution authority.
+- [x] Provider-independent Sprint 7.2 read contracts with immutable candidate/token/timeline/wallet/provider-health/audit/config views, strict bounded filters, recursive safe payload redaction and versioned resource-scoped cursors.
+- [x] SQLAlchemy read adapter over persisted token/pool/candidate/observation/feature/risk/score/transition/alert records; non-persisted wallet/provider-health/audit/config catalogs remain explicit injectable empty state with no fabricated health.
+- [x] Typed GET-only Sprint 7.2 FastAPI routes with strict Pydantic query/response models, correlation propagation, safe `404`/`422`/`503` errors and app-composed database lifecycle disposal; all read views remain non-authorizing.
+- [x] Sprint 7.2 persistence, route, replay, application-boundary and Compose contracts; no migration or provider dependency was introduced.
 - [x] Roadmap checkboxes reconciled for Sprint 1.1.
 - [x] SQLAlchemy 2 async persistence models for the core Phase 1 entities, with domain-independent repositories and explicit unit-of-work transactions.
 - [x] Initial Alembic revision `0001_initial` for 13 core tables, including provenance, explainability, event and outbox fields.
@@ -507,7 +513,10 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed core Sprint 6.2 implementation checkpoint: `958b928` (`feat: wire AlphaScore recomputation`), including the provider-independent recomputation service, risk/score repositories and golden replay fixture/contracts.
 - Latest pushed core Sprint 6.3 implementation checkpoint: `2a2ce56` (`feat: add decision state machine`), including the provider-independent DecisionEngine, EvidenceTimelineProjector, deterministic replay fixture/contracts, persistence rehydration correction and safe-mode/runtime contracts.
 - Latest pushed Sprint 7.1 implementation checkpoint: `980e785` (`feat: add Telegram alert pipeline`), including provider-independent alert projection/rendering, alert persistence, notification outbox delivery, Telegram/fixture adapters, doctor tooling and keyless contracts.
-- Latest pushed Sprint 7.2 plan checkpoint: pending; implementation plan is recorded at `docs/superpowers/plans/2026-08-31-phase-7-sprint-7-2-read-api.md` and implementation is in progress.
+- Latest pushed Sprint 7.2 plan checkpoint: `83ad277` (`docs: plan Sprint 7.2 read API`).
+- Latest pushed Sprint 7.2 application contract checkpoint: `2db97d6` (`feat: define read API contracts`).
+- Latest pushed Sprint 7.2 persistence checkpoint: `9e2f34b` (`feat: add persisted read query adapter`).
+- Latest pushed Sprint 7.2 FastAPI checkpoint: `7515aca` (`feat: expose bounded read API`).
 - E6.2 focused verification: `.venv/bin/pytest tests/unit/test_external_wallet.py tests/contract/test_extension_e6_2_external_wallet.py tests/unit/test_external_wallet_doctor.py tests/smoke/test_compose_contract.py tests/unit/test_provider_contracts.py -q` — `38 passed`; immutable contracts, deterministic replay, fixture adapter, doctor, provider capability and protected-mode checks pass.
 - E6.2 full repository gate: `make verify` exit `0`; Ruff, mypy (`54 source files`), `331 passed, 3 skipped`, branch-aware coverage `79%`, frontend lint/typecheck/Vitest, Compose config, secret scan and migration parity all completed successfully. Migration parity reports `{"heads": ["0003_score_strategy_identity"], "table_count": 13}`.
 - E6.2 provider doctor: `make external-wallet-doctor` exit `2` as expected; status is `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, only configuration presence and protected modes are reported, and no network call or credential output occurs.
@@ -534,12 +543,18 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 7.1 full repository gate: `make verify` exit `0`; Ruff, mypy (`59 source files`), `396 passed, 4 skipped`, branch-aware coverage `79%`, frontend lint/typecheck/Vitest, Compose config, secret scan and migration parity all completed successfully. Migration parity reports `{"heads": ["0003_score_strategy_identity"], "table_count": 13}`.
 - Sprint 7.1 doctor/runtime verification: `make doctor` and Compose config exited `0`; `make telegram-doctor` exited `2` as expected with `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, no credential output and no live call. Temporary Compose worker/API import probes passed and `/health/live` plus `/health/ready` on port `18000` returned HTTP `200` with Postgres/Redis reachable.
 - Sprint 7.1 documentation reconciliation updates `ROADMAP.md`, `ARCHITECTURE.md`, `DATA_MODEL.md`, `PROVIDERS.md`, `SECURITY.md`, `TESTING.md`, `STATUS.md` and the completed plan; no migration or unsafe execution behavior was introduced.
+- Sprint 7.2 focused verification: route/API regression `29 passed`; application/persistence read unit tests `14 passed`; replay and route-boundary/Compose contracts `29 passed`; opt-in read-adapter Postgres test `1 passed`. Ruff and mypy (`62 source files`) pass.
+- Sprint 7.2 full repository gate: `make verify` exit `0`; Ruff, mypy (`62 source files`), `426 passed, 5 skipped`, branch-aware coverage `79%`, frontend lint/typecheck/Vitest, Compose config, secret scan and migration parity all completed successfully. Migration parity reports `{"heads": ["0003_score_strategy_identity"], "table_count": 13}`.
+- Sprint 7.2 Postgres verification: the full opt-in `tests/integration` suite passed `5 tests` at the permitted local-network boundary; persisted candidate/token projections, latest score/risk explainability, timeline event families and cursor pagination passed with cleanup.
+- Sprint 7.2 runtime/doctor verification: `make doctor` and Compose config remain expected-safe; `make telegram-doctor` remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING` without credentials. The read routes are included in the API image composition and preserve all four protected modes; no external provider or live-money call was made.
+- Sprint 7.2 documentation reconciliation updates `ROADMAP.md`, `ARCHITECTURE.md`, `DATA_MODEL.md`, `PROVIDERS.md`, `SECURITY.md`, `TESTING.md`, `STATUS.md` and the completed plan; no migration, secret, provider authority or execution behavior was introduced.
 
 ## Next task
 
-Begin core `Phase 7 / Sprint 7.2 — Read API`: expose bounded, read-only
-candidate, token/timeline, wallet-intelligence, provider-health and
-audit/config query seams with cursor pagination and no execution authority.
-Keep live social, narrative, protocol, external-wallet and Telegram provider
-acceptance `BLOCKED_EXTERNAL` without configured safe read-only
-endpoint/credential access, and keep all protected operating modes unchanged.
+Begin core `Phase 7 / Sprint 7.3 — Auth / Control API`: implement the
+explicitly separated viewer/operator/admin/execution authorization boundary,
+validated configuration mutation with audit events, and emergency analysis /
+execution kill-switch controls. Keep live social, narrative, protocol,
+external-wallet and Telegram provider acceptance `BLOCKED_EXTERNAL` without
+configured safe read-only endpoint/credential access, and keep all protected
+operating modes unchanged.
