@@ -414,12 +414,22 @@ the next sprint’s work; no credentials or live-money behavior were introduced.
 
 ### Sprint 8.2 — Radar and Token Detail
 
-- [ ] Ranked Radar table/cards and filters.
-- [ ] Token detail overview.
-- [ ] Evidence timeline.
-- [ ] Market/liquidity/flow charts.
-- [ ] Holder concentration/cluster visualization.
-- [ ] Social/narrative panel with provenance.
+- [x] Ranked Radar table/cards and filters.
+- [x] Token detail overview.
+- [x] Evidence timeline.
+- [x] Market/liquidity/flow charts.
+- [x] Holder concentration/cluster visualization.
+- [x] Social/narrative panel with provenance.
+
+Sprint 8.2 keyless state: complete. The server-rendered Radar and token detail
+routes consume bounded GET-only read contracts through a server-side gateway;
+the optional viewer credential never crosses the browser boundary. Candidate
+ordering and timeline ordering remain API projections, missing/unknown/stale/
+invalid data stays explicit, and detail charts/panels use only bounded
+allow-listed normalized projections. No browser code scores, mutates,
+authorizes, signs or submits execution. Sprint 8.3 is the next UI sprint;
+E8.4 stream integrity/protocol verification starts only after the full Phase 8
+gate.
 
 ### Sprint 8.3 — Wallets, Providers, Settings and Audit
 

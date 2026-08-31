@@ -38,6 +38,16 @@ unavailable/unknown states but cannot mutate application state or authorize
 execution. The optional public WebSocket seam is lifecycle-only, uses bounded
 reconnect/degrade behavior and does not parse or persist incoming payloads.
 
+Sprint 8.2 adds a bounded server-side read gateway for the Radar and token
+detail routes. It validates API records before rendering, uses the internal
+Compose URL when present, and keeps the optional viewer credential server-only.
+The browser receives only bounded display records: API-provided candidate and
+event-time ordering is preserved, raw provider payloads are not rendered,
+metric charts are derived from an allow-list, and unavailable/unknown/stale/
+invalid states remain visible. These routes are observability projections and
+have no scoring, state-transition, configuration, signing or execution
+authority.
+
 ### PostgreSQL
 System of record for normalized observations, candidates, features, decisions, positions, audit and research results.
 
@@ -308,6 +318,14 @@ occurred time plus a stable ID tie-breaker, and `as_of` excludes future
 evidence. If any role credential is configured, all read routes require a
 valid role bearer token; an unconfigured development process retains its
 keyless read behavior.
+
+The web read gateway is a separate server-side composition boundary over these
+contracts. It applies a bounded timeout, status-safe failure mapping and
+strict UUID/timestamp/numeric/string/array parsing before passing records to
+server components. The token detail view iterates the API timeline order and
+projects only allow-listed market, liquidity, flow and holder fields into
+native SVG/CSS; social and narrative entries expose provenance/reason codes,
+not untrusted text or raw provider bodies.
 
 ## Authenticated control plane
 

@@ -82,6 +82,19 @@ bounded exponential reconnect, duplicate error/close suppression, retry
 exhaustion, clean stop and ignored message data. The theme test verifies that
 only the local `memeradar-theme` preference and root data attribute change.
 
+Sprint 8.2 frontend coverage verifies the server read gateway's bounded URL,
+authorization, timeout/status mapping and strict record parsers; malformed
+records and error bodies never escape. Radar tests preserve API ranking order,
+allow only the documented GET filters and render explicit empty/unavailable/
+invalid states. Token detail tests cover UUID route validation, API-provided
+event-time order, freshness/risk/score visibility, bounded provenance,
+allow-listed SVG metric projections, holder concentration/cluster bars and
+social/narrative source panels without raw payload or secret-shaped text.
+Frontend lint, typecheck, build, Vitest, repository `make verify`, Compose
+configuration and a rebuilt web runtime probe are required before Sprint 8.2
+is marked complete; live provider acceptance remains `BLOCKED_EXTERNAL` when
+credentials/endpoints are absent.
+
 ## Live provider acceptance
 
 Live tests are opt-in and read-only until Phase 12. They must be clearly marked and never make CI depend on paid credentials.

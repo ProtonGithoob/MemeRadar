@@ -201,6 +201,17 @@ state only. Score, risk, freshness and connection badges are explanatory
 projections, and realtime messages cannot mutate decisions, controls, modes or
 execution.
 
+Sprint 8.2 keeps Radar/detail reads on the server side. `MEMERADAR_API_BASE_URL`
+is preferred for internal server-to-API fetches, while the optional
+`MEMERADAR_VIEWER_API_TOKEN` is read only by the gateway and sent only as a
+Bearer header. The web bundle and rendered markup receive neither credential.
+The gateway rejects malformed or unbounded records, maps timeout/auth/
+unavailable/invalid responses without reading provider error bodies, and the
+detail view renders only bounded normalized fields and allow-listed numeric
+projections. Empty, unknown, stale, conflicted and invalid evidence remains
+non-safe and visible; no UI read, chart, realtime message or advisory label
+can authorize `ENTRY_READY`, alter modes, clear a kill switch, sign or submit.
+
 ## Supply chain
 
 CI should include:
