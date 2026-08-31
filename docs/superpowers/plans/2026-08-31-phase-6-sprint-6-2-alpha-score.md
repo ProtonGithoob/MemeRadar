@@ -30,28 +30,37 @@ for candidate state transitions, hysteresis and alert decisions.
 
 ### 1. Recompute and persistence contracts (test first)
 
-- [ ] Add unit tests for stable score identity, configurable strategy policy,
+- [x] Add unit tests for stable score identity, configurable strategy policy,
   penalties, hard-risk reason preservation, no-lookahead and repository-backed
   recomputation.
-- [ ] Add risk/score row mappings and aggregate repositories with JSON-safe
+- [x] Add risk/score row mappings and aggregate repositories with JSON-safe
   values, reason codes, version/config identity and conflicting-replay failure.
-- [ ] Add `AlphaScoreRecomputer`/`ScoreRecomputationService` with application
+- [x] Add `AlphaScoreRecomputer`/`ScoreRecomputationService` with application
   repository protocols and idempotent score persistence.
 
 ### 2. Golden replay and integration
 
-- [ ] Add a redacted AlphaScore fixture and contract tests for correlated,
+- [x] Add a redacted AlphaScore fixture and contract tests for correlated,
   sparse/unknown, penalty-clamp and blocked-risk scenarios.
-- [ ] Extend the opt-in Postgres round trip through risk, score and feature
+- [x] Extend the opt-in Postgres round trip through risk, score and feature
   repositories.
-- [ ] Add Compose/provider-independence and protected-mode smoke coverage.
+- [x] Add Compose/provider-independence and protected-mode smoke coverage.
 
 ### 3. Gate and reconciliation
 
-- [ ] Run focused tests, Ruff, mypy, full `make verify`, migration parity,
+- [x] Run focused tests, Ruff, mypy, full `make verify`, migration parity,
   Compose config/runtime imports and the safe doctor.
-- [ ] Reconcile roadmap/data-model/architecture/provider/scoring/security/
+- [x] Reconcile roadmap/data-model/architecture/provider/scoring/security/
   testing/status documentation, commit and push coherent checkpoints.
+
+## Completion evidence
+
+- Focused Sprint 6.2 tests: `46 passed`; Ruff and mypy (`56 source files`)
+  passed.
+- Full `make verify`: `362 passed, 3 skipped`, branch-aware coverage `80%`,
+  frontend checks, Compose config, secret scan and migration parity passed.
+- Opt-in Postgres integration: `3 passed`; temporary API/worker imports and
+  health checks passed in protected modes.
 
 ## Acceptance criteria
 

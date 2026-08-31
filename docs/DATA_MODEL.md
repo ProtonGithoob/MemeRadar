@@ -458,7 +458,7 @@ observed or ingested timestamps are excluded and invalidate confidence.
 Missing critical risk evidence, insufficient samples and fewer than the
 configured independent source categories remain `UNKNOWN`/low confidence.
 Correlation is advisory and has no execution authority; persistence and
-final score/decision snapshots remain later Phase 6 work.
+decision-state snapshots remain later Phase 6 work.
 
 ### feature-window snapshots (core Sprint 6.1)
 
@@ -479,6 +479,26 @@ feature version and config hash, so reverse-delivery replay is idempotent.
 `FeatureSnapshotRepository` round-trips JSON-safe values, provenance,
 freshness, version and config identity and rejects conflicting reuse of an
 existing snapshot ID.
+
+### score snapshots (core Sprint 6.2)
+
+`AlphaScoreRecomputer` delegates component arithmetic to the versioned
+`AlphaScoreV1Strategy`, then projects the advisory result into the existing
+`ScoreSnapshot` contract. The projection retains the bounded score,
+confidence, seven components, penalties, reason codes, feature/risk
+references, model/strategy version and config hash. Its deterministic ID is
+derived from candidate, feature ID, risk ID, strategy identity, evaluation
+time and config hash, making replay idempotent without treating a score as
+authorization.
+
+`RiskAssessmentRepository` and `ScoreSnapshotRepository` round-trip the
+existing `risk_assessments` and `score_snapshots` tables with JSON-safe
+penalties/components, normalized reason codes, freshness and strategy
+identity. Risk hard blocks remain authoritative in the referenced risk
+assessment and its reason codes; stale, unknown or blocked evidence cannot be
+converted into an execution-eligible result. No physical migration is needed
+for this slice because migration `0003_score_strategy_identity` already
+provides the strategy identity columns.
 
 ## AlphaStrategy and AlphaScore v1
 

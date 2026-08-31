@@ -65,6 +65,14 @@ corroboration carry `execution_eligible=false`; only later deterministic risk
 and decision gates can evaluate eligibility, and the protected operating
 modes remain unchanged.
 
+Core Sprint 6.2 score recomputation is likewise a deterministic analysis
+operation. The score ID, strategy identity and persisted config hash provide
+replay/audit identity only; they are not permission grants. Repository-backed
+recomputation preserves hard-risk references and fail-closed freshness, and a
+blocked or unknown risk result cannot be upgraded by component weights,
+penalties or score magnitude. Candidate transitions remain behind the later
+decision-state gate.
+
 ## Operating modes
 
 Default and mandatory until roadmap gates explicitly unlock:

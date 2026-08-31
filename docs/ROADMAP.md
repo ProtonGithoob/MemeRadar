@@ -284,9 +284,9 @@ now supplies the provider-independent, versioned AlphaStrategy and AlphaScore
 v1 arithmetic seam. Research extension E6.2 now supplies an advisory,
 provider-independent external-wallet cross-validation seam; it cannot replace
 internal SmartWalletScore/graph authority or deterministic risk gates.
-Feature-snapshot orchestration is now complete for the keyless Sprint 6.1
-acceptance. Final AlphaScore recomputation and decision-state wiring remain
-core Sprint 6.2/6.3 work.
+Feature-snapshot orchestration is complete for the keyless Sprint 6.1
+acceptance. Core Sprint 6.2 now adds repository-backed AlphaScore
+recomputation; decision-state wiring remains Sprint 6.3 work.
 
 - [x] Implement 1m/5m/15m rolling feature aggregation.
 - [x] Add market, liquidity, holder, wallet, social and momentum feature families.
@@ -295,16 +295,17 @@ core Sprint 6.2/6.3 work.
 
 ### Sprint 6.2 — AlphaScore v1
 
-- [ ] Implement configurable component weights from `SCORING_AND_RISK.md`.
-- [ ] Implement penalties and hard blocks.
-- [ ] Return score, confidence, components, penalties and reason codes.
-- [ ] Persist model version/config hash.
-- [ ] Add golden fixtures and boundary tests.
+- [x] Implement configurable component weights from `SCORING_AND_RISK.md`.
+- [x] Implement penalties and hard blocks.
+- [x] Return score, confidence, components, penalties and reason codes.
+- [x] Persist model version/config hash.
+- [x] Add golden fixtures and boundary tests.
 
 Research extension E6.1 provides the keyless strategy arithmetic, golden
-fixtures and explicit strategy identity used by this sprint; the core sprint
-checkboxes remain open until score recomputation is wired into the candidate
-pipeline and decision state machine.
+fixtures and explicit strategy identity used by this sprint. Core Sprint 6.2
+now wires that strategy through deterministic repository-backed score
+recomputation; candidate state transitions and decision hysteresis remain
+Sprint 6.3 work.
 
 ### Sprint 6.3 — Decision State Machine
 

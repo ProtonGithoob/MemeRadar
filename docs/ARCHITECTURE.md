@@ -242,6 +242,12 @@ Requirements:
 
 The initial strategy remains AlphaScore v1 from `SCORING_AND_RISK.md`.
 
+Core Sprint 6.2 uses `AlphaScoreRecomputer` to load immutable feature/risk
+records through application-facing repository protocols, delegate evaluation
+to the selected strategy, assign a replay-stable score identity and persist
+through the caller-owned unit of work. It exposes no provider or execution
+dependency; candidate transitions and alert decisions remain Sprint 6.3.
+
 ## Persistence
 
 Repositories should be aggregate-oriented, not generic CRUD abstractions. Use transaction boundaries around state transitions/decision persistence. Adopt outbox semantics before any external side effect that must not be lost (alerts/execution).
@@ -253,6 +259,11 @@ The core Sprint 6.1 feature-window slice uses the existing
 snapshot identity, JSON-safe values, provenance, freshness and config
 identity, while callers retain transaction ownership through the unit of
 work.
+
+The core Sprint 6.2 score slice similarly uses the existing risk and score
+tables. Risk/score repositories preserve hard-block references, penalties,
+reason codes, strategy identity and config hashes while equivalent replay is
+accepted and conflicting identity reuse fails closed.
 
 ## Data paths
 

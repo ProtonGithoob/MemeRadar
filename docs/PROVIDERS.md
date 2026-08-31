@@ -156,6 +156,16 @@ on future evidence, and leaves missing families unknown. The replay fixture
 under `fixtures/providers/feature_windows/` is credential-free; no provider
 doctor or live-provider PASS is implied by this application-level checkpoint.
 
+## AlphaScore recomputation
+
+Core Sprint 6.2 is also outside the provider layer. `AlphaScoreRecomputer`
+delegates to the provider-free `AlphaStrategy` contract and communicates with
+repository protocols only; no provider SDK, transport response or credential
+enters score evaluation. The redacted golden fixture under
+`fixtures/providers/alpha_score/` validates score, confidence, penalties,
+hard-risk explanations and strategy/config identity without implying live
+provider success.
+
 ## Versioned AlphaStrategy seam
 
 Research extension E6.1 is intentionally outside the provider layer.

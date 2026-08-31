@@ -520,6 +520,26 @@ cannot replace internal SmartMoney, on-chain risk or holder-graph authority.
 Feature snapshots have no execution predicate or transition authority;
 AlphaScore and decision layers must reapply every hard risk and freshness gate.
 
+### Core Sprint 6.2 AlphaScore recomputation
+
+`AlphaScoreRecomputer` delegates to the configured `AlphaStrategy` and
+projects its immutable result into `ScoreSnapshot`. The initial strategy uses
+the exact seven weights above; `StrategyPolicy` validates configurable positive
+weights summing to `1`, and the recomputation preserves bounded components,
+penalties, confidence, reason codes, risk disposition evidence and strategy /
+model identity. Penalties are subtracted from the raw weighted score and the
+stored AlphaScore is clamped to `0..100`.
+
+Hard blocks and `UNKNOWN`/stale/conflicted/invalid risk remain in the linked
+`RiskAssessment` and score reason codes. A high or clamped score cannot clear
+them; future evaluation before either input boundary fails closed. Stable score
+IDs include candidate, feature/risk IDs, strategy name/version, evaluation time
+and config hash, so reverse mapping replay produces one idempotent result.
+`RiskAssessmentRepository` and `ScoreSnapshotRepository` preserve JSON-safe
+components/penalties, reasons, freshness, model/strategy identity and config
+hash. The score remains advisory and has no execution or state-transition
+authority.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

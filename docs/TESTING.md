@@ -145,6 +145,14 @@ evidence must produce `INVALID`/zero-confidence snapshots; and the opt-in
 Postgres repository test must round-trip JSON-safe values and provenance while
 accepting an equivalent duplicate and rejecting conflicting snapshot reuse.
 
+Sprint 6.2 adds golden score replay for correlated, sparse/unknown,
+penalty-clamp and blocked-risk inputs. It verifies stable score identity under
+reversed component/penalty delivery, exact weighted arithmetic, bounded
+penalties, strategy/model/config identity, hard-risk reason preservation and
+pre-boundary rejection. The opt-in Postgres path persists feature, risk and
+score rows together and verifies duplicate acceptance plus JSON-safe
+round-trips.
+
 Add regression thresholds only after a stable baseline exists.
 
 ## Failure tests
