@@ -4,7 +4,12 @@ from pathlib import Path
 
 from sqlalchemy import UniqueConstraint
 
-from memeradar_persistence import Base, FeatureSnapshotRepository
+from memeradar_persistence import (
+    Base,
+    FeatureSnapshotRepository,
+    RiskAssessmentRepository,
+    ScoreSnapshotRepository,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -86,6 +91,8 @@ def test_outbox_processing_columns_support_leases_and_dead_letters() -> None:
 def test_score_snapshot_persists_explicit_strategy_identity() -> None:
     columns = Base.metadata.tables["score_snapshots"].c
 
+    assert RiskAssessmentRepository
+    assert ScoreSnapshotRepository
     assert {"strategy_name", "strategy_version"} <= {column.name for column in columns}
     assert columns["strategy_name"].nullable is False
     assert columns["strategy_version"].nullable is False

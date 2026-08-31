@@ -25,8 +25,14 @@ from .repositories import (
     FeatureSnapshotRepository,
     OutboxLeaseLost,
     OutboxRepository,
+    RiskAssessmentRepository,
+    ScoreSnapshotRepository,
     feature_snapshot_from_row,
     feature_snapshot_to_row,
+    risk_assessment_from_row,
+    risk_assessment_to_row,
+    score_snapshot_from_row,
+    score_snapshot_to_row,
 )
 from .serialization import provenance_from_json, provenance_to_json
 from .uow import SqlAlchemyOutboxStore, SqlAlchemyUnitOfWork, create_database_engine
@@ -51,7 +57,9 @@ __all__ = [
     "PortfolioRow",
     "PositionRow",
     "RiskAssessmentRow",
+    "RiskAssessmentRepository",
     "ScoreSnapshotRow",
+    "ScoreSnapshotRepository",
     "SqlAlchemyOutboxStore",
     "SqlAlchemyUnitOfWork",
     "StateTransitionRow",
@@ -61,4 +69,8 @@ __all__ = [
     "feature_snapshot_to_row",
     "provenance_from_json",
     "provenance_to_json",
+    "risk_assessment_from_row",
+    "risk_assessment_to_row",
+    "score_snapshot_from_row",
+    "score_snapshot_to_row",
 ]

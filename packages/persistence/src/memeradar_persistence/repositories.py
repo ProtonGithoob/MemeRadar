@@ -23,6 +23,9 @@ from memeradar_domain import (
     PoolIdentity,
     QualityState,
     ReasonCode,
+    RiskAssessment,
+    RiskDisposition,
+    ScoreSnapshot,
     StateTransition,
     TokenIdentity,
 )
@@ -37,6 +40,8 @@ from .models import (
     DomainEventRow,
     FeatureSnapshotRow,
     OutboxRow,
+    RiskAssessmentRow,
+    ScoreSnapshotRow,
     StateTransitionRow,
     TokenRow,
 )
@@ -104,6 +109,142 @@ def _feature_snapshot_matches_row(snapshot: FeatureSnapshot, row: FeatureSnapsho
         and row.confidence == snapshot.confidence
         and row.values == json_safe(snapshot.values)
         and row.provenance == provenance_to_json(snapshot.provenance)
+        and row.config_hash == snapshot.config_hash
+        and row.quality_state == snapshot.quality_state.value
+    )
+
+
+def risk_assessment_to_row(assessment: RiskAssessment) -> RiskAssessmentRow:
+    """Map one immutable risk assessment into its JSON-safe persistence row."""
+
+    if not isinstance(assessment, RiskAssessment):
+        raise TypeError("assessment must be a RiskAssessment")
+    return RiskAssessmentRow(
+        id=assessment.id,
+        candidate_id=assessment.candidate_id,
+        as_of=assessment.as_of,
+        expires_at=assessment.expires_at,
+        risk_version=assessment.risk_version,
+        disposition=assessment.disposition.value,
+        hard_blocks=list(assessment.hard_blocks),
+        warnings=list(assessment.warnings),
+        penalties=json_safe(assessment.penalties),
+        evidence_refs=list(assessment.evidence_refs),
+        reason_codes=reason_codes_to_json(assessment.reason_codes),
+        confidence=assessment.confidence,
+        config_hash=assessment.config_hash,
+        critical_evidence_state=assessment.critical_evidence_state.value,
+    )
+
+
+def risk_assessment_from_row(row: RiskAssessmentRow) -> RiskAssessment:
+    """Rehydrate a persisted risk assessment with its fail-closed quality state."""
+
+    if not isinstance(row, RiskAssessmentRow):
+        raise TypeError("row must be a RiskAssessmentRow")
+    return RiskAssessment(
+        id=row.id,
+        candidate_id=row.candidate_id,
+        as_of=row.as_of,
+        expires_at=row.expires_at,
+        risk_version=row.risk_version,
+        disposition=RiskDisposition(row.disposition),
+        hard_blocks=tuple(row.hard_blocks),
+        warnings=tuple(row.warnings),
+        penalties=row.penalties,
+        evidence_refs=tuple(row.evidence_refs),
+        reason_codes=reason_codes_from_json(row.reason_codes),
+        confidence=row.confidence,
+        config_hash=row.config_hash,
+        critical_evidence_state=QualityState(row.critical_evidence_state),
+    )
+
+
+def _risk_assessment_matches_row(assessment: RiskAssessment, row: RiskAssessmentRow) -> bool:
+    return (
+        row.id == assessment.id
+        and row.candidate_id == assessment.candidate_id
+        and row.as_of == assessment.as_of
+        and row.expires_at == assessment.expires_at
+        and row.risk_version == assessment.risk_version
+        and row.disposition == assessment.disposition.value
+        and row.hard_blocks == list(assessment.hard_blocks)
+        and row.warnings == list(assessment.warnings)
+        and row.penalties == json_safe(assessment.penalties)
+        and row.evidence_refs == list(assessment.evidence_refs)
+        and row.reason_codes == reason_codes_to_json(assessment.reason_codes)
+        and row.confidence == assessment.confidence
+        and row.config_hash == assessment.config_hash
+        and row.critical_evidence_state == assessment.critical_evidence_state.value
+    )
+
+
+def score_snapshot_to_row(snapshot: ScoreSnapshot) -> ScoreSnapshotRow:
+    """Map one advisory AlphaScore snapshot into its JSON-safe row."""
+
+    if not isinstance(snapshot, ScoreSnapshot):
+        raise TypeError("snapshot must be a ScoreSnapshot")
+    return ScoreSnapshotRow(
+        id=snapshot.id,
+        candidate_id=snapshot.candidate_id,
+        as_of=snapshot.as_of,
+        model_version=snapshot.model_version,
+        strategy_name=snapshot.strategy_name,
+        strategy_version=snapshot.strategy_version,
+        alpha_score=snapshot.alpha_score,
+        confidence=snapshot.confidence,
+        components=json_safe(snapshot.components),
+        penalties=json_safe(snapshot.penalties),
+        reason_codes=reason_codes_to_json(snapshot.reason_codes),
+        feature_snapshot_id=snapshot.feature_snapshot_id,
+        risk_assessment_id=snapshot.risk_assessment_id,
+        expires_at=snapshot.expires_at,
+        config_hash=snapshot.config_hash,
+        quality_state=snapshot.quality_state.value,
+    )
+
+
+def score_snapshot_from_row(row: ScoreSnapshotRow) -> ScoreSnapshot:
+    """Rehydrate one advisory AlphaScore snapshot from its persistence row."""
+
+    if not isinstance(row, ScoreSnapshotRow):
+        raise TypeError("row must be a ScoreSnapshotRow")
+    return ScoreSnapshot(
+        id=row.id,
+        candidate_id=row.candidate_id,
+        as_of=row.as_of,
+        model_version=row.model_version,
+        strategy_name=row.strategy_name,
+        strategy_version=row.strategy_version,
+        alpha_score=row.alpha_score,
+        confidence=row.confidence,
+        components=row.components,
+        penalties=row.penalties,
+        reason_codes=reason_codes_from_json(row.reason_codes),
+        feature_snapshot_id=row.feature_snapshot_id,
+        risk_assessment_id=row.risk_assessment_id,
+        expires_at=row.expires_at,
+        config_hash=row.config_hash,
+        quality_state=QualityState(row.quality_state),
+    )
+
+
+def _score_snapshot_matches_row(snapshot: ScoreSnapshot, row: ScoreSnapshotRow) -> bool:
+    return (
+        row.id == snapshot.id
+        and row.candidate_id == snapshot.candidate_id
+        and row.as_of == snapshot.as_of
+        and row.model_version == snapshot.model_version
+        and row.strategy_name == snapshot.strategy_name
+        and row.strategy_version == snapshot.strategy_version
+        and row.alpha_score == snapshot.alpha_score
+        and row.confidence == snapshot.confidence
+        and row.components == json_safe(snapshot.components)
+        and row.penalties == json_safe(snapshot.penalties)
+        and row.reason_codes == reason_codes_to_json(snapshot.reason_codes)
+        and row.feature_snapshot_id == snapshot.feature_snapshot_id
+        and row.risk_assessment_id == snapshot.risk_assessment_id
+        and row.expires_at == snapshot.expires_at
         and row.config_hash == snapshot.config_hash
         and row.quality_state == snapshot.quality_state.value
     )
@@ -362,6 +503,86 @@ class FeatureSnapshotRepository:
             )
         ).all()
         return tuple(feature_snapshot_from_row(row) for row in rows)
+
+
+class RiskAssessmentRepository:
+    """Persist immutable risk assessments without committing the caller's transaction."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, assessment: RiskAssessment) -> RiskAssessmentRow:
+        """Insert a risk assessment or accept an equivalent replay of its ID."""
+
+        row = await self._session.get(RiskAssessmentRow, assessment.id)
+        if row is not None:
+            if not _risk_assessment_matches_row(assessment, row):
+                raise IdempotencyConflict(
+                    f"risk assessment {assessment.id} conflicts with persisted content"
+                )
+            return row
+        row = risk_assessment_to_row(assessment)
+        self._session.add(row)
+        await self._session.flush()
+        return row
+
+    async def get(self, assessment_id: UUID) -> RiskAssessment | None:
+        """Load one immutable risk assessment by identity."""
+
+        row = await self._session.get(RiskAssessmentRow, assessment_id)
+        return None if row is None else risk_assessment_from_row(row)
+
+    async def for_candidate(self, candidate_id: UUID) -> tuple[RiskAssessment, ...]:
+        """Return a candidate's risk assessments in deterministic event-time order."""
+
+        rows = (
+            await self._session.scalars(
+                select(RiskAssessmentRow)
+                .where(RiskAssessmentRow.candidate_id == candidate_id)
+                .order_by(RiskAssessmentRow.as_of, RiskAssessmentRow.id)
+            )
+        ).all()
+        return tuple(risk_assessment_from_row(row) for row in rows)
+
+
+class ScoreSnapshotRepository:
+    """Persist immutable advisory scores with replay-idempotent identity."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, snapshot: ScoreSnapshot) -> ScoreSnapshotRow:
+        """Insert a score or accept an equivalent replay of the same ID."""
+
+        row = await self._session.get(ScoreSnapshotRow, snapshot.id)
+        if row is not None:
+            if not _score_snapshot_matches_row(snapshot, row):
+                raise IdempotencyConflict(
+                    f"score snapshot {snapshot.id} conflicts with persisted content"
+                )
+            return row
+        row = score_snapshot_to_row(snapshot)
+        self._session.add(row)
+        await self._session.flush()
+        return row
+
+    async def get(self, snapshot_id: UUID) -> ScoreSnapshot | None:
+        """Load one immutable score snapshot by identity."""
+
+        row = await self._session.get(ScoreSnapshotRow, snapshot_id)
+        return None if row is None else score_snapshot_from_row(row)
+
+    async def for_candidate(self, candidate_id: UUID) -> tuple[ScoreSnapshot, ...]:
+        """Return a candidate's scores in deterministic event-time order."""
+
+        rows = (
+            await self._session.scalars(
+                select(ScoreSnapshotRow)
+                .where(ScoreSnapshotRow.candidate_id == candidate_id)
+                .order_by(ScoreSnapshotRow.as_of, ScoreSnapshotRow.id)
+            )
+        ).all()
+        return tuple(score_snapshot_from_row(row) for row in rows)
 
 
 class OutboxRepository:

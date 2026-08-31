@@ -1,0 +1,144 @@
+{
+  "fixture_version": "alpha-score-fixture-v1",
+  "redacted": true,
+  "config_hash": "alpha-score-fixture-v1",
+  "as_of": "2026-08-31T12:00:00+00:00",
+  "scenarios": {
+    "correlated": {
+      "candidate_id": "f1c6a0f0-35c2-5d68-8e20-00e20b4d54d8",
+      "feature_snapshot_id": "b19c4dd0-1b75-5b1f-9a77-b95ca7a8bc75",
+      "risk_assessment_id": "c3f32db4-d0c2-5df8-9e08-26fe61ab63a4",
+      "feature_confidence": "0.95",
+      "components": {
+        "SmartMoney": "80",
+        "OnChainSafety": "90",
+        "LiquidityQuality": "75",
+        "OrganicFlow": "70",
+        "SocialVelocity": "65",
+        "HolderQuality": "85",
+        "Momentum": "60"
+      },
+      "risk": {
+        "disposition": "PASS",
+        "confidence": "0.90",
+        "penalties": {
+          "wash_trading": "2",
+          "liquidity_decay": "3"
+        }
+      },
+      "expected": {
+        "raw_score": "77.75",
+        "alpha_score": "72.75",
+        "confidence": "0.8550",
+        "quality_state": "FRESH"
+      }
+    },
+    "sparse": {
+      "candidate_id": "7db2c7f2-5fe8-5f3c-961f-3812f4dce6c6",
+      "feature_snapshot_id": "5dc1f004-4b1e-5896-bd5a-4801deaa94b4",
+      "risk_assessment_id": "47365dbd-1c03-5b8a-82c9-273b27a0d82b",
+      "feature_confidence": "0.70",
+      "components": {
+        "SmartMoney": "75",
+        "LiquidityQuality": "65",
+        "OrganicFlow": "60"
+      },
+      "risk": {
+        "disposition": "PASS",
+        "confidence": "0.80",
+        "penalties": {}
+      },
+      "expected": {
+        "raw_score": "60.00",
+        "alpha_score": "60.00",
+        "confidence": "0.3360",
+        "quality_state": "UNKNOWN"
+      }
+    },
+    "penalty_clamp": {
+      "candidate_id": "b7ed4b7e-0e7a-57fb-9755-3ecf9e4b6923",
+      "feature_snapshot_id": "a1c3b9c2-ae90-5f57-8ce5-a9e82f2bba9a",
+      "risk_assessment_id": "7536f32f-19c3-5c2e-9baf-cdce1fb42fa9",
+      "feature_confidence": "1",
+      "components": {
+        "SmartMoney": "100",
+        "OnChainSafety": "100",
+        "LiquidityQuality": "100",
+        "OrganicFlow": "100",
+        "SocialVelocity": "100",
+        "HolderQuality": "100",
+        "Momentum": "100"
+      },
+      "risk": {
+        "disposition": "PASS",
+        "confidence": "1",
+        "penalties": {
+          "first": "100",
+          "second": "100"
+        }
+      },
+      "expected": {
+        "raw_score": "100",
+        "alpha_score": "0",
+        "confidence": "1",
+        "quality_state": "FRESH"
+      }
+    },
+    "blocked": {
+      "candidate_id": "e95acbf0-f004-5d34-b548-8906775cda3f",
+      "feature_snapshot_id": "1f5e09a4-33ca-5b26-bf72-541c01886993",
+      "risk_assessment_id": "e1a85ef8-66f9-5a53-b4ec-a39b7d5f259c",
+      "feature_confidence": "0.90",
+      "components": {
+        "SmartMoney": "80",
+        "OnChainSafety": "80",
+        "LiquidityQuality": "80",
+        "OrganicFlow": "80",
+        "SocialVelocity": "80",
+        "HolderQuality": "80",
+        "Momentum": "80"
+      },
+      "risk": {
+        "disposition": "BLOCK",
+        "hard_blocks": ["FREEZE_AUTHORITY_ACTIVE"],
+        "confidence": "0.95",
+        "penalties": {
+          "freeze_authority": "30"
+        }
+      },
+      "expected": {
+        "raw_score": "80",
+        "alpha_score": "50",
+        "confidence": "0.8550",
+        "quality_state": "FRESH"
+      }
+    },
+    "unknown": {
+      "candidate_id": "a5ed4b78-f87e-5fd9-9ef4-01cf8a9a28bd",
+      "feature_snapshot_id": "49f94436-8e4d-5d27-8f5d-9f1ad883a3f1",
+      "risk_assessment_id": "ba8ccf4c-2f44-5530-8d26-95d90cef34c4",
+      "feature_confidence": "0.90",
+      "components": {
+        "SmartMoney": "80",
+        "OnChainSafety": "80",
+        "LiquidityQuality": "80",
+        "OrganicFlow": "80",
+        "SocialVelocity": "80",
+        "HolderQuality": "80",
+        "Momentum": "80"
+      },
+      "risk": {
+        "disposition": "UNKNOWN",
+        "critical_evidence_state": "UNKNOWN",
+        "confidence": "0",
+        "penalties": {}
+      },
+      "expected": {
+        "raw_score": "80",
+        "alpha_score": "80",
+        "confidence": "0",
+        "quality_state": "UNKNOWN"
+      }
+    }
+  }
+}

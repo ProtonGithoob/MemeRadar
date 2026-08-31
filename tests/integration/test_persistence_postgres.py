@@ -15,6 +15,7 @@ from memeradar_application.event_processing import (
     OutboxProcessor,
     ProcessingResult,
 )
+from memeradar_application.score_recomputation import AlphaScoreRecomputer
 from memeradar_domain import (
     Candidate,
     EventEnvelope,
@@ -23,6 +24,8 @@ from memeradar_domain import (
     Provenance,
     QualityState,
     ReasonCode,
+    RiskAssessment,
+    RiskDisposition,
     TokenIdentity,
 )
 from memeradar_persistence import (
@@ -31,6 +34,8 @@ from memeradar_persistence import (
     FeatureSnapshotRow,
     OutboxRow,
     PoolRow,
+    RiskAssessmentRow,
+    ScoreSnapshotRow,
     SqlAlchemyOutboxStore,
     SqlAlchemyUnitOfWork,
     StateTransitionRow,
@@ -122,6 +127,33 @@ async def _exercise_postgres(database_url: str) -> None:
             first_feature = await unit_of_work.features.add(feature)
             second_feature = await unit_of_work.features.add(feature)
             assert first_feature.id == second_feature.id
+            risk = RiskAssessment(
+                candidate_id=candidate_id,
+                as_of=NOW + timedelta(seconds=1),
+                expires_at=NOW + timedelta(minutes=5),
+                risk_version="token-security-v1",
+                disposition=RiskDisposition.PASS,
+                hard_blocks=(),
+                warnings=(),
+                penalties={"wash_trading": Decimal("2")},
+                evidence_refs=("risk:integration-1",),
+                reason_codes=(ReasonCode("RISK_INTEGRATION"),),
+                confidence=Decimal("0.90"),
+                config_hash="sha256:integration-feature",
+                critical_evidence_state=QualityState.FRESH,
+            )
+            first_risk = await unit_of_work.risks.add(risk)
+            second_risk = await unit_of_work.risks.add(risk)
+            assert first_risk.id == second_risk.id
+            score = AlphaScoreRecomputer().recompute(
+                feature,
+                risk,
+                now=NOW + timedelta(seconds=2),
+                config_hash="sha256:integration-feature",
+            )
+            first_score = await unit_of_work.scores.add(score)
+            second_score = await unit_of_work.scores.add(score)
+            assert first_score.id == second_score.id
             first_outbox = await unit_of_work.outbox.enqueue(
                 event,
                 side_effect_kind="candidate-index",
@@ -156,6 +188,14 @@ async def _exercise_postgres(database_url: str) -> None:
             assert loaded_feature.values["Momentum"] == "72"
             assert loaded_feature.provenance[0].source_id == "feature-integration-1"
             assert await unit_of_work.features.for_candidate(candidate_id) == (loaded_feature,)
+            loaded_risk = await unit_of_work.risks.get(risk.id)
+            assert loaded_risk == risk
+            loaded_score = await unit_of_work.scores.get(score.id)
+            assert loaded_score is not None
+            assert loaded_score.strategy_name == "alpha-score"
+            assert loaded_score.model_version == "alpha-score-v1"
+            assert loaded_score.risk_assessment_id == risk.id
+            assert await unit_of_work.scores.for_candidate(candidate_id) == (loaded_score,)
     finally:
         async with engine.begin() as connection:
             await connection.execute(
@@ -166,6 +206,12 @@ async def _exercise_postgres(database_url: str) -> None:
             await connection.execute(delete(DomainEventRow).where(DomainEventRow.id == event.id))
             await connection.execute(
                 delete(StateTransitionRow).where(StateTransitionRow.candidate_id == candidate_id)
+            )
+            await connection.execute(
+                delete(ScoreSnapshotRow).where(ScoreSnapshotRow.candidate_id == candidate_id)
+            )
+            await connection.execute(
+                delete(RiskAssessmentRow).where(RiskAssessmentRow.candidate_id == candidate_id)
             )
             await connection.execute(
                 delete(FeatureSnapshotRow).where(FeatureSnapshotRow.candidate_id == candidate_id)

@@ -15,7 +15,13 @@ from sqlalchemy.ext.asyncio import (
 
 from memeradar_application.event_processing import OutboxMessage
 
-from .repositories import CandidateRepository, FeatureSnapshotRepository, OutboxRepository
+from .repositories import (
+    CandidateRepository,
+    FeatureSnapshotRepository,
+    OutboxRepository,
+    RiskAssessmentRepository,
+    ScoreSnapshotRepository,
+)
 
 
 class SqlAlchemyUnitOfWork:
@@ -35,12 +41,16 @@ class SqlAlchemyUnitOfWork:
         self._session: AsyncSession | None = None
         self.candidates: CandidateRepository
         self.features: FeatureSnapshotRepository
+        self.risks: RiskAssessmentRepository
+        self.scores: ScoreSnapshotRepository
         self.outbox: OutboxRepository
 
     async def __aenter__(self) -> Self:
         self._session = self._session_factory()
         self.candidates = CandidateRepository(self._session)
         self.features = FeatureSnapshotRepository(self._session)
+        self.risks = RiskAssessmentRepository(self._session)
+        self.scores = ScoreSnapshotRepository(self._session)
         self.outbox = OutboxRepository(self._session)
         return self
 
