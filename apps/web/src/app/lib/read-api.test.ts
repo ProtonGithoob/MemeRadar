@@ -181,4 +181,34 @@ describe("server-side read gateway", () => {
     );
     expect(await fetchToken("not-a-uuid")).toEqual({ ok: false, reason: "INVALID_RESPONSE" });
   });
+
+  it("rejects timeline entries whose event timestamps are not ordered", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        response({
+          items: [{
+            id: "66666666-6666-4666-8666-666666666666",
+            token_id: TOKEN_ID,
+            kind: "market.snapshot",
+            source_id: "market:fixture",
+            occurred_at: "2026-08-31T12:03:02.000Z",
+            observed_at: "2026-08-31T12:03:01.000Z",
+            ingested_at: "2026-08-31T12:03:03.000Z",
+            quality_state: "FRESH",
+            reason_codes: [],
+            evidence_refs: [],
+            payload: {},
+            provenance: []
+          }],
+          limit: 50,
+          has_more: false,
+          next_cursor: null
+        })
+      )
+    );
+
+    expect(await fetchTimeline(TOKEN_ID)).toEqual({ ok: false, reason: "INVALID_RESPONSE" });
+  });
 });

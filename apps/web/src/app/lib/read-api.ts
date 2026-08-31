@@ -307,7 +307,8 @@ function parseToken(value: unknown): TokenRecord | null {
 
   if (
     id === null || chain === null || mintAddress === null || tokenProgram === null ||
-    decimals === undefined || createdOnchainAt === undefined || firstSeenAt === undefined ||
+    decimals === undefined || (decimals !== null && !Number.isInteger(decimals)) ||
+    createdOnchainAt === undefined || firstSeenAt === undefined ||
     status === null || creatorWallet === undefined || pools === null ||
     pools.some((pool): pool is null => pool === null) ||
     (value.candidate !== null && value.candidate !== undefined && candidate === null)
@@ -368,6 +369,9 @@ function parseTimeline(value: unknown): TimelineRecord | null {
     reasonCodes === null || evidenceRefs === null || payload === null || provenance === null ||
     provenance.some((item): item is null => item === null)
   ) {
+    return null;
+  }
+  if (Date.parse(occurredAt) > Date.parse(observedAt) || Date.parse(observedAt) > Date.parse(ingestedAt)) {
     return null;
   }
 
@@ -504,12 +508,12 @@ export async function fetchCandidates(
   return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parseCandidate));
 }
 
-function validTokenId(tokenId: string): boolean {
+export function isValidTokenId(tokenId: string): boolean {
   return UUID_PATTERN.test(tokenId);
 }
 
 export async function fetchToken(tokenId: string): Promise<ReadResult<TokenRecord>> {
-  if (!validTokenId(tokenId)) return { ok: false, reason: "INVALID_RESPONSE" };
+  if (!isValidTokenId(tokenId)) return { ok: false, reason: "INVALID_RESPONSE" };
   const url = endpoint(`/v1/tokens/${tokenId}`);
   return url === null ? configuredFailure() : request(url, parseToken);
 }
@@ -517,7 +521,7 @@ export async function fetchToken(tokenId: string): Promise<ReadResult<TokenRecor
 export async function fetchTimeline(
   tokenId: string
 ): Promise<ReadResult<ReadPage<TimelineRecord>>> {
-  if (!validTokenId(tokenId)) return { ok: false, reason: "INVALID_RESPONSE" };
+  if (!isValidTokenId(tokenId)) return { ok: false, reason: "INVALID_RESPONSE" };
   const url = endpoint(`/v1/tokens/${tokenId}/timeline`, singleQuery());
   return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parseTimeline));
 }

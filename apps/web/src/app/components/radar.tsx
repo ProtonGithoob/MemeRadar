@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   FreshnessBadge,
   RiskBadge,
@@ -79,7 +81,7 @@ function resultMessage(result: ReadResult<ReadPage<CandidateRecord>>): string | 
   }
 }
 
-function ProtectedShell() {
+export function ProtectedShell() {
   return (
     <>
       <section className="hero" aria-labelledby="hero-title">
@@ -159,7 +161,7 @@ function Filters({ filters }: { filters: RadarFilters }) {
         />
       </label>
       <button className="filter-submit" type="submit">APPLY FILTERS</button>
-      <a className="filter-reset" href="/">RESET</a>
+      <Link className="filter-reset" href="/">RESET</Link>
     </form>
   );
 }
@@ -197,14 +199,13 @@ export function CandidateRow({ candidate }: { candidate: CandidateRecord }) {
 }
 
 function RadarContent({ result }: { result: ReadResult<ReadPage<CandidateRecord>> }) {
-  const message = resultMessage(result);
-  if (message) {
+  if (!result.ok) {
     return (
       <div className="read-state read-state--error" role="status">
         <span className="eyebrow">READ-ONLY BOUNDARY</span>
-        <strong>{message}</strong>
+        <strong>{resultMessage(result)}</strong>
         <p>No candidate data was substituted. Retry after the read dependency is available.</p>
-        <a href="/">RETRY</a>
+        <Link href="/">RETRY</Link>
       </div>
     );
   }
