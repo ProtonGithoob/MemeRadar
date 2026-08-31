@@ -131,6 +131,37 @@ Token metadata explicitly distinguishes SPL Token and Token-2022 programs. Mint 
 
 The explicit `make provider-doctor` command runs one bounded, read-only `getHealth` call when both `HELIUS_RPC_URL` and `HELIUS_API_KEY` are configured. Its JSON report includes only configuration presence, network/auth/schema status, rounded latency, safe rate-limit metadata and the protected operating modes. It returns `PASS`, `FAIL` or `BLOCKED_EXTERNAL`; the current keyless checkout reports `BLOCKED_EXTERNAL` with `CONFIGURATION_MISSING`.
 
+## E8.4 Solana stream integrity and protocol verification
+
+The provider-independent `StreamIntegrityCoordinator` is the reliability
+seam for Solana transports. It consumes bounded raw transaction envelopes,
+tracks a durable slot/signature cursor, records explicit gaps, performs
+bounded backfill through `ChainBackfillPort`, and appends normalized evidence
+before contiguous progress advances. Backfill blocks report their actual
+produced slots, so skipped Solana slots are not treated as missing blocks.
+Overlapping gaps merge deterministically; queue saturation, timeouts,
+rate-limits, duplicates and conflicts remain observable instead of silently
+dropping evidence.
+
+`ProtocolIdentityRegistry` is versioned and routes only on
+`(program_id, discriminator_or_tag)`. `CanonicalProtocolDecoder` delegates
+live, backfill and replay calls to one decode path while preserving the
+existing Pump.fun, PumpSwap, Raydium and Meteora adapters. Production entries
+remain `TODO_VERIFY` / `SUPPORTED_NEEDS_REVERIFY` until authoritative and
+independently corroborated identity evidence is recorded; synthetic verified
+entries are fixture-only. Unknown, unverified or conflicting identities fail
+closed.
+
+Normalized chain events retain commitment (`PROCESSED_UNCONFIRMED`,
+`CONFIRMED`, `FINALIZED`, `REVERTED`, `UNKNOWN`), recovery state, slot/signature,
+transport, backfill/recovery timestamps, parser/registry/schema versions and
+provenance. Reverts retain the prior event and append an explicit correction.
+`ReplayManifest` provides an event-time boundary and pins parser, registry,
+schema, strategy and config identities without contacting a provider. The
+`make stream-integrity-doctor` check reports local keyless contract status and
+configuration presence only; configured external stream/RPC acceptance is
+still `BLOCKED_EXTERNAL` unless a real bounded check is performed.
+
 ## Birdeye / DEX market layer
 
 Sprint 2.3 implements the read-only `BirdeyeRestAdapter` in `packages/providers/src/memeradar_providers/birdeye.py`. It maps the new-listing endpoint (`/defi/v2/tokens/new_listing`) into canonical `DiscoveryCandidate` values and maps the supported token market-data, trade-data, holder and token-security endpoints into provider-independent `Observation` values. Birdeye response envelopes, field names and request paths remain inside the provider package; normalized observations carry canonical Solana token identities, ordered event timestamps, quality state and Birdeye/parser provenance.

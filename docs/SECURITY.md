@@ -222,6 +222,28 @@ projections allow-list fields and redact secret-shaped keys/values, and the
 browser receives no viewer/control credential or raw provider response. Gate
 P8 browser tests verify these boundaries against the keyless Compose runtime.
 
+## E8.4 stream integrity and protocol safety
+
+Stream transport is untrusted input. The provider-independent coordinator
+stores cursor/gap/recovery state explicitly, bounds backfill ranges and
+timeouts, and raises observable backpressure rather than dropping events.
+Recovered events retain slot/signature, source, timestamps and parser/registry
+provenance; successful fetch alone is not trusted verification. Unknown,
+unverified or conflicting protocol identities fail closed.
+
+Protocol routing requires the full `(program_id, discriminator_or_tag)` key;
+Anchor and native identity rules are kept distinct. Production registry
+definitions remain non-authoritative until independently verified. Processed
+chain evidence retains its commitment state and a later reorg emits an
+append-only revert correction, preserving the earlier observation.
+
+Replay uses a pinned event-time manifest and excludes evidence after its
+boundary. Stream health only reduces data quality/confidence and cannot raise
+AlphaScore, clear a hard risk gate, authorize `ENTRY_READY`, sign or submit a
+transaction. The stream doctor reports endpoint presence and local contract
+status only; missing/unverified external access is `BLOCKED_EXTERNAL` and no
+credential values are printed.
+
 ## Supply chain
 
 CI should include:

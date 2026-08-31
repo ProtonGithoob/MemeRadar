@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -125,6 +126,7 @@ class ObservationRow(Base):
         ),
         Index("ix_observations_kind_occurred_at", "kind", "occurred_at"),
         Index("ix_observations_token_kind_occurred", "token_id", "kind", "occurred_at"),
+        Index("ix_observations_chain_slot", "chain", "slot"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -145,8 +147,127 @@ class ObservationRow(Base):
     raw_payload_hash: Mapped[str | None] = mapped_column(String(128))
     raw_payload_ref: Mapped[str | None] = mapped_column(Text)
     normalized_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    # Chain fields are nullable so pre-E8.4 observations remain readable.
+    chain: Mapped[str | None] = mapped_column(String(32))
+    slot: Mapped[int | None] = mapped_column(BigInteger)
+    signature: Mapped[str | None] = mapped_column(String(256))
+    event_index: Mapped[int | None] = mapped_column(Integer)
+    program_id: Mapped[str | None] = mapped_column(String(64))
+    discriminator_or_tag: Mapped[str | None] = mapped_column(String(128))
+    protocol: Mapped[str | None] = mapped_column(String(128))
+    event_type: Mapped[str | None] = mapped_column(String(128))
+    source_transport: Mapped[str | None] = mapped_column(String(128))
+    commitment: Mapped[str | None] = mapped_column(String(32))
+    recovery_state: Mapped[str | None] = mapped_column(String(32))
+    backfill_source: Mapped[str | None] = mapped_column(String(128))
+    recovery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    registry_version: Mapped[str | None] = mapped_column(String(128))
+    event_schema_version: Mapped[int | None] = mapped_column(Integer)
+    correction_of: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    strategy_name: Mapped[str | None] = mapped_column(String(128))
+    strategy_version: Mapped[str | None] = mapped_column(String(128))
+    config_hash: Mapped[str | None] = mapped_column(String(128))
+    reason_codes: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    provenance: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
 
     candidate: Mapped[CandidateRow | None] = relationship(back_populates="observations")
+
+
+class ChainCursorRow(Base):
+    """Durable monotonic cursor for one chain transport stream."""
+
+    __tablename__ = "chain_cursors"
+    __table_args__ = (
+        UniqueConstraint(
+            "chain",
+            "transport",
+            "stream_id",
+            name="uq_chain_cursors_stream",
+        ),
+        Index(
+            "ix_chain_cursors_stream_progress",
+            "chain",
+            "transport",
+            "stream_id",
+            "last_observed_slot",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    chain: Mapped[str] = mapped_column(String(32), nullable=False)
+    transport: Mapped[str] = mapped_column(String(128), nullable=False)
+    stream_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    commitment: Mapped[str] = mapped_column(String(32), nullable=False)
+    last_observed_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_contiguous_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_finalized_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_signature: Mapped[str | None] = mapped_column(String(256))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    parser_registry_version: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class StreamGapRow(Base):
+    """Durable projection of every detected and merged stream gap."""
+
+    __tablename__ = "stream_gaps"
+    __table_args__ = (
+        Index(
+            "ix_stream_gaps_stream_status_slots",
+            "chain",
+            "transport",
+            "stream_id",
+            "status",
+            "from_slot",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    chain: Mapped[str] = mapped_column(String(32), nullable=False)
+    transport: Mapped[str] = mapped_column(String(128), nullable=False)
+    stream_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    from_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    to_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    detection_method: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error_class: Mapped[str | None] = mapped_column(String(128))
+    recovered_event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    verified_event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    merged_gap_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+
+
+class StreamVerificationRow(Base):
+    """Append-only range verification report associated with a stream gap."""
+
+    __tablename__ = "stream_verifications"
+    __table_args__ = (Index("ix_stream_verifications_gap_verified", "gap_id", "verified_at"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    gap_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("stream_gaps.id", ondelete="SET NULL")
+    )
+    chain: Mapped[str] = mapped_column(String(32), nullable=False)
+    transport: Mapped[str] = mapped_column(String(128), nullable=False)
+    stream_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    from_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    to_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expected_blocks: Mapped[int] = mapped_column(Integer, nullable=False)
+    fetched_blocks: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_relevant_events: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    persisted_relevant_events: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    missing_event_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    extra_event_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    conflicting_event_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    verification_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason_codes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
 
 
 class FeatureSnapshotRow(Base):

@@ -10,6 +10,7 @@ from .models import (
     AuditEventRow,
     Base,
     CandidateRow,
+    ChainCursorRow,
     ConfigVersionRow,
     ControlStateRow,
     DomainEventRow,
@@ -22,6 +23,8 @@ from .models import (
     RiskAssessmentRow,
     ScoreSnapshotRow,
     StateTransitionRow,
+    StreamGapRow,
+    StreamVerificationRow,
     TokenRow,
 )
 from .read_queries import SqlAlchemyReadQueryService
@@ -43,6 +46,7 @@ from .repositories import (
     score_snapshot_to_row,
 )
 from .serialization import provenance_from_json, provenance_to_json
+from .stream import SqlAlchemyStreamStateStore, assert_stream_state_store_contract
 from .uow import (
     SqlAlchemyAlertStore,
     SqlAlchemyOutboxStore,
@@ -57,6 +61,7 @@ __all__ = [
     "Base",
     "CandidateRepository",
     "CandidateRow",
+    "ChainCursorRow",
     "ConfigVersionRow",
     "ControlStateRow",
     "DomainEventRow",
@@ -80,10 +85,14 @@ __all__ = [
     "SqlAlchemyOutboxStore",
     "SqlAlchemyAlertStore",
     "SqlAlchemyReadQueryService",
+    "SqlAlchemyStreamStateStore",
+    "assert_stream_state_store_contract",
     "SqlAlchemyControlPlane",
     "CONTROL_STATE_KEY",
     "SqlAlchemyUnitOfWork",
     "StateTransitionRow",
+    "StreamGapRow",
+    "StreamVerificationRow",
     "TokenRow",
     "create_database_engine",
     "alert_from_row",

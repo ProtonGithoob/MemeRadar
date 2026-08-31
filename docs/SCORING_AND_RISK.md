@@ -561,6 +561,19 @@ confidence, policy version and config hash. Non-zero score changes emit an
 `AlphaScoreDelta` event; worsening disposition/quality or an initial unsafe
 risk emits `RiskEscalation`. Both are advisory, deterministic and replayable.
 
+### E8.4 stream integrity quality
+
+Stream integrity is data-quality evidence, never a positive AlphaScore input.
+`StreamQualityImpact` leaves healthy transport neutral; an unresolved gap,
+failed recovery, unverified recovery, unknown protocol or decoder conflict
+reduces the affected feature window's completeness/confidence and preserves
+explicit reason codes. Critical missing or unverified chain evidence remains
+`UNKNOWN`/non-fresh and cannot become `ENTRY_READY`. Verified recovery may
+restore completeness while retaining recovery provenance. Reverted chain
+observations remain explicit correction evidence and do not silently improve
+the score. The bounded `ReplayManifest` applies the same quality and
+event-time/no-lookahead rules during historical replay.
+
 ## 9. ENTRY_READY policy
 
 An initial candidate may become ENTRY_READY only if:

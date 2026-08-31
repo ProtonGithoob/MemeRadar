@@ -65,13 +65,16 @@ A recovered event must pass through the same normalization and decoding path as 
 
 ## 2. Execution timing
 
-Current repository status on 2026-08-31 reports `PHASE_8_SPRINT_8_1_COMPLETE_KEYLESS_PASS`, with Sprint 8.2 next.
+Current repository status on 2026-08-31 reports Gate P8 complete and E8.4
+keyless stream-integrity/protocol-verification acceptance complete; Phase 9
+paper-trading work is the next protected step. Live stream/RPC acceptance
+remains `BLOCKED_EXTERNAL`.
 
 Execution rule:
 
 - Do not interrupt Sprint 8.2 or 8.3 to retrofit backend streaming reliability.
-- Finish Phase 8 and Gate P8 first.
-- Then implement this specification as **Extension E8.4 — Solana Stream Integrity and Protocol Verification**, before Phase 9.
+- Finish Phase 8 and Gate P8 first. (This repository checkpoint has done so.)
+- Implement this specification as **Extension E8.4 — Solana Stream Integrity and Protocol Verification**, before Phase 9. (The keyless implementation and gate are now complete.)
 - If local repository state has advanced beyond Phase 8, do not roll back. Insert E8.4 at the next safe backend checkpoint before relying on real-time paper-trading signals.
 
 Reason: Phase 9 paper trading depends on reliable event chronology. Missing or incorrectly decoded on-chain events would contaminate simulated entry/exit results and later Phase 10 calibration.

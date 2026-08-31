@@ -53,6 +53,58 @@ Append-oriented normalized observations.
 - normalized_payload JSONB
 - unique(provider, kind, source_id) where possible
 
+Chain observations additionally retain nullable E8.4 metadata so legacy
+observations remain readable while normalized Solana evidence is replayable:
+
+- chain, slot, signature, event_index
+- program_id, discriminator_or_tag, protocol, event_type
+- source_transport, commitment, recovery_state, backfill_source, recovery_at
+- registry_version, event_schema_version, correction_of
+- strategy_name, strategy_version, config_hash
+- reason_codes JSONB, provenance JSONB
+
+Chain event identity is derived from chain, signature, event index and the
+verified program/instruction identity. Equivalent live and recovered delivery
+merges provenance; material disagreement remains explicit conflict evidence.
+
+### chain_cursors
+- id
+- chain, transport, stream_id (unique together)
+- commitment
+- last_observed_slot, last_contiguous_slot, last_finalized_slot
+- last_signature nullable
+- updated_at
+- parser_registry_version
+
+Contiguous progress cannot move past an unresolved `stream_gaps` range and
+finalized progress cannot exceed contiguous progress. Cursor writes are
+monotonic and restart-safe.
+
+### stream_gaps
+- id
+- chain, transport, stream_id
+- from_slot, to_slot, detected_at, detection_method
+- status: OPEN/RECOVERING/RECOVERED/VERIFIED/FAILED/SUPERSEDED
+- attempt_count, last_error_class nullable
+- recovered_event_count, verified_event_count
+- merged_gap_ids JSONB, updated_at
+
+Overlapping or adjacent gaps merge deterministically while retaining member
+IDs. A fetched range is not trusted until its verification report passes.
+
+### stream_verifications
+- id, gap_id nullable
+- chain, transport, stream_id, from_slot, to_slot
+- expected_blocks, fetched_blocks
+- expected/persisted relevant event IDs
+- missing/extra/conflicting event IDs
+- verification_status: PASS/INCOMPLETE/CONFLICTED/BLOCKED_EXTERNAL/FAIL
+- verified_at nullable, reason_codes JSONB, created_at
+
+Migration `0005_stream_integrity` adds these tables and the nullable chain
+observation columns. It is reversible; raw provider payloads remain bounded
+and are not added to the public read surface.
+
 ### feature_snapshots
 - id
 - candidate_id
@@ -816,6 +868,13 @@ durable and does not block candidate processing.
 - state
 - metrics/results JSONB
 - code commit SHA
+
+The E8.4 `ReplayManifest` is the application-level replay boundary for a
+provider-independent run. It pins `as_of`, parser/decoder version, protocol
+registry version, event-schema version, strategy name/version and config hash.
+Only transactions whose occurred, observed and ingested timestamps are at or
+before the boundary are replayed; normalized events retain their source
+provenance and pinned strategy/config metadata.
 
 ### outcome_labels
 - candidate/token

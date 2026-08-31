@@ -107,6 +107,31 @@ environment uses `MEMERADAR_E2E_BASE_URL` for an existing server and an
 optional `MEMERADAR_E2E_EXECUTABLE_PATH` when the host supplies its own Chrome;
 `make frontend-e2e` remains separate from the credential-free repository gate.
 
+## E8.4 stream integrity and protocol verification
+
+The keyless E8.4 suite covers contiguous slots, exact and overlapping gaps,
+skipped/non-produced slots, persisted-cursor restart, duplicate live/recovered
+events, conflicting normalized evidence, bounded timeout/rate-limit recovery,
+observable backpressure, same-decoder live/backfill/replay equivalence,
+deterministic event-time replay and no future-data leakage. It also covers
+processed-to-confirmed-to-finalized progression, append-only revert
+correction, Anchor/native routing, discriminator collisions, unknown and
+unverified protocols, quality-only stream impact, migration/persistence
+round-trip and protected provider/application boundaries.
+
+The required focused command is:
+
+```text
+./.venv/bin/pytest tests/unit/test_chain_domain.py tests/unit/test_stream_integrity.py tests/unit/test_protocol_registry.py tests/unit/test_stream_integrity_doctor.py tests/unit/test_feature_windows.py tests/contract/test_extension_e8_4_stream_integrity.py tests/unit/test_stream_persistence_contract.py tests/unit/test_migration_contract.py tests/unit/test_persistence_contract.py -q
+```
+
+`make stream-integrity-doctor` performs only local contract validation and
+reports external stream/RPC access as `BLOCKED_EXTERNAL` when it is not
+verified. It must never print endpoint values or claim a provider PASS from
+configuration presence. Migration parity, full repository quality gates and
+the opt-in Postgres stream-state round trip are required before E8.4 is
+marked complete.
+
 ## Live provider acceptance
 
 Live tests are opt-in and read-only until Phase 12. They must be clearly marked and never make CI depend on paid credentials.

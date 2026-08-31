@@ -39,13 +39,16 @@ def main() -> int:
         "control_state",
         "config_versions",
         "audit_events",
+        "chain_cursors",
+        "stream_gaps",
+        "stream_verifications",
     }
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0004_control_plane"]:
+    if heads != ["0005_stream_integrity"]:
         print(
-            "migration_error: expected exactly one 0004_control_plane head",
+            "migration_error: expected exactly one 0005_stream_integrity head",
             file=sys.stderr,
         )
         return 1

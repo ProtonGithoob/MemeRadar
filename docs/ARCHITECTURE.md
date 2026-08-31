@@ -385,6 +385,43 @@ action, target, safe before/after values, timestamp and correlation identity.
 Control mutations and their audit records share a transaction, while read
 queries remain bounded and append-oriented.
 
+### E8.4 stream integrity and protocol verification
+
+The Solana ingest retrofit keeps transport, completeness and protocol decoding
+separate:
+
+```text
+stream -> ChainCursor/GapDetector -> ProtocolIdentityRegistry
+       -> CanonicalProtocolDecoder -> NormalizedChainEvent
+       -> durable observation/event log -> feature/correlation/AlphaScore
+```
+
+`StreamIntegrityCoordinator` persists a normalized event before advancing the
+durable cursor. A discontinuity creates an explicit bounded `StreamGap`; RPC
+or another approved backfill source returns actual produced slots, and every
+recovered transaction goes through the same canonical decoder used by live and
+replay traffic. Overlapping gaps merge deterministically, skipped slots are
+not treated as produced blocks, and a queue saturation raises observable
+backpressure instead of dropping an event.
+
+`ChainCursor` retains observed, contiguous and finalized progress separately.
+Commitment is normalized as processed/unconfirmed, confirmed, finalized,
+reverted or unknown. A later revert retains the original projection and emits
+an append-only correction event. Recovery provenance, parser/registry/schema
+versions and replay strategy/config identities remain attached to normalized
+evidence. The protocol registry routes only on
+`(program_id, discriminator_or_tag)`; unknown, unverified or conflicting
+identities fail closed.
+
+Open, failed, unverified or conflicting integrity state only reduces feature
+completeness/confidence and can never increase AlphaScore or authorize
+`ENTRY_READY`. `ReplayManifest` pins the event-time boundary and parser,
+registry, event-schema, strategy and config identities so replay is
+provider-independent and cannot use future evidence. Migration
+`0005_stream_integrity` adds durable cursors, gaps, verification reports and
+nullable chain metadata to normalized observations. The optional Rust/
+Yellowstone path remains deferred until E11.1 measures a material need.
+
 ## Data paths
 
 ### Hot path

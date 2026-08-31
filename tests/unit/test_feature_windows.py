@@ -21,11 +21,13 @@ from memeradar_application.feature_windows import (
 )
 from memeradar_application.holder_graph import HolderConcentrationSnapshot
 from memeradar_domain import (
+    Chain,
     Provenance,
     QualityState,
     ReasonCode,
     RiskAssessment,
     RiskDisposition,
+    StreamGap,
     TokenIdentity,
 )
 
@@ -47,9 +49,7 @@ def provenance(source_id: str, *, observed_at: datetime = NOW) -> Provenance:
     )
 
 
-def window(
-    name: str, *, as_of: datetime = NOW, rich: bool = True
-) -> CorrelationWindowFeatures:
+def window(name: str, *, as_of: datetime = NOW, rich: bool = True) -> CorrelationWindowFeatures:
     duration = {
         "1m": timedelta(minutes=1),
         "5m": timedelta(minutes=5),
@@ -214,6 +214,36 @@ def test_policy_has_required_windows_and_protected_modes() -> None:
         FeatureWindowPolicy(analysis_only=False)
 
 
+def test_unresolved_stream_gap_reduces_feature_quality_without_positive_score() -> None:
+    token_value = token()
+    gap = StreamGap(
+        chain=Chain.SOLANA,
+        transport="fixture-live",
+        stream_id="stream-1",
+        from_slot=101,
+        to_slot=102,
+        detected_at=NOW - timedelta(seconds=1),
+        detection_method="FIXTURE",
+    )
+
+    snapshots = FeatureWindowAggregator().build(
+        CANDIDATE_ID,
+        correlation(token_value),
+        risk_assessment=risk(),
+        holder_snapshot=holder(token_value),
+        now=NOW,
+        config_hash="feature-config",
+        stream_gaps=(gap,),
+    )
+
+    assert all(snapshot.quality_state is QualityState.UNKNOWN for snapshot in snapshots)
+    assert all(snapshot.confidence == Decimal("0") for snapshot in snapshots)
+    assert all(snapshot.completeness < Decimal("1") for snapshot in snapshots)
+    assert all(
+        snapshot.values["stream_integrity"]["score_adjustment"] == 0 for snapshot in snapshots
+    )
+
+
 def test_aggregator_emits_all_families_and_alpha_components_deterministically() -> None:
     token_value = token()
     builder = FeatureWindowAggregator()
@@ -289,8 +319,7 @@ def test_future_component_evidence_invalidates_every_window() -> None:
     assert all(value.confidence == Decimal("0") for value in snapshots)
     assert all(value.completeness == Decimal("0") for value in snapshots)
     assert all(
-        "FEATURE_FUTURE_EVIDENCE" in set(value.values["reason_codes"])
-        for value in snapshots
+        "FEATURE_FUTURE_EVIDENCE" in set(value.values["reason_codes"]) for value in snapshots
     )
 
 
@@ -310,17 +339,14 @@ def test_external_wallet_evidence_is_visible_as_corroboration_without_replacing_
     assert all(value.quality_state is QualityState.FRESH for value in snapshots)
     assert all(value.values["SmartMoney"] == Decimal("82") for value in snapshots)
     assert all(
-        value.values["external_wallet"]["confidence_bonus"] == Decimal("0.1")
+        value.values["external_wallet"]["confidence_bonus"] == Decimal("0.1") for value in snapshots
+    )
+    assert all(
+        "EXTERNAL_SECURITY_CORROBORATION_ONLY" in value.values["external_wallet"]["security_flags"]
         for value in snapshots
     )
     assert all(
-        "EXTERNAL_SECURITY_CORROBORATION_ONLY"
-        in value.values["external_wallet"]["security_flags"]
-        for value in snapshots
-    )
-    assert all(
-        value.values["external_wallet"]["execution_eligible"] is False
-        for value in snapshots
+        value.values["external_wallet"]["execution_eligible"] is False for value in snapshots
     )
 
 

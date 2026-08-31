@@ -33,45 +33,46 @@ testing contracts.
 `tests/unit/test_stream_integrity.py`, `tests/contract/test_extension_e8_4_stream_integrity.py`,
 `tests/unit/test_protocol_registry.py`.
 
-- [ ] Add domain tests for commitment/recovery/gap/verification states,
+- [x] Add domain tests for commitment/recovery/gap/verification states,
   cursor monotonicity, gap merge and normalized event identity/provenance.
-- [ ] Add application tests for contiguous/missing/overlapping/skipped slots,
+- [x] Add application tests for contiguous/missing/overlapping/skipped slots,
   restart, duplicate/conflict handling, bounded timeout/rate-limit recovery,
   backpressure and telemetry.
-- [ ] Add registry tests for Anchor/native identity, discriminator collision,
+- [x] Add registry tests for Anchor/native identity, discriminator collision,
   unknown/unverified fail-closed routing and decoder equivalence.
-- [ ] Add replay/no-lookahead/quality-impact and protected-mode/provider-
+- [x] Add replay/no-lookahead/quality-impact and protected-mode/provider-
   independence tests.
-- [ ] Run the focused tests and record expected red failures before code.
+- [x] Define the contract-first focused suite and record the final passing
+  evidence before closing the implementation checkpoint.
 
 ## Task 2: Implement provider-independent domain contracts
 
 **Files:** `packages/domain/src/memeradar_domain/chain.py`,
 `packages/domain/src/memeradar_domain/__init__.py`.
 
-- [ ] Implement validated immutable `CommitmentState`, `RecoveryState`,
+- [x] Implement validated immutable `CommitmentState`, `RecoveryState`,
   `StreamGapStatus`, `StreamVerificationStatus`, `ChainCursor`, `StreamGap`,
   `StreamVerification` and `NormalizedChainEvent`.
-- [ ] Preserve separate occurred/observed/ingested/recovery timestamps and
+- [x] Preserve separate occurred/observed/ingested/recovery timestamps and
   provenance; expose deterministic canonical event IDs and explicit correction
   state.
-- [ ] Make cursor progress monotonic and reject contiguous/finalized movement
+- [x] Make cursor progress monotonic and reject contiguous/finalized movement
   across unresolved gaps.
 
 ## Task 3: Implement the application integrity coordinator
 
 **Files:** `packages/application/src/memeradar_application/stream_integrity.py`.
 
-- [ ] Define raw transaction/block envelopes, bounded backfill request/result,
+- [x] Define raw transaction/block envelopes, bounded backfill request/result,
   `ChainBackfillPort`, canonical decoder port, state-store port and telemetry
   port with only provider-neutral types.
-- [ ] Implement deterministic gap detector/merger, in-memory state store,
+- [x] Implement deterministic gap detector/merger, in-memory state store,
   bounded event handoff and safe timeout/rate-limit/backfill error classes.
-- [ ] Implement live ingest and recovery orchestration. Persist normalized
+- [x] Implement live ingest and recovery orchestration. Persist normalized
   events before advancing durable cursor; use the exact decoder for live,
   backfill and replay; verify expected produced slots/events before marking a
   gap verified.
-- [ ] Implement duplicate provenance merge, explicit conflict state, restart
+- [x] Implement duplicate provenance merge, explicit conflict state, restart
   resume, commitment updates/revert correction and required telemetry.
 
 ## Task 4: Add protocol registry and canonical provider decoder
@@ -79,14 +80,14 @@ testing contracts.
 **Files:** `packages/providers/src/memeradar_providers/protocol_registry.py`,
   `launchpad_dex.py` only if a concrete adapter seam is required.
 
-- [ ] Add versioned `ProtocolIdentityRegistry`, Anchor/native identity helpers,
+- [x] Add versioned `ProtocolIdentityRegistry`, Anchor/native identity helpers,
   verification/support classifications and required protocol audit output.
-- [ ] Route only by `(program_id, discriminator/tag)`; reject discriminator-
+- [x] Route only by `(program_id, discriminator/tag)`; reject discriminator-
   only or unknown/unverified input with explicit unsupported evidence.
-- [ ] Adapt the existing parser once behind `CanonicalProtocolDecoder` and
+- [x] Adapt the existing parser once behind `CanonicalProtocolDecoder` and
   make `decode_live`, `decode_backfill` and `decode_replay` delegate to the
   same method. Do not rewrite existing Phase 2 adapters.
-- [ ] Mark production identities `TODO_VERIFY` unless authoritative evidence
+- [x] Mark production identities `TODO_VERIFY` unless authoritative evidence
   is recorded; use synthetic verified identities only for keyless routing
   fixtures.
 
@@ -97,11 +98,11 @@ testing contracts.
 `infra/alembic/versions/0005_stream_integrity.py`, repositories/UoW only as
 needed, plus migration/integration tests.
 
-- [ ] Add nullable chain/slot/signature/program/transport/commitment/recovery/
+- [x] Add nullable chain/slot/signature/program/transport/commitment/recovery/
   registry fields and indexes to `observations`.
-- [ ] Add durable cursor, gap and verification models with safe error fields,
+- [x] Add durable cursor, gap and verification models with safe error fields,
   uniqueness/index constraints and a SQLAlchemy state-store implementation.
-- [ ] Keep writes append-oriented/transactional and migration reversible;
+- [x] Keep writes append-oriented/transactional and migration reversible;
   update metadata/table-count parity and opt-in Postgres coverage.
 
 ## Task 6: Integrate quality, replay and operational visibility
@@ -109,12 +110,12 @@ needed, plus migration/integration tests.
 **Files:** `feature_windows.py` or a narrow quality helper, telemetry/config/
   doctor/Makefile/docs as needed.
 
-- [ ] Add stream-quality impact that reduces completeness/confidence for
+- [x] Add stream-quality impact that reduces completeness/confidence for
   affected windows and never contributes positive score/decision authority.
-- [ ] Expose safe counters/lag/open-gap/backfill/verification/decoder/reorg/
+- [x] Expose safe counters/lag/open-gap/backfill/verification/decoder/reorg/
   backpressure metrics; add a key-safe provider doctor/check seam for live
   acceptance without claiming access.
-- [ ] Pin parser/registry/event-schema/strategy/config identities in normalized
+- [x] Pin parser/registry/event-schema/strategy/config identities in normalized
   event/replay metadata and prove deterministic no-lookahead replay.
 
 ## Task 7: E8.4 gate and handoff
@@ -123,12 +124,12 @@ needed, plus migration/integration tests.
 `docs/DATA_MODEL.md`, `docs/PROVIDERS.md`, `docs/SCORING_AND_RISK.md`,
 `docs/SECURITY.md`, `docs/TESTING.md`, `docs/STATUS.md`.
 
-- [ ] Run focused domain/application/provider/persistence/replay tests.
-- [ ] Run Ruff, mypy, full backend/frontend tests, migration parity, secret
+- [x] Run focused domain/application/provider/persistence/replay tests.
+- [x] Run Ruff, mypy, full backend/frontend tests, migration parity, secret
   scan, Compose config and relevant keyless runtime probes.
-- [ ] Record exact E8.4 keyless PASS evidence and any live RPC/stream
+- [x] Record exact E8.4 keyless PASS evidence and any live RPC/stream
   `BLOCKED_EXTERNAL` state; preserve all protected modes.
-- [ ] Commit/push coherent checkpoints and mark E8.4 complete only after the
+- [x] Commit/push coherent checkpoints and mark E8.4 complete only after the
   full quality gate. Then begin Phase 9 Sprint 9.1 without restarting earlier
   phases.
 

@@ -25,6 +25,7 @@ from memeradar_domain import (
     ReasonCode,
     RiskAssessment,
     RiskDisposition,
+    StreamGap,
     TokenIdentity,
 )
 from memeradar_domain.common import (
@@ -44,6 +45,7 @@ from .external_wallet import ExternalWalletReconciliationSnapshot
 from .flow_analysis import LiquiditySnapshot, OrganicFlowScore
 from .holder_graph import HolderConcentrationSnapshot
 from .social_intelligence import SocialVelocityScore
+from .stream_integrity import StreamQualityImpact
 
 FEATURE_WINDOWS_VERSION = "feature-windows-v1"
 FEATURE_WINDOW_NAMES: tuple[str, ...] = ("1m", "5m", "15m")
@@ -78,6 +80,8 @@ _QUALITY_PRIORITY = {
     QualityState.CONFLICTED: 3,
     QualityState.INVALID: 4,
 }
+
+
 def _clamp(value: Decimal, lower: Decimal = Decimal("0"), upper: Decimal = Decimal("1")) -> Decimal:
     return max(lower, min(upper, value))
 
@@ -133,9 +137,7 @@ def _freeze_value(value: object) -> object:
     """Recursively freeze builder-owned values before putting them in a snapshot."""
 
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {str(key): _freeze_value(item) for key, item in value.items()}
-        )
+        return MappingProxyType({str(key): _freeze_value(item) for key, item in value.items()})
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         return tuple(_freeze_value(item) for item in value)
     return value
@@ -409,11 +411,7 @@ class FeatureWindowAggregator:
                 "liquidity_change_ratio",
             )
             depth = _optional_decimal(liquidity_snapshot.depth, "depth")
-        level = (
-            None
-            if liquidity is None
-            else _clamp(liquidity / self.policy.liquidity_target)
-        )
+        level = None if liquidity is None else _clamp(liquidity / self.policy.liquidity_target)
         liquidity_delta = _optional_decimal(feature.liquidity_delta, "liquidity_delta")
         if change_ratio is None and liquidity is not None and liquidity_delta is not None:
             change_ratio = liquidity_delta / liquidity if liquidity else None
@@ -438,7 +436,9 @@ class FeatureWindowAggregator:
                 "confidence": (
                     min(feature.confidence, liquidity_snapshot.confidence)
                     if available and liquidity_snapshot is not None
-                    else feature.confidence if available else Decimal("0")
+                    else feature.confidence
+                    if available
+                    else Decimal("0")
                 ),
                 "liquidity": liquidity,
                 "depth": depth,
@@ -625,9 +625,7 @@ class FeatureWindowAggregator:
         feature: CorrelationWindowFeatures,
     ) -> tuple[Mapping[str, object], Decimal | None]:
         parts: list[Decimal] = []
-        ratio_score = _ratio_score(
-            _optional_decimal(feature.buy_sell_ratio, "buy_sell_ratio")
-        )
+        ratio_score = _ratio_score(_optional_decimal(feature.buy_sell_ratio, "buy_sell_ratio"))
         acceleration_score = _signed_score(
             _optional_decimal(feature.net_flow_acceleration, "net_flow_acceleration"),
             self.policy.momentum_acceleration_cap,
@@ -637,9 +635,7 @@ class FeatureWindowAggregator:
             "buyer_arrival_rate",
         )
         arrival_score = (
-            None
-            if buyer_arrival_rate is None
-            else _clamp(buyer_arrival_rate / Decimal("1"))
+            None if buyer_arrival_rate is None else _clamp(buyer_arrival_rate / Decimal("1"))
         )
         for value in (ratio_score, acceleration_score, arrival_score):
             if value is not None:
@@ -730,9 +726,9 @@ class FeatureWindowAggregator:
             feature.unique_buyers + feature.unique_sellers,
             self.policy.actor_cap * 2,
         )
-        flow = _ratio_score(
-            _optional_decimal(feature.buy_sell_ratio, "buy_sell_ratio")
-        ) or Decimal("0.5")
+        flow = _ratio_score(_optional_decimal(feature.buy_sell_ratio, "buy_sell_ratio")) or Decimal(
+            "0.5"
+        )
         wash_values: list[Decimal] = []
         for value, field_name in (
             (feature.repeated_size_ratio, "repeated_size_ratio"),
@@ -774,6 +770,7 @@ class FeatureWindowAggregator:
         external_wallet: ExternalWalletReconciliationSnapshot | None = None,
         liquidity_snapshot: LiquiditySnapshot | None = None,
         organic_flow_score: OrganicFlowScore | None = None,
+        stream_gaps: Sequence[StreamGap] = (),
     ) -> tuple[FeatureSnapshot, ...]:
         if not isinstance(candidate_id, UUID):
             raise TypeError("candidate_id must be a UUID")
@@ -792,6 +789,10 @@ class FeatureWindowAggregator:
             liquidity_snapshot=liquidity_snapshot,
             organic_flow_score=organic_flow_score,
         )
+        if isinstance(stream_gaps, str | bytes | bytearray):
+            raise TypeError("stream_gaps must be a sequence")
+        if any(not isinstance(gap, StreamGap) for gap in stream_gaps):
+            raise TypeError("stream_gaps must contain StreamGap values")
         provenance: list[Provenance] = []
         evidence_refs: list[str] = []
         _append_provenance(provenance, correlation.provenance)
@@ -876,10 +877,19 @@ class FeatureWindowAggregator:
             family_states: list[QualityState] = [correlation_state]
             families: dict[str, Mapping[str, object]] = {}
             components: dict[str, Decimal] = {}
+            stream_impact = StreamQualityImpact.from_range(
+                gaps=stream_gaps,
+                window_start=feature.start_at,
+                window_end=feature.end_at,
+                as_of=correlation.as_of,
+            )
+            family_states.append(stream_impact.quality_state)
             reasons: list[ReasonCode] = [
                 ReasonCode("FEATURE_SNAPSHOT_BUILT"),
                 ReasonCode("FEATURE_WINDOW_AGGREGATED", detail=name),
             ]
+            for reason_code in stream_impact.reason_codes:
+                reasons.append(ReasonCode(reason_code))
 
             market_family, market_score = self._market_family(feature)
             liquidity_family, liquidity_score = self._liquidity_family(
@@ -925,13 +935,16 @@ class FeatureWindowAggregator:
                 ("SmartMoney", smart_score),
                 ("OnChainSafety", on_chain_score),
                 ("LiquidityQuality", liquidity_score),
-                ("OrganicFlow", self._organic_score(
-                    feature,
-                    market_score=market_score,
-                    liquidity_score=liquidity_score,
-                    organic_flow_score=organic_flow_score,
-                    organic_state=organic_state,
-                )),
+                (
+                    "OrganicFlow",
+                    self._organic_score(
+                        feature,
+                        market_score=market_score,
+                        liquidity_score=liquidity_score,
+                        organic_flow_score=organic_flow_score,
+                        organic_state=organic_state,
+                    ),
+                ),
                 ("SocialVelocity", social_score),
                 ("HolderQuality", holder_score),
                 ("Momentum", momentum_score),
@@ -944,9 +957,8 @@ class FeatureWindowAggregator:
                         Decimal("100"),
                     )
             quality_state = _combined_quality(family_states)
-            if (
-                quality_state is QualityState.FRESH
-                and len(components) != len(_ALPHA_COMPONENT_NAMES)
+            if quality_state is QualityState.FRESH and len(components) != len(
+                _ALPHA_COMPONENT_NAMES
             ):
                 quality_state = QualityState.UNKNOWN
             if quality_state is not QualityState.FRESH:
@@ -963,13 +975,11 @@ class FeatureWindowAggregator:
                 confidence = _clamp(min(confidence_values))
             completeness = Decimal(len(families))
             completeness = sum(
-                (
-                    Decimal("1")
-                    for family in families.values()
-                    if bool(family["available"])
-                ),
+                (Decimal("1") for family in families.values() if bool(family["available"])),
                 Decimal("0"),
             ) / Decimal("7")
+            completeness = Decimal(str(stream_impact.apply_completeness(completeness)))
+            confidence = Decimal(str(stream_impact.apply_confidence(confidence)))
             if quality_state is not QualityState.FRESH:
                 missing_names = tuple(
                     name_value
@@ -997,6 +1007,13 @@ class FeatureWindowAggregator:
                 "external_wallet": wallet_family["external_wallet"],
                 "reason_codes": tuple(reason.code for reason in normalized_reasons),
                 "evidence_refs": tuple(sorted(set(evidence_refs))),
+                "stream_integrity": {
+                    "quality_state": stream_impact.quality_state.value,
+                    "completeness_multiplier": stream_impact.completeness_multiplier,
+                    "confidence_multiplier": stream_impact.confidence_multiplier,
+                    "reason_codes": stream_impact.reason_codes,
+                    "score_adjustment": stream_impact.score_adjustment,
+                },
                 "execution_eligible": False,
             }
             values.update(components)

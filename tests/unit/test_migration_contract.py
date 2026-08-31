@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_migration_check_reports_one_initial_head() -> None:
+def test_migration_check_reports_one_current_head() -> None:
     result = subprocess.run(
         [sys.executable, "scripts/check_migrations.py"],
         cwd=ROOT,
@@ -19,5 +19,5 @@ def test_migration_check_reports_one_initial_head() -> None:
 
     assert result.returncode == 0, result.stderr
     report = json.loads(result.stdout)
-    assert report["heads"] == ["0004_control_plane"]
-    assert report["table_count"] == 16
+    assert report["heads"] == ["0005_stream_integrity"]
+    assert report["table_count"] == 19

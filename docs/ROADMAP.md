@@ -447,8 +447,31 @@ boundary; empty, unavailable, stale, conflicted and invalid evidence stays
 explicit. Playwright browser acceptance covers the protected shell, operator
 routes, invalid wallet fail-closed behavior and absence of browser mutation or
 execution authority. Live provider acceptance remains `BLOCKED_EXTERNAL`.
-The mandatory E8.4 stream integrity/protocol verification retrofit is the next
-task and begins before Phase 9.
+The mandatory E8.4 stream integrity/protocol verification retrofit is complete
+for its keyless implementation and replay/persistence gate. Live stream/RPC
+acceptance remains `BLOCKED_EXTERNAL`; Phase 9 begins only in the protected
+paper-trading mode.
+
+### Extension E8.4 — Stream Integrity / Protocol Verification
+
+- [x] Durable slot/signature cursor with restart/resume and monotonic
+  contiguous/finalized progress.
+- [x] Explicit slot gaps with overlap/adjacency merge, recovery lifecycle,
+  skipped-slot handling and bounded backfill ports.
+- [x] Same canonical decoder/normalized event path for live, backfill and
+  replay; full `(program_id, discriminator/tag)` protocol routing with
+  unknown/unverified fail-closed behavior.
+- [x] Commitment/finality progression, append-only revert correction and
+  recovery provenance.
+- [x] Durable cursor/gap/verification state and chain metadata migration
+  `0005_stream_integrity`.
+- [x] Stream-quality reduction, pinned event-time replay metadata, observable
+  backpressure/telemetry and key-safe doctor tooling.
+
+E8.4 keyless acceptance passes with deterministic fixtures/contracts and the
+opt-in Postgres round trip. Production protocol identities remain explicitly
+`TODO_VERIFY`/`SUPPORTED_NEEDS_REVERIFY` until authoritative corroboration;
+Rust/Yellowstone remains conditional on E11.1 measurement.
 
 ---
 
