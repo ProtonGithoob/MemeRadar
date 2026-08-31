@@ -284,6 +284,12 @@ def _config_version_number(version: str) -> int:
         return 0
 
 
+def next_config_version(version: str) -> str:
+    """Return the next monotonically numbered config-version identifier."""
+
+    return _CONFIG_VERSION_PREFIX + str(_config_version_number(version) + 1)
+
+
 def make_config_version(
     values: Mapping[str, object],
     *,
@@ -539,7 +545,7 @@ class InMemoryControlPlane(ControlPlanePort):
         now = ensure_utc(self.clock(), "clock timestamp")
         updated = make_config_version(
             updated_values,
-            version=_CONFIG_VERSION_PREFIX + str(_config_version_number(self._config.version) + 1),
+            version=next_config_version(self._config.version),
             actor=principal.subject,
             created_at=now,
             identifier=uuid4(),
@@ -578,6 +584,7 @@ __all__ = [
     "canonical_config_hash",
     "config_is_decision_affecting",
     "make_config_version",
+    "next_config_version",
     "normalize_config",
     "normalize_config_patch",
 ]

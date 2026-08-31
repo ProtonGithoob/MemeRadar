@@ -8,9 +8,10 @@ from decimal import Decimal
 from typing import Annotated, Generic, Literal, TypeVar
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from memeradar_application.control import ControlAction
 from memeradar_application.read_api import (
     DEFAULT_PAGE_LIMIT,
     MAX_CURSOR_LENGTH,
@@ -36,6 +37,8 @@ from memeradar_application.read_api import (
     WalletView,
 )
 from memeradar_domain import CandidateState, QualityState
+
+from .auth import RoleTokenAuthenticator
 
 _RISK_DISPOSITIONS = Literal["PASS", "WARN", "BLOCK", "UNKNOWN"]
 _WALLET_TIERS = Literal["CANDIDATE", "TIER_A", "TIER_B", "BLOCKED"]
@@ -427,10 +430,22 @@ async def _call(operation: Awaitable[ResponseT]) -> ResponseT:
         raise _invalid_read_query() from None
 
 
-def build_read_router(service: ReadQueryPort | None) -> APIRouter:
+def build_read_router(
+    service: ReadQueryPort | None,
+    authenticator: RoleTokenAuthenticator | None = None,
+) -> APIRouter:
     """Build read routes over an injected application port."""
 
-    router = APIRouter(prefix="/v1", tags=["read"])
+    dependencies = []
+    if authenticator is not None and authenticator.configured:
+
+        async def require_read_auth(
+            authorization: Annotated[str | None, Header()] = None,
+        ) -> None:
+            authenticator.require(authorization, ControlAction.READ_STATE)
+
+        dependencies.append(Depends(require_read_auth))
+    router = APIRouter(prefix="/v1", tags=["read"], dependencies=dependencies)
 
     @router.get("/candidates", response_model=PageResponse[CandidateResponse])
     async def list_candidates(
