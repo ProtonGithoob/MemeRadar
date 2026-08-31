@@ -10,6 +10,8 @@ from starlette.responses import Response
 
 from memeradar_application.config import Settings
 from memeradar_application.manual_submission import ManualMintSubmissionService
+from memeradar_application.read_api import ReadQueryPort
+from memeradar_persistence import SqlAlchemyReadQueryService, create_database_engine
 from memeradar_telemetry.logging import (
     CORRELATION_ID_HEADER,
     configure_logging,
@@ -22,6 +24,7 @@ from memeradar_telemetry.logging import (
 from . import __version__
 from .health import build_health_router
 from .manual import build_manual_router
+from .read import build_read_router
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,11 +32,19 @@ LOGGER = logging.getLogger(__name__)
 def create_app(
     settings: Settings | None = None,
     manual_service: ManualMintSubmissionService | None = None,
+    read_service: ReadQueryPort | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings.from_env()
     configure_logging(runtime_settings.log_level)
     app = FastAPI(title="MemeRadar API", version=__version__)
     app.state.settings = runtime_settings
+    owned_read_service: SqlAlchemyReadQueryService | None = None
+    if read_service is None and runtime_settings.database_url is not None:
+        owned_read_service = SqlAlchemyReadQueryService(
+            create_database_engine(runtime_settings.database_url)
+        )
+        read_service = owned_read_service
+    app.state.read_service = read_service
 
     @app.middleware("http")
     async def correlation_middleware(
@@ -71,6 +82,9 @@ def create_app(
 
     app.include_router(build_health_router(runtime_settings))
     app.include_router(build_manual_router(runtime_settings, service=manual_service))
+    app.include_router(build_read_router(read_service))
+    if owned_read_service is not None:
+        app.add_event_handler("shutdown", owned_read_service.aclose)
     return app
 
 
