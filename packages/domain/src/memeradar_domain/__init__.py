@@ -32,6 +32,15 @@ from .operations import (
     PositionMode,
     PositionState,
 )
+from .paper import (
+    CashLedgerEntry,
+    CashLedgerEntryType,
+    PaperFill,
+    PaperOrder,
+    PaperOrderSide,
+    PaperOrderState,
+    PaperPortfolio,
+)
 from .snapshots import (
     FeatureSnapshot,
     RiskAssessment,
@@ -48,6 +57,8 @@ __all__ = [
     "AlertType",
     "Candidate",
     "CandidateState",
+    "CashLedgerEntry",
+    "CashLedgerEntryType",
     "Chain",
     "ChainCommitment",
     "ChainCursor",
@@ -62,6 +73,11 @@ __all__ = [
     "Observation",
     "NormalizedChainEvent",
     "PoolIdentity",
+    "PaperFill",
+    "PaperOrder",
+    "PaperOrderSide",
+    "PaperOrderState",
+    "PaperPortfolio",
     "Position",
     "PositionMode",
     "PositionState",

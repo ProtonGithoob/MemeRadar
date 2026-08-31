@@ -132,6 +132,26 @@ configuration presence. Migration parity, full repository quality gates and
 the opt-in Postgres stream-state round trip are required before E8.4 is
 marked complete.
 
+## Phase 9.1 paper execution
+
+The keyless paper suite covers Decimal risk-budget sizing, quote freshness and
+risk rejection, deterministic BUY/SELL slippage and fee arithmetic, partial
+fills, weighted position open/add/reduce/close behavior, duplicate and
+conflicting idempotency keys, restart/resume, append-only reconciliation and
+SQLAlchemy migration/round-trip persistence. Replay tests pin policy/config/
+fill-model identity, sort event time deterministically, produce stable IDs and
+exclude future requests or future-observed quotes. Domain/application source
+contracts forbid SQLAlchemy, FastAPI, persistence, signing and transaction
+submission dependencies. `make paper-trading-doctor` runs only local contracts;
+without external quote configuration it returns `BLOCKED_EXTERNAL`, and even
+with configuration it never fabricates a provider or live-execution PASS.
+
+The focused command is:
+
+```text
+./.venv/bin/pytest tests/unit/test_paper_domain.py tests/unit/test_paper_execution.py tests/unit/test_paper_trading_doctor.py tests/contract/test_phase9_sprint9_1.py tests/unit/test_paper_persistence_contract.py tests/unit/test_persistence_contract.py tests/unit/test_migration_contract.py -q
+```
+
 ## Live provider acceptance
 
 Live tests are opt-in and read-only until Phase 12. They must be clearly marked and never make CI depend on paid credentials.

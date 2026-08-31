@@ -37,21 +37,21 @@
 - Produce `PaperPortfolio`, `CashLedgerEntry`, `PaperOrder`, `PaperFill`, `PaperOrderSide`, `PaperOrderState` and fill-aware `Position` methods.
 - Produce `PaperSizingPolicy`, `PaperOrderRequest`, `PaperExecutionPolicy`, `PaperFillModel`, `PaperLedgerStore`, `InMemoryPaperLedgerStore`, `PaperExecutionEngine`, `PaperExecutionResult` and `PaperReconciler` with provider-neutral types.
 
-- [ ] **Step 1: Write failing domain tests.** Cover paper-only portfolio validation, signed ledger entries, order state/idempotency validation, fill fee/slippage fields and position open/add/reduce/close arithmetic.
-- [ ] **Step 2: Run the domain tests and verify the failure is for missing paper contracts.**
+- [x] **Step 1: Write failing domain tests.** Cover paper-only portfolio validation, signed ledger entries, order state/idempotency validation, fill fee/slippage fields and position open/add/reduce/close arithmetic.
+- [x] **Step 2: Run the domain tests and verify the failure is for missing paper contracts.**
 
 ```bash
 ./.venv/bin/pytest tests/unit/test_paper_domain.py -q
 ```
 
-- [ ] **Step 3: Write failing application/contract tests.** Cover conservative risk-budget sizing, quote freshness rejection, deterministic BUY/SELL fill arithmetic, insufficient cash/position, partial fill state, duplicate no-op, conflicting key, restart reuse, and protected-mode/provider-boundary assertions.
-- [ ] **Step 4: Run the application/contract tests and verify the failure is for missing application contracts.**
+- [x] **Step 3: Write failing application/contract tests.** Cover conservative risk-budget sizing, quote freshness rejection, deterministic BUY/SELL fill arithmetic, insufficient cash/position, partial fill state, duplicate no-op, conflicting key, restart reuse, and protected-mode/provider-boundary assertions.
+- [x] **Step 4: Run the application/contract tests and verify the failure is for missing application contracts.**
 
 ```bash
 ./.venv/bin/pytest tests/unit/test_paper_execution.py tests/contract/test_phase9_sprint9_1.py -q
 ```
 
-- [ ] **Step 5: Commit the red contract checkpoint.**
+- [x] **Step 5: Commit the red contract checkpoint.** The red contracts were retained and completed in the coherent Sprint 9.1 implementation checkpoint.
 
 ```bash
 git add tests/unit/test_paper_domain.py tests/unit/test_paper_execution.py tests/contract/test_phase9_sprint9_1.py
@@ -71,15 +71,15 @@ git commit -m "test: define Sprint 9.1 paper contracts"
 - `Position.apply_exit_fill(quantity, net_proceeds, occurred_at, decision_ref)` realizes net PnL, preserves partial state, and closes at zero quantity.
 - All paper records validate UTC timestamps, finite `Decimal`s, positive quantities/prices, paper mode and bounded mappings/reason codes.
 
-- [ ] **Step 1: Implement the smallest domain records required by the red tests.** Keep provider/persistence imports out of the module.
-- [ ] **Step 2: Implement and test the two `Position` fill methods, including full-close and invalid over-sell behavior.**
-- [ ] **Step 3: Run the domain suite and existing domain regression tests.**
+- [x] **Step 1: Implement the smallest domain records required by the red tests.** Keep provider/persistence imports out of the module.
+- [x] **Step 2: Implement and test the two `Position` fill methods, including full-close and invalid over-sell behavior.**
+- [x] **Step 3: Run the domain suite and existing domain regression tests.**
 
 ```bash
 ./.venv/bin/pytest tests/unit/test_paper_domain.py tests/unit/test_domain_models.py -q
 ```
 
-- [ ] **Step 4: Commit the domain checkpoint.**
+- [x] **Step 4: Commit the domain checkpoint.** Included in the coherent Sprint 9.1 implementation checkpoint.
 
 ### Task 3: Implement policy, fill model, idempotent engine and reconciliation
 
@@ -93,17 +93,17 @@ git commit -m "test: define Sprint 9.1 paper contracts"
 - `PaperExecutionEngine.execute(request: PaperOrderRequest) -> PaperExecutionResult` persists an atomic result through `PaperLedgerStore`.
 - `PaperReconciler.reconcile(portfolio_id, as_of) -> ReconciliationReport` returns `PASS` or explicit `CONFLICTED`/`UNKNOWN` reasons without repairing evidence.
 
-- [ ] **Step 1: Implement sizing and fill arithmetic until their tests pass.** Reject non-fresh quotes, non-positive output, invalid amounts and policy violations.
-- [ ] **Step 2: Implement in-memory portfolio creation and atomic result storage.** Preserve the original result for an equivalent idempotency retry and reject material key reuse.
-- [ ] **Step 3: Implement BUY/SELL position updates, partial fills and append-only cash ledger entries.** Never mutate prior fills or ledger rows.
-- [ ] **Step 4: Implement restart-safe loading and reconciliation from stored records.** Mismatches become explicit non-safe results.
-- [ ] **Step 5: Run focused tests and existing risk/provider/domain regressions.**
+- [x] **Step 1: Implement sizing and fill arithmetic until their tests pass.** Reject non-fresh quotes, non-positive output, invalid amounts and policy violations.
+- [x] **Step 2: Implement in-memory portfolio creation and atomic result storage.** Preserve the original result for an equivalent idempotency retry and reject material key reuse.
+- [x] **Step 3: Implement BUY/SELL position updates, partial fills and append-only cash ledger entries.** Never mutate prior fills or ledger rows.
+- [x] **Step 4: Implement restart-safe loading and reconciliation from stored records.** Mismatches become explicit non-safe results.
+- [x] **Step 5: Run focused tests and existing risk/provider/domain regressions.**
 
 ```bash
 ./.venv/bin/pytest tests/unit/test_paper_execution.py tests/contract/test_phase9_sprint9_1.py tests/unit/test_domain_models.py tests/unit/test_provider_contracts.py -q
 ```
 
-- [ ] **Step 6: Commit the application checkpoint.**
+- [x] **Step 6: Commit the application checkpoint.** Included in the coherent Sprint 9.1 implementation checkpoint.
 
 ### Task 4: Persist orders, fills and cash ledger transactionally
 
@@ -119,17 +119,17 @@ git commit -m "test: define Sprint 9.1 paper contracts"
 - Declare `OrderRow`, `FillRow`, `CashLedgerRow` with unique order idempotency, fill identity, ledger idempotency and lookup indexes.
 - `SqlAlchemyPaperLedgerStore` implements the application `PaperLedgerStore` and atomically persists portfolio/order/fill/ledger/position state.
 
-- [ ] **Step 1: Add failing metadata/migration tests for the three new tables, constraints, reversible upgrade and table-count parity.**
-- [ ] **Step 2: Implement SQLAlchemy rows and migration `0006_paper_execution` with downgrade dropping only its own objects.**
-- [ ] **Step 3: Implement row/domain mapping and an atomic async store without importing SQLAlchemy into application/domain code.**
-- [ ] **Step 4: Run migration parity and opt-in Postgres round-trip/restart/idempotency tests.**
+- [x] **Step 1: Add failing metadata/migration tests for the three new tables, constraints, reversible upgrade and table-count parity.**
+- [x] **Step 2: Implement SQLAlchemy rows and migration `0006_paper_execution` with downgrade dropping only its own objects.**
+- [x] **Step 3: Implement row/domain mapping and an atomic async store without importing SQLAlchemy into application/domain code.**
+- [x] **Step 4: Run migration parity and opt-in Postgres round-trip/restart/idempotency tests.**
 
 ```bash
 ./.venv/bin/python scripts/check_migrations.py
 MEMERADAR_TEST_DATABASE_URL=postgresql+asyncpg://memeradar:memeradar_local_only@127.0.0.1:25432/memeradar .venv/bin/pytest tests/integration/test_paper_persistence_postgres.py -q
 ```
 
-- [ ] **Step 5: Commit the persistence checkpoint.**
+- [x] **Step 5: Commit the persistence checkpoint.** Included in the coherent Sprint 9.1 implementation checkpoint.
 
 ### Task 5: Add replay/doctor/docs and Sprint 9.1 gate
 
@@ -138,11 +138,11 @@ MEMERADAR_TEST_DATABASE_URL=postgresql+asyncpg://memeradar:memeradar_local_only@
 - Create/modify: `scripts/paper-trading-doctor.py`, `Makefile`, `.env.example`
 - Modify: `tests/unit/test_paper_execution.py`, `tests/contract/test_phase9_sprint9_1.py`, `tests/unit/test_paper_persistence_contract.py`
 
-- [ ] **Step 1: Add deterministic paper replay/no-lookahead tests with policy/config identity and no signing/provider dependency.**
-- [ ] **Step 2: Add key-safe paper doctor output.** Missing external quote/live execution configuration remains `BLOCKED_EXTERNAL`; local paper contracts must still pass and no secret values may be printed.
-- [ ] **Step 3: Reconcile roadmap/data/security/testing/provider documentation and record exact evidence, blockers and protected modes in `docs/STATUS.md`.**
-- [ ] **Step 4: Run the focused Sprint 9.1 command, Ruff, mypy, full `make verify`, migration parity, Postgres integration and doctor.**
-- [ ] **Step 5: Commit and push the coherent Sprint 9.1 checkpoint; mark only the completed five roadmap items and leave Sprint 9.2 next.**
+- [x] **Step 1: Add deterministic paper replay/no-lookahead tests with policy/config identity and no signing/provider dependency.**
+- [x] **Step 2: Add key-safe paper doctor output.** Missing external quote/live execution configuration remains `BLOCKED_EXTERNAL`; local paper contracts still pass and no secret values are printed.
+- [x] **Step 3: Reconcile roadmap/data/security/testing/provider documentation and record exact evidence, blockers and protected modes in `docs/STATUS.md`.**
+- [x] **Step 4: Run the focused Sprint 9.1 command, Ruff, mypy, full `make verify`, migration parity, Postgres integration and doctor.**
+- [x] **Step 5: Commit and push the coherent Sprint 9.1 checkpoint; mark only the completed five roadmap items and leave Sprint 9.2 next.**
 
 ## Resumability checkpoint
 

@@ -9,7 +9,7 @@ COMPOSE ?= docker compose -f $(COMPOSE_FILE)
 .PHONY: bootstrap lint typecheck test frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
-	external-wallet-doctor telegram-doctor stream-integrity-doctor
+	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor
 
 bootstrap:
 	python3 -m venv .venv
@@ -101,3 +101,6 @@ telegram-doctor:
 
 stream-integrity-doctor:
 	$(PYTHON) scripts/stream_integrity_doctor.py
+
+paper-trading-doctor:
+	$(PYTHON) scripts/paper_trading_doctor.py

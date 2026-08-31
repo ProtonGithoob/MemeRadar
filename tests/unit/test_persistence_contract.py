@@ -27,6 +27,9 @@ def test_core_persistence_tables_are_declared() -> None:
         "state_transitions",
         "portfolios",
         "positions",
+        "orders",
+        "fills",
+        "cash_ledger",
         "alerts",
         "domain_events",
         "outbox",
@@ -58,6 +61,16 @@ def test_idempotency_and_identity_constraints_are_explicit() -> None:
         and {column.name for column in constraint.columns} == {"idempotency_key"}
         for constraint in tables["outbox"].constraints
     )
+    assert any(
+        isinstance(constraint, UniqueConstraint)
+        and {column.name for column in constraint.columns} == {"idempotency_key"}
+        for constraint in tables["orders"].constraints
+    )
+    assert any(
+        isinstance(constraint, UniqueConstraint)
+        and {column.name for column in constraint.columns} == {"idempotency_key"}
+        for constraint in tables["cash_ledger"].constraints
+    )
 
 
 def test_query_indexes_cover_candidate_ordering_observation_windows_and_outbox() -> None:
@@ -74,6 +87,9 @@ def test_query_indexes_cover_candidate_ordering_observation_windows_and_outbox()
         "ix_observations_token_kind_occurred",
         "ix_outbox_available",
         "ix_outbox_processing",
+        "ix_orders_portfolio_requested",
+        "ix_fills_order_occurred",
+        "ix_cash_ledger_portfolio_sequence",
     } <= indexes
 
 

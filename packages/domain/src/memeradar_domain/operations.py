@@ -212,8 +212,8 @@ class Position:
         self.state = PositionState(self.state)
         self.quantity = to_decimal(self.quantity, "quantity")
         self.average_entry = to_decimal(self.average_entry, "average_entry")
-        if self.quantity <= 0:
-            raise ValueError("quantity must be positive")
+        if self.quantity < 0 or (self.quantity == 0 and self.state is not PositionState.CLOSED):
+            raise ValueError("quantity must be positive unless the position is closed")
         if self.average_entry <= 0:
             raise ValueError("average_entry must be positive")
         if self.opened_at is not None:
@@ -259,6 +259,73 @@ class Position:
         move = normalized_price - self.average_entry
         self.mfe = max(self.mfe, move)
         self.mae = min(self.mae, move)
+
+    def apply_entry_fill(
+        self,
+        *,
+        quantity: Decimal | int | float | str,
+        price: Decimal | int | float | str,
+        occurred_at: datetime,
+        decision_ref: UUID | None = None,
+    ) -> None:
+        """Add a paper entry fill using weighted average cost accounting."""
+
+        if self.state not in {PositionState.PENDING, PositionState.OPEN}:
+            raise ValueError("only pending or open positions can receive entry fills")
+        normalized_quantity = to_decimal(quantity, "quantity")
+        normalized_price = to_decimal(price, "price")
+        if normalized_quantity <= 0 or normalized_price <= 0:
+            raise ValueError("quantity and price must be positive")
+        normalized_time = ensure_utc(occurred_at, "occurred_at")
+        if self.opened_at is not None and normalized_time < self.opened_at:
+            raise ValueError("entry fill occurred_at must not precede opened_at")
+        if self.state is PositionState.PENDING:
+            if decision_ref is None and self.entry_decision_ref is None:
+                raise ValueError("entry fill requires decision_ref")
+            self.quantity = normalized_quantity
+            self.average_entry = normalized_price
+            self.opened_at = normalized_time
+            self.entry_decision_ref = decision_ref or self.entry_decision_ref
+            self.state = PositionState.OPEN
+            self.high_watermark = normalized_price
+            return
+        old_cost = self.quantity * self.average_entry
+        next_quantity = self.quantity + normalized_quantity
+        self.average_entry = (old_cost + normalized_quantity * normalized_price) / next_quantity
+        self.quantity = next_quantity
+        if self.entry_decision_ref is None:
+            if decision_ref is None:
+                raise ValueError("entry fill requires decision_ref for an unreferenced position")
+            self.entry_decision_ref = decision_ref
+
+    def apply_exit_fill(
+        self,
+        *,
+        quantity: Decimal | int | float | str,
+        net_proceeds: Decimal | int | float | str,
+        occurred_at: datetime,
+        decision_ref: UUID | None = None,
+    ) -> None:
+        """Reduce a position, realizing net PnL and closing at zero quantity."""
+
+        if self.state not in {PositionState.OPEN, PositionState.EXIT_SIGNALLED}:
+            raise ValueError("only open or exit-signalled positions can receive exit fills")
+        normalized_quantity = to_decimal(quantity, "quantity")
+        normalized_proceeds = to_decimal(net_proceeds, "net_proceeds")
+        if normalized_quantity <= 0 or normalized_proceeds <= 0:
+            raise ValueError("quantity and net_proceeds must be positive")
+        if normalized_quantity > self.quantity:
+            raise ValueError("exit quantity exceeds position quantity")
+        normalized_time = ensure_utc(occurred_at, "occurred_at")
+        if self.opened_at is not None and normalized_time < self.opened_at:
+            raise ValueError("exit fill occurred_at must not precede opened_at")
+        self.realized_pnl += normalized_proceeds - normalized_quantity * self.average_entry
+        self.quantity -= normalized_quantity
+        if self.quantity == 0:
+            self.closed_at = normalized_time
+            self.average_exit = normalized_proceeds / normalized_quantity
+            self.exit_decision_ref = decision_ref
+            self.state = PositionState.CLOSED
 
     def signal_exit(self, signal: ExitSignal) -> None:
         """Move an open position to an explainable exit-signal state."""

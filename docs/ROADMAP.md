@@ -481,11 +481,19 @@ Rust/Yellowstone remains conditional on E11.1 measurement.
 
 ### Sprint 9.1 — Paper Execution
 
-- [ ] Paper portfolio/cash ledger.
-- [ ] Position sizing policy.
-- [ ] Simulated quote/fill/slippage/fee model.
-- [ ] Idempotent paper orders.
-- [ ] Paper position lifecycle and reconciliation.
+- [x] Paper portfolio/cash ledger.
+- [x] Position sizing policy.
+- [x] Simulated quote/fill/slippage/fee model.
+- [x] Idempotent paper orders.
+- [x] Paper position lifecycle and reconciliation.
+
+The keyless Sprint 9.1 implementation uses the provider-independent
+`PaperLedgerStore`, an append-only cash ledger, conservative Decimal sizing,
+normalized quote freshness/provenance, deterministic adverse fill assumptions,
+and restart-safe SQLAlchemy persistence. `PaperReplayManifest` pins the paper
+policy/config/fill-model identity and an event-time boundary; future requests
+and future-observed quotes are excluded. This sprint does not enable a live
+quote submission, wallet signer, transaction submission or execution route.
 
 ### Sprint 9.2 — Exit Engine
 

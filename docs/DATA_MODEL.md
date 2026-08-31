@@ -703,6 +703,7 @@ authorize orders.
 - currency
 - initial_balance
 - current_balance derived/reconciled
+- ledger_sequence monotonic cash projection sequence
 
 ### orders
 - id
@@ -716,6 +717,9 @@ authorize orders.
 - requested_at
 - quote_snapshot JSONB
 - risk_snapshot JSONB
+- request_fingerprint
+- policy_version/config_hash/fill_model_version
+- filled quantity/input amount and average fill price
 - provider_order/signature nullable
 - reject/failure reason nullable
 
@@ -723,11 +727,31 @@ authorize orders.
 - id
 - order_id
 - occurred_at
+- input_amount
 - qty
 - price
+- quoted_price/gross_cash_amount
+- fee_amount/fee currency
 - fee breakdown JSONB
 - slippage
+- signed cash_delta
 - source
+
+### cash_ledger
+- id
+- portfolio_id/order_id/fill_id nullable references
+- monotonic per-portfolio sequence
+- signed cash_delta and balance_after
+- occurred_at
+- entry type (`INITIAL_CAPITAL` or `PAPER_FILL`)
+- source, idempotency key and reason codes
+
+Migration `0006_paper_execution` adds the paper order/fill/cash tables and the
+portfolio ledger sequence. Order and cash idempotency keys, the per-portfolio
+ledger sequence and lookup indexes are physical constraints. The application
+reconciler recomputes balances and position quantities without mutating the
+append-only evidence. Paper replay pins policy/config/fill-model identity and
+excludes requests or quote observations after its `as_of` boundary.
 
 ### positions
 - id

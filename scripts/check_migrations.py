@@ -42,13 +42,16 @@ def main() -> int:
         "chain_cursors",
         "stream_gaps",
         "stream_verifications",
+        "orders",
+        "fills",
+        "cash_ledger",
     }
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0005_stream_integrity"]:
+    if heads != ["0006_paper_execution"]:
         print(
-            "migration_error: expected exactly one 0005_stream_integrity head",
+            "migration_error: expected exactly one 0006_paper_execution head",
             file=sys.stderr,
         )
         return 1

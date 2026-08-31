@@ -603,6 +603,15 @@ Initial paper sizing should be conservative and configurable. Use risk-budget si
 
 Live sizing remains disabled until Phase 12.
 
+The Phase 9.1 `PaperSizingPolicy` applies these inputs through explicit
+max-risk, position-fraction, liquidity-fraction, total-exposure, reserve,
+confidence and concurrent-position caps. A zero/insufficient result is an
+explicit non-eligible paper outcome. Healthy stream state or a high score does
+not increase the size by itself; stale, unknown, conflicted or invalid quote or
+risk evidence rejects the simulated order. The `PaperFillModel` records
+configured adverse slippage, quote-currency fees and source/version details so
+paper cash and position outcomes remain explainable and replayable.
+
 ## 11. Exit engine
 
 Exit signals are composable and versioned.

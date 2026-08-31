@@ -422,6 +422,29 @@ provider-independent and cannot use future evidence. Migration
 nullable chain metadata to normalized observations. The optional Rust/
 Yellowstone path remains deferred until E11.1 measures a material need.
 
+### Phase 9.1 paper execution
+
+The paper boundary consumes only normalized `QuoteSnapshot` values plus an
+immutable decision reference and risk snapshot:
+
+```text
+decision/risk + quote -> PaperSizingPolicy -> PaperFillModel
+                    -> PaperOrder/PaperFill -> cash ledger + Position
+                    -> PaperLedgerStore -> reconciliation/replay projection
+```
+
+`PaperExecutionEngine` is provider- and persistence-independent. It applies
+bounded Decimal sizing, quote freshness checks, adverse slippage and fees,
+append-only cash movements, explicit partial/rejected states and idempotent
+order keys. `InMemoryPaperLedgerStore` is the deterministic fixture/replay
+store; `SqlAlchemyPaperLedgerStore` persists the same application result
+atomically under migration `0006_paper_execution`. Replay uses a fresh store,
+event-time ordering with deterministic tie-breakers, deterministic identities,
+and `PaperReplayManifest` policy/config/fill-model/schema pins. It excludes
+future requests or future-observed quotes and has no provider, signer or
+transaction-submission capability. Reconciliation never repairs evidence;
+mismatches remain explicit `CONFLICTED` results.
+
 ## Data paths
 
 ### Hot path

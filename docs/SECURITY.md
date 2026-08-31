@@ -121,6 +121,16 @@ AUTO_EXECUTION=false
 
 Mode changes are validated, authenticated and audit logged. Auto execution cannot be enabled by model output or score transition.
 
+Phase 9.1 paper execution preserves these modes as constructor invariants. The
+engine accepts normalized quote data only, stores no signer or private-key
+material, and cannot submit a transaction. Paper order/fill/cash records are
+append-oriented and idempotent; stale/unknown/conflicted quote or risk input,
+insufficient cash, reserve violations and position over-sells fail closed.
+Paper replay uses pinned policy/config/fill-model identity and an event-time
+boundary, and reconciliation reports mismatches without silently repairing
+history. A paper result, `ENTRY_READY` decision or external label is not
+execution permission.
+
 ## Wallet/signing isolation
 
 When Phase 12 is implemented:

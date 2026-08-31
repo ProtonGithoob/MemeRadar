@@ -4,7 +4,7 @@ Last updated: 2026-08-31
 
 ## Current verdict
 
-`PHASE_9_SPRINT_9_1_IN_PROGRESS_E8_4_COMPLETE_GATE_P8_PASS`
+`PHASE_9_SPRINT_9_1_COMPLETE_KEYLESS_PASS_GATE_P8_PASS`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
@@ -14,11 +14,12 @@ Phase 8 / Sprint 8.1 is now complete for its keyless implementation and frontend
 Phase 8 / Sprint 8.2 is now complete for its keyless implementation and frontend gate: the server-side bounded read gateway, ranked Radar filters/cards, token detail overview, event-time evidence timeline, allow-listed market/liquidity/net-flow charts, holder concentration/cluster projections and provenance-aware social/narrative panels are implemented. API ranking/order is preserved, missing/empty/unavailable/unknown/stale/invalid data remains explicit, and the browser receives no viewer credential, raw provider payload or execution authority. Live provider acceptance remains externally blocked; no live-money execution has been enabled.
 Phase 8 / Sprint 8.3 and Gate P8 are now complete for their keyless implementation and browser acceptance: server-rendered wallet leaderboard/detail, provider health/quota/freshness, read-only validated settings/control projections and immutable audit/config history are implemented over the bounded read gateway. API order, freshness and non-safe states remain explicit; secret-shaped fields and raw provider responses are withheld; Playwright browser acceptance covers the operator shell/routes, invalid wallet fail-closed behavior and absence of browser mutation/execution authority. Live provider acceptance remains externally blocked.
 Research extension E8.4 is now complete for its keyless implementation and gate: provider-independent cursor/gap/recovery/verification/backpressure contracts, durable SQLAlchemy state, canonical full-key protocol routing, commitment/revert correction, event-time bounded replay, stream-quality reduction and safe telemetry are implemented. Live stream/RPC acceptance remains `BLOCKED_EXTERNAL`; unknown or unverified protocol identities fail closed, and no Rust/Yellowstone extraction was introduced.
-Phase 9 / Sprint 9.1 is now the active task. The existing typed `Position` and
-portfolio schema are being extended with a deterministic paper-only cash/order/
-fill ledger, conservative risk-budget sizing, quote freshness checks,
-append-only reconciliation and restart-safe replay. No live quote submission,
-wallet signing or execution authority is being introduced.
+Phase 9 / Sprint 9.1 is complete for its keyless implementation and gate: the
+deterministic paper-only portfolio/order/fill/cash ledger, conservative sizing,
+quote freshness checks, adverse fee/slippage model, idempotent persistence,
+position lifecycle, reconciliation, event-time replay and key-safe paper doctor
+are implemented and verified. Live quote and live execution acceptance remains
+`BLOCKED_EXTERNAL`; no wallet signing or execution authority was introduced.
 
 ## Current phase and sprint
 
@@ -49,8 +50,8 @@ wallet signing or execution authority is being introduced.
 - Completed: `Phase 8 / Sprint 8.3 — Wallets, Providers, Settings and Audit` (keyless portion)
 - Completed: `Gate P8` (keyless browser acceptance: operator intelligence is visible/explainable and browser execution/mutation authority is absent)
 - Completed: `Research extension E8.4 — Stream Integrity / Protocol Verification` (keyless implementation and replay/persistence gate)
-- In progress: `Phase 9 / Sprint 9.1 — Paper Execution`; current checkpoint is the contract/design freeze in `docs/superpowers/plans/2026-08-31-phase-9-sprint-9-1-paper-execution.md`.
-- Next after Sprint 9.1: `Phase 9 / Sprint 9.2 — Exit Engine`; keep live-provider acceptance `BLOCKED_EXTERNAL` and all protected modes unchanged.
+- Completed: `Phase 9 / Sprint 9.1 — Paper Execution` (keyless portion and sprint gate)
+- Next: `Phase 9 / Sprint 9.2 — Exit Engine`; keep live-provider acceptance `BLOCKED_EXTERNAL` and all protected modes unchanged.
 
 ## Current operating policy
 
@@ -63,13 +64,12 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: freeze and implement Sprint 9.1 paper portfolio/cash ledger, sizing,
-  deterministic quote/fill simulation, idempotent orders and position
-  reconciliation.
+- Task: begin Phase 9 / Sprint 9.2 exit-engine design and contract freeze after
+  the completed Sprint 9.1 paper checkpoint.
 - Design: `docs/superpowers/specs/2026-08-31-phase-9-sprint-9-1-paper-execution-design.md`.
 - Plan: `docs/superpowers/plans/2026-08-31-phase-9-sprint-9-1-paper-execution.md`.
-- Current state: E8.4 is committed/pushed at `d743f1e`; no Sprint 9.1
-  production code has been added yet; tests and contracts are the next action.
+- Current state: Sprint 9.1 implementation is complete locally; its coherent
+  checkpoint is ready to commit/push before Sprint 9.2 work begins.
 - External blockers: live quote/provider and all live execution acceptance are
   `BLOCKED_EXTERNAL`; keyless fixtures/fakes are required and sufficient for
   this sprint.
@@ -85,7 +85,7 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Pinned Python dependency lock and npm lockfile; Next.js was upgraded to 16.3.3 and ESLint to 9.39.5 after audit advisories.
 - [x] Safe `.env.example`, `.gitignore`, root `.dockerignore` and editor configuration.
 - [x] API, worker and web Dockerfiles plus Postgres 16 / Redis 7 Compose services with health checks.
-- [x] Make targets: `bootstrap`, `lint`, `typecheck`, `test`, `verify`, `up`, `down`, `migrate`, `doctor`, `provider-doctor`, `birdeye-doctor`, `rugcheck-doctor`, `social-doctor`, `external-wallet-doctor`, `telegram-doctor`, `stream-integrity-doctor`.
+- [x] Make targets: `bootstrap`, `lint`, `typecheck`, `test`, `verify`, `up`, `down`, `migrate`, `doctor`, `provider-doctor`, `birdeye-doctor`, `rugcheck-doctor`, `social-doctor`, `external-wallet-doctor`, `telegram-doctor`, `stream-integrity-doctor`, `paper-trading-doctor`.
 - [x] Redacted local doctor and high-confidence tracked-file secret scan.
 - [x] GitHub Actions workflow for backend, frontend, Compose and secret-scan checks.
 - [x] Branch-aware pytest coverage configuration and frontend Vitest/Testing Library baseline.
@@ -129,6 +129,10 @@ The configuration loader rejects attempts to override these protected values.
 - [x] E8.4 versioned `(program_id, discriminator_or_tag)` protocol registry, Anchor/native helpers, coverage audit and fail-closed unknown/unverified routing; completed Phase 2 adapters remain unchanged.
 - [x] E8.4 durable `chain_cursors`, `stream_gaps`, `stream_verifications` state plus nullable observation metadata in reversible migration `0005_stream_integrity`.
 - [x] E8.4 feature quality integration, deterministic no-lookahead replay manifest, safe stream telemetry and key-safe `stream-integrity-doctor`; live stream/RPC acceptance remains `BLOCKED_EXTERNAL`.
+- [x] Phase 9.1 paper-only portfolio/cash ledger with Decimal sizing, normalized quote freshness/provenance, deterministic fee/slippage fills, explicit partial/rejected order states and append-only cash sequence.
+- [x] Phase 9.1 idempotent order/fill/position persistence through `PaperLedgerStore` and SQLAlchemy migration `0006_paper_execution`; concurrent stale cash projections fail closed instead of overwriting ledger state.
+- [x] Phase 9.1 `PaperReplayManifest` event-time/no-lookahead replay with policy/config/fill-model identity, deterministic replay IDs and future-observation exclusion.
+- [x] Phase 9.1 `paper-trading-doctor` keyless contract check; missing/configured external quote paths remain `BLOCKED_EXTERNAL` and no endpoint/credential values are emitted.
 - [x] Roadmap checkboxes reconciled for Sprint 1.1.
 - [x] SQLAlchemy 2 async persistence models for the core Phase 1 entities, with domain-independent repositories and explicit unit-of-work transactions.
 - [x] Initial Alembic revision `0001_initial` for 13 core tables, including provenance, explainability, event and outbox fields.
@@ -635,12 +639,18 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - E8.4 migration verification: `scripts/check_migrations.py` reports `{"heads": ["0005_stream_integrity"], "table_count": 19}`; temporary Postgres upgrade/downgrade/upgrade and stream persistence integration pass. `0005_stream_integrity` is reversible.
 - E8.4 doctor/safety verification: `make stream-integrity-doctor` reports `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING` with `keyless_contracts: PASS` and no endpoint values; no live stream/RPC call was made. The four protected modes remain `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
 - E8.4 safety acceptance: `PASS` for provider-independent application/domain boundaries, full program-ID plus discriminator/tag routing, explicit unknown/unverified/conflict states, no silent backpressure drop, data-quality-only stream impact and permanent absence of signing/execution authority. Required protocol identities remain `TODO_VERIFY`/`SUPPORTED_NEEDS_REVERIFY` until authoritative corroboration is available; Rust/Yellowstone remains deferred until E11.1 measurement.
+- Sprint 9.1 plan/design evidence: `docs/superpowers/plans/2026-08-31-phase-9-sprint-9-1-paper-execution.md` and `docs/superpowers/specs/2026-08-31-phase-9-sprint-9-1-paper-execution-design.md` define the provider-independent paper boundary, protected modes, append-only accounting and replay identity contract.
+- Sprint 9.1 focused verification: `./.venv/bin/pytest tests/unit/test_paper_domain.py tests/unit/test_paper_execution.py tests/unit/test_paper_trading_doctor.py tests/contract/test_phase9_sprint9_1.py tests/unit/test_paper_persistence_contract.py tests/unit/test_persistence_contract.py tests/unit/test_migration_contract.py -q` passes `29 tests`; domain/application/persistence boundaries, Decimal sizing/fill arithmetic, lifecycle, idempotency, reconciliation, replay/no-lookahead and doctor contracts pass.
+- Sprint 9.1 static verification: Ruff passes for the repository; mypy passes for `73 source files`; domain/application paper modules contain no SQLAlchemy, FastAPI, persistence or signing/submission dependency.
+- Sprint 9.1 migration/persistence verification: `scripts/check_migrations.py` reports `{"heads": ["0006_paper_execution"], "table_count": 22}`; temporary Postgres downgrade to `0005_stream_integrity`, upgrade to `0006_paper_execution`, and `tests/integration/test_paper_persistence_postgres.py` pass `1 test` with restart/idempotency and cleanup.
+- Sprint 9.1 full repository gate: `make verify` exits `0`; Ruff, mypy (`73 source files`), `521 passed, 8 skipped`, branch-aware coverage `78%`, frontend lint/typecheck/Vitest (`34 passed`), Compose config, secret scan and migration parity complete successfully.
+- Sprint 9.1 doctor/safety verification: `make paper-trading-doctor` exits `2` as expected with `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, `paper_contracts: PASS`, `external_network: not_checked` and no endpoint/credential values. With redacted configured quote presence it remains `BLOCKED_EXTERNAL`/`LIVE_EXECUTION_DISABLED`; protected modes remain unchanged.
+- Sprint 9.1 safety acceptance: `PASS` for normalized-quote-only input, deterministic adverse fee/slippage simulation, protected paper-only modes, append-only/idempotent cash/order/fill evidence, no-lookahead replay and permanent absence of signing or live-money authority. Live quote and live execution acceptance remain `BLOCKED_EXTERNAL`.
 
 ## Next task
 
-Begin `Phase 9 / Sprint 9.1 — Paper Execution` from `docs/ROADMAP.md`.
-Implement only the protected paper-execution seam and its deterministic,
-replayable acceptance contracts. Keep live-provider acceptance
+Begin `Phase 9 / Sprint 9.2 — Exit Engine` from `docs/ROADMAP.md` after the
+Sprint 9.1 checkpoint is committed and pushed. Keep live-provider acceptance
 `BLOCKED_EXTERNAL`, preserve append-only/auditable evidence and all four
-protected operating modes, and do not introduce signing, live-money
-submission or execution authority outside the approved paper boundary.
+protected operating modes, and do not introduce signing, live-money submission
+or execution authority outside the approved paper boundary.

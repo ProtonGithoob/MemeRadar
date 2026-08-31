@@ -15,6 +15,17 @@ Providers are replaceable adapters. Domain code must never depend directly on pr
 | Quote/routing | Jupiter | disabled if unavailable | execution phase only |
 | Telegram | Telegram Bot API | notification abstraction later | outbox/retry required |
 
+## Paper execution boundary
+
+The Phase 9.1 paper engine is not a provider adapter. It consumes the existing
+application `QuoteSnapshot` contract, including freshness and provenance, and
+simulates fills with a versioned fee/slippage model. It does not call a quote
+endpoint, import a provider SDK, hold a signer or submit a transaction. The
+`PaperLedgerStore` protocol has in-memory and SQLAlchemy implementations behind
+the application boundary. Live quote and execution acceptance remains
+`BLOCKED_EXTERNAL`; `make paper-trading-doctor` checks local paper contracts and
+reports configuration presence without probing or echoing endpoint values.
+
 ## Ports
 
 ### CandidateDiscoveryPort

@@ -396,7 +396,10 @@ class PortfolioRow(Base):
     currency: Mapped[str] = mapped_column(String(16), nullable=False)
     initial_balance: Mapped[Decimal] = mapped_column(Numeric(24, 9), nullable=False)
     current_balance: Mapped[Decimal] = mapped_column(Numeric(24, 9), nullable=False)
+    ledger_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     positions: Mapped[list[PositionRow]] = relationship(back_populates="portfolio")
+    orders: Mapped[list[OrderRow]] = relationship(back_populates="portfolio")
+    cash_entries: Mapped[list[CashLedgerRow]] = relationship(back_populates="portfolio")
 
 
 class PositionRow(Base):
@@ -426,6 +429,109 @@ class PositionRow(Base):
     exit_signal_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
 
     portfolio: Mapped[PortfolioRow] = relationship(back_populates="positions")
+
+
+class OrderRow(Base):
+    """Durable paper-order request and idempotency identity."""
+
+    __tablename__ = "orders"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_orders_idempotency_key"),
+        Index("ix_orders_portfolio_requested", "portfolio_id", "requested_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    portfolio_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False
+    )
+    candidate_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("candidates.id", ondelete="SET NULL")
+    )
+    token_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tokens.id", ondelete="RESTRICT"), nullable=False
+    )
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    side: Mapped[str] = mapped_column(String(8), nullable=False)
+    state: Mapped[str] = mapped_column(String(24), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(256), nullable=False)
+    requested_amount: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    quote_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    risk_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    fill_model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision_ref: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    filled_quantity: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    filled_input_amount: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    average_fill_price: Mapped[Decimal | None] = mapped_column(Numeric(36, 18))
+    reason_codes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+
+    portfolio: Mapped[PortfolioRow] = relationship(back_populates="orders")
+    fills: Mapped[list[FillRow]] = relationship(
+        back_populates="order", cascade="all, delete-orphan"
+    )
+
+
+class FillRow(Base):
+    """Immutable simulated fill details used for accounting and replay."""
+
+    __tablename__ = "fills"
+    __table_args__ = (Index("ix_fills_order_occurred", "order_id", "occurred_at"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    order_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
+    )
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    input_amount: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    quoted_price: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    gross_cash_amount: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    fee_amount: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    fee_currency: Mapped[str] = mapped_column(String(16), nullable=False)
+    fee_breakdown: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    slippage_bps: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    cash_delta: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
+    source: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    order: Mapped[OrderRow] = relationship(back_populates="fills")
+
+
+class CashLedgerRow(Base):
+    """Append-only cash movements with sequence and post-entry balance."""
+
+    __tablename__ = "cash_ledger"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_cash_ledger_idempotency_key"),
+        UniqueConstraint(
+            "portfolio_id", "sequence", name="uq_cash_ledger_portfolio_sequence"
+        ),
+        Index("ix_cash_ledger_portfolio_sequence", "portfolio_id", "sequence"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    portfolio_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=False
+    )
+    order_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL")
+    )
+    fill_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("fills.id", ondelete="SET NULL")
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    cash_delta: Mapped[Decimal] = mapped_column(Numeric(24, 9), nullable=False)
+    balance_after: Mapped[Decimal] = mapped_column(Numeric(24, 9), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    entry_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source: Mapped[str] = mapped_column(String(128), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(256), nullable=False)
+    reason_codes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+
+    portfolio: Mapped[PortfolioRow] = relationship(back_populates="cash_entries")
 
 
 class AlertRow(Base):

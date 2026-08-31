@@ -19,5 +19,5 @@ def test_migration_check_reports_one_current_head() -> None:
 
     assert result.returncode == 0, result.stderr
     report = json.loads(result.stdout)
-    assert report["heads"] == ["0005_stream_integrity"]
-    assert report["table_count"] == 19
+    assert report["heads"] == ["0006_paper_execution"]
+    assert report["table_count"] == 22
