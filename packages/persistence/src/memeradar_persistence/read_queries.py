@@ -33,7 +33,9 @@ from memeradar_domain import CandidateState, QualityState
 
 from .models import (
     AlertRow,
+    AuditEventRow,
     CandidateRow,
+    ConfigVersionRow,
     FeatureSnapshotRow,
     ObservationRow,
     PoolRow,
@@ -262,6 +264,31 @@ def _alert_timeline(row: AlertRow, token_id: UUID) -> TimelineEntryView:
     )
 
 
+def _audit_view(row: AuditEventRow) -> AuditEventView:
+    return AuditEventView(
+        id=row.id,
+        actor=row.actor,
+        action=row.action,
+        target=row.target,
+        occurred_at=row.occurred_at,
+        correlation_id=row.correlation_id,
+        before=row.before,
+        after=row.after,
+    )
+
+
+def _config_view(row: ConfigVersionRow) -> ConfigVersionView:
+    return ConfigVersionView(
+        id=row.id,
+        version=row.version,
+        created_at=row.created_at,
+        actor=row.actor,
+        config_hash=row.config_hash,
+        decision_affecting=row.decision_affecting,
+        config=row.config,
+    )
+
+
 class SqlAlchemyReadQueryService(ReadQueryPort):
     """Read-only query service backed by the existing normalized tables."""
 
@@ -456,12 +483,40 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         return await self._catalog.list_provider_health(query)
 
     async def list_audit_events(self, query: AuditQuery | None = None) -> Page[AuditEventView]:
-        return await self._catalog.list_audit_events(query)
+        normalized_query = AuditQuery() if query is None else query
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(AuditEventRow)
+                    .order_by(AuditEventRow.occurred_at.desc(), AuditEventRow.id.desc())
+                    .limit(MAX_STORAGE_ROWS)
+                )
+            ).all()
+        values = tuple(_audit_view(row) for row in rows)
+        if not values:
+            values = self._catalog.audit_events
+        return await InMemoryReadQueryService(audit_events=values).list_audit_events(
+            normalized_query
+        )
 
     async def list_config_versions(
         self, query: ConfigQuery | None = None
     ) -> Page[ConfigVersionView]:
-        return await self._catalog.list_config_versions(query)
+        normalized_query = ConfigQuery() if query is None else query
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(ConfigVersionRow)
+                    .order_by(ConfigVersionRow.created_at.desc(), ConfigVersionRow.id.desc())
+                    .limit(MAX_STORAGE_ROWS)
+                )
+            ).all()
+        values = tuple(_config_view(row) for row in rows)
+        if not values:
+            values = self._catalog.config_versions
+        return await InMemoryReadQueryService(config_versions=values).list_config_versions(
+            normalized_query
+        )
 
 
 __all__ = [

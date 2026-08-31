@@ -36,13 +36,16 @@ def main() -> int:
         "alerts",
         "domain_events",
         "outbox",
+        "control_state",
+        "config_versions",
+        "audit_events",
     }
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0003_score_strategy_identity"]:
+    if heads != ["0004_control_plane"]:
         print(
-            "migration_error: expected exactly one 0003_score_strategy_identity head",
+            "migration_error: expected exactly one 0004_control_plane head",
             file=sys.stderr,
         )
         return 1

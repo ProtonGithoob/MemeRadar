@@ -1,13 +1,17 @@
 """Persistence boundary for SQLAlchemy models, repositories and transactions."""
 
+from .control import CONTROL_STATE_KEY, SqlAlchemyControlPlane
 from .models import (
     OUTBOX_DEAD_LETTER,
     OUTBOX_DELIVERED,
     OUTBOX_PENDING,
     OUTBOX_PROCESSING,
     AlertRow,
+    AuditEventRow,
     Base,
     CandidateRow,
+    ConfigVersionRow,
+    ControlStateRow,
     DomainEventRow,
     FeatureSnapshotRow,
     ObservationRow,
@@ -48,10 +52,13 @@ from .uow import (
 
 __all__ = [
     "AlertRow",
+    "AuditEventRow",
     "AlertRepository",
     "Base",
     "CandidateRepository",
     "CandidateRow",
+    "ConfigVersionRow",
+    "ControlStateRow",
     "DomainEventRow",
     "FeatureSnapshotRow",
     "FeatureSnapshotRepository",
@@ -73,6 +80,8 @@ __all__ = [
     "SqlAlchemyOutboxStore",
     "SqlAlchemyAlertStore",
     "SqlAlchemyReadQueryService",
+    "SqlAlchemyControlPlane",
+    "CONTROL_STATE_KEY",
     "SqlAlchemyUnitOfWork",
     "StateTransitionRow",
     "TokenRow",

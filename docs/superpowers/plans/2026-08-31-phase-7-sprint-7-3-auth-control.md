@@ -61,11 +61,11 @@
 - `SqlAlchemyControlPlane` implements `ControlPlanePort`; each mutation and its audit insert commit atomically, with safe defaults before first write.
 - `SqlAlchemyReadQueryService` reads physical audit/config rows with bounded filtering and retains injectable catalog fallback when no physical rows exist.
 
-- [ ] **Step 1: Add failing migration/model/adapter tests** for metadata parity, upgrade schema, transactional state/config/audit writes, rehydration across adapter instances, rollback on invalid mutation, and read API projection.
-- [ ] **Step 2: Implement the three SQLAlchemy models and reversible `0004_control_plane` migration** with indexes, unique config hashes, JSON-only validated values and no secrets.
-- [ ] **Step 3: Implement `SqlAlchemyControlPlane`** using shared application validation/authorization, row locking for state updates, monotonic versions and paired audit writes.
-- [ ] **Step 4: Extend the read adapter** to query and safely map persisted audit/config rows under the existing `MAX_STORAGE_ROWS` bound.
-- [ ] **Step 5: Run migration metadata checks and opt-in Postgres tests**, including upgrade from the current `0003_score_strategy_identity` head and downgrade/upgrade reversibility.
+- [x] **Step 1: Add failing migration/model/adapter tests** for metadata parity, upgrade schema, transactional state/config/audit writes, rehydration across adapter instances, rollback on invalid mutation, and read API projection.
+- [x] **Step 2: Implement the three SQLAlchemy models and reversible `0004_control_plane` migration** with indexes, unique config hashes, JSON-only validated values and no secrets.
+- [x] **Step 3: Implement `SqlAlchemyControlPlane`** using shared application validation/authorization, row locking for state updates, monotonic versions and paired audit writes.
+- [x] **Step 4: Extend the read adapter** to query and safely map persisted audit/config rows under the existing `MAX_STORAGE_ROWS` bound.
+- [x] **Step 5: Run migration metadata checks and opt-in Postgres tests**, including upgrade from the current `0003_score_strategy_identity` head and downgrade/upgrade reversibility. Evidence: migration metadata `0004_control_plane`/16 tables, Postgres control/read integration `2 passed`, downgrade and upgrade both passed.
 - [ ] **Step 6: Commit** with `git add packages/persistence infra/alembic scripts/check_migrations.py tests/unit/test_migration_contract.py tests/integration && git commit -m "feat: persist control plane audit state"`.
 
 ### Task 3: Add role authentication and control routes

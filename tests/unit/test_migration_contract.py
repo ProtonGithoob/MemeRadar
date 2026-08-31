@@ -19,5 +19,5 @@ def test_migration_check_reports_one_initial_head() -> None:
 
     assert result.returncode == 0, result.stderr
     report = json.loads(result.stdout)
-    assert report["heads"] == ["0003_score_strategy_identity"]
-    assert report["table_count"] == 13
+    assert report["heads"] == ["0004_control_plane"]
+    assert report["table_count"] == 16

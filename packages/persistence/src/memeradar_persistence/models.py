@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -393,3 +394,54 @@ class OutboxRow(Base):
     error_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     event: Mapped[DomainEventRow | None] = relationship()
+
+
+class ControlStateRow(Base):
+    """Singleton emergency-control state; mutations are append-audited."""
+
+    __tablename__ = "control_state"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    analysis_paused: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    execution_kill_switch: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class ConfigVersionRow(Base):
+    """Immutable validated configuration snapshots used for replay identity."""
+
+    __tablename__ = "config_versions"
+    __table_args__ = (
+        UniqueConstraint("config_hash", name="uq_config_versions_config_hash"),
+        Index("ix_config_versions_created_at", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    actor: Mapped[str] = mapped_column(String(256), nullable=False)
+    config_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    decision_affecting: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
+class AuditEventRow(Base):
+    """Immutable sensitive-operation audit event with safe before/after values."""
+
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        Index("ix_audit_events_occurred_at", "occurred_at"),
+        Index("ix_audit_events_action_occurred", "action", "occurred_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor: Mapped[str] = mapped_column(String(256), nullable=False)
+    action: Mapped[str] = mapped_column(String(128), nullable=False)
+    target: Mapped[str] = mapped_column(String(256), nullable=False)
+    before: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    after: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
