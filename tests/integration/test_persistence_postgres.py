@@ -18,13 +18,17 @@ from memeradar_application.event_processing import (
 from memeradar_domain import (
     Candidate,
     EventEnvelope,
+    FeatureSnapshot,
     IdempotencyConflict,
+    Provenance,
+    QualityState,
     ReasonCode,
     TokenIdentity,
 )
 from memeradar_persistence import (
     CandidateRow,
     DomainEventRow,
+    FeatureSnapshotRow,
     OutboxRow,
     PoolRow,
     SqlAlchemyOutboxStore,
@@ -96,6 +100,28 @@ async def _exercise_postgres(database_url: str) -> None:
     try:
         async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
             await unit_of_work.candidates.add(candidate)
+            feature = FeatureSnapshot(
+                candidate_id=candidate_id,
+                as_of=NOW + timedelta(seconds=1),
+                expires_at=NOW + timedelta(minutes=5),
+                feature_version="feature-windows-v1",
+                completeness=Decimal("1"),
+                confidence=Decimal("0.9"),
+                values={"window": "1m", "Momentum": Decimal("72")},
+                provenance=(
+                    Provenance(
+                        provider="fixture.integration",
+                        source_id="feature-integration-1",
+                        observed_at=NOW + timedelta(seconds=1),
+                        parser_version="feature-v1",
+                    ),
+                ),
+                config_hash="sha256:integration-feature",
+                quality_state=QualityState.FRESH,
+            )
+            first_feature = await unit_of_work.features.add(feature)
+            second_feature = await unit_of_work.features.add(feature)
+            assert first_feature.id == second_feature.id
             first_outbox = await unit_of_work.outbox.enqueue(
                 event,
                 side_effect_kind="candidate-index",
@@ -125,6 +151,11 @@ async def _exercise_postgres(database_url: str) -> None:
             assert loaded.transitions[0].config_hash == "sha256:integration"
             assert loaded.transitions[0].confidence == Decimal("0.87")
             assert loaded.transitions[0].evidence_refs == ("observation:integration-1",)
+            loaded_feature = await unit_of_work.features.get(feature.id)
+            assert loaded_feature is not None
+            assert loaded_feature.values["Momentum"] == "72"
+            assert loaded_feature.provenance[0].source_id == "feature-integration-1"
+            assert await unit_of_work.features.for_candidate(candidate_id) == (loaded_feature,)
     finally:
         async with engine.begin() as connection:
             await connection.execute(
@@ -135,6 +166,9 @@ async def _exercise_postgres(database_url: str) -> None:
             await connection.execute(delete(DomainEventRow).where(DomainEventRow.id == event.id))
             await connection.execute(
                 delete(StateTransitionRow).where(StateTransitionRow.candidate_id == candidate_id)
+            )
+            await connection.execute(
+                delete(FeatureSnapshotRow).where(FeatureSnapshotRow.candidate_id == candidate_id)
             )
             await connection.execute(delete(CandidateRow).where(CandidateRow.id == candidate_id))
             await connection.execute(delete(PoolRow).where(PoolRow.token_id == token_id))

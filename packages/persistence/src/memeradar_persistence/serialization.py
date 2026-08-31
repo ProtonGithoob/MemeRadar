@@ -55,6 +55,46 @@ def provenance_to_json(values: Sequence[Provenance]) -> list[dict[str, Any]]:
     ]
 
 
+def provenance_from_json(value: object) -> tuple[Provenance, ...]:
+    """Rehydrate provenance metadata without losing parser/raw references."""
+
+    if not isinstance(value, list):
+        raise TypeError("provenance JSON must be a list")
+    normalized: list[Provenance] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise TypeError("provenance JSON entries must be objects")
+        provider: object = item.get("provider")
+        source_id: object = item.get("source_id")
+        observed_at: object = item.get("observed_at")
+        parser_version: object = item.get("parser_version")
+        if not isinstance(provider, str):
+            raise TypeError("provenance JSON has invalid provider")
+        if not isinstance(source_id, str):
+            raise TypeError("provenance JSON has invalid source_id")
+        if not isinstance(observed_at, str):
+            raise TypeError("provenance JSON has invalid observed_at")
+        if not isinstance(parser_version, str):
+            raise TypeError("provenance JSON has invalid required fields")
+        raw_payload_hash = item.get("raw_payload_hash")
+        raw_payload_ref = item.get("raw_payload_ref")
+        if raw_payload_hash is not None and not isinstance(raw_payload_hash, str):
+            raise TypeError("provenance JSON has invalid raw_payload_hash")
+        if raw_payload_ref is not None and not isinstance(raw_payload_ref, str):
+            raise TypeError("provenance JSON has invalid raw_payload_ref")
+        normalized.append(
+            Provenance(
+                provider=provider,
+                source_id=source_id,
+                observed_at=datetime.fromisoformat(observed_at),
+                parser_version=parser_version,
+                raw_payload_hash=raw_payload_hash,
+                raw_payload_ref=raw_payload_ref,
+            )
+        )
+    return tuple(normalized)
+
+
 def json_safe(value: object) -> Any:
     """Convert domain values to JSON-compatible values without logging secrets."""
 

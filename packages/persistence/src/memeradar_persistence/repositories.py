@@ -18,8 +18,10 @@ from memeradar_domain import (
     CandidateState,
     Chain,
     EventEnvelope,
+    FeatureSnapshot,
     IdempotencyConflict,
     PoolIdentity,
+    QualityState,
     ReasonCode,
     StateTransition,
     TokenIdentity,
@@ -33,15 +35,78 @@ from .models import (
     OUTBOX_PROCESSING,
     CandidateRow,
     DomainEventRow,
+    FeatureSnapshotRow,
     OutboxRow,
     StateTransitionRow,
     TokenRow,
 )
-from .serialization import json_safe, reason_codes_from_json, reason_codes_to_json
+from .serialization import (
+    json_safe,
+    provenance_from_json,
+    provenance_to_json,
+    reason_codes_from_json,
+    reason_codes_to_json,
+)
 
 
 class OutboxLeaseLost(RuntimeError):
     """Raised when a delivery update no longer owns the row lease."""
+
+
+def feature_snapshot_to_row(snapshot: FeatureSnapshot) -> FeatureSnapshotRow:
+    """Map one immutable feature snapshot into its JSON-safe persistence row."""
+
+    if not isinstance(snapshot, FeatureSnapshot):
+        raise TypeError("snapshot must be a FeatureSnapshot")
+    return FeatureSnapshotRow(
+        id=snapshot.id,
+        candidate_id=snapshot.candidate_id,
+        as_of=snapshot.as_of,
+        expires_at=snapshot.expires_at,
+        feature_version=snapshot.feature_version,
+        completeness=snapshot.completeness,
+        confidence=snapshot.confidence,
+        values=json_safe(snapshot.values),
+        provenance=provenance_to_json(snapshot.provenance),
+        config_hash=snapshot.config_hash,
+        quality_state=snapshot.quality_state.value,
+    )
+
+
+def feature_snapshot_from_row(row: FeatureSnapshotRow) -> FeatureSnapshot:
+    """Rehydrate a persisted feature snapshot with its original evidence metadata."""
+
+    if not isinstance(row, FeatureSnapshotRow):
+        raise TypeError("row must be a FeatureSnapshotRow")
+    return FeatureSnapshot(
+        id=row.id,
+        candidate_id=row.candidate_id,
+        as_of=row.as_of,
+        expires_at=row.expires_at,
+        feature_version=row.feature_version,
+        completeness=row.completeness,
+        confidence=row.confidence,
+        values=row.values,
+        provenance=provenance_from_json(row.provenance),
+        config_hash=row.config_hash,
+        quality_state=QualityState(row.quality_state),
+    )
+
+
+def _feature_snapshot_matches_row(snapshot: FeatureSnapshot, row: FeatureSnapshotRow) -> bool:
+    return (
+        row.id == snapshot.id
+        and row.candidate_id == snapshot.candidate_id
+        and row.as_of == snapshot.as_of
+        and row.expires_at == snapshot.expires_at
+        and row.feature_version == snapshot.feature_version
+        and row.completeness == snapshot.completeness
+        and row.confidence == snapshot.confidence
+        and row.values == json_safe(snapshot.values)
+        and row.provenance == provenance_to_json(snapshot.provenance)
+        and row.config_hash == snapshot.config_hash
+        and row.quality_state == snapshot.quality_state.value
+    )
 
 
 def _row_reason_codes(value: object) -> tuple[ReasonCode, ...]:
@@ -257,6 +322,46 @@ class CandidateRepository:
         if candidate.state.value != row.state or candidate.state_changed_at != row.state_changed_at:
             raise ValueError("persisted candidate state does not match transition history")
         return candidate
+
+
+class FeatureSnapshotRepository:
+    """Persist immutable feature snapshots without committing the caller's transaction."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, snapshot: FeatureSnapshot) -> FeatureSnapshotRow:
+        """Insert a snapshot or accept an equivalent replay of the same ID."""
+
+        row = await self._session.get(FeatureSnapshotRow, snapshot.id)
+        if row is not None:
+            if not _feature_snapshot_matches_row(snapshot, row):
+                raise IdempotencyConflict(
+                    f"feature snapshot {snapshot.id} conflicts with persisted content"
+                )
+            return row
+        row = feature_snapshot_to_row(snapshot)
+        self._session.add(row)
+        await self._session.flush()
+        return row
+
+    async def get(self, snapshot_id: UUID) -> FeatureSnapshot | None:
+        """Load one immutable snapshot by identity."""
+
+        row = await self._session.get(FeatureSnapshotRow, snapshot_id)
+        return None if row is None else feature_snapshot_from_row(row)
+
+    async def for_candidate(self, candidate_id: UUID) -> tuple[FeatureSnapshot, ...]:
+        """Return a candidate's snapshots in deterministic event-time order."""
+
+        rows = (
+            await self._session.scalars(
+                select(FeatureSnapshotRow)
+                .where(FeatureSnapshotRow.candidate_id == candidate_id)
+                .order_by(FeatureSnapshotRow.as_of, FeatureSnapshotRow.id)
+            )
+        ).all()
+        return tuple(feature_snapshot_from_row(row) for row in rows)
 
 
 class OutboxRepository:

@@ -20,7 +20,15 @@ from .models import (
     StateTransitionRow,
     TokenRow,
 )
-from .repositories import CandidateRepository, OutboxLeaseLost, OutboxRepository
+from .repositories import (
+    CandidateRepository,
+    FeatureSnapshotRepository,
+    OutboxLeaseLost,
+    OutboxRepository,
+    feature_snapshot_from_row,
+    feature_snapshot_to_row,
+)
+from .serialization import provenance_from_json, provenance_to_json
 from .uow import SqlAlchemyOutboxStore, SqlAlchemyUnitOfWork, create_database_engine
 
 __all__ = [
@@ -30,6 +38,7 @@ __all__ = [
     "CandidateRow",
     "DomainEventRow",
     "FeatureSnapshotRow",
+    "FeatureSnapshotRepository",
     "ObservationRow",
     "OutboxRepository",
     "OutboxLeaseLost",
@@ -48,4 +57,8 @@ __all__ = [
     "StateTransitionRow",
     "TokenRow",
     "create_database_engine",
+    "feature_snapshot_from_row",
+    "feature_snapshot_to_row",
+    "provenance_from_json",
+    "provenance_to_json",
 ]

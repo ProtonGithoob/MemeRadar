@@ -540,3 +540,40 @@ def test_alpha_strategy_replay_seam_is_versioned_provider_free_and_safe():
         assert environment["PAPER_TRADING"] == "true"
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
+
+
+def test_feature_window_replay_seam_is_versioned_provider_free_and_safe():
+    from memeradar_application.feature_windows import (
+        FEATURE_WINDOW_NAMES,
+        FEATURE_WINDOWS_VERSION,
+        FeatureSnapshotAggregator,
+        FeatureWindowAggregator,
+        FeatureWindowPolicy,
+    )
+
+    assert FeatureWindowAggregator
+    assert FeatureSnapshotAggregator is FeatureWindowAggregator
+    assert FeatureWindowPolicy().version == FEATURE_WINDOWS_VERSION
+    assert FEATURE_WINDOW_NAMES == ("1m", "5m", "15m")
+    fixture_dir = ROOT / "fixtures" / "providers" / "feature_windows"
+    assert (fixture_dir / "README.md").is_file()
+    assert (fixture_dir / "replay.json").is_file()
+    source = (
+        ROOT
+        / "packages"
+        / "application"
+        / "src"
+        / "memeradar_application"
+        / "feature_windows.py"
+    ).read_text(encoding="utf-8")
+    assert "memeradar_providers" not in source
+    assert "memeradar_persistence" not in source
+    assert "sign(" not in source.lower()
+    assert "submit(" not in source.lower()
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())["services"]
+    for service_name in ("api", "worker"):
+        environment = compose[service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"

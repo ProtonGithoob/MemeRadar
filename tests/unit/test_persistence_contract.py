@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import UniqueConstraint
 
-from memeradar_persistence import Base
+from memeradar_persistence import Base, FeatureSnapshotRepository
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -89,6 +89,25 @@ def test_score_snapshot_persists_explicit_strategy_identity() -> None:
     assert {"strategy_name", "strategy_version"} <= {column.name for column in columns}
     assert columns["strategy_name"].nullable is False
     assert columns["strategy_version"].nullable is False
+
+
+def test_feature_snapshot_persistence_exposes_immutable_evidence_contract() -> None:
+    columns = Base.metadata.tables["feature_snapshots"].c
+
+    assert FeatureSnapshotRepository
+    assert {
+        "as_of",
+        "expires_at",
+        "feature_version",
+        "completeness",
+        "confidence",
+        "values",
+        "provenance",
+        "config_hash",
+        "quality_state",
+    } <= {column.name for column in columns}
+    assert columns["provenance"].nullable is False
+    assert columns["quality_state"].nullable is False
 
 
 def test_domain_source_has_no_persistence_or_framework_imports() -> None:
