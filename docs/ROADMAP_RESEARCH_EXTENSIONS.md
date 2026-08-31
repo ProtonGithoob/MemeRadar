@@ -227,15 +227,21 @@ no documented read-only endpoint and credentials are configured.
 
 ### Tasks
 
-- [ ] Add rolling smart-wallet distribution pressure from independent actor clusters.
-- [ ] Add creator/related-wallet sell pressure and holder-cluster reduction evidence.
-- [ ] Add micro/macro buy-velocity collapse and sell-pressure acceleration.
-- [ ] Add liquidity decay and quote deterioration correlation.
-- [ ] Add external-wallet provider exit signals only as corroborating evidence.
-- [ ] Add reason-coded composite `ExitRiskScore` separated from AlphaScore.
-- [ ] Support partial exits based on configured policy; no hidden strategy state.
-- [ ] Persist evidence timeline before/after exit.
+- [x] Add rolling smart-wallet distribution pressure from independent actor clusters.
+- [x] Add creator/related-wallet sell pressure and holder-cluster reduction evidence.
+- [x] Add micro/macro buy-velocity collapse and sell-pressure acceleration.
+- [x] Add liquidity decay and quote deterioration correlation.
+- [x] Add external-wallet provider exit signals only as corroborating evidence.
+- [x] Add reason-coded composite `ExitRiskScore` separated from AlphaScore.
+- [x] Support partial exits based on configured policy; no hidden strategy state.
+- [x] Persist evidence timeline before/after exit.
 - [ ] Backtest exit rules independently of entry rules.
+
+The provider-independent exit evaluator, evidence timeline and deterministic
+event-time replay are complete for the keyless portion. Independent backtesting
+is intentionally deferred to Phase 10's replay/backtesting work, where the
+same persisted evidence and pinned versions will be evaluated without live
+provider calls.
 
 **Acceptance:** every paper exit can explain which wallet, creator, liquidity, flow, score or time evidence caused it; one external provider alert alone cannot force an exit unless explicit emergency policy says so.
 

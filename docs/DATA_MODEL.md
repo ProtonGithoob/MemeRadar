@@ -753,6 +753,15 @@ reconciler recomputes balances and position quantities without mutating the
 append-only evidence. Paper replay pins policy/config/fill-model identity and
 excludes requests or quote observations after its `as_of` boundary.
 
+Exit evaluations are also durable evidence rather than mutable position state.
+The keyless Sprint 9.2 adapter writes an `ExitEvaluation` event to the
+existing `domain_events` table with the normalized action, independent exit
+risk components, reason codes, evidence references, policy/config identity and
+before/after evidence references. The event's idempotency key is derived from
+the deterministic evaluation identity; equivalent replays are no-ops and
+conflicting reuse is rejected. Rehydration preserves the immutable evaluation
+timeline without introducing a second exit table.
+
 ### positions
 - id
 - portfolio_id

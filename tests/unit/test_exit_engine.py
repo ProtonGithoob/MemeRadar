@@ -223,6 +223,30 @@ def test_external_distribution_is_corrobation_only_and_cannot_trigger() -> None:
     assert "EXTERNAL_EXIT_CORROBORATION_ONLY" in _codes(result)
 
 
+def test_distribution_pressure_can_record_independent_cluster_support() -> None:
+    policy = _policy(minimum_independent_distribution_clusters=2)
+    insufficient = ExitEngine(policy).evaluate(
+        _position(),
+        _evidence(
+            smart_money_distribution_pressure=Decimal("0.80"),
+            independent_distribution_clusters=1,
+        ),
+        now=BASE + timedelta(minutes=5),
+    )
+    supported = ExitEngine(policy).evaluate(
+        _position(),
+        _evidence(
+            smart_money_distribution_pressure=Decimal("0.80"),
+            independent_distribution_clusters=3,
+        ),
+        now=BASE + timedelta(minutes=5),
+    )
+
+    assert insufficient.action is ExitAction.HOLD
+    assert supported.action is ExitAction.REDUCE
+    assert "SMART_MONEY_DISTRIBUTION" in supported.triggered_rules
+
+
 def test_time_stop_is_explicit_and_evidence_bearing() -> None:
     policy = _policy(time_stop=timedelta(minutes=30))
     evidence = _evidence(

@@ -1,6 +1,7 @@
 """Persistence boundary for SQLAlchemy models, repositories and transactions."""
 
 from .control import CONTROL_STATE_KEY, SqlAlchemyControlPlane
+from .exit import SqlAlchemyExitEvaluationStore, assert_exit_evaluation_store_contract
 from .models import (
     OUTBOX_DEAD_LETTER,
     OUTBOX_DELIVERED,
@@ -91,6 +92,8 @@ __all__ = [
     "RiskAssessmentRepository",
     "ScoreSnapshotRow",
     "ScoreSnapshotRepository",
+    "SqlAlchemyExitEvaluationStore",
+    "assert_exit_evaluation_store_contract",
     "SqlAlchemyOutboxStore",
     "SqlAlchemyAlertStore",
     "SqlAlchemyReadQueryService",

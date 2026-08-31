@@ -152,6 +152,32 @@ The focused command is:
 ./.venv/bin/pytest tests/unit/test_paper_domain.py tests/unit/test_paper_execution.py tests/unit/test_paper_trading_doctor.py tests/contract/test_phase9_sprint9_1.py tests/unit/test_paper_persistence_contract.py tests/unit/test_persistence_contract.py tests/unit/test_migration_contract.py -q
 ```
 
+## Phase 9.2 exit engine
+
+The keyless exit suite covers fixed stops and take-profit ladders, trailing and
+break-even rules, independent wallet/creator/holder distribution evidence,
+micro/macro flow collapse, liquidity and quote deterioration, score/time rules,
+freshness/UNKNOWN fail-closed behavior, external-only corroboration,
+deterministic IDs, append-idempotent in-memory and SQL timeline persistence,
+before/after evidence references and event-time/no-lookahead replay. Application
+and persistence boundary contracts forbid provider SDK, signing and
+transaction-submission dependencies.
+
+The focused command is:
+
+```text
+./.venv/bin/pytest tests/unit/test_exit_engine.py tests/unit/test_exit_persistence_contract.py tests/contract/test_phase9_sprint_9_2.py tests/unit/test_persistence_contract.py tests/unit/test_migration_contract.py -q
+```
+
+The opt-in Postgres command is:
+
+```text
+MEMERADAR_TEST_DATABASE_URL=postgresql+asyncpg://... ./.venv/bin/pytest tests/integration/test_exit_persistence_postgres.py -q
+```
+
+Live market-data and execution acceptance remains `BLOCKED_EXTERNAL`; no exit
+test may grant execution authority or change the protected operating modes.
+
 ## Live provider acceptance
 
 Live tests are opt-in and read-only until Phase 12. They must be clearly marked and never make CI depend on paid credentials.

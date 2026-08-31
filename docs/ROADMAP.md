@@ -497,12 +497,23 @@ quote submission, wallet signer, transaction submission or execution route.
 
 ### Sprint 9.2 — Exit Engine
 
-- [ ] Fixed SL/TP support.
-- [ ] Trailing stop and break-even rules.
-- [ ] Smart-money/creator distribution exit signals.
-- [ ] Liquidity decay and flow-collapse exits.
-- [ ] Score-degradation and time-based exits.
-- [ ] Partial take-profit policy support.
+- [x] Fixed SL/TP support.
+- [x] Trailing stop and break-even rules.
+- [x] Smart-money/creator distribution exit signals.
+- [x] Liquidity decay and flow-collapse exits.
+- [x] Score-degradation and time-based exits.
+- [x] Partial take-profit policy support.
+
+The keyless Sprint 9.2 implementation uses an immutable, provider-independent
+exit evidence snapshot and versioned rule policy. `ExitEngine` evaluates fixed
+protective, distribution/flow/liquidity, score/time, trailing/break-even and
+partial take-profit rules into an independent `ExitRiskScore` and advisory
+`ExitEvaluation`. Before/after evidence references, deterministic IDs,
+append-oriented timeline persistence through the existing `domain_events` log,
+and event-time/no-lookahead replay preserve explanation and reproducibility.
+External distribution evidence is corroboration only; no recommendation mutates
+a position or grants signing/submission authority. Live read-only market-data
+acceptance remains `BLOCKED_EXTERNAL`.
 
 ### Sprint 9.3 — Position UI / Telegram
 

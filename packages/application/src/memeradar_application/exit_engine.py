@@ -148,6 +148,7 @@ class ExitRulePolicy:
     quote_deterioration_bps: Decimal = Decimal("200")
     score_floor: Decimal = Decimal("35")
     score_degradation_points: Decimal = Decimal("20")
+    minimum_independent_distribution_clusters: int = 2
     time_stop: timedelta | None = timedelta(hours=1)
     correlation_exit_fraction: Decimal = Decimal("0.50")
     trailing_exit_fraction: Decimal = Decimal("0.50")
@@ -209,6 +210,13 @@ class ExitRulePolicy:
                     Decimal("100"),
                 ),
             )
+        if (
+            not isinstance(self.minimum_independent_distribution_clusters, int)
+            or isinstance(self.minimum_independent_distribution_clusters, bool)
+            or self.minimum_independent_distribution_clusters < 1
+            or self.minimum_independent_distribution_clusters > 1000
+        ):
+            raise ValueError("minimum_independent_distribution_clusters must be 1..1000")
         for field_name in (
             "correlation_exit_fraction",
             "trailing_exit_fraction",
@@ -296,6 +304,9 @@ class ExitRulePolicy:
             "quote_deterioration_bps": str(self.quote_deterioration_bps),
             "score_floor": str(self.score_floor),
             "score_degradation_points": str(self.score_degradation_points),
+            "minimum_independent_distribution_clusters": (
+                self.minimum_independent_distribution_clusters
+            ),
             "time_stop_seconds": (
                 None if self.time_stop is None else self.time_stop.total_seconds()
             ),
@@ -325,6 +336,7 @@ class ExitEvidenceSnapshot:
     smart_money_distribution_pressure: Decimal | None = None
     creator_related_sell_pressure: Decimal | None = None
     holder_cluster_reduction: Decimal | None = None
+    independent_distribution_clusters: int | None = None
     external_distribution_pressure: Decimal | None = None
     buy_velocity_micro: Decimal | None = None
     previous_buy_velocity_micro: Decimal | None = None
@@ -408,6 +420,12 @@ class ExitEvidenceSnapshot:
             if score is not None and not _ZERO <= score <= Decimal("100"):
                 raise ValueError(f"{field_name} must be in 0..100")
             object.__setattr__(self, field_name, score)
+        if self.independent_distribution_clusters is not None and (
+            not isinstance(self.independent_distribution_clusters, int)
+            or isinstance(self.independent_distribution_clusters, bool)
+            or self.independent_distribution_clusters < 0
+        ):
+            raise ValueError("independent_distribution_clusters must be a non-negative integer")
 
     @property
     def freshness(self) -> Freshness:
@@ -1074,6 +1092,11 @@ class ExitEngine:
             evidence.smart_money_distribution_pressure is not None
             and evidence.smart_money_distribution_pressure
             >= policy.distribution_pressure_threshold
+            and (
+                evidence.independent_distribution_clusters is None
+                or evidence.independent_distribution_clusters
+                >= policy.minimum_independent_distribution_clusters
+            )
         ):
             add(
                 "SMART_MONEY_DISTRIBUTION",
@@ -1221,6 +1244,14 @@ class ExitEngine:
                 )
                 break
         base_reasons, confidence = self._base_reasons(evidence)
+        if (
+            evidence.smart_money_distribution_pressure is not None
+            and evidence.smart_money_distribution_pressure >= policy.distribution_pressure_threshold
+            and evidence.independent_distribution_clusters is not None
+            and evidence.independent_distribution_clusters
+            < policy.minimum_independent_distribution_clusters
+        ):
+            _append_missing_reason(base_reasons, "EXIT_DISTRIBUTION_CLUSTERS_INSUFFICIENT")
         if (
             evidence.external_distribution_pressure is not None
             and evidence.external_distribution_pressure >= policy.distribution_pressure_threshold

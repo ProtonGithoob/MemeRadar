@@ -26,6 +26,13 @@ the application boundary. Live quote and execution acceptance remains
 `BLOCKED_EXTERNAL`; `make paper-trading-doctor` checks local paper contracts and
 reports configuration presence without probing or echoing endpoint values.
 
+The Sprint 9.2 exit engine is likewise not a provider adapter. It consumes
+normalized evidence snapshots with freshness and provenance, and the
+`SqlAlchemyExitEvaluationStore` persists evidence through the application
+timeline boundary. External wallet-distribution alerts are corroboration only;
+missing live market access remains `BLOCKED_EXTERNAL` and cannot be converted
+into a provider PASS by configuration presence.
+
 ## Ports
 
 ### CandidateDiscoveryPort

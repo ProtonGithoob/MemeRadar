@@ -131,6 +131,13 @@ boundary, and reconciliation reports mismatches without silently repairing
 history. A paper result, `ENTRY_READY` decision or external label is not
 execution permission.
 
+The Sprint 9.2 exit engine preserves the same boundary: it accepts normalized
+evidence only, emits an advisory `ExitEvaluation`, and has no persistence,
+provider, signer or transaction-submission authority. External distribution
+alerts can be recorded as corroboration but cannot force an exit alone. Exit
+timeline persistence is append-only and retains before/after evidence
+references for audit and replay. The protected modes remain unchanged.
+
 ## Wallet/signing isolation
 
 When Phase 12 is implemented:

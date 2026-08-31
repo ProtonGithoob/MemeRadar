@@ -656,6 +656,14 @@ Every risk/score/transition/exit result must include:
 - confidence;
 - config hash.
 
+Sprint 9.2 implements this exit contract with an independent
+`ExitRiskScore`; it is not an AlphaScore adjustment and stream health is never
+a positive exit/entry signal. Missing, stale, conflicted or invalid critical
+evidence produces an explicit non-safe exit result. The evaluator supports
+independent distribution-cluster corroboration, creator/holder pressure,
+micro/macro flow collapse, liquidity/quote deterioration, score degradation,
+time stops, trailing/break-even and configured partial take-profit levels.
+
 ## 13. Calibration rules
 
 - No lookahead leakage.

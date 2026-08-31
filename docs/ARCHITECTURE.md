@@ -445,6 +445,20 @@ future requests or future-observed quotes and has no provider, signer or
 transaction-submission capability. Reconciliation never repairs evidence;
 mismatches remain explicit `CONFLICTED` results.
 
+### Phase 9.2 exit intelligence
+
+The exit boundary consumes an immutable, normalized evidence snapshot and a
+versioned `ExitRulePolicy`. `ExitEngine` produces an independent
+`ExitRiskScore` and advisory `ExitEvaluation` for fixed protective,
+distribution/flow/liquidity, score/time, trailing/break-even and partial
+take-profit rules. It never mutates a position or submits an order. The
+append-oriented in-memory timeline and `SqlAlchemyExitEvaluationStore` persist
+the same evidence-bearing evaluation through the existing `domain_events` log,
+including before/after evidence references and idempotency checks. Replay
+sorts by event time and excludes future observations while pinning policy,
+configuration and schema identity. External distribution labels remain
+corroboration only and live market-data acceptance remains `BLOCKED_EXTERNAL`.
+
 ## Data paths
 
 ### Hot path
