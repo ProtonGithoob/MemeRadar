@@ -1,0 +1,30 @@
+{
+  "version": "decision-replay-v1",
+  "config_hash": "decision-fixture-v1",
+  "candidate_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "feature_snapshot_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "risk_assessment_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+  "risk": {
+    "disposition": "PASS",
+    "critical_evidence_state": "FRESH",
+    "confidence": "0.95",
+    "evidence_refs": ["risk:decision-replay"]
+  },
+  "score_sequence": [
+    {
+      "id": "10000000-0000-0000-0000-000000000001",
+      "value": "50",
+      "at_seconds": 1
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000002",
+      "value": "80",
+      "at_seconds": 2
+    },
+    {
+      "id": "10000000-0000-0000-0000-000000000003",
+      "value": "90",
+      "at_seconds": 3
+    }
+  ]
+}

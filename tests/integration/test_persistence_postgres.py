@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import delete, select
 
+from memeradar_application.decision_engine import DecisionEngine, DecisionPolicy
 from memeradar_application.event_processing import (
     EventDispatcher,
     OutboxProcessor,
@@ -112,7 +113,16 @@ async def _exercise_postgres(database_url: str) -> None:
                 feature_version="feature-windows-v1",
                 completeness=Decimal("1"),
                 confidence=Decimal("0.9"),
-                values={"window": "1m", "Momentum": Decimal("72")},
+                values={
+                    "window": "1m",
+                    "SmartMoney": Decimal("80"),
+                    "OnChainSafety": Decimal("90"),
+                    "LiquidityQuality": Decimal("75"),
+                    "OrganicFlow": Decimal("70"),
+                    "SocialVelocity": Decimal("65"),
+                    "HolderQuality": Decimal("85"),
+                    "Momentum": Decimal("72"),
+                },
                 provenance=(
                     Provenance(
                         provider="fixture.integration",
@@ -154,6 +164,18 @@ async def _exercise_postgres(database_url: str) -> None:
             first_score = await unit_of_work.scores.add(score)
             second_score = await unit_of_work.scores.add(score)
             assert first_score.id == second_score.id
+            decision = DecisionEngine(policy=DecisionPolicy(cooldown=timedelta(0))).decide(
+                candidate,
+                score,
+                risk,
+                now=NOW + timedelta(seconds=3),
+                config_hash="sha256:integration-feature",
+                correlation_id="integration-decision",
+            )
+            assert decision.to_state.value == "WATCH"
+            assert decision.transition is not None
+            decision_transition_id = decision.transition.id
+            await unit_of_work.candidates.add(candidate)
             first_outbox = await unit_of_work.outbox.enqueue(
                 event,
                 side_effect_kind="candidate-index",
@@ -175,10 +197,14 @@ async def _exercise_postgres(database_url: str) -> None:
             loaded = await unit_of_work.candidates.get(candidate_id)
             assert loaded is not None
             assert loaded.token.mint_address == mint
-            assert loaded.state.value == "ENRICHING"
-            assert [item.idempotency_key for item in loaded.transitions] == [
+            assert loaded.state.value == "WATCH"
+            assert [item.idempotency_key for item in loaded.transitions][0:1] == [
                 "integration-transition-1"
             ]
+            assert len(loaded.transitions) == 2
+            assert loaded.transitions[1].id == decision_transition_id
+            assert loaded.latest_score_id == score.id
+            assert loaded.latest_risk_id == risk.id
             assert loaded.transitions[0].version == "integration-v1"
             assert loaded.transitions[0].config_hash == "sha256:integration"
             assert loaded.transitions[0].confidence == Decimal("0.87")

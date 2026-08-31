@@ -434,9 +434,16 @@ class CandidateRepository:
             token=token,
             discovered_at=row.discovered_at,
             discovery_source=row.discovery_source,
-            latest_score_id=row.latest_score_id,
-            latest_risk_id=row.latest_risk_id,
-            state_changed_at=row.state_changed_at,
+            # Replay history before restoring aggregate denormalizations.  A
+            # later decision transition may have populated these columns,
+            # and Candidate.transition would otherwise incorrectly inherit
+            # those IDs while rebuilding an earlier transition.
+            latest_score_id=None,
+            latest_risk_id=None,
+            # Replay transitions from the discovery boundary.  The row stores
+            # the final state timestamp, which must only be compared after
+            # earlier history has been reconstructed.
+            state_changed_at=row.discovered_at,
             rejection_reason=_row_reason_codes(row.rejection_reason),
             pools=pools,
         )
@@ -460,6 +467,8 @@ class CandidateRepository:
                 evidence_refs=tuple(transition_row.evidence_refs),
             )
             candidate.replace_last_transition(replace(applied, id=transition_row.id))
+        candidate.latest_score_id = row.latest_score_id
+        candidate.latest_risk_id = row.latest_risk_id
         if candidate.state.value != row.state or candidate.state_changed_at != row.state_changed_at:
             raise ValueError("persisted candidate state does not match transition history")
         return candidate

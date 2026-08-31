@@ -609,3 +609,40 @@ def test_alpha_score_recomputation_seam_is_provider_free_and_safe():
         assert environment["PAPER_TRADING"] == "true"
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
+
+
+def test_decision_state_machine_and_timeline_are_provider_free_and_safe():
+    from memeradar_application.decision_engine import (
+        DECISION_POLICY_VERSION,
+        TIMELINE_VERSION,
+        DecisionEngine,
+        DecisionPolicy,
+        EvidenceTimelineProjector,
+    )
+
+    assert DecisionEngine
+    assert EvidenceTimelineProjector
+    assert DecisionPolicy().version == DECISION_POLICY_VERSION
+    assert EvidenceTimelineProjector.version == TIMELINE_VERSION
+    fixture_dir = ROOT / "fixtures" / "providers" / "decision"
+    assert (fixture_dir / "README.md").is_file()
+    assert (fixture_dir / "replay.json").is_file()
+    source = (
+        ROOT
+        / "packages"
+        / "application"
+        / "src"
+        / "memeradar_application"
+        / "decision_engine.py"
+    ).read_text(encoding="utf-8")
+    assert "memeradar_providers" not in source
+    assert "memeradar_persistence" not in source
+    assert "sign(" not in source.lower()
+    assert "submit(" not in source.lower()
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())["services"]
+    for service_name in ("api", "worker"):
+        environment = compose[service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"
