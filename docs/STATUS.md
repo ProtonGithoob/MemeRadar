@@ -4,7 +4,7 @@ Last updated: 2026-08-31
 
 ## Current verdict
 
-`E8_4_STREAM_INTEGRITY_COMPLETE_KEYLESS_PASS_GATE_P8_PASS`
+`PHASE_9_SPRINT_9_1_IN_PROGRESS_E8_4_COMPLETE_GATE_P8_PASS`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
@@ -14,6 +14,11 @@ Phase 8 / Sprint 8.1 is now complete for its keyless implementation and frontend
 Phase 8 / Sprint 8.2 is now complete for its keyless implementation and frontend gate: the server-side bounded read gateway, ranked Radar filters/cards, token detail overview, event-time evidence timeline, allow-listed market/liquidity/net-flow charts, holder concentration/cluster projections and provenance-aware social/narrative panels are implemented. API ranking/order is preserved, missing/empty/unavailable/unknown/stale/invalid data remains explicit, and the browser receives no viewer credential, raw provider payload or execution authority. Live provider acceptance remains externally blocked; no live-money execution has been enabled.
 Phase 8 / Sprint 8.3 and Gate P8 are now complete for their keyless implementation and browser acceptance: server-rendered wallet leaderboard/detail, provider health/quota/freshness, read-only validated settings/control projections and immutable audit/config history are implemented over the bounded read gateway. API order, freshness and non-safe states remain explicit; secret-shaped fields and raw provider responses are withheld; Playwright browser acceptance covers the operator shell/routes, invalid wallet fail-closed behavior and absence of browser mutation/execution authority. Live provider acceptance remains externally blocked.
 Research extension E8.4 is now complete for its keyless implementation and gate: provider-independent cursor/gap/recovery/verification/backpressure contracts, durable SQLAlchemy state, canonical full-key protocol routing, commitment/revert correction, event-time bounded replay, stream-quality reduction and safe telemetry are implemented. Live stream/RPC acceptance remains `BLOCKED_EXTERNAL`; unknown or unverified protocol identities fail closed, and no Rust/Yellowstone extraction was introduced.
+Phase 9 / Sprint 9.1 is now the active task. The existing typed `Position` and
+portfolio schema are being extended with a deterministic paper-only cash/order/
+fill ledger, conservative risk-budget sizing, quote freshness checks,
+append-only reconciliation and restart-safe replay. No live quote submission,
+wallet signing or execution authority is being introduced.
 
 ## Current phase and sprint
 
@@ -44,7 +49,8 @@ Research extension E8.4 is now complete for its keyless implementation and gate:
 - Completed: `Phase 8 / Sprint 8.3 — Wallets, Providers, Settings and Audit` (keyless portion)
 - Completed: `Gate P8` (keyless browser acceptance: operator intelligence is visible/explainable and browser execution/mutation authority is absent)
 - Completed: `Research extension E8.4 — Stream Integrity / Protocol Verification` (keyless implementation and replay/persistence gate)
-- Next: `Phase 9 / Sprint 9.1 — Paper Execution`; keep live-provider acceptance `BLOCKED_EXTERNAL` and all protected modes unchanged.
+- In progress: `Phase 9 / Sprint 9.1 — Paper Execution`; current checkpoint is the contract/design freeze in `docs/superpowers/plans/2026-08-31-phase-9-sprint-9-1-paper-execution.md`.
+- Next after Sprint 9.1: `Phase 9 / Sprint 9.2 — Exit Engine`; keep live-provider acceptance `BLOCKED_EXTERNAL` and all protected modes unchanged.
 
 ## Current operating policy
 
@@ -54,6 +60,21 @@ Research extension E8.4 is now complete for its keyless implementation and gate:
 - `AUTO_EXECUTION=false` — disabled
 
 The configuration loader rejects attempts to override these protected values.
+
+## Active implementation checkpoint
+
+- Task: freeze and implement Sprint 9.1 paper portfolio/cash ledger, sizing,
+  deterministic quote/fill simulation, idempotent orders and position
+  reconciliation.
+- Design: `docs/superpowers/specs/2026-08-31-phase-9-sprint-9-1-paper-execution-design.md`.
+- Plan: `docs/superpowers/plans/2026-08-31-phase-9-sprint-9-1-paper-execution.md`.
+- Current state: E8.4 is committed/pushed at `d743f1e`; no Sprint 9.1
+  production code has been added yet; tests and contracts are the next action.
+- External blockers: live quote/provider and all live execution acceptance are
+  `BLOCKED_EXTERNAL`; keyless fixtures/fakes are required and sufficient for
+  this sprint.
+- Protected modes: `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
+  `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
 
 ## Completed work
 
