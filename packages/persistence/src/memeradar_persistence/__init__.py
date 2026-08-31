@@ -20,6 +20,7 @@ from .models import (
     StateTransitionRow,
     TokenRow,
 )
+from .read_queries import SqlAlchemyReadQueryService
 from .repositories import (
     AlertRepository,
     CandidateRepository,
@@ -71,6 +72,7 @@ __all__ = [
     "ScoreSnapshotRepository",
     "SqlAlchemyOutboxStore",
     "SqlAlchemyAlertStore",
+    "SqlAlchemyReadQueryService",
     "SqlAlchemyUnitOfWork",
     "StateTransitionRow",
     "TokenRow",
