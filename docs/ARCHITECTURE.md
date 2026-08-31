@@ -48,6 +48,16 @@ invalid states remain visible. These routes are observability projections and
 have no scoring, state-transition, configuration, signing or execution
 authority.
 
+Sprint 8.3 extends the same server-only gateway to wallet leaderboard/detail,
+provider health/quota, validated control-state/configuration and audit/config
+history pages. API order is preserved, catalogs remain explicit when empty,
+and settings are a read-only explanation of the authenticated control boundary.
+Wallet labels, provider health and audit/config metadata cannot change a
+decision, protected mode or execution permission. The Playwright Gate P8 suite
+exercises the rendered routes against a keyless local runtime and verifies
+protected labels, fail-closed invalid input and the absence of browser
+mutation/execution controls.
+
 ### PostgreSQL
 System of record for normalized observations, candidates, features, decisions, positions, audit and research results.
 
@@ -325,7 +335,9 @@ strict UUID/timestamp/numeric/string/array parsing before passing records to
 server components. The token detail view iterates the API timeline order and
 projects only allow-listed market, liquidity, flow and holder fields into
 native SVG/CSS; social and narrative entries expose provenance/reason codes,
-not untrusted text or raw provider bodies.
+not untrusted text or raw provider bodies. Wallet/provider/control/audit
+records use the same strict boundary and allow-listed display projections; no
+browser fetch or control mutation is introduced.
 
 ## Authenticated control plane
 

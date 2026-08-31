@@ -6,7 +6,7 @@ WEB_DIR ?= apps/web
 COMPOSE_FILE ?= infra/compose/docker-compose.yml
 COMPOSE ?= docker compose -f $(COMPOSE_FILE)
 
-.PHONY: bootstrap lint typecheck test frontend-lint frontend-typecheck frontend-test \
+.PHONY: bootstrap lint typecheck test frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
 	external-wallet-doctor telegram-doctor
@@ -33,6 +33,9 @@ frontend-typecheck:
 
 frontend-test:
 	cd $(WEB_DIR) && npm run test
+
+frontend-e2e:
+	cd $(WEB_DIR) && npm run test:e2e
 
 frontend-build:
 	cd $(WEB_DIR) && npm run build

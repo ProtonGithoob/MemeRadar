@@ -212,6 +212,16 @@ projections. Empty, unknown, stale, conflicted and invalid evidence remains
 non-safe and visible; no UI read, chart, realtime message or advisory label
 can authorize `ENTRY_READY`, alter modes, clear a kill switch, sign or submit.
 
+Sprint 8.3 keeps wallet, provider, settings and audit reads behind that same
+server boundary. Wallet scores and external labels remain corroborating
+evidence; provider health is data-quality evidence; audit/config metadata is
+not a permission grant. Settings render protected modes and a role matrix but
+contain no mutation form, arbitrary configuration input, signing path or order
+control. Gateway parsers reject malformed or unsafe records, display
+projections allow-list fields and redact secret-shaped keys/values, and the
+browser receives no viewer/control credential or raw provider response. Gate
+P8 browser tests verify these boundaries against the keyless Compose runtime.
+
 ## Supply chain
 
 CI should include:

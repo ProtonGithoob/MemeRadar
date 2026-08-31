@@ -433,12 +433,22 @@ gate.
 
 ### Sprint 8.3 — Wallets, Providers, Settings and Audit
 
-- [ ] Smart-wallet leaderboard/detail.
-- [ ] Provider health/quota/freshness panel.
-- [ ] Settings with safe validation and permission gates.
-- [ ] Audit event explorer.
+- [x] Smart-wallet leaderboard/detail.
+- [x] Provider health/quota/freshness panel.
+- [x] Settings with safe validation and permission gates.
+- [x] Audit event explorer.
 
 **Gate P8:** all backend intelligence required for operation is visible and explainable in frontend; browser e2e passes.
+
+Sprint 8.3 and Gate P8 keyless state: complete. Server-rendered wallet,
+provider, settings and audit projections consume bounded GET/control reads in
+API order. Settings remain read-only and explain the authenticated permission
+boundary; empty, unavailable, stale, conflicted and invalid evidence stays
+explicit. Playwright browser acceptance covers the protected shell, operator
+routes, invalid wallet fail-closed behavior and absence of browser mutation or
+execution authority. Live provider acceptance remains `BLOCKED_EXTERNAL`.
+The mandatory E8.4 stream integrity/protocol verification retrofit is the next
+task and begins before Phase 9.
 
 ---
 

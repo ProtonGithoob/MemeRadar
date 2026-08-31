@@ -95,6 +95,18 @@ configuration and a rebuilt web runtime probe are required before Sprint 8.2
 is marked complete; live provider acceptance remains `BLOCKED_EXTERNAL` when
 credentials/endpoints are absent.
 
+Sprint 8.3 frontend coverage verifies strict wallet/provider/control/audit
+parsers, bounded queries, private-token containment, canonical wallet-address
+validation and allow-listed display projections. Component tests preserve API
+order and cover degradation, empty, unavailable, invalid, permission-matrix
+and protected-mode behavior. The Gate P8 Playwright suite runs against the
+rebuilt keyless Compose web service and covers the operator shell/navigation,
+all four operator intelligence routes, invalid wallet fail-closed behavior,
+protected labels and absence of forms or execution/mutation buttons. The
+environment uses `MEMERADAR_E2E_BASE_URL` for an existing server and an
+optional `MEMERADAR_E2E_EXECUTABLE_PATH` when the host supplies its own Chrome;
+`make frontend-e2e` remains separate from the credential-free repository gate.
+
 ## Live provider acceptance
 
 Live tests are opt-in and read-only until Phase 12. They must be clearly marked and never make CI depend on paid credentials.
