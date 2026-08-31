@@ -350,3 +350,26 @@ def test_outbox_worker_stops_after_a_bounded_poll() -> None:
     asyncio.run(OutboxWorker(processor).run(stop_event))  # type: ignore[arg-type]
 
     assert processor.calls == 1
+
+
+def test_processor_honors_handler_requested_retry_time_without_exposing_error_text() -> None:
+    event = make_event("retry-at-event")
+    store = FakeOutboxStore((event,))
+
+    class DeferredError(RuntimeError):
+        retry_at = NOW + timedelta(seconds=20)
+
+    async def deferred_handler(_event: EventEnvelope) -> None:
+        raise DeferredError("chat token must not escape")
+
+    processor = OutboxProcessor(
+        store,
+        EventDispatcher({"CandidateDiscovered": deferred_handler}),
+        retry_policy=RetryPolicy(max_attempts=3, base_delay_seconds=1, max_delay_seconds=2),
+    )
+
+    result = asyncio.run(processor.process_once(now=NOW))
+
+    assert result.retried == 1
+    assert store.rows[event.id]["available_at"] == NOW + timedelta(seconds=20)
+    assert "token" not in str(store.rows[event.id]["error_metadata"])

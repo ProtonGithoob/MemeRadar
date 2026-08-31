@@ -21,12 +21,15 @@ from .models import (
     TokenRow,
 )
 from .repositories import (
+    AlertRepository,
     CandidateRepository,
     FeatureSnapshotRepository,
     OutboxLeaseLost,
     OutboxRepository,
     RiskAssessmentRepository,
     ScoreSnapshotRepository,
+    alert_from_row,
+    alert_to_row,
     feature_snapshot_from_row,
     feature_snapshot_to_row,
     risk_assessment_from_row,
@@ -35,10 +38,16 @@ from .repositories import (
     score_snapshot_to_row,
 )
 from .serialization import provenance_from_json, provenance_to_json
-from .uow import SqlAlchemyOutboxStore, SqlAlchemyUnitOfWork, create_database_engine
+from .uow import (
+    SqlAlchemyAlertStore,
+    SqlAlchemyOutboxStore,
+    SqlAlchemyUnitOfWork,
+    create_database_engine,
+)
 
 __all__ = [
     "AlertRow",
+    "AlertRepository",
     "Base",
     "CandidateRepository",
     "CandidateRow",
@@ -61,10 +70,13 @@ __all__ = [
     "ScoreSnapshotRow",
     "ScoreSnapshotRepository",
     "SqlAlchemyOutboxStore",
+    "SqlAlchemyAlertStore",
     "SqlAlchemyUnitOfWork",
     "StateTransitionRow",
     "TokenRow",
     "create_database_engine",
+    "alert_from_row",
+    "alert_to_row",
     "feature_snapshot_from_row",
     "feature_snapshot_to_row",
     "provenance_from_json",

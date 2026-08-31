@@ -10,6 +10,11 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import delete, select
 
+from memeradar_application.alert_pipeline import (
+    AlertDeliveryService,
+    AlertPolicy,
+    provider_health_event,
+)
 from memeradar_application.decision_engine import DecisionEngine, DecisionPolicy
 from memeradar_application.event_processing import (
     EventDispatcher,
@@ -18,6 +23,9 @@ from memeradar_application.event_processing import (
 )
 from memeradar_application.score_recomputation import AlphaScoreRecomputer
 from memeradar_domain import (
+    Alert,
+    AlertSeverity,
+    AlertType,
     Candidate,
     EventEnvelope,
     FeatureSnapshot,
@@ -30,6 +38,7 @@ from memeradar_domain import (
     TokenIdentity,
 )
 from memeradar_persistence import (
+    AlertRow,
     CandidateRow,
     DomainEventRow,
     FeatureSnapshotRow,
@@ -37,12 +46,14 @@ from memeradar_persistence import (
     PoolRow,
     RiskAssessmentRow,
     ScoreSnapshotRow,
+    SqlAlchemyAlertStore,
     SqlAlchemyOutboxStore,
     SqlAlchemyUnitOfWork,
     StateTransitionRow,
     TokenRow,
     create_database_engine,
 )
+from memeradar_providers.telegram import FixtureNotificationAdapter
 
 pytestmark = pytest.mark.integration
 NOW = datetime(2026, 8, 27, 0, 0, tzinfo=UTC)
@@ -222,6 +233,42 @@ async def _exercise_postgres(database_url: str) -> None:
             assert loaded_score.model_version == "alpha-score-v1"
             assert loaded_score.risk_assessment_id == risk.id
             assert await unit_of_work.scores.for_candidate(candidate_id) == (loaded_score,)
+            alert = Alert(
+                id=uuid4(),
+                type=AlertType.NEW_WATCH,
+                severity=AlertSeverity.INFO,
+                payload={"symbol": "MEME", "score": "45"},
+                dedupe_key="alert:integration-watch",
+                requested_at=NOW + timedelta(seconds=3),
+                candidate_id=candidate_id,
+                reason_codes=(ReasonCode("WATCH_THRESHOLD_REACHED"),),
+            )
+            first_alert = await unit_of_work.alerts.save(alert)
+            equivalent_alert = Alert(
+                type=alert.type,
+                severity=alert.severity,
+                payload=alert.payload,
+                dedupe_key=alert.dedupe_key,
+                requested_at=alert.requested_at,
+                candidate_id=alert.candidate_id,
+                reason_codes=alert.reason_codes,
+            )
+            second_alert = await unit_of_work.alerts.save(equivalent_alert)
+            assert first_alert.id == second_alert.id
+            alert.mark_delivered(NOW + timedelta(seconds=4))
+            await unit_of_work.alerts.save(alert)
+            loaded_alert = await unit_of_work.alerts.get_by_dedupe_key(alert.dedupe_key)
+            assert loaded_alert is not None
+            assert loaded_alert.state.value == "DELIVERED"
+            assert loaded_alert.attempts == 1
+            await unit_of_work.commit()
+
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            rehydrated_alert = await unit_of_work.alerts.get_by_dedupe_key(alert.dedupe_key)
+            assert rehydrated_alert is not None
+            assert rehydrated_alert.id == alert.id
+            assert rehydrated_alert.state.value == "DELIVERED"
+            assert rehydrated_alert.attempts == 1
     finally:
         async with engine.begin() as connection:
             await connection.execute(
@@ -242,6 +289,7 @@ async def _exercise_postgres(database_url: str) -> None:
             await connection.execute(
                 delete(FeatureSnapshotRow).where(FeatureSnapshotRow.candidate_id == candidate_id)
             )
+            await connection.execute(delete(AlertRow).where(AlertRow.candidate_id == candidate_id))
             await connection.execute(delete(CandidateRow).where(CandidateRow.id == candidate_id))
             await connection.execute(delete(PoolRow).where(PoolRow.token_id == token_id))
             await connection.execute(delete(TokenRow).where(TokenRow.id == token_id))
@@ -397,4 +445,69 @@ async def _exercise_persisted_processor(database_url: str) -> None:
         async with engine.begin() as connection:
             await connection.execute(delete(OutboxRow).where(OutboxRow.event_id == event_id))
             await connection.execute(delete(DomainEventRow).where(DomainEventRow.id == event_id))
+        await engine.dispose()
+
+
+def test_persisted_alert_outbox_delivers_once_with_fixture_notification() -> None:
+    database_url = os.environ.get("MEMERADAR_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("MEMERADAR_TEST_DATABASE_URL is not configured")
+
+    asyncio.run(_exercise_persisted_alert_outbox(database_url))
+
+
+async def _exercise_persisted_alert_outbox(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    event = provider_health_event(
+        provider="fixture-market",
+        capability="market_data",
+        state="DOWN",
+        checked_at=NOW,
+        correlation_id="alert-integration",
+    )
+    alert_dedupe_key = "alert:PROVIDER_DEGRADED:" + event.dedupe_key
+    notification = FixtureNotificationAdapter(clock=lambda: NOW)
+    service = AlertDeliveryService(
+        SqlAlchemyAlertStore(engine),
+        notification,
+        policy=AlertPolicy(max_messages=10),
+        destination="fixture-chat",
+        clock=lambda: NOW,
+    )
+    try:
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            outbox_row = await unit_of_work.outbox.enqueue(
+                event,
+                side_effect_kind="notification",
+            )
+            await unit_of_work.commit()
+
+        processor = OutboxProcessor(
+            SqlAlchemyOutboxStore(engine),
+            EventDispatcher({"ProviderHealthChanged": service.handle_event}),
+            side_effect_kind="notification",
+            clock=lambda: NOW,
+        )
+        first = await processor.process_once(now=NOW)
+        second = await processor.process_once(now=NOW)
+
+        assert first == ProcessingResult(claimed=1, delivered=1)
+        assert second == ProcessingResult()
+        assert notification.calls == 1
+        async with engine.connect() as connection:
+            outbox_status = await connection.scalar(
+                select(OutboxRow.status).where(OutboxRow.id == outbox_row.id)
+            )
+            alert_state = await connection.scalar(
+                select(AlertRow.state).where(AlertRow.dedupe_key == alert_dedupe_key)
+            )
+        assert outbox_status == "DELIVERED"
+        assert alert_state == "DELIVERED"
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(
+                delete(AlertRow).where(AlertRow.dedupe_key == alert_dedupe_key)
+            )
+            await connection.execute(delete(OutboxRow).where(OutboxRow.event_id == event.id))
+            await connection.execute(delete(DomainEventRow).where(DomainEventRow.id == event.id))
         await engine.dispose()

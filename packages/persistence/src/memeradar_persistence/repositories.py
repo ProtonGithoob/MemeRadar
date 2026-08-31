@@ -14,6 +14,10 @@ from sqlalchemy.orm import selectinload
 
 from memeradar_application.event_processing import OutboxMessage
 from memeradar_domain import (
+    Alert,
+    AlertSeverity,
+    AlertState,
+    AlertType,
     Candidate,
     CandidateState,
     Chain,
@@ -36,6 +40,7 @@ from .models import (
     OUTBOX_DELIVERED,
     OUTBOX_PENDING,
     OUTBOX_PROCESSING,
+    AlertRow,
     CandidateRow,
     DomainEventRow,
     FeatureSnapshotRow,
@@ -56,6 +61,70 @@ from .serialization import (
 
 class OutboxLeaseLost(RuntimeError):
     """Raised when a delivery update no longer owns the row lease."""
+
+
+def alert_to_row(alert: Alert) -> AlertRow:
+    """Map one alert request into the existing JSON-safe alert table contract."""
+
+    if not isinstance(alert, Alert):
+        raise TypeError("alert must be an Alert")
+    return AlertRow(
+        id=alert.id,
+        type=alert.type.value,
+        candidate_id=alert.candidate_id,
+        position_id=alert.position_id,
+        severity=alert.severity.value,
+        payload=json_safe(alert.payload),
+        dedupe_key=alert.dedupe_key,
+        state=alert.state.value,
+        requested_at=alert.requested_at,
+        delivered_at=alert.delivered_at,
+        attempts=alert.attempts,
+        reason_codes=reason_codes_to_json(alert.reason_codes),
+    )
+
+
+def alert_from_row(row: AlertRow) -> Alert:
+    """Rehydrate one alert while retaining delivery state and reasons."""
+
+    if not isinstance(row, AlertRow):
+        raise TypeError("row must be an AlertRow")
+    return Alert(
+        id=row.id,
+        type=AlertType(row.type),
+        severity=AlertSeverity(row.severity),
+        payload=row.payload,
+        dedupe_key=row.dedupe_key,
+        requested_at=row.requested_at,
+        candidate_id=row.candidate_id,
+        position_id=row.position_id,
+        state=AlertState(row.state),
+        delivered_at=row.delivered_at,
+        attempts=row.attempts,
+        reason_codes=reason_codes_from_json(row.reason_codes),
+    )
+
+
+def _alert_identity_matches_row(alert: Alert, row: AlertRow) -> bool:
+    return (
+        row.type == alert.type.value
+        and row.candidate_id == alert.candidate_id
+        and row.position_id == alert.position_id
+        and row.severity == alert.severity.value
+        and row.payload == json_safe(alert.payload)
+        and row.dedupe_key == alert.dedupe_key
+        and row.requested_at == alert.requested_at
+    )
+
+
+def _alert_matches_row(alert: Alert, row: AlertRow) -> bool:
+    return _alert_identity_matches_row(alert, row) and (
+        row.id == alert.id
+        and row.state == alert.state.value
+        and row.delivered_at == alert.delivered_at
+        and row.attempts == alert.attempts
+        and row.reason_codes == reason_codes_to_json(alert.reason_codes)
+    )
 
 
 def feature_snapshot_to_row(snapshot: FeatureSnapshot) -> FeatureSnapshotRow:
@@ -333,6 +402,59 @@ def _transition_matches_row(transition: StateTransition, row: StateTransitionRow
         and row.confidence == transition.confidence
         and row.evidence_refs == list(transition.evidence_refs)
     )
+
+
+class AlertRepository:
+    """Persist mutable alert delivery state with dedupe-key idempotency."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def save(self, alert: Alert) -> Alert:
+        if not isinstance(alert, Alert):
+            raise TypeError("alert must be an Alert")
+        row = await self._session.get(AlertRow, alert.id)
+        row_by_key = await self._session.scalar(
+            select(AlertRow).where(AlertRow.dedupe_key == alert.dedupe_key)
+        )
+        if row is not None and row_by_key is not None and row_by_key.id != row.id:
+            raise IdempotencyConflict(
+                f"alert ID {alert.id} conflicts with dedupe key {alert.dedupe_key!r}"
+            )
+        if row is None and row_by_key is not None:
+            if not _alert_identity_matches_row(alert, row_by_key):
+                raise IdempotencyConflict(
+                    f"alert dedupe key {alert.dedupe_key!r} conflicts with persisted content"
+                )
+            return alert_from_row(row_by_key)
+        if row is None:
+            row = alert_to_row(alert)
+            self._session.add(row)
+        else:
+            if not _alert_identity_matches_row(alert, row):
+                raise IdempotencyConflict(f"alert {alert.id} conflicts with persisted content")
+            row.state = alert.state.value
+            row.delivered_at = alert.delivered_at
+            row.attempts = alert.attempts
+            row.reason_codes = reason_codes_to_json(alert.reason_codes)
+        await self._session.flush()
+        return alert
+
+    async def add(self, alert: Alert) -> Alert:
+        """Compatibility alias for repository callers that use aggregate add semantics."""
+
+        return await self.save(alert)
+
+    async def get(self, alert_id: UUID) -> Alert | None:
+        row = await self._session.get(AlertRow, alert_id)
+        return None if row is None else alert_from_row(row)
+
+    async def get_by_dedupe_key(self, dedupe_key: str) -> Alert | None:
+        normalized_key = require_text(dedupe_key, "dedupe_key")
+        row = await self._session.scalar(
+            select(AlertRow).where(AlertRow.dedupe_key == normalized_key)
+        )
+        return None if row is None else alert_from_row(row)
 
 
 class CandidateRepository:
@@ -676,6 +798,7 @@ class OutboxRepository:
         now: datetime,
         limit: int,
         lease_seconds: int,
+        side_effect_kind: str | None = None,
     ) -> tuple[OutboxMessage, ...]:
         """Claim ready messages using row locks and an expiring lease."""
 
@@ -683,10 +806,20 @@ class OutboxRepository:
             raise ValueError("limit must be between 1 and 1000")
         if not 1 <= lease_seconds <= 86400:
             raise ValueError("lease_seconds must be between 1 and 86400")
+        normalized_side_effect = (
+            None
+            if side_effect_kind is None
+            else require_text(side_effect_kind, "side_effect_kind", max_length=64)
+        )
         normalized_now = ensure_utc(now, "now")
         statement = (
             select(OutboxRow)
             .where(
+                *(
+                    ()
+                    if normalized_side_effect is None
+                    else (OutboxRow.side_effect_kind == normalized_side_effect,)
+                ),
                 OutboxRow.delivered_at.is_(None),
                 OutboxRow.dead_lettered_at.is_(None),
                 OutboxRow.available_at <= normalized_now,
@@ -805,4 +938,5 @@ def _outbox_message(row: OutboxRow, lease_token: str) -> OutboxMessage:
         attempts=row.attempts,
         available_at=row.available_at,
         lease_token=lease_token,
+        side_effect_kind=row.side_effect_kind,
     )

@@ -114,6 +114,14 @@ class Alert:
         self.attempts += 1
         self.state = AlertState.FAILED
 
+    def mark_suppressed(self, reason_codes: tuple[ReasonCode | str, ...] = ()) -> None:
+        """Record a policy suppression without treating it as a successful delivery."""
+
+        if self.state not in {AlertState.REQUESTED, AlertState.FAILED}:
+            raise ValueError("only requested or failed alerts can be suppressed")
+        self.reason_codes = normalize_reason_codes((*self.reason_codes, *reason_codes))
+        self.state = AlertState.SUPPRESSED
+
 
 @dataclass(frozen=True, slots=True)
 class ExitSignal:

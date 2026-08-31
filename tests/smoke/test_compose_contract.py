@@ -646,3 +646,48 @@ def test_decision_state_machine_and_timeline_are_provider_free_and_safe():
         assert environment["PAPER_TRADING"] == "true"
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
+
+
+def test_alert_pipeline_and_telegram_adapter_are_explicit_and_safe():
+    from memeradar_application.alert_pipeline import (
+        AlertDeliveryService,
+        AlertEventProjector,
+        AlertRenderer,
+    )
+    from memeradar_providers.telegram import (
+        FixtureNotificationAdapter,
+        TelegramNotificationAdapter,
+    )
+
+    assert AlertDeliveryService
+    assert AlertEventProjector
+    assert AlertRenderer
+    assert FixtureNotificationAdapter.provider_name == "fixture-telegram"
+    assert TelegramNotificationAdapter.provider_name == "telegram"
+    fixture_dir = ROOT / "fixtures" / "providers" / "telegram"
+    assert (fixture_dir / "README.md").is_file()
+    assert (fixture_dir / "replay.json").is_file()
+    makefile = (ROOT / "Makefile").read_text()
+    env_example = (ROOT / ".env.example").read_text()
+    assert "telegram-doctor:" in makefile
+    assert "TELEGRAM_BOT_TOKEN=" in env_example
+    assert "TELEGRAM_CHAT_ID=" in env_example
+    source = (
+        ROOT
+        / "packages"
+        / "application"
+        / "src"
+        / "memeradar_application"
+        / "alert_pipeline.py"
+    ).read_text()
+    assert "memeradar_providers" not in source
+    assert "memeradar_persistence" not in source
+    assert "sign(" not in source.lower()
+    assert "submit(" not in source.lower()
+    compose = yaml.safe_load(COMPOSE_PATH.read_text())["services"]
+    for service_name in ("api", "worker"):
+        environment = compose[service_name]["environment"]
+        assert environment["ANALYSIS_ONLY"] == "true"
+        assert environment["PAPER_TRADING"] == "true"
+        assert environment["MANUAL_EXECUTION"] == "false"
+        assert environment["AUTO_EXECUTION"] == "false"

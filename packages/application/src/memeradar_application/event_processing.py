@@ -41,6 +41,7 @@ class OutboxMessage:
     attempts: int
     available_at: datetime
     lease_token: str
+    side_effect_kind: str = "domain_event"
 
     def __post_init__(self) -> None:
         if not isinstance(self.event, EventEnvelope):
@@ -51,6 +52,11 @@ class OutboxMessage:
             raise ValueError("attempts must not be negative")
         object.__setattr__(self, "available_at", ensure_utc(self.available_at, "available_at"))
         object.__setattr__(self, "lease_token", require_text(self.lease_token, "lease_token"))
+        object.__setattr__(
+            self,
+            "side_effect_kind",
+            require_text(self.side_effect_kind, "side_effect_kind", max_length=64),
+        )
 
 
 class EventHandler(Protocol):
@@ -81,6 +87,7 @@ class OutboxStore(Protocol):
         now: datetime,
         limit: int,
         lease_seconds: int,
+        side_effect_kind: str | None = None,
     ) -> Sequence[OutboxMessage]: ...
 
     async def mark_delivered(
@@ -252,6 +259,7 @@ class OutboxProcessor:
         telemetry: EventProcessingTelemetry | None = None,
         batch_size: int = 50,
         lease_seconds: int = 60,
+        side_effect_kind: str | None = None,
         clock: Clock | None = None,
     ) -> None:
         if not 1 <= batch_size <= 1000:
@@ -264,17 +272,32 @@ class OutboxProcessor:
         self._telemetry = telemetry or NullEventProcessingTelemetry()
         self._batch_size = batch_size
         self._lease_seconds = lease_seconds
+        self._side_effect_kind = (
+            None
+            if side_effect_kind is None
+            else require_text(side_effect_kind, "side_effect_kind", max_length=64)
+        )
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def process_once(self, *, now: datetime | None = None) -> ProcessingResult:
         effective_now = ensure_utc(now or self._clock(), "now")
-        messages = tuple(
-            await self._store.claim_ready(
-                now=effective_now,
-                limit=self._batch_size,
-                lease_seconds=self._lease_seconds,
+        if self._side_effect_kind is None:
+            messages = tuple(
+                await self._store.claim_ready(
+                    now=effective_now,
+                    limit=self._batch_size,
+                    lease_seconds=self._lease_seconds,
+                )
             )
-        )
+        else:
+            messages = tuple(
+                await self._store.claim_ready(
+                    now=effective_now,
+                    limit=self._batch_size,
+                    lease_seconds=self._lease_seconds,
+                    side_effect_kind=self._side_effect_kind,
+                )
+            )
         delivered = 0
         retried = 0
         dead_lettered = 0
@@ -299,11 +322,21 @@ class OutboxProcessor:
                     dead_lettered += 1
                     outcome = EventProcessingOutcome.DEAD_LETTERED
                 else:
+                    available_at = effective_now + self._retry_policy.delay_for(attempt)
+                    requested_retry_at = getattr(error, "retry_at", None)
+                    if isinstance(requested_retry_at, datetime):
+                        try:
+                            normalized_retry_at = ensure_utc(requested_retry_at, "retry_at")
+                        except ValueError:
+                            normalized_retry_at = None
+                        if normalized_retry_at is not None and normalized_retry_at > available_at:
+                            available_at = normalized_retry_at
+                            error_metadata["retry_at"] = normalized_retry_at.isoformat()
                     await self._store.mark_retry(
                         message.id,
                         lease_token=message.lease_token,
                         attempts=attempt,
-                        available_at=effective_now + self._retry_policy.delay_for(attempt),
+                        available_at=available_at,
                         error_metadata=error_metadata,
                     )
                     retried += 1

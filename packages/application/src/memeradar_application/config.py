@@ -59,6 +59,11 @@ class Settings:
     require_redis_for_readiness: bool
     readiness_timeout_seconds: float
     operator_api_token: str | None
+    telegram_api_url: str | None
+    telegram_bot_token: str | None
+    telegram_chat_id: str | None
+    alert_max_messages_per_window: int
+    alert_rate_limit_window_seconds: float
     analysis_only: bool
     paper_trading: bool
     manual_execution: bool
@@ -99,6 +104,18 @@ class Settings:
             0.01,
             10.0,
         )
+        alert_max_messages = _parse_int(
+            "ALERT_MAX_MESSAGES_PER_WINDOW",
+            values.get("ALERT_MAX_MESSAGES_PER_WINDOW", "20"),
+            1,
+            1000,
+        )
+        alert_window = _parse_float(
+            "ALERT_RATE_LIMIT_WINDOW_SECONDS",
+            values.get("ALERT_RATE_LIMIT_WINDOW_SECONDS", "60"),
+            1.0,
+            86400.0,
+        )
         return cls(
             app_env=values.get("APP_ENV", "development").strip() or "development",
             log_level=values.get("LOG_LEVEL", "INFO").strip().upper() or "INFO",
@@ -117,6 +134,11 @@ class Settings:
             ),
             readiness_timeout_seconds=readiness_timeout,
             operator_api_token=_optional_value(values, "OPERATOR_API_TOKEN"),
+            telegram_api_url=_optional_value(values, "TELEGRAM_API_URL"),
+            telegram_bot_token=_optional_value(values, "TELEGRAM_BOT_TOKEN"),
+            telegram_chat_id=_optional_value(values, "TELEGRAM_CHAT_ID"),
+            alert_max_messages_per_window=alert_max_messages,
+            alert_rate_limit_window_seconds=alert_window,
             analysis_only=parsed_modes["ANALYSIS_ONLY"],
             paper_trading=parsed_modes["PAPER_TRADING"],
             manual_execution=parsed_modes["MANUAL_EXECUTION"],

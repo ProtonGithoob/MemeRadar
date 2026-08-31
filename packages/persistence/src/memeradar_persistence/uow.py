@@ -14,8 +14,10 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from memeradar_application.event_processing import OutboxMessage
+from memeradar_domain import Alert
 
 from .repositories import (
+    AlertRepository,
     CandidateRepository,
     FeatureSnapshotRepository,
     OutboxRepository,
@@ -40,6 +42,7 @@ class SqlAlchemyUnitOfWork:
         )
         self._session: AsyncSession | None = None
         self.candidates: CandidateRepository
+        self.alerts: AlertRepository
         self.features: FeatureSnapshotRepository
         self.risks: RiskAssessmentRepository
         self.scores: ScoreSnapshotRepository
@@ -48,6 +51,7 @@ class SqlAlchemyUnitOfWork:
     async def __aenter__(self) -> Self:
         self._session = self._session_factory()
         self.candidates = CandidateRepository(self._session)
+        self.alerts = AlertRepository(self._session)
         self.features = FeatureSnapshotRepository(self._session)
         self.risks = RiskAssessmentRepository(self._session)
         self.scores = ScoreSnapshotRepository(self._session)
@@ -100,12 +104,14 @@ class SqlAlchemyOutboxStore:
         now: datetime,
         limit: int,
         lease_seconds: int,
+        side_effect_kind: str | None = None,
     ) -> Sequence[OutboxMessage]:
         async with SqlAlchemyUnitOfWork(self._engine) as unit_of_work:
             messages = await unit_of_work.outbox.claim_ready(
                 now=now,
                 limit=limit,
                 lease_seconds=lease_seconds,
+                side_effect_kind=side_effect_kind,
             )
             await unit_of_work.commit()
             return messages
@@ -124,6 +130,7 @@ class SqlAlchemyOutboxStore:
                 delivered_at=delivered_at,
             )
             await unit_of_work.commit()
+
 
     async def mark_retry(
         self,
@@ -162,3 +169,20 @@ class SqlAlchemyOutboxStore:
                 error_metadata=error_metadata,
             )
             await unit_of_work.commit()
+
+
+class SqlAlchemyAlertStore:
+    """Persistence-neutral alert store adapter for an alert delivery handler."""
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+
+    async def get_by_dedupe_key(self, dedupe_key: str) -> Alert | None:
+        async with SqlAlchemyUnitOfWork(self._engine) as unit_of_work:
+            return await unit_of_work.alerts.get_by_dedupe_key(dedupe_key)
+
+    async def save(self, alert: Alert) -> Alert:
+        async with SqlAlchemyUnitOfWork(self._engine) as unit_of_work:
+            saved = await unit_of_work.alerts.save(alert)
+            await unit_of_work.commit()
+            return saved
