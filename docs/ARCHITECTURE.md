@@ -30,6 +30,14 @@ Async consumers/schedulers for discovery, enrichment, score recomputation, posit
 ### Web
 Next.js/TypeScript operator UI consuming API contracts only.
 
+Sprint 8.1 keeps the App Router page and layout server-rendered, with browser
+APIs isolated to small client leaves for theme preference and realtime
+connection lifecycle. The shell’s status primitives are display projections:
+they show protected modes, advisory/live-data boundaries and non-safe
+unavailable/unknown states but cannot mutate application state or authorize
+execution. The optional public WebSocket seam is lifecycle-only, uses bounded
+reconnect/degrade behavior and does not parse or persist incoming payloads.
+
 ### PostgreSQL
 System of record for normalized observations, candidates, features, decisions, positions, audit and research results.
 

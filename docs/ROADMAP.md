@@ -397,10 +397,20 @@ are recorded in `docs/STATUS.md`; live credentials remain external blockers.
 
 ### Sprint 8.1 — Design System and Shell
 
-- [ ] Responsive dark/light-capable operator shell.
-- [ ] Reusable score/risk/freshness/status components.
-- [ ] Real-time update transport with reconnect/degrade behavior.
-- [ ] Explicit paper/live/advisory badges.
+- [x] Responsive dark/light-capable operator shell.
+- [x] Reusable score/risk/freshness/status components.
+- [x] Real-time update transport with reconnect/degrade behavior.
+- [x] Explicit paper/live/advisory badges.
+
+Sprint 8.1 keyless state: complete. The App Router shell is responsive,
+system-light/dark capable with a local-only theme override, and keeps all four
+protected operating modes plus live-data/advisory boundaries visible. Typed
+score, risk, freshness, safety and connection primitives preserve unavailable,
+unknown, stale and invalid states. The browser-only realtime seam accepts only
+an optional public WebSocket URL, reconnects with bounded backoff and reports
+disabled/degraded status without parsing, scoring or authorizing incoming
+events. Candidate ranking, token detail and provider-backed live data remain
+the next sprint’s work; no credentials or live-money behavior were introduced.
 
 ### Sprint 8.2 — Radar and Token Detail
 

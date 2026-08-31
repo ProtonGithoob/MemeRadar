@@ -4,12 +4,13 @@ Last updated: 2026-08-31
 
 ## Current verdict
 
-`PHASE_7_SPRINT_7_3_COMPLETE_KEYLESS_PASS`
+`PHASE_8_SPRINT_8_1_COMPLETE_KEYLESS_PASS`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.2 is now complete for its keyless implementation and replay gate: the bounded application read port, persisted core-record adapter, injectable non-persisted catalogs and typed GET-only FastAPI surface are implemented. Cursor pagination, event-time/no-lookahead timelines, strict query bounds, safe redaction, unknown-state preservation, missing-resource errors and unconfigured-storage fail-closed behavior are covered. No read response grants execution authority. Live provider and Telegram acceptance remains externally blocked; no live-money execution has been enabled.
 Phase 7 / Sprint 7.3 is now complete for its keyless implementation and replay gate: role-scoped bearer authentication, explicit viewer/operator/admin/execution permissions, durable control state, immutable validated config versions, paired audit events and emergency restrictive controls are implemented. Configured role credentials also protect the existing read surface; no control endpoint changes protected operating modes, creates a decision, authorizes `ENTRY_READY`, signs or submits a transaction. Live provider and Telegram acceptance remains externally blocked; no live-money execution has been enabled.
+Phase 8 / Sprint 8.1 is now complete for its keyless implementation and frontend gate: the responsive App Router operator shell, local-only light/dark preference, typed score/risk/freshness/status primitives, explicit paper/live/advisory boundaries and bounded realtime lifecycle seam are implemented. Missing stream configuration is visibly `DISABLED`; failed connections reconnect with bounded backoff and degrade honestly. The browser receives no credentials or raw provider payload, and the UI has no decision or execution authority. Live provider and Telegram acceptance remains externally blocked; no live-money execution has been enabled.
 
 ## Current phase and sprint
 
@@ -35,7 +36,8 @@ Phase 7 / Sprint 7.3 is now complete for its keyless implementation and replay g
 - Completed: `Phase 7 / Sprint 7.1 — Alert Pipeline` (keyless portion)
 - Completed: `Phase 7 / Sprint 7.2 — Read API` (keyless portion)
 - Completed: `Phase 7 / Sprint 7.3 — Auth / Control API` (keyless portion)
-- Next: `Phase 8 / Sprint 8.1 — Dashboard Design System / Shell`; live social/narrative/protocol/external-wallet/Telegram provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
+- Completed: `Phase 8 / Sprint 8.1 — Dashboard Design System / Shell` (keyless portion)
+- Next: `Phase 8 / Sprint 8.2 — Radar and Token Detail`; live social/narrative/protocol/external-wallet/Telegram provider acceptance remains externally blocked unless safe read-only provider configuration becomes available.
 
 ## Current operating policy
 
@@ -83,6 +85,10 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Sprint 7.3 SQLAlchemy control persistence with singleton state, immutable config/audit history, migration `0004_control_plane`, transactional mutations, rehydration and physical read projections.
 - [x] Sprint 7.3 FastAPI role authentication/control routes with constant-time bearer comparison, fail-closed `503`/`401`/`403` handling, authenticated configured read routes, auditable pause/kill/config controls and no execution authority.
 - [x] Sprint 7.3 replay, RBAC, migration, provider-boundary, secret-scan, Compose and protected-mode contracts; no live-money or provider authority was introduced.
+- [x] Sprint 8.1 responsive App Router shell with system/light/dark presentation, local-only theme override, mobile layout, focus-visible controls and reduced-motion handling.
+- [x] Sprint 8.1 reusable typed score, risk, freshness, safety, advisory and realtime status primitives with accessible labels and explicit unavailable/unknown/stale/invalid states.
+- [x] Sprint 8.1 browser-only realtime transport with optional public WebSocket endpoint, bounded exponential reconnect, retry exhaustion degradation, clean stop and ignored event payloads.
+- [x] Sprint 8.1 frontend page, transport, theme, protected-mode and browser-boundary tests; no API credential, provider payload or execution capability was added to the web bundle.
 - [x] Roadmap checkboxes reconciled for Sprint 1.1.
 - [x] SQLAlchemy 2 async persistence models for the core Phase 1 entities, with domain-independent repositories and explicit unit-of-work transactions.
 - [x] Initial Alembic revision `0001_initial` for 13 core tables, including provenance, explainability, event and outbox fields.
@@ -528,6 +534,10 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Latest pushed Sprint 7.3 application checkpoint: `6b88714` (`feat: define control plane contracts`).
 - Latest pushed Sprint 7.3 persistence checkpoint: `930595b` (`feat: persist control plane audit state`).
 - Latest pushed Sprint 7.3 API checkpoint: `cc8c442` (`feat: add authenticated control API`).
+- Latest pushed Sprint 8.1 design checkpoint: `69ef9c5` (`docs: design Sprint 8.1 dashboard shell`).
+- Latest pushed Sprint 8.1 plan checkpoint: `391a01c` (`docs: plan Sprint 8.1 dashboard shell`).
+- Latest pushed Sprint 8.1 status/realtime checkpoint: `0a7a00f` (`feat: add dashboard status and realtime seam`).
+- Latest pushed Sprint 8.1 shell checkpoint: `9afffbc` (`feat: build responsive operator shell`).
 - E6.2 focused verification: `.venv/bin/pytest tests/unit/test_external_wallet.py tests/contract/test_extension_e6_2_external_wallet.py tests/unit/test_external_wallet_doctor.py tests/smoke/test_compose_contract.py tests/unit/test_provider_contracts.py -q` — `38 passed`; immutable contracts, deterministic replay, fixture adapter, doctor, provider capability and protected-mode checks pass.
 - E6.2 full repository gate: `make verify` exit `0`; Ruff, mypy (`54 source files`), `331 passed, 3 skipped`, branch-aware coverage `79%`, frontend lint/typecheck/Vitest, Compose config, secret scan and migration parity all completed successfully. Migration parity reports `{"heads": ["0003_score_strategy_identity"], "table_count": 13}`.
 - E6.2 provider doctor: `make external-wallet-doctor` exit `2` as expected; status is `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, only configuration presence and protected modes are reported, and no network call or credential output occurs.
@@ -566,13 +576,17 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 7.3 runtime verification: temporary Compose API/worker images rebuild successfully; API probe `sprint7_3_api_runtime_import_ok control-api-v1`, worker probe `sprint7_3_worker_runtime_import_ok control-api-v1 SqlAlchemyControlPlane`, and `/health/live` plus `/health/ready` return HTTP `200` with Postgres/Redis reachable. Without role credentials, `/v1/control/state` returns HTTP `503` with `control authentication is not configured`.
 - Sprint 7.3 doctor verification: `make doctor` and repository Compose config exit `0`; `make telegram-doctor` exits `2` as expected with `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, configuration presence only, no credential output or live provider call. All four protected modes remain unchanged.
 - Sprint 7.3 documentation reconciliation records versioned control config and the current startup-only consumer semantics; no hot reload, provider dependency, secret, signing path or execution authority was introduced.
+- Sprint 8.1 focused frontend verification: `npm test -- --run src/app/page.test.tsx src/app/components/status-badges.test.tsx src/app/lib/realtime.test.ts src/app/components/theme-toggle.test.tsx` passes `12 tests`; `npm run lint`, `npm run typecheck` and `npm run build` all exit `0`. Next.js reports the root route as statically prerendered.
+- Sprint 8.1 full repository gate: `make verify` exits `0`; Ruff, mypy (`66 source files`), `454 passed, 6 skipped`, branch-aware coverage `79%`, frontend lint/typecheck/Vitest (`12 passed`), Compose config, secret scan and migration parity all complete successfully. Migration parity remains `{"heads": ["0004_control_plane"], "table_count": 16}`.
+- Sprint 8.1 Compose web verification: the temporary local Compose web image rebuilds successfully; after normal Next startup, `GET http://127.0.0.1:13000/` returns HTTP `200` with a `22876`-byte response containing `MemeRadar`, `ANALYSIS ONLY`, `PAPER TRADING`, `LIVE DATA`, `ADVISORY OUTPUT` and `NO LIVE ORDERS`. The first immediate probe hit a startup reset and was not counted as a pass; the retry after readiness succeeded.
+- Sprint 8.1 safety verification: the rendered page shows `STREAM DISABLED` when no public endpoint is configured, theme state changes only the local root attribute/storage key, realtime tests ignore message payloads, and no provider credential, API token, wallet material or execution authority was added to the browser.
 
 ## Next task
 
-Begin core `Phase 8 / Sprint 8.1 — Dashboard Design System / Shell`: build the
-responsive operator shell, reusable score/risk/freshness/status components,
-real-time update transport seam with reconnect/degrade behavior, and explicit
-analysis-only/paper/advisory badges. Keep live social, narrative, protocol,
-external-wallet and Telegram provider acceptance `BLOCKED_EXTERNAL` without
-configured safe read-only endpoint/credential access, and keep all protected
-operating modes unchanged.
+Begin core `Phase 8 / Sprint 8.2 — Radar and Token Detail`: connect the
+bounded read API to ranked candidate views, token detail, no-lookahead evidence
+timeline and explainable market/holder/social panels. Keep missing provider
+data explicit and non-safe, live social/narrative/protocol/external-wallet and
+Telegram provider acceptance `BLOCKED_EXTERNAL` without configured safe
+read-only endpoint/credential access, and keep all protected operating modes
+unchanged.

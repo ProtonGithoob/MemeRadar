@@ -192,6 +192,15 @@ kill-switch. If any role token is configured, the existing read API also
 requires a valid role bearer token; with no configured token, local development
 read behavior remains unchanged.
 
+Sprint 8.1 keeps the browser boundary credential-free: the web bundle receives
+no API token, provider secret, cookie, wallet material or raw provider payload.
+`NEXT_PUBLIC_REALTIME_URL`, when configured, is endpoint metadata only. Missing
+stream configuration is rendered as `DISABLED`; connection errors are shown as
+`RECONNECTING`/`DEGRADED` after bounded retries. Theme preference is local UI
+state only. Score, risk, freshness and connection badges are explanatory
+projections, and realtime messages cannot mutate decisions, controls, modes or
+execution.
+
 ## Supply chain
 
 CI should include:

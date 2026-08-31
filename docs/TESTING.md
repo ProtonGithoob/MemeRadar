@@ -74,6 +74,14 @@ Critical UI flows:
 - settings validation;
 - kill-switch controls.
 
+Sprint 8.1 browser coverage also asserts all four protected-mode labels,
+explicit `LIVE DATA`/`ADVISORY OUTPUT` boundaries, accessible status text and
+stable non-safe `UNKNOWN`/`STALE`/`UNAVAILABLE` states. The realtime unit seam
+uses injected sockets/timers to verify disabled operation, successful open,
+bounded exponential reconnect, duplicate error/close suppression, retry
+exhaustion, clean stop and ignored message data. The theme test verifies that
+only the local `memeradar-theme` preference and root data attribute change.
+
 ## Live provider acceptance
 
 Live tests are opt-in and read-only until Phase 12. They must be clearly marked and never make CI depend on paid credentials.
