@@ -8,6 +8,9 @@ from memeradar_application.config import Settings
 def test_settings_default_to_safe_operating_modes():
     settings = Settings.from_env({})
 
+    assert settings.viewer_api_token is None
+    assert settings.admin_api_token is None
+    assert settings.execution_api_token is None
     assert settings.analysis_only is True
     assert settings.paper_trading is True
     assert settings.manual_execution is False
@@ -26,6 +29,16 @@ def test_settings_default_to_safe_operating_modes():
 def test_settings_reject_unsafe_mode_overrides(name: str, value: str):
     with pytest.raises(ValueError, match="protected operating mode"):
         Settings.from_env({name: value})
+
+
+def test_settings_reject_duplicate_role_tokens():
+    with pytest.raises(ValueError, match="role tokens must be unique"):
+        Settings.from_env(
+            {
+                "VIEWER_API_TOKEN": "same-token",
+                "OPERATOR_API_TOKEN": "same-token",
+            }
+        )
 
 
 def test_liveness_does_not_claim_dependency_health():

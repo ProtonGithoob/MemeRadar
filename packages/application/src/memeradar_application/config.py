@@ -58,7 +58,10 @@ class Settings:
     require_database_for_readiness: bool
     require_redis_for_readiness: bool
     readiness_timeout_seconds: float
+    viewer_api_token: str | None
     operator_api_token: str | None
+    admin_api_token: str | None
+    execution_api_token: str | None
     telegram_api_url: str | None
     telegram_bot_token: str | None
     telegram_chat_id: str | None
@@ -104,6 +107,15 @@ class Settings:
             0.01,
             10.0,
         )
+        role_tokens = {
+            "VIEWER_API_TOKEN": _optional_value(values, "VIEWER_API_TOKEN"),
+            "OPERATOR_API_TOKEN": _optional_value(values, "OPERATOR_API_TOKEN"),
+            "ADMIN_API_TOKEN": _optional_value(values, "ADMIN_API_TOKEN"),
+            "EXECUTION_API_TOKEN": _optional_value(values, "EXECUTION_API_TOKEN"),
+        }
+        configured_tokens = [token for token in role_tokens.values() if token is not None]
+        if len(configured_tokens) != len(set(configured_tokens)):
+            raise ValueError("role tokens must be unique")
         alert_max_messages = _parse_int(
             "ALERT_MAX_MESSAGES_PER_WINDOW",
             values.get("ALERT_MAX_MESSAGES_PER_WINDOW", "20"),
@@ -133,7 +145,10 @@ class Settings:
                 values.get("REQUIRE_REDIS_FOR_READINESS", "false"),
             ),
             readiness_timeout_seconds=readiness_timeout,
-            operator_api_token=_optional_value(values, "OPERATOR_API_TOKEN"),
+            viewer_api_token=role_tokens["VIEWER_API_TOKEN"],
+            operator_api_token=role_tokens["OPERATOR_API_TOKEN"],
+            admin_api_token=role_tokens["ADMIN_API_TOKEN"],
+            execution_api_token=role_tokens["EXECUTION_API_TOKEN"],
             telegram_api_url=_optional_value(values, "TELEGRAM_API_URL"),
             telegram_bot_token=_optional_value(values, "TELEGRAM_BOT_TOKEN"),
             telegram_chat_id=_optional_value(values, "TELEGRAM_CHAT_ID"),

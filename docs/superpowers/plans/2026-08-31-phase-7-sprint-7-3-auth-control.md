@@ -37,10 +37,10 @@
 - Allow-listed alert/decision config validation, ordered thresholds, canonical hash and decision-affecting classification.
 - `Settings` gains optional viewer/admin/execution role tokens and rejects duplicate non-empty role credentials.
 
-- [ ] **Step 1: Write failing unit tests** for role permissions, safe defaults, idempotent activation, protected-mode clear refusal, config range/type/order/unknown-field rejection, canonical hashes, no-op mutations, audit contents and duplicate token settings.
-- [ ] **Step 2: Run the focused tests** with `.venv/bin/pytest tests/unit/test_control.py tests/unit/test_health.py -q`; expect missing-contract failures.
-- [ ] **Step 3: Implement the provider-free contracts and in-memory control plane** with immutable safe DTOs, shared authorization helpers, no secret-shaped config fields and explicit protected-mode enforcement.
-- [ ] **Step 4: Re-run focused tests plus application lint/typecheck** and verify no FastAPI/SQLAlchemy/provider import enters the application module.
+- [x] **Step 1: Write failing unit tests** for role permissions, safe defaults, idempotent activation, protected-mode clear refusal, config range/type/order/unknown-field rejection, canonical hashes, no-op mutations, audit contents and duplicate token settings.
+- [x] **Step 2: Run the focused tests** with `.venv/bin/pytest tests/unit/test_control.py tests/unit/test_health.py -q`; the initial run exposed the absent module and a draft syntax issue before the isolated control suite passed.
+- [x] **Step 3: Implement the provider-free contracts and in-memory control plane** with immutable safe DTOs, shared authorization helpers, no secret-shaped config fields and explicit protected-mode enforcement.
+- [x] **Step 4: Re-run focused tests plus application lint/typecheck** and verify no FastAPI/SQLAlchemy/provider import enters the application module. Evidence: control `15 passed`, health `9 passed`, Ruff clean, mypy `63 source files` clean.
 - [ ] **Step 5: Commit** with `git add packages/application/src/memeradar_application/control.py packages/application/src/memeradar_application/config.py tests/unit/test_control.py tests/unit/test_health.py && git commit -m "feat: define control plane contracts"`.
 
 ### Task 2: Persist control state, config versions and audit events
