@@ -602,6 +602,18 @@ is recorded as an explicit skip. Live market and Telegram acceptance remains
 `BLOCKED_EXTERNAL` when credentials or network access are unavailable; no
 backtest report is treated as provider acceptance or execution authority.
 
+## Research score calibration boundary
+
+Phase 10.3 calibration is also provider-free. The CLI consumes a redacted
+`ResearchReplayResult`/dataset artifact and uses the application replay,
+strategy and backtest contracts without importing a provider SDK, calling a
+market/social/wallet service, or writing persistence. Provider-derived author,
+wallet, external-label and bundle information may enter only as previously
+normalized, timestamped samples with quality/provenance metadata. The
+calibration report preserves unknown and insufficient evidence, and live
+provider acceptance remains `BLOCKED_EXTERNAL`; configuration presence or a
+positive shadow metric is never a provider PASS or a production promotion.
+
 ## Adapter requirements
 
 Every network adapter must implement:

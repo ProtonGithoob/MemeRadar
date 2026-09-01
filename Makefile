@@ -14,12 +14,14 @@ BACKTEST_MIN_CONFIDENCE ?= 0.60
 BACKTEST_OUTCOME_HORIZON ?= 24h
 BACKTEST_FEE_BPS ?= 30
 BACKTEST_SLIPPAGE_BPS ?= 25
+CALIBRATION_INPUT ?= $(BACKTEST_INPUT)
+CALIBRATION_OUTPUT ?=
 PROFILE_ITERATIONS ?= 10
 
 .PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
-	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor backtest-replay
+	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor backtest-replay calibrate-score
 
 bootstrap:
 	python3 -m venv .venv
@@ -49,6 +51,10 @@ backtest-replay:
 		--fee-bps $(BACKTEST_FEE_BPS) \
 		--slippage-bps $(BACKTEST_SLIPPAGE_BPS) \
 		$(if $(BACKTEST_OUTPUT),--output $(BACKTEST_OUTPUT),)
+
+calibrate-score:
+	$(PYTHON) scripts/calibrate_score.py --input $(CALIBRATION_INPUT) \
+		$(if $(CALIBRATION_OUTPUT),--output $(CALIBRATION_OUTPUT),)
 
 frontend-lint:
 	cd $(WEB_DIR) && npm run lint

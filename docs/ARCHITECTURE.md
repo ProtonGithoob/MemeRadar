@@ -573,6 +573,22 @@ liquidity, token age, market regime, social velocity and smart-wallet
 confluence. Backtest output cannot mutate paper positions, create alerts,
 authorize `ENTRY_READY` or change protected operating modes.
 
+Phase 10.3 adds the provider-free score-calibration projection in
+`packages/application/src/memeradar_application/calibration.py`. It consumes
+the immutable `ResearchReplayResult`, rebuilds each candidate strategy from
+the feature/risk snapshot available at that checkpoint, and delegates all
+trade arithmetic to `BacktestHarness`; live, replay and calibration therefore
+share the same normalized event-time evidence boundary. Half-open UTC
+train/validation/test partitions prevent future-data leakage, candidate
+selection uses train metrics only, and validation/test results remain
+out-of-sample evidence. Feature ablations neutralize only the named component
+while preserving missing/unknown quality and hard-risk behavior. Candidates
+carry versioned hashes and `is_production=false` shadow identity; reports are
+descriptive artifacts with no production-config write, promotion, decision or
+execution path. The E10.2 attribution seam similarly measures author trust,
+internal smart-money, external-label incremental value and bundle/side-wallet
+false confluence without making external evidence authoritative.
+
 ## Failure behavior
 
 - Provider timeout: bounded retry + jitter, then degrade feature/provider state.

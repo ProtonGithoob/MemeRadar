@@ -291,6 +291,32 @@ must emit an explicit empty report with an entry rejection rather than invent a
 trade. A configured strategy still has to be reconstructed through
 `ReplayHarness`; backtesting never adds a replay-only decoder or provider call.
 
+## Phase 10.3 score calibration
+
+The keyless calibration suite covers UTC half-open train/validation/test
+boundaries, candidate weight validation, named feature ablation, train-only
+selection, validation/test isolation, shadow strategy identity, deterministic
+candidate/report digests, explicit promotion blocking, attribution lift,
+external-label incremental value and bundle/side-wallet false-confluence
+measurement. It also checks that the calibration module and CLI do not import
+provider, persistence, frontend, signer or transaction-submission authority.
+
+Run the bounded fixture projection with:
+
+```text
+make calibrate-score
+```
+
+The fixture intentionally lacks sufficient positive strategy evidence, so the
+report must retain empty/unknown partition metrics and
+`BLOCKED_INSUFFICIENT_EVIDENCE`. A report is never a production config and
+the four protected operating modes must remain unchanged. The focused checks
+are:
+
+```text
+./.venv/bin/pytest tests/unit/test_calibration.py tests/contract/test_phase10_sprint10_3.py -q
+```
+
 ## Quality gates
 
 Phase 0 should expose a single command such as `make verify` that eventually includes:

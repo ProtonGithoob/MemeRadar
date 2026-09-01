@@ -579,12 +579,31 @@ acceptance remains `BLOCKED_EXTERNAL`.
 
 ### Sprint 10.3 — Score Calibration
 
-- [ ] Feature ablation.
-- [ ] Threshold/weight search with train/validation time splits.
-- [ ] Compare candidate score versions in shadow mode.
-- [ ] Require documented evidence before promoting score version.
+- [x] Feature ablation.
+- [x] Threshold/weight search with train/validation time splits.
+- [x] Compare candidate score versions in shadow mode.
+- [x] Require documented evidence before promoting score version.
+
+Sprint 10.3 keyless state: complete. The provider-free
+`ScoreCalibrationHarness` evaluates validated threshold/weight and named
+feature-ablation candidates through the existing replay and `BacktestHarness`
+contracts. Candidate selection is train-only; validation/test metrics,
+baseline deltas, candidate hashes, replay/policy identities and deterministic
+JSON/CSV digests are retained as shadow research evidence. The E10.2
+attribution analyzer measures author/internal-wallet lift, external-label
+incremental value and bundle/side-wallet false confluence only when explicit
+future outcome samples are supplied. Promotion is represented only as
+`BLOCKED_INSUFFICIENT_EVIDENCE` or `MANUAL_REVIEW_REQUIRED`; no production
+score config is written or automatically frozen, and positive research output
+cannot authorize `ENTRY_READY` or unlock trading. Live market/Telegram
+acceptance remains `BLOCKED_EXTERNAL`.
 
 **Gate P10:** a versioned research report demonstrates reproducible performance; no live trading unlocked merely because aggregate PnL is positive.
+
+Gate P10 keyless checkpoint: PASS. The calibration CLI and focused/full
+quality gates pass with all protected operating modes unchanged. Production
+promotion remains a separately reviewed, out-of-sample decision and is not
+asserted by the keyless fixture.
 
 ---
 

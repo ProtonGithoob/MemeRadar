@@ -715,3 +715,26 @@ regime, social velocity and smart-wallet confluence. Unknown future price or
 critical safety labels create explicit skips and reduce measurable coverage;
 they never count as safe evidence or increase AlphaScore. A positive report is
 research evidence only and cannot promote a score version or enable trading.
+
+## Phase 10.3 score-calibration boundary
+
+`ScoreCalibrationHarness` compares validated `AlphaStrategy` candidates in
+shadow mode over half-open event-time train/validation/test partitions. It
+recomputes candidate scores from the checkpoint-bounded feature and risk
+snapshots and delegates fills/metrics to the existing provider-free
+`BacktestHarness`; it does not create a replay-only decoder or inspect future
+events. Feature ablation sets only the named component to the neutral value,
+while the strategy's existing missing, quality, confidence and hard-risk
+behavior remains authoritative. Candidate selection is train-only and
+validation/test are reported unchanged as out-of-sample evidence.
+
+The calibration report pins parser/registry/schema/strategy/config/dataset
+identities, candidate hashes, policy assumptions and artifact digests.
+Promotion checks require sufficient documented evidence but can return only
+`BLOCKED_INSUFFICIENT_EVIDENCE` or `MANUAL_REVIEW_REQUIRED`; there is no
+automatic promotion or production-config write. The E10.2 attribution seam
+measures forward-outcome lift for author trust and internal smart-money
+components, external-label incremental value and bundle/side-wallet false
+confluence. These are descriptive research measurements; external labels do
+not replace internal score authority, and no calibration result raises
+AlphaScore, clears a risk gate or authorizes `ENTRY_READY`.

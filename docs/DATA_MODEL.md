@@ -961,6 +961,21 @@ request is part of the model. Unknown future price/safety evidence is excluded
 from executed-trade metrics rather than converted to a safe or profitable
 value.
 
+### calibration_reports
+
+Phase 10.3 represents score-calibration research as immutable provider-free
+projections. A report pins the replay dataset digest and manifest, event-time
+train/validation/test boundaries, backtest policy/config hash, baseline and
+shadow candidate identities, candidate hashes, per-partition report digests,
+baseline deltas, reason-coded promotion assessment and the four protected
+operating modes. Candidate strategy versions are explicitly shadow-only and
+`is_production=false`; no row or projection is a production score-config
+mutation. Attribution samples retain event-time baseline/augmented scores,
+future outcome quality, sample-count/confidence metadata and optional
+external-label or bundle-confluence evidence. Aggregates report author-trust
+and smart-money lift, external-label incremental value and false-confluence
+rates by the same time split; unknown outcomes are not imputed.
+
 ## Indexing baseline
 
 At minimum index:

@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current verdict
 
-`PHASE_10_SPRINT_10_2_COMPLETE_KEYLESS_GATE_P9_BLOCKED_EXTERNAL`
+`PHASE_10_SPRINT_10_3_COMPLETE_KEYLESS_GATE_P9_BLOCKED_EXTERNAL`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
@@ -55,6 +55,18 @@ bounded JSON/CSV CLI. The redacted fixture correctly produces an explicit
 zero-trade result because no strategy snapshot is present; no execution,
 signing, provider or live-money authority was added. Live market-data and
 Telegram acceptance remains `BLOCKED_EXTERNAL`.
+Phase 10 / Sprint 10.3 and research extension E10.2 are now complete for their
+keyless calibration implementation and gate: the provider-free calibration
+harness validates named feature ablations and threshold/weight shadow
+candidates, selects only on train metrics across half-open UTC time splits,
+and reports unchanged validation/test evidence, baseline deltas, pinned
+identities, candidate hashes and deterministic JSON/CSV artifacts. The
+attribution seam measures author-trust/internal-smart-money lift,
+external-label incremental value and bundle/side-wallet false confluence from
+explicit future-outcome samples. Insufficient fixture evidence blocks
+promotion; no production config was changed or automatically frozen, and no
+execution, signing, provider or live-money authority was added. Live
+market-data and Telegram acceptance remains `BLOCKED_EXTERNAL`.
 
 ## Current phase and sprint
 
@@ -91,9 +103,12 @@ Telegram acceptance remains `BLOCKED_EXTERNAL`.
 - Completed: `Phase 10 / Sprint 10.1 — Replay Harness` (keyless implementation and gate)
 - Completed: `Research extension E10.1 — High-Fidelity Event Replay Dataset` (keyless implementation and replay gate)
 - Completed: `Phase 10 / Sprint 10.2 — Backtesting` (keyless implementation and gate)
-- Next checkpoint: begin `Phase 10 / Sprint 10.3 — Score Calibration`; keep Gate P9
+- Completed: `Phase 10 / Sprint 10.3 — Score Calibration` (keyless implementation and gate)
+- Completed: `Research extension E10.2 — Author and Wallet Calibration` (keyless measurement and safety seam)
+- Next checkpoint: begin `Phase 11 / Sprint 11.1 — Reliability`; preserve Gate P9
   live read-only market-data acceptance and Telegram acceptance
-  `BLOCKED_EXTERNAL`, and preserve all protected modes.
+  `BLOCKED_EXTERNAL`, and preserve all protected modes. E11.1 latency
+  measurement remains required before any optional Rust/Yellowstone extraction.
 
 ## Current operating policy
 
@@ -106,20 +121,20 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: begin Phase 10 / Sprint 10.3 Score Calibration after the Sprint 10.2
-  keyless checkpoint.
-- Design and plan for Sprint 10.2 are recorded in
-  `docs/superpowers/specs/2026-08-31-phase-10-sprint-10-2-backtesting-design.md`
-  and `docs/superpowers/plans/2026-08-31-phase-10-sprint-10-2-backtesting.md`.
-- Current state: Sprint 10.2 backtesting reuses the normalized replay and
-  paper-fill contracts, rejects stale/unknown/unsafe entries, labels exits
-  only from future evidence, and emits deterministic trade, skip, metric,
-  segment and calibration artifacts. The keyless sprint gate passes; Gate P9
-  real read-only market-data and Telegram acceptance remains externally
-  blocked.
+- Task: begin Phase 11 / Sprint 11.1 Reliability after the Phase 10.3 keyless
+  calibration checkpoint.
+- Design and plan for Sprint 10.3 are recorded in
+  `docs/superpowers/specs/2026-09-01-phase-10-sprint-10-3-score-calibration-design.md`
+  and `docs/superpowers/plans/2026-09-01-phase-10-sprint-10-3-score-calibration.md`.
+- Current state: Sprint 10.3 calibration and E10.2 attribution measurement
+  reuse the normalized replay and backtest contracts, preserve unknown and
+  insufficient evidence, keep candidate strategies shadow-only, and expose no
+  production promotion or execution path. The keyless Phase 10 gate passes;
+  Gate P9 real read-only market-data and Telegram acceptance remains
+  externally blocked.
 - External blockers: live quote/market, Telegram and all live execution
   acceptance are `BLOCKED_EXTERNAL`; keyless fixtures/fakes are required and
-  sufficient for Phase 10.2 and the next keyless research work.
+  sufficient for the completed Phase 10 work and the next reliability tasks.
 - Protected modes: `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
   `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
 
@@ -132,7 +147,7 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Pinned Python dependency lock and npm lockfile; Next.js was upgraded to 16.3.3 and ESLint to 9.39.5 after audit advisories.
 - [x] Safe `.env.example`, `.gitignore`, root `.dockerignore` and editor configuration.
 - [x] API, worker and web Dockerfiles plus Postgres 16 / Redis 7 Compose services with health checks.
-- [x] Make targets: `bootstrap`, `lint`, `typecheck`, `test`, `verify`, `up`, `down`, `migrate`, `doctor`, `provider-doctor`, `birdeye-doctor`, `rugcheck-doctor`, `social-doctor`, `external-wallet-doctor`, `telegram-doctor`, `stream-integrity-doctor`, `paper-trading-doctor`.
+- [x] Make targets: `bootstrap`, `lint`, `typecheck`, `test`, `verify`, `up`, `down`, `migrate`, `doctor`, `provider-doctor`, `birdeye-doctor`, `rugcheck-doctor`, `social-doctor`, `external-wallet-doctor`, `telegram-doctor`, `stream-integrity-doctor`, `paper-trading-doctor`, `backtest-replay`, `calibrate-score`.
 - [x] Redacted local doctor and high-confidence tracked-file secret scan.
 - [x] GitHub Actions workflow for backend, frontend, Compose and secret-scan checks.
 - [x] Branch-aware pytest coverage configuration and frontend Vitest/Testing Library baseline.
@@ -208,6 +223,16 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Phase 10.1 cohort summaries, alternate-strategy comparison with shared
   event boundaries, redacted canonical JSON/flat CSV artifacts and bounded
   replay throughput profiler.
+- [x] Phase 10.2 provider-free backtesting with deterministic paper-fill
+  arithmetic, future-only exits, score-bucket/segment metrics, redacted
+  JSON/CSV reports and explicit unknown/skip evidence.
+- [x] Phase 10.3 score calibration with feature ablation, validated
+  threshold/weight shadow candidates, train-only selection, time-split
+  validation/test evidence, deterministic artifacts and non-authorizing
+  promotion assessment.
+- [x] E10.2 author/wallet attribution seam for forward-outcome lift,
+  shrinkage/sample thresholds, external-label incremental value and
+  bundle/side-wallet false-confluence measurement.
 - [x] Roadmap checkboxes reconciled for Sprint 1.1.
 - [x] SQLAlchemy 2 async persistence models for the core Phase 1 entities, with domain-independent repositories and explicit unit-of-work transactions.
 - [x] Initial Alembic revision `0001_initial` for 13 core tables, including provenance, explainability, event and outbox fields.
@@ -752,11 +777,19 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 10.2 fixture verification: `make backtest-replay BACKTEST_OUTPUT=/tmp/memeradar-backtest-report.json` exits `0` with schema `research-backtest-v1`, artifact digest `sha256:46d67abeb9db82ffaa54fe1511b0a7724076cd8a0cbb5beeaa4ca81a911178dc`, one checkpoint, one explicitly rejected entry and zero trades/signals because the redacted fixture has no strategy snapshot; protected modes remain exact.
 - Sprint 10.2 full repository quality gate: `make verify` exits `0`; Ruff, mypy (`77 source files`), `587 passed, 10 skipped`, branch-aware coverage (`78%`), frontend lint/typecheck/Vitest (`13 files / 37 tests`), Compose config, secret scan and migration parity all complete successfully. Migration parity reports `{"heads": ["0006_paper_execution"], "table_count": 22}`.
 - Sprint 10.2 safety acceptance: `PASS` for provider-free deterministic backtesting, pinned replay/policy/fill identities, future-only no-lookahead exits, explicit skip reasons and UNKNOWN handling, redacted artifacts, permanent absence of signing/execution authority and unchanged protected modes. Live market-data and Telegram acceptance remains `BLOCKED_EXTERNAL`.
+- Sprint 10.3 focused verification: `./.venv/bin/pytest tests/unit/test_calibration.py tests/contract/test_phase10_sprint10_3.py -q` passes `7 tests`; UTC half-open partitions, validated candidate weights, feature ablation, train-only selection, shadow identity, deterministic report identity, attribution lift, external-label incremental value, bundle false-confluence and promotion blocking pass.
+- Sprint 10.3 static verification: Ruff passes for `apps packages tests scripts`; strict mypy passes for `78 source files`; calibration module and CLI contain no provider SDK, HTTP, persistence, database, signer, transaction-submission or live-money dependency.
+- Sprint 10.3 fixture verification: `make calibrate-score CALIBRATION_OUTPUT=/tmp/memeradar-calibration-report.json` exits `0` with schema `score-calibration-v1`, artifact digest `sha256:929d4516c2a1cd8ede17934179bbabc96d5b7e2db422a3234d7396f1f1947d0b`, selected shadow candidate `author-ablation`, explicit `BLOCKED_INSUFFICIENT_EVIDENCE`, empty train/validation/test checkpoint counts for the intentionally bounded fixture, and exact protected modes.
+- Sprint 10.3 full repository quality gate: `make verify` exits `0`; Ruff, mypy (`78 source files`), `594 passed, 10 skipped`, branch-aware coverage (`78%`), frontend lint/typecheck/Vitest (`13 files / 37 tests`), Compose config, secret scan and migration parity all complete successfully. Migration parity reports `{"heads": ["0006_paper_execution"], "table_count": 22}`.
+- Sprint 10.3 safety acceptance: `PASS` for provider-free time-split calibration, same replay/backtest evidence boundary, train-only candidate selection, redacted deterministic artifacts, explicit unknown/insufficient evidence, attribution-as-evidence-only and permanent absence of promotion, signing or execution authority. No production score config was changed or frozen; Gate P9 live market-data and Telegram acceptance remains `BLOCKED_EXTERNAL`.
 
 ## Next task
 
-Begin `Phase 10 / Sprint 10.3 — Score Calibration` from `docs/ROADMAP.md`.
-Keep Gate P9 live read-only market-data and Telegram acceptance
-`BLOCKED_EXTERNAL`, preserve append-only/auditable evidence and all four
-protected operating modes, and do not introduce signing, live-money submission
-or execution authority outside the approved paper boundary.
+Begin `Phase 11 / Sprint 11.1 — Reliability` from `docs/ROADMAP.md`.
+Start with the keyless soak/disconnect/rate-limit and queue/outbox/DB restart
+contracts; keep E11.1 latency measurement ahead of any optional
+Rust/Yellowstone extraction. Keep Gate P9 live read-only market-data and
+Telegram acceptance `BLOCKED_EXTERNAL`, preserve append-only/auditable
+evidence and all four protected operating modes, and do not introduce
+signing, live-money submission or execution authority outside the approved
+paper boundary.

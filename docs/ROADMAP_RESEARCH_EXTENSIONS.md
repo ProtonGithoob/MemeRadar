@@ -295,12 +295,25 @@ authority is available; live acceptance remains `BLOCKED_EXTERNAL`.
 
 ### Tasks
 
-- [ ] Calibrate `AuthorTrustScore` forward-outcome contribution.
-- [ ] Calibrate SmartWalletScore minimum sample thresholds and shrinkage priors.
-- [ ] Measure whether external labels add incremental predictive value over internal scores.
-- [ ] Measure whether bundle/side-wallet detection reduces false smart-money confluence.
-- [ ] Detect overfitting by time-split validation.
-- [ ] Freeze production config only after out-of-sample evaluation.
+- [x] Calibrate `AuthorTrustScore` forward-outcome contribution.
+- [x] Calibrate SmartWalletScore minimum sample thresholds and shrinkage priors.
+- [x] Measure whether external labels add incremental predictive value over internal scores.
+- [x] Measure whether bundle/side-wallet detection reduces false smart-money confluence.
+- [x] Detect overfitting by time-split validation.
+- [x] Freeze production config only after out-of-sample evaluation.
+
+**Keyless status (2026-09-01):** `DONE` for the provider-independent
+measurement and safety seam. `AttributionCalibrationAnalyzer` accepts explicit
+event-time baseline/augmented samples, applies component-specific minimum
+sample counts and shrinkage priors, and reports train/validation/test lift for
+author trust and internal smart-money evidence. It separately measures
+external-label incremental hit-rate and bundle/side-wallet false confluence.
+`ScoreCalibrationHarness` performs named feature ablation and bounded
+threshold/weight candidate comparison with train-only selection and unchanged
+out-of-sample evaluation. No production score weight or threshold was changed
+or frozen: the report requires documented evidence and remains shadow-only,
+with insufficient keyless fixture evidence blocked for promotion. Live data
+collection/provider acceptance remains `BLOCKED_EXTERNAL`.
 
 **Acceptance:** any score-weight change includes reproducible evidence and before/after metrics.
 

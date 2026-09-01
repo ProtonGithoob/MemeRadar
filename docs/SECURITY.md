@@ -291,6 +291,18 @@ cannot sign, submit, mutate a position, authorize `ENTRY_READY` or change
 `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false` or
 `AUTO_EXECUTION=false`.
 
+Phase 10.3 score calibration preserves this boundary. Calibration candidates
+are versioned shadow strategies with `is_production=false`; their reports are
+redacted, deterministic research artifacts and reject secret-shaped fields.
+Train-only selection never inspects validation/test outcomes, and unknown or
+insufficient evidence blocks promotion rather than becoming a positive
+signal. The promotion assessment has no `PROMOTED` state or write path and
+always requires manual review. Attribution of author trust, internal
+smart-money, external labels and bundle/side-wallet evidence remains
+descriptive; external labels cannot replace internal authority. The CLI has
+no provider, database, signer, transaction-submission or mode-mutation
+capability, and calibration output cannot authorize `ENTRY_READY`.
+
 ## Supply chain
 
 CI should include:
