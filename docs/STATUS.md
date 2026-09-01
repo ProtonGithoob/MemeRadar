@@ -17,6 +17,16 @@ containers were stopped/removed with `docker compose down` without
 that unrelated port is required before the complete stack can run on the
 requested host ports. Protected modes remain unchanged.
 
+## Ultra-Early Option A progress
+
+Task 1 is complete for the keyless domain contract: immutable candidate timing,
+stage latency, early decision-band and external-call benchmark values are
+implemented with UTC/order validation, nullable unknown launch time, frozen
+evidence and measurement-only execution semantics. Event dispatch now exposes
+optional provider-neutral stage timing hooks. Focused evidence: 15 tests pass
+in `tests/unit/test_early_domain.py` and `tests/unit/test_event_processing.py`;
+ruff and mypy pass for the touched modules. Tasks 2-13 remain in progress.
+
 ## Current verdict
 
 `PHASE_11_SPRINT_11_3_COMPLETE_CROSS_CUTTING_HARDENING_COMPLETE_KEYLESS_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`

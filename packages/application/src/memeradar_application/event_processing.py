@@ -67,6 +67,35 @@ class EventHandler(Protocol):
     def __call__(self, event: EventEnvelope) -> Awaitable[None]: ...
 
 
+class EventTimingHook(Protocol):
+    """Optional stage-boundary sink for provider-neutral latency evidence."""
+
+    def record(self, *, event: EventEnvelope, stage: str, at: datetime) -> None: ...
+
+
+class NullEventTimingHook:
+    """No-op timing hook used when latency collection is not configured."""
+
+    def record(self, *, event: EventEnvelope, stage: str, at: datetime) -> None:
+        del event, stage, at
+
+
+class EventTimingRecorder:
+    """Small in-memory timing hook useful for tests and bounded local probes."""
+
+    def __init__(self) -> None:
+        self.records: list[tuple[UUID, str, datetime]] = []
+
+    def record(self, *, event: EventEnvelope, stage: str, at: datetime) -> None:
+        self.records.append(
+            (
+                event.id,
+                require_text(stage, "stage", max_length=64),
+                ensure_utc(at, "at"),
+            )
+        )
+
+
 class EventProcessingTelemetry(Protocol):
     """Small telemetry port that must not receive raw exception text."""
 
@@ -189,8 +218,14 @@ def _event_content(event: EventEnvelope) -> tuple[object, ...]:
 class EventDispatcher:
     """Dispatch normalized events with deterministic batch ordering and dedupe."""
 
-    def __init__(self, handlers: Mapping[str, EventHandler] | None = None) -> None:
+    def __init__(
+        self,
+        handlers: Mapping[str, EventHandler] | None = None,
+        *,
+        timing_hook: EventTimingHook | None = None,
+    ) -> None:
         self._handlers: dict[str, EventHandler] = {}
+        self._timing_hook = timing_hook or NullEventTimingHook()
         for kind, handler in (handlers or {}).items():
             self.register(kind, handler)
 
@@ -204,7 +239,16 @@ class EventDispatcher:
         handler = self._handlers.get(event.kind)
         if handler is None:
             raise UnhandledEvent(f"no handler registered for {event.kind!r}")
-        await handler(event)
+        started_at = datetime.now(UTC)
+        self._timing_hook.record(event=event, stage="dispatch_started", at=started_at)
+        try:
+            await handler(event)
+        finally:
+            self._timing_hook.record(
+                event=event,
+                stage="dispatch_completed",
+                at=datetime.now(UTC),
+            )
 
     async def dispatch_batch(self, events: Sequence[EventEnvelope]) -> int:
         ordered = sorted(

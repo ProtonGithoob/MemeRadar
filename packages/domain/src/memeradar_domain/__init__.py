@@ -12,6 +12,12 @@ from .chain import (
     StreamVerification,
     StreamVerificationStatus,
 )
+from .early import (
+    EarlyCandidateTiming,
+    EarlyDecisionState,
+    EarlyLatencySnapshot,
+    ExternalCallBenchmark,
+)
 from .events import EventEnvelope, ReasonCode, normalize_reason_codes
 from .evidence import Freshness, Observation, PriceSemantics, Provenance, QualityState
 from .identities import Chain, PoolIdentity, TokenIdentity, require_solana_address
@@ -65,7 +71,11 @@ __all__ = [
     "ChainRecoveryState",
     "CommitmentState",
     "EventEnvelope",
+    "EarlyCandidateTiming",
+    "EarlyDecisionState",
+    "EarlyLatencySnapshot",
     "ExitSignal",
+    "ExternalCallBenchmark",
     "FeatureSnapshot",
     "Freshness",
     "IdempotencyConflict",
