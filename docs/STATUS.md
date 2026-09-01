@@ -146,8 +146,8 @@ Telegram and live-money acceptance remains externally blocked.
 - Completed: `Gate P11 — READY_FOR_PRODUCTION_ANALYSIS_ONLY` (keyless evidence; external acceptance remains blocked)
 - Completed: `Cross-cutting hardening / Task 1 — API version and OpenAPI contract` (keyless contract)
 - Completed: `Cross-cutting hardening / Task 2 — deterministic SBOM and dependency evidence` (keyless contract)
-- Next checkpoint: `Cross-cutting hardening Task 3 — data handling and
-  architecture records`; after the independent backlog, preserve Gate P9 live
+- Completed: `Cross-cutting hardening / Task 3 — data handling and architecture records` (keyless policy/ADR contract; legal/provider acceptance remains external)
+- Next checkpoint: `Cross-cutting hardening Task 4 — deterministic invariants`; after the independent backlog, preserve Gate P9 live
   read-only market-data and Telegram acceptance `BLOCKED_EXTERNAL`, and
   preserve all protected modes. Phase 12 cannot start without explicit
   operator decision plus P9-P11 acceptance evidence. E11.2 Rust/Yellowstone
@@ -164,9 +164,9 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: cross-cutting hardening Task 3 — data handling and architecture
-  records; Phase 12 manual-live work remains locked pending explicit operator
-  decision plus P9-P11 acceptance evidence.
+- Task: cross-cutting hardening Task 4 — deterministic invariants; Phase 12
+  manual-live work remains locked pending explicit operator decision plus
+  P9-P11 acceptance evidence.
 - Sprint 11.3 design and plan are recorded in
   `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-3-security-review-design.md`
   and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-3-security-review.md`.
@@ -883,10 +883,11 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 11.3 safety acceptance: `PASS` for no secret exposure, exact dependency declarations, non-root image runtime, constant-time role authentication, explicit RBAC/session boundaries, sanitized untrusted LLM data, advisory-only narrative output, versioned threat model and unchanged protected modes. Gate P11 is `READY_FOR_PRODUCTION_ANALYSIS_ONLY` for keyless evidence; live provider, Telegram, pip-audit/Trivy and live-money acceptance remain `BLOCKED_EXTERNAL`. Phase 12 remains locked by explicit operator decision and safety policy.
 - Cross-cutting hardening Task 1 verification: `./.venv/bin/pytest tests/contract/test_api_schema.py -q` passes `3 tests`; generated OpenAPI is reproducible, business routes are versioned under `/v1`, health probes remain operational endpoints, and mutation methods are explicitly allow-listed. `docs/API.md` records compatibility, authentication and safe-data rules.
 - Cross-cutting hardening Task 2 verification: `./.venv/bin/pytest tests/unit/test_sbom.py -q` passes `2 tests`; `make sbom` exits `0` with `security-sbom-v1`, 581 deterministic components and digest `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`. The Make/CI quality gates now run the exporter; no external scanner result is fabricated.
+- Cross-cutting hardening Task 3 verification: `./.venv/bin/pytest tests/contract/test_cross_cutting_documents.py -q` passes `3 tests`; `data-handling-v1`, `privacy-provider-terms-v1` and ADR 0001/0002 preserve non-destructive retention, minimization, compliant-source rules, provider independence and protected paper-first execution. Legal, provider-contract and production retention approval remain `BLOCKED_EXTERNAL`.
 
 ## Next task
 
-Continue cross-cutting hardening Task 3 (data handling and architecture records)
+Continue cross-cutting hardening Task 4 (deterministic invariants)
 and the remaining independent keyless backlog. Phase 12 is intentionally locked
 by default. Do not implement or enable manual-live execution without the
 explicit operator decision and P9-P11 acceptance evidence required by

@@ -12,18 +12,19 @@
 
 ## Task 2: Deterministic SBOM and dependency evidence
 
-- [ ] Add a standard-library CycloneDX exporter for the Python/npm locks and
+- [x] Add a standard-library CycloneDX exporter for the Python/npm locks and
   container base references.
-- [ ] Add deterministic tests and `make sbom`/CI wiring.
-- [ ] Record the generated evidence and npm remediation without claiming that
+- [x] Add deterministic tests and `make sbom`/CI wiring.
+- [x] Record the generated evidence and npm remediation without claiming that
   unavailable pip-audit/Trivy scans passed.
 
 ## Task 3: Data handling and architecture records
 
-- [ ] Document retention/partition/minimization and privacy/provider-terms
+- [x] Document retention/partition/minimization and privacy/provider-terms
   rules with safe non-destructive defaults.
-- [ ] Add ADRs for provider-independent boundaries and protected execution.
-- [ ] Add contract checks for the policy documents and update roadmap/status.
+- [x] Add ADRs for provider-independent boundaries and protected execution.
+- [x] Add contract checks for the policy documents and update roadmap/status
+  (`3 passed`).
 
 ## Task 4: Deterministic invariants
 

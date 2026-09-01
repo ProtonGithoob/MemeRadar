@@ -731,11 +731,17 @@ Prerequisites include sufficient paper/manual sample, calibrated risk, reliabili
 Execute where relevant, not as an isolated final cleanup:
 
 - [ ] API schema/versioning and OpenAPI docs.
-- [ ] Data retention/partition policies.
-- [ ] Privacy and provider ToS compliance.
+- [x] Data retention/partition policies — `data-handling-v1` documents
+  minimization, replay evidence, non-destructive retention and physical
+  partition guidance.
+- [x] Privacy and provider ToS compliance — `privacy-provider-terms-v1`
+  records compliant-source/minimization rules; legal and provider-contract
+  acceptance remains `BLOCKED_EXTERNAL`.
 - [ ] Property/fuzz tests for scoring/state transitions.
 - [x] Benchmark hot-path processing.
-- [ ] ADRs for material architecture decisions.
+- [x] ADRs for material architecture decisions — accepted records cover
+  provider-independent modular boundaries and analysis-only/paper-first
+  execution.
 - [x] SBOM/dependency audit — `security-sbom-v1` is generated deterministically
   from the pinned Python/npm locks and versioned container bases; unavailable
   external vulnerability scanners remain `BLOCKED_EXTERNAL`.
