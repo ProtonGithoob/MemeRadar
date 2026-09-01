@@ -95,11 +95,19 @@
 
 ## Task 8: Verification and handoff
 
-- [ ] Run focused E11.9–E11.8 tests, replay/no-lookahead tests, and relevant
+- [x] Run focused E11.9–E11.8 tests, replay/no-lookahead tests, and relevant
   existing correlation/feature/paper/timeline tests.
-- [ ] Run `make verify`, and run the frontend build if changed contracts require
+- [x] Run `make verify`, and run the frontend build if changed contracts require
   it.  Fix failures without weakening tests.
-- [ ] Reconcile the roadmap/extension documentation and update `docs/STATUS.md`
+- [x] Reconcile the roadmap/extension documentation and update `docs/STATUS.md`
   with exact evidence, blockers, protected modes, and Phase 12 lock.
-- [ ] Run diff/secret checks, commit coherent final changes, push, and verify
+- [x] Run diff/secret checks, commit coherent final changes, push, and verify
   clean local/origin synchronization.
+
+## Final checkpoint
+
+The implementation checkpoint is commit `2d6a811`. Focused hardening,
+integration, replay, price, timeline, exit and calibration checks pass; the
+full repository gate passes with `678 passed, 11 skipped`, `79%` branch-aware
+coverage, frontend `14` files/`41` tests, migration head `0006_paper_execution`,
+security review `PASS` and SBOM `PASS`. Phase 12 remains explicitly locked.
