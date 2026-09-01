@@ -28,9 +28,10 @@
 
 ## Task 4: Deterministic invariants
 
-- [ ] Add fixed-seed property-style tests for score bounds, state transitions
+- [x] Add fixed-seed property-style tests for score bounds, state transitions
   and stream cursor/gap safety.
-- [ ] Include them in the normal test gate without weakening existing tests.
+- [x] Include them in the normal test gate without weakening existing tests
+  (`3 passed`).
 
 ## Task 5: Provider health comparison/routing seam
 

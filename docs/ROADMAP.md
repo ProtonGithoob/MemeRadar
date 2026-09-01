@@ -737,7 +737,9 @@ Execute where relevant, not as an isolated final cleanup:
 - [x] Privacy and provider ToS compliance — `privacy-provider-terms-v1`
   records compliant-source/minimization rules; legal and provider-contract
   acceptance remains `BLOCKED_EXTERNAL`.
-- [ ] Property/fuzz tests for scoring/state transitions.
+- [x] Property/fuzz tests for scoring/state transitions — fixed-seed,
+  reproducible property-style cases cover AlphaScore bounds/advisory output,
+  lifecycle allow-lists and stream cursor gap safety.
 - [x] Benchmark hot-path processing.
 - [x] ADRs for material architecture decisions — accepted records cover
   provider-independent modular boundaries and analysis-only/paper-first
