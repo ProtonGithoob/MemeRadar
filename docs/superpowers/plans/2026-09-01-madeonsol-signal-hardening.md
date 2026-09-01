@@ -34,30 +34,30 @@
 
 ## Task 2: E11.4 sustained surge/revival validation
 
-- [ ] Add tests first for sustained multi-sample surge, one-tick reversal,
+- [x] Add tests first for sustained multi-sample surge, one-tick reversal,
   revival requiring prior inactivity and real buy flow, insufficient history,
   stale/unknown/conflicted observations, and no future-data leakage.
-- [ ] Implement versioned `SignalHardeningPolicy`, `MomentumRegimeSnapshot`
+- [x] Implement versioned `SignalHardeningPolicy`, `MomentumRegimeSnapshot`
   and deterministic event-time analyzer.  All durations, sample counts and
   quality thresholds are configuration-driven hypotheses, not MadeOnSol truth.
-- [ ] Ensure a price/market-cap mark cannot produce a positive regime without
+- [x] Ensure a price/market-cap mark cannot produce a positive regime without
   actual buy flow, quote volume, liquidity and buyer evidence.
 
 ## Task 3: E11.5 economic market-move/tape validation
 
-- [ ] Add tests for market-cap movement funded by actual buy volume, thin
+- [x] Add tests for market-cap movement funded by actual buy volume, thin
   liquidity, wash-adjusted flow, partial/missing quote units, stale/conflicted
   market data, and neutral healthy-stream behavior.
-- [ ] Implement `MoveFundingEvidence` in the same analyzer, preserving quote
+- [x] Implement `MoveFundingEvidence` in the same analyzer, preserving quote
   units where USD conversion is unavailable and producing explicit reason
   codes/quality/confidence rather than zero-filling unknowns.
 
 ## Task 4: E11.6 deployer activity and transfer delta
 
-- [ ] Add tests for trade-derived holdings, on-chain balance snapshots,
+- [x] Add tests for trade-derived holdings, on-chain balance snapshots,
   transfer-in/out deltas, missing transfer evidence, stale/conflicted input,
   and evidence-only interpretation.
-- [ ] Implement bounded `DeployerActivitySnapshot` and integrate it with the
+- [x] Implement bounded `DeployerActivitySnapshot` and integrate it with the
   existing wallet/creator sell-pressure evidence; transfer delta remains a
   discrepancy and never an automatic maliciousness proof.
 
