@@ -63,7 +63,16 @@ risk, a fresh positive paper quote, sellability, liquidity, bounded impact
 and protected modes. Its result is permanently execution-ineligible and can
 only feed the later shadow/paper path. Focused evidence: 35 early-decision,
 decision-engine and invariant tests pass; `make lint` and `make typecheck` are
-clean. Tasks 7-13 remain in progress.
+clean. Task 7 is now complete for its keyless shadow-entry seam:
+`ShadowEntryService` revalidates the provider-neutral quote, freshness,
+impact, drift, sellability, liquidity and protected modes, then calls only the
+existing `PaperExecutionEngine`; it never imports or invokes a live execution
+boundary or signer. The existing paper order, quote snapshot, cash ledger and
+position records provide durable intent/quote/fill evidence, so no schema
+migration was needed; `paper_trading.py` is only a compatibility facade over
+that canonical engine. Focused evidence: 13 shadow/paper execution tests pass,
+including poison execution, stale/high-impact/non-sellable, missed-fill and
+duplicate cases; Ruff and full mypy are clean. Tasks 8-13 remain in progress.
 
 ## Current verdict
 
