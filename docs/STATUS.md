@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current verdict
 
-`PHASE_11_SPRINT_11_3_COMPLETE_KEYLESS_GATE_P11_READY_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`
+`PHASE_11_SPRINT_11_3_COMPLETE_CROSS_CUTTING_HARDENING_IN_PROGRESS_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
@@ -144,12 +144,13 @@ Telegram and live-money acceptance remains externally blocked.
 - Completed: `Phase 11 / Sprint 11.2 — Observability / Operations` (keyless implementation and gate)
 - Completed: `Phase 11 / Sprint 11.3 — Security Review` (keyless implementation and gate P11)
 - Completed: `Gate P11 — READY_FOR_PRODUCTION_ANALYSIS_ONLY` (keyless evidence; external acceptance remains blocked)
-- Next checkpoint: `Phase 12 — Manual Live Execution (locked by default)`; preserve
-  Gate P9 live read-only market-data and Telegram acceptance
-  `BLOCKED_EXTERNAL`, and preserve all protected modes. Phase 12 cannot start
-  without explicit operator decision plus P9-P11 acceptance evidence. E11.2
-  Rust/Yellowstone extraction remains conditional on real measured need and is
-  not started.
+- Completed: `Cross-cutting hardening / Task 1 — API version and OpenAPI contract` (keyless contract)
+- Next checkpoint: `Cross-cutting hardening Task 2 — deterministic SBOM and
+  dependency evidence`; after the independent backlog, preserve Gate P9 live
+  read-only market-data and Telegram acceptance `BLOCKED_EXTERNAL`, and
+  preserve all protected modes. Phase 12 cannot start without explicit
+  operator decision plus P9-P11 acceptance evidence. E11.2 Rust/Yellowstone
+  extraction remains conditional on real measured need and is not started.
 
 ## Current operating policy
 
@@ -162,8 +163,9 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: maintain the keyless analysis-only boundary; Phase 12 manual-live work
-  is locked pending explicit operator decision plus P9-P11 acceptance evidence.
+- Task: cross-cutting hardening Task 2 — deterministic SBOM and dependency
+  evidence; Phase 12 manual-live work remains locked pending explicit operator
+  decision plus P9-P11 acceptance evidence.
 - Sprint 11.3 design and plan are recorded in
   `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-3-security-review-design.md`
   and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-3-security-review.md`.
@@ -875,12 +877,15 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 11.3 container verification: `docker compose -f infra/compose/docker-compose.yml build api worker web` exits `0`; API/worker run as `memeradar` and web runs as non-root `node`, while existing commands and protected modes remain unchanged.
 - Sprint 11.3 full repository quality gate: `make verify` exits `0`; Ruff, strict mypy (`81 source files`), `625 passed, 11 skipped`, branch-aware coverage `78%`, frontend lint/typecheck/Vitest (`14 files / 41 tests`), Compose config, secret scan, migration parity and keyless security review complete successfully. `make frontend-build` remains green after the dependency remediation.
 - Sprint 11.3 safety acceptance: `PASS` for no secret exposure, exact dependency declarations, non-root image runtime, constant-time role authentication, explicit RBAC/session boundaries, sanitized untrusted LLM data, advisory-only narrative output, versioned threat model and unchanged protected modes. Gate P11 is `READY_FOR_PRODUCTION_ANALYSIS_ONLY` for keyless evidence; live provider, Telegram, pip-audit/Trivy and live-money acceptance remain `BLOCKED_EXTERNAL`. Phase 12 remains locked by explicit operator decision and safety policy.
+- Cross-cutting hardening Task 1 verification: `./.venv/bin/pytest tests/contract/test_api_schema.py -q` passes `3 tests`; generated OpenAPI is reproducible, business routes are versioned under `/v1`, health probes remain operational endpoints, and mutation methods are explicitly allow-listed. `docs/API.md` records compatibility, authentication and safe-data rules.
 
 ## Next task
 
-Phase 12 is intentionally locked by default. Do not implement or enable
-manual-live execution without the explicit operator decision and P9-P11
-acceptance evidence required by `docs/ROADMAP.md`; preserve
+Continue cross-cutting hardening Task 2 (deterministic SBOM/dependency evidence)
+and the remaining independent keyless backlog. Phase 12 is intentionally locked
+by default. Do not implement or enable manual-live execution without the
+explicit operator decision and P9-P11 acceptance evidence required by
+`docs/ROADMAP.md`; preserve
 `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, and
 `AUTO_EXECUTION=false`. Continue only independent keyless cross-cutting work
 or approved research extensions. E11.2 Rust/Yellowstone remains conditional on
