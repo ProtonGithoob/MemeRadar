@@ -47,7 +47,7 @@ services:
       MANUAL_EXECUTION: "false"
       AUTO_EXECUTION: "false"
     ports:
-      - "8000:8000"
+      - "${API_HOST_PORT:-18000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,10 +86,10 @@ services:
       context: ../..
       dockerfile: infra/docker/web.Dockerfile
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_HOST_PORT:-18000}
       MEMERADAR_API_BASE_URL: http://api:8000
     ports:
-      - "3000:3000"
+      - "${WEB_HOST_PORT:-13000}:3000"
     depends_on:
       api:
         condition: service_healthy
