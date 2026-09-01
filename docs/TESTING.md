@@ -357,6 +357,19 @@ A live provider acceptance report records:
 6. failure and duplicate-submission tests;
 7. auto execution remains locked pending explicit later approval.
 
+The ultra-early shadow-entry regression suite additionally injects poison
+signer and live-execution stubs. A successful `ENTRY_READY` path must call
+only the provider-neutral quote port and canonical paper execution engine;
+the poison stubs fail the test if touched. Forward outcome labels, external
+social-call lead time and latency benchmarks are measurement-only. Run the
+read-only acceptance check with `make early-live-doctor`; without configured
+provider access it must return `BLOCKED_EXTERNAL`, never a fabricated PASS.
+
+The future execution boundary is tested as a locked diagnostic with
+`execution_eligible=false`, `signer_available=false` and
+`submission_available=false`. No Phase 12 test or local gate may enable a
+manual/automatic live mode.
+
 ## Backtest integrity
 
 - Event-time processing only; no future feature leakage.

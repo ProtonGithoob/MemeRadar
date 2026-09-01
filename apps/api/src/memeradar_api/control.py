@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from memeradar_application.config import Settings
 from memeradar_application.control import (
     CONTROL_API_VERSION,
+    LOCKED_EXECUTION_BOUNDARY,
     ControlAction,
     ControlConfigError,
     ControlPlanePort,
@@ -53,6 +54,7 @@ class ControlStateResponse(_StrictModel):
     updated_by: str
     correlation_id: str
     protected_modes: dict[str, bool]
+    execution_boundary: dict[str, object]
 
 
 class ControlConfigResponse(_StrictModel):
@@ -81,6 +83,7 @@ def _state_response(state: ControlState, settings: Settings) -> ControlStateResp
             "manual_execution": settings.manual_execution,
             "auto_execution": settings.auto_execution,
         },
+        execution_boundary=LOCKED_EXECUTION_BOUNDARY.to_dict(),
     )
 
 

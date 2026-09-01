@@ -7,6 +7,7 @@ import pytest
 
 from memeradar_application.control import (
     DEFAULT_CONTROL_CONFIG,
+    LOCKED_EXECUTION_BOUNDARY,
     ControlAction,
     ControlAuthorizationError,
     ControlConfigError,
@@ -54,6 +55,26 @@ def test_control_plane_defaults_to_safe_state_and_initial_config() -> None:
     assert dict(config.config) == dict(DEFAULT_CONTROL_CONFIG)
     assert config.decision_affecting is True
     assert control.audit_events == ()
+
+
+def test_future_execution_boundary_is_explicitly_locked_and_non_authorizing() -> None:
+    boundary = LOCKED_EXECUTION_BOUNDARY
+
+    assert boundary.status == "LOCKED"
+    assert boundary.stages == (
+        "ENTRY_READY",
+        "EXECUTION_ELIGIBILITY_GATE",
+        "OPERATOR_POLICY_UNLOCK",
+        "QUOTE_REVALIDATION",
+        "UNSIGNED_EXECUTION_PLAN",
+        "ISOLATED_SIGNER",
+        "SUBMIT",
+        "FINALITY_RECONCILIATION",
+    )
+    assert boundary.execution_eligible is False
+    assert boundary.signer_available is False
+    assert boundary.submission_available is False
+    assert boundary.to_dict()["status"] == "LOCKED"
 
 
 def test_analysis_pause_and_execution_kill_switch_activation_are_audited() -> None:

@@ -82,6 +82,22 @@ def test_control_state_is_readable_by_each_role_and_preserves_safe_modes() -> No
             "manual_execution": False,
             "auto_execution": False,
         }
+        assert body["execution_boundary"] == {
+            "status": "LOCKED",
+            "stages": [
+                "ENTRY_READY",
+                "EXECUTION_ELIGIBILITY_GATE",
+                "OPERATOR_POLICY_UNLOCK",
+                "QUOTE_REVALIDATION",
+                "UNSIGNED_EXECUTION_PLAN",
+                "ISOLATED_SIGNER",
+                "SUBMIT",
+                "FINALITY_RECONCILIATION",
+            ],
+            "execution_eligible": False,
+            "signer_available": False,
+            "submission_available": False,
+        }
         assert VIEWER not in json.dumps(body)
         assert ADMIN not in json.dumps(body)
 

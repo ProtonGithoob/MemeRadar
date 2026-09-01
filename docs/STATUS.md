@@ -94,11 +94,22 @@ confidence, risk or execution authority; the existing call-performance
 analyzer exposes the same measurement-only seam. Focused evidence: 15
 benchmark/call-performance tests pass, including duplicate determinism,
 missing/after/future reference handling and authority-boundary assertions;
-Ruff and touched-module mypy are clean. Tasks 10-13 remain in progress.
+Ruff and touched-module mypy are clean. Task 10 is complete; Tasks 11-13
+remain in progress.
+
+Ultra-Early Option A Task 10 is now complete for its keyless projection seam:
+the bounded persistence catalog, GET-only `/v1/early-radar`, server-side
+Radar/token projections, Telegram measurement projection and read-only UI
+panel expose ultra-early candidates, micro-feature windows, EarlyScore,
+launch risk, ENTRY_READY/shadow state, future-only outcomes and external-call
+lead time without granting execution authority. Focused evidence: 62 backend
+and smoke tests plus all 44 web tests pass; Python Ruff/mypy and web
+lint/typecheck pass. The browser and notification surfaces preserve UNKNOWN,
+stale and unavailable evidence explicitly.
 
 ## Current verdict
 
-`PHASE_11_SPRINT_11_3_COMPLETE_CROSS_CUTTING_HARDENING_COMPLETE_KEYLESS_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`
+`ULTRA_EARLY_DETECTION_READY_FOR_LIVE_READ_ONLY_SHADOW_TRADING_AUTO_EXECUTION_LOCKED`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
@@ -194,8 +205,8 @@ projection and dashboard. The deterministic `early-detection-benchmark`
 reports synthetic evidence explicitly and never claims a production SLO;
 reliability benchmarking reuses the same projection. Focused backend and
 frontend operations tests pass, full Python lint/typecheck pass, all 44 web
-tests pass, and repeated benchmark artifacts are byte-identical. Tasks 12-13
-remain in progress.
+tests pass, and repeated benchmark artifacts are byte-identical. Task 12 is
+complete; Task 13 remains in progress.
 
 Ultra-Early Option A Task 12 is now complete for keyless tooling: the
 `early-live-doctor` reuses the existing Helius and Birdeye read-only health
@@ -205,7 +216,26 @@ authentication/schema failures to `FAIL` and healthy injected read-only
 fixtures to `PASS`. The local command returns `BLOCKED_EXTERNAL` because no
 provider endpoints or credentials are configured; no live-provider success is
 claimed. Focused evidence: 5 doctor tests, Ruff, mypy and secret scan pass.
-Task 13 remains in progress.
+Task 13 is now complete for the keyless final gate. The future execution
+boundary is explicit in the control domain and read API with immutable stages
+from `ENTRY_READY` through finality reconciliation, while eligibility, signer
+and submission capabilities remain false. Poison-signer/live-execution
+regressions prove the successful shadow path touches only the paper engine;
+the stale API route contracts were reconciled for `/v1/early-radar`. The final
+`make verify` gate exits `0` with `752 passed, 11 skipped`, including backend
+Ruff/mypy, frontend lint/typecheck/Vitest (`44 passed`), Compose config,
+secret scan, migration parity, security review and deterministic SBOM checks.
+`make integration-test` honestly skips because
+`MEMERADAR_TEST_DATABASE_URL` is not configured. Repeated replay, backtest,
+calibration and early-detection benchmark artifacts are byte-identical;
+`git diff --check` passes. `make early-live-doctor` remains the expected
+`BLOCKED_EXTERNAL` result because provider endpoints/credentials are absent.
+The exact startup attempt is also `BLOCKED_EXTERNAL` only because the
+unrelated `onemillionseconds-postgres-test` container owns host port `55432`;
+it was not changed. A complete diagnostic startup with PostgreSQL on `55433`
+verified all five containers, API live/ready HTTP 200, Web HTTP 200,
+PostgreSQL accepting connections and Redis `PONG`; persistent volumes were
+preserved. Protected modes and the Phase 12 lock remain unchanged.
 
 Phase 11 / Sprint 11.3 is now complete for its keyless security review. The
 versioned `security-review-v1` diagnostic verifies exact Python/npm lock
@@ -269,6 +299,7 @@ Telegram and live-money acceptance remains externally blocked.
 - Completed: `Cross-cutting hardening / Task 4 — deterministic invariants` (keyless fixed-seed property-style contract)
 - Completed: `Cross-cutting hardening / Task 5 — provider health comparison/routing seam` (keyless normalized evidence contract; live acceptance remains external)
 - Completed: `Cross-cutting hardening / Task 6 — final quality gate and checkpoint` (keyless gate)
+- Completed: `Ultra-Early Option A Tasks 1-13 — detection, micro-features, EarlyScore, shadow/paper path, forward outcomes, benchmarking, projections, latency observability and locked final gate` (keyless implementation and replay/runtime evidence)
 - Next checkpoint: `Phase 12 — Manual Live Execution (locked by default)` only
   after an explicit operator decision and the separate P9–P11 acceptance
   evidence. No Phase 12 work is started here; preserve Gate P9 live
@@ -286,21 +317,24 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: maintain the completed E11.4–E11.9 provider-independent hardening
-  checkpoint; Phase 12 manual-live work remains locked pending explicit
-  operator decision plus P9-P11 acceptance evidence.
+- Task: maintain the completed Ultra-Early Option A keyless detection and
+  shadow/paper checkpoint; Phase 12 manual-live work remains locked pending
+  explicit operator decision plus P9-P11 acceptance evidence.
 - Sprint 11.3 design and plan are recorded in
   `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-3-security-review-design.md`
   and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-3-security-review.md`.
 - Cross-cutting hardening design and plan are recorded in
   `docs/superpowers/specs/2026-09-01-cross-cutting-hardening-design.md` and
   `docs/superpowers/plans/2026-09-01-cross-cutting-hardening.md`.
-- Current state: `security-review-v1` passes all deterministic local checks;
+- Current state: `security-review-v1` and the Ultra-Early final gate pass all
+  feasible deterministic local checks;
   exact dependency metadata, non-root image construction, secret scan, RBAC/
   bearer/session contracts, narrative prompt/data handling and protected
   modes are verified. The npm audit is clean after the Playwright remediation.
   Pip-audit and Trivy remain external blockers, and the review does not claim
-  vulnerability-free production images or deployed configuration.
+  vulnerability-free production images or deployed configuration. The
+  early-live-doctor is intentionally `BLOCKED_EXTERNAL` without provider
+  access.
 - External blockers: live quote/market, stream/RPC, Telegram and all live
   execution acceptance are `BLOCKED_EXTERNAL`; pip-audit/Trivy and local
   advisory-database access are also `BLOCKED_EXTERNAL`. Gate P11 is ready for

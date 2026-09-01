@@ -135,6 +135,17 @@ AUTO_EXECUTION = false
 
 Real-money execution is out of scope until the roadmap explicitly unlocks it through acceptance gates.
 
+The ultra-early detector and shadow-entry path are also analysis-only and
+paper-only. `ENTRY_READY` may revalidate a quote and create a paper/shadow
+record, but it cannot reach a signer or submit a transaction. The future
+execution boundary is exposed as `LOCKED` in control-state diagnostics and
+remains unavailable until a separate, explicit Phase 12 acceptance.
+
+For bounded read-only provider acceptance, run `make early-live-doctor`.
+Missing Helius/Birdeye access is reported as `BLOCKED_EXTERNAL`; synthetic
+replay and latency benchmarks never establish live-provider or production-SLO
+evidence.
+
 ## Codex start command
 
 After cloning the repository, give Codex the prompt in [`CODEX_START_PROMPT.md`](CODEX_START_PROMPT.md). Codex should then execute the roadmap autonomously, update `docs/STATUS.md`, verify each increment, and sync coherent checkpoints to GitHub.

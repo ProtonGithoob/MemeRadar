@@ -48,6 +48,16 @@ _ALLOWED_CONFIG_FIELDS = _ALERT_CONFIG_FIELDS | _DECISION_CONFIG_FIELDS
 _PROTECTED_CONFIG_FIELDS = frozenset(
     {"ANALYSIS_ONLY", "PAPER_TRADING", "MANUAL_EXECUTION", "AUTO_EXECUTION"}
 )
+LOCKED_EXECUTION_STAGES = (
+    "ENTRY_READY",
+    "EXECUTION_ELIGIBILITY_GATE",
+    "OPERATOR_POLICY_UNLOCK",
+    "QUOTE_REVALIDATION",
+    "UNSIGNED_EXECUTION_PLAN",
+    "ISOLATED_SIGNER",
+    "SUBMIT",
+    "FINALITY_RECONCILIATION",
+)
 
 
 def _now() -> datetime:
@@ -85,6 +95,41 @@ class ControlConfigError(ValueError):
 
 class ControlSafetyError(RuntimeError):
     """Raised when a requested control action would loosen protected safety."""
+
+
+@dataclass(frozen=True, slots=True)
+class LockedExecutionBoundary:
+    """Describe the future execution seam without exposing an execution port."""
+
+    status: str = "LOCKED"
+    stages: tuple[str, ...] = LOCKED_EXECUTION_STAGES
+    execution_eligible: bool = False
+    signer_available: bool = False
+    submission_available: bool = False
+
+    def __post_init__(self) -> None:
+        if self.status != "LOCKED":
+            raise ValueError("execution boundary status must remain LOCKED")
+        if self.stages != LOCKED_EXECUTION_STAGES:
+            raise ValueError("execution boundary stages are versioned and immutable")
+        if (
+            self.execution_eligible
+            or self.signer_available
+            or self.submission_available
+        ):
+            raise ValueError("execution boundary capabilities must remain disabled")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "stages": list(self.stages),
+            "execution_eligible": False,
+            "signer_available": False,
+            "submission_available": False,
+        }
+
+
+LOCKED_EXECUTION_BOUNDARY = LockedExecutionBoundary()
 
 
 @dataclass(frozen=True, slots=True)
@@ -570,6 +615,8 @@ class InMemoryControlPlane(ControlPlanePort):
 __all__ = [
     "CONTROL_API_VERSION",
     "DEFAULT_CONTROL_CONFIG",
+    "LOCKED_EXECUTION_BOUNDARY",
+    "LOCKED_EXECUTION_STAGES",
     "ControlAction",
     "ControlAuthorizationError",
     "ControlConfigError",
@@ -579,6 +626,7 @@ __all__ = [
     "ControlSafetyError",
     "ControlState",
     "InMemoryControlPlane",
+    "LockedExecutionBoundary",
     "apply_config_patch",
     "authorize",
     "canonical_config_hash",

@@ -617,6 +617,15 @@ An initial candidate may become ENTRY_READY only if:
 
 Paper mode may deliberately evaluate lower-score cohorts for research, but must label them distinctly.
 
+The ultra-early `EarlyScore` and `ENTRY_READY` shadow path do not alter this
+boundary. A ready decision is still advisory until fresh quote, sellability,
+liquidity, impact and hard-risk checks pass; any resulting entry is sent only
+to the paper ledger. The future chain
+`ENTRY_READY -> EXECUTION_ELIGIBILITY_GATE -> OPERATOR_POLICY_UNLOCK ->
+QUOTE_REVALIDATION -> UNSIGNED_EXECUTION_PLAN -> ISOLATED_SIGNER -> SUBMIT ->
+FINALITY_RECONCILIATION` is represented for diagnostics only and is currently
+`LOCKED`; signer and submission capabilities are unavailable.
+
 ## 10. Position sizing
 
 Initial paper sizing should be conservative and configurable. Use risk-budget sizing rather than a fixed percentage solely because score is high. Inputs may include:
