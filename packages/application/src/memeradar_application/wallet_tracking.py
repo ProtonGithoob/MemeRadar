@@ -12,8 +12,8 @@ from enum import Enum
 from memeradar_domain import (
     Freshness,
     Observation,
-    Provenance,
     PriceSemantics,
+    Provenance,
     QualityState,
     ReasonCode,
     TokenIdentity,

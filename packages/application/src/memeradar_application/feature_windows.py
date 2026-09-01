@@ -44,6 +44,11 @@ from .correlation import (
 from .external_wallet import ExternalWalletReconciliationSnapshot
 from .flow_analysis import LiquiditySnapshot, OrganicFlowScore
 from .holder_graph import HolderConcentrationSnapshot
+from .signal_hardening import (
+    MomentumRegimeKind,
+    MomentumRegimeSnapshot,
+    MoveFundingEvidence,
+)
 from .social_intelligence import SocialVelocityScore
 from .stream_integrity import StreamQualityImpact
 
@@ -651,11 +656,73 @@ class FeatureWindowAggregator:
                 Decimal("100"),
             )
         )
+        hardening_momentum = feature.signal_hardening.get("momentum")
+        hardening_funding = feature.signal_hardening.get("move_funding")
+        hardening_confidence: Decimal | None = None
+        hardening_block = False
+        hardening_reasons: list[str] = []
+        if isinstance(hardening_momentum, MomentumRegimeSnapshot):
+            hardening_confidence = (
+                hardening_momentum.confidence
+                if hardening_momentum.quality_state is QualityState.FRESH
+                else Decimal("0")
+            )
+            if hardening_momentum.quality_state is not QualityState.FRESH:
+                hardening_block = True
+                hardening_reasons.append(
+                    f"MOMENTUM_HARDENING_{hardening_momentum.quality_state.value}"
+                )
+            elif hardening_momentum.kind not in {
+                MomentumRegimeKind.SURGE,
+                MomentumRegimeKind.REVIVAL,
+            }:
+                hardening_block = True
+                hardening_reasons.append("MOMENTUM_HARDENING_NOT_SUSTAINED")
+        if isinstance(hardening_funding, MoveFundingEvidence):
+            funding_confidence = (
+                hardening_funding.confidence
+                if hardening_funding.quality_state is QualityState.FRESH
+                else Decimal("0")
+            )
+            hardening_confidence = (
+                funding_confidence
+                if hardening_confidence is None
+                else min(hardening_confidence, funding_confidence)
+            )
+            if (
+                hardening_funding.quality_state is not QualityState.FRESH
+                or hardening_funding.funding_confirmed is not True
+            ):
+                hardening_block = True
+                hardening_reasons.append("MOMENTUM_HARDENING_FUNDING_UNVERIFIED")
+        if hardening_block:
+            available = False
+            score = None
+        elif score is not None and hardening_confidence is not None:
+            score = bounded_decimal(
+                score * hardening_confidence,
+                "hardened_momentum_score",
+                Decimal("0"),
+                Decimal("100"),
+            )
+        hardening_projection = {
+            name: value.to_mapping() for name, value in feature.signal_hardening.items()
+        }
         return (
             {
                 "available": available,
-                "quality_state": feature.quality_state.value,
-                "confidence": feature.confidence if available else Decimal("0"),
+                "quality_state": (
+                    QualityState.UNKNOWN.value
+                    if hardening_block and feature.quality_state is QualityState.FRESH
+                    else feature.quality_state.value
+                ),
+                "confidence": (
+                    min(feature.confidence, hardening_confidence)
+                    if available and hardening_confidence is not None
+                    else feature.confidence
+                    if available
+                    else Decimal("0")
+                ),
                 "buy_sell_ratio": _optional_decimal(feature.buy_sell_ratio, "buy_sell_ratio"),
                 "net_flow": _optional_decimal(feature.net_flow, "net_flow"),
                 "net_flow_acceleration": _optional_decimal(
@@ -664,6 +731,8 @@ class FeatureWindowAggregator:
                 ),
                 "buyer_arrival_rate": buyer_arrival_rate,
                 "momentum_score": score,
+                "hardening_reasons": tuple(hardening_reasons),
+                "signal_hardening": hardening_projection,
             },
             score,
         )
@@ -816,6 +885,16 @@ class FeatureWindowAggregator:
             future_evidence = future_evidence or is_future
             _append_provenance(provenance, getattr(value, "provenance", ()))
             _append_unique(evidence_refs, getattr(value, "evidence_refs", ()))
+        hardening_values = [
+            value
+            for feature in correlation.windows.values()
+            for value in feature.signal_hardening.values()
+        ]
+        for hardening_value in hardening_values:
+            state, is_future = _input_state(hardening_value, correlation.as_of)
+            future_evidence = future_evidence or is_future
+            _append_provenance(provenance, getattr(hardening_value, "provenance", ()))
+            _append_unique(evidence_refs, getattr(hardening_value, "evidence_refs", ()))
         correlation_state, correlation_future = _input_state(correlation, correlation.as_of)
         future_evidence = future_evidence or correlation_future
         if checked_at < correlation.as_of:
@@ -918,6 +997,55 @@ class FeatureWindowAggregator:
                 risk_assessment,
                 state=risk_state,
             )
+            hardening_projection = {
+                name: value.to_mapping() for name, value in feature.signal_hardening.items()
+            }
+            funding_hardening = feature.signal_hardening.get("move_funding")
+            if isinstance(funding_hardening, MoveFundingEvidence):
+                funding_state, _ = _input_state(funding_hardening, correlation.as_of)
+                organic_flow_validation: Mapping[str, object] = {
+                    **funding_hardening.to_mapping(),
+                    "available": funding_state is QualityState.FRESH,
+                    "quality_state": funding_state.value,
+                    "confidence": (
+                        funding_hardening.confidence
+                        if funding_state is QualityState.FRESH
+                        else Decimal("0")
+                    ),
+                    "execution_eligible": False,
+                }
+            else:
+                organic_flow_validation = {
+                    "available": False,
+                    "quality_state": QualityState.UNKNOWN.value,
+                    "confidence": Decimal("0"),
+                    "funding_confirmed": None,
+                    "reason_codes": ("MOVE_VOLUME_EVIDENCE_MISSING",),
+                    "evidence_refs": (),
+                    "execution_eligible": False,
+                }
+            if hardening_projection:
+                momentum_family = dict(momentum_family)
+                momentum_family["signal_hardening"] = hardening_projection
+                on_chain_family = dict(on_chain_family)
+                on_chain_family["signal_hardening"] = {
+                    name: hardening_projection[name]
+                    for name in ("deployer", "launch_footprint", "token_lock")
+                    if name in hardening_projection
+                }
+                hardening_states = [
+                    _input_state(value, correlation.as_of)[0]
+                    for value in feature.signal_hardening.values()
+                ]
+                hardening_state = _combined_quality(hardening_states)
+                family_states.append(hardening_state)
+                if hardening_state is not QualityState.FRESH:
+                    reasons.append(ReasonCode(f"FEATURE_SIGNAL_HARDENING_{hardening_state.value}"))
+                    for hardening_value in feature.signal_hardening.values():
+                        for reason in hardening_value.reason_codes:
+                            reasons.append(ReasonCode(str(reason)))
+            market_family = dict(market_family)
+            market_family["organic_flow_validation"] = organic_flow_validation
             for family_name, family in (
                 ("market", market_family),
                 ("liquidity", liquidity_family),
@@ -978,6 +1106,11 @@ class FeatureWindowAggregator:
                 (Decimal("1") for family in families.values() if bool(family["available"])),
                 Decimal("0"),
             ) / Decimal("7")
+            if feature.signal_hardening:
+                hardening_completeness = min(
+                    value.confidence for value in feature.signal_hardening.values()
+                )
+                completeness *= hardening_completeness
             completeness = Decimal(str(stream_impact.apply_completeness(completeness)))
             confidence = Decimal(str(stream_impact.apply_confidence(confidence)))
             if quality_state is not QualityState.FRESH:
@@ -1014,6 +1147,8 @@ class FeatureWindowAggregator:
                     "reason_codes": stream_impact.reason_codes,
                     "score_adjustment": stream_impact.score_adjustment,
                 },
+                "signal_hardening": hardening_projection,
+                "organic_flow_validation": organic_flow_validation,
                 "execution_eligible": False,
             }
             values.update(components)

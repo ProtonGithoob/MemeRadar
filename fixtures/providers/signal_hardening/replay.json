@@ -1,0 +1,205 @@
+{
+  "fixture_version": "signal-hardening-fixture-v1",
+  "redacted": true,
+  "provider_independent": true,
+  "hypothesis_only": true,
+  "token": {
+    "id": "00000000-0000-0000-0000-000000001001",
+    "mint_address": "So11111111111111111111111111111111111111112",
+    "token_program": "spl-token"
+  },
+  "as_of": "2026-09-01T12:00:10+00:00",
+  "config_hash": "signal-hardening-fixture-config-v1",
+  "observations": [
+    {
+      "source_id": "launch-create",
+      "kind": "protocol.lifecycle",
+      "at": "2026-09-01T11:59:00+00:00",
+      "payload": {
+        "event_type": "create",
+        "slot": 100,
+        "deployer": "11111111111111111111111111111115",
+        "initial_buy_amount": "100",
+        "initial_acquired_supply_pct": "0.10"
+      }
+    },
+    {
+      "source_id": "launch-buy-a",
+      "kind": "market.trade",
+      "at": "2026-09-01T11:59:02+00:00",
+      "payload": {
+        "slot": 101,
+        "side": "buy",
+        "buyer": "11111111111111111111111111111112",
+        "quote_amount_usd": "50",
+        "acquired_supply_pct": "0.20",
+        "current_holdings_pct": "0.18",
+        "is_sniper": true,
+        "bundle_cluster_id": "bundle-1"
+      }
+    },
+    {
+      "source_id": "launch-buy-b",
+      "kind": "market.trade",
+      "at": "2026-09-01T11:59:05+00:00",
+      "payload": {
+        "slot": 102,
+        "side": "buy",
+        "buyer": "11111111111111111111111111111113",
+        "quote_amount_usd": "40",
+        "acquired_supply_pct": "0.15",
+        "current_holdings_pct": "0.05",
+        "is_sniper": true,
+        "bundle_cluster_id": "bundle-1"
+      }
+    },
+    {
+      "source_id": "launch-deployer-buy",
+      "kind": "market.trade",
+      "at": "2026-09-01T11:59:08+00:00",
+      "payload": {
+        "slot": 103,
+        "side": "buy",
+        "wallet_address": "11111111111111111111111111111115",
+        "buyer": "11111111111111111111111111111115",
+        "amount": "1000",
+        "quote_amount_usd": "100",
+        "acquired_supply_pct": "0.25",
+        "current_holdings_pct": "0.25",
+        "is_sniper": false,
+        "bundle_cluster_id": "bundle-2"
+      }
+    },
+    {
+      "source_id": "launch-deployer-sell",
+      "kind": "market.trade",
+      "at": "2026-09-01T11:59:20+00:00",
+      "payload": {
+        "side": "sell",
+        "wallet_address": "11111111111111111111111111111115",
+        "seller": "11111111111111111111111111111115",
+        "amount": "100",
+        "quote_amount_usd": "20"
+      }
+    },
+    {
+      "source_id": "deployer-transfer-out",
+      "kind": "onchain.transfer",
+      "at": "2026-09-01T11:59:30+00:00",
+      "payload": {
+        "from_address": "11111111111111111111111111111115",
+        "to_address": "11111111111111111111111111111112",
+        "amount": "100"
+      }
+    },
+    {
+      "source_id": "deployer-balance",
+      "kind": "wallet.balance",
+      "at": "2026-09-01T11:59:40+00:00",
+      "payload": {
+        "wallet_address": "11111111111111111111111111111115",
+        "token_holdings": "900",
+        "holdings_pct": "0.09"
+      }
+    },
+    {
+      "source_id": "market-0",
+      "kind": "market.market_data",
+      "at": "2026-09-01T12:00:00+00:00",
+      "payload": {
+        "market_cap_usd": "100",
+        "market_price": "1",
+        "liquidity_usd": "30000"
+      }
+    },
+    {
+      "source_id": "tape-buy-a",
+      "kind": "market.trade",
+      "at": "2026-09-01T12:00:02+00:00",
+      "payload": {
+        "side": "buy",
+        "buyer": "11111111111111111111111111111112",
+        "quote_amount_usd": "40"
+      }
+    },
+    {
+      "source_id": "market-1",
+      "kind": "market.market_data",
+      "at": "2026-09-01T12:00:05+00:00",
+      "payload": {
+        "market_cap_usd": "125",
+        "market_price": "1.25",
+        "liquidity_usd": "30000"
+      }
+    },
+    {
+      "source_id": "tape-buy-b",
+      "kind": "market.trade",
+      "at": "2026-09-01T12:00:07+00:00",
+      "payload": {
+        "side": "buy",
+        "buyer": "11111111111111111111111111111113",
+        "quote_amount_usd": "40"
+      }
+    },
+    {
+      "source_id": "market-2",
+      "kind": "market.market_data",
+      "at": "2026-09-01T12:00:10+00:00",
+      "payload": {
+        "market_cap_usd": "150",
+        "market_price": "1.5",
+        "liquidity_usd": "30000"
+      }
+    },
+    {
+      "source_id": "tape-buy-c",
+      "kind": "market.trade",
+      "at": "2026-09-01T12:00:10+00:00",
+      "payload": {
+        "side": "buy",
+        "buyer": "11111111111111111111111111111114",
+        "quote_amount_usd": "40"
+      }
+    },
+    {
+      "source_id": "token-lock",
+      "kind": "token.vesting",
+      "at": "2026-09-01T12:00:01+00:00",
+      "payload": {
+        "asset_scope": "TOKEN",
+        "locker_program": "locker-fixture-v1",
+        "lock_present": true,
+        "deposited_amount": "100000",
+        "locked_amount": "100000",
+        "cancelable_by_sender": false,
+        "next_unlock_at": "2026-09-01T12:30:00+00:00",
+        "unlock_type": "CLIFF",
+        "scheduled_unlocks": [
+          {
+            "unlock_at": "2026-09-01T12:30:00+00:00",
+            "amount": "30000",
+            "unlock_type": "CLIFF"
+          },
+          {
+            "unlock_at": "2026-09-03T12:00:00+00:00",
+            "amount": "20000",
+            "unlock_type": "TRANCHE"
+          }
+        ]
+      }
+    }
+  ],
+  "expected": {
+    "momentum_kind": "SURGE",
+    "momentum_sustained_for_ms": 10000,
+    "move_funding_confirmed": true,
+    "move_buy_volume_usd": "120",
+    "deployer_transfer_delta": "-100",
+    "launch_early_buyer_count": 3,
+    "launch_bundle_actor_cluster_count": 2,
+    "lock_asset_scope": "TOKEN",
+    "lock_next_unlock_at": "2026-09-01T12:30:00+00:00",
+    "lock_scheduled_1h": "30000"
+  }
+}

@@ -17,6 +17,10 @@ from memeradar_application.exit_engine import (
     ExitTakeProfitLevel,
     InMemoryExitEvaluationStore,
 )
+from memeradar_application.signal_hardening import (
+    MomentumRegimeKind,
+    MomentumRegimeSnapshot,
+)
 from memeradar_domain import (
     ExitSignal,
     Position,
@@ -24,15 +28,19 @@ from memeradar_domain import (
     PositionState,
     Provenance,
     QualityState,
+    ReasonCode,
+    TokenIdentity,
 )
 
 BASE = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
+MINT = "So11111111111111111111111111111111111111112"
+TOKEN_ID = uuid4()
 
 
-def _position(*, high_watermark: str = "1.00") -> Position:
+def _position(*, high_watermark: str = "1.00", token_id: object | None = None) -> Position:
     return Position(
         portfolio_id=uuid4(),
-        token_id=uuid4(),
+        token_id=TOKEN_ID if token_id is None else token_id,
         mode=PositionMode.PAPER,
         quantity=Decimal("100"),
         average_entry=Decimal("1.00"),
@@ -77,9 +85,71 @@ def _policy(**changes: object) -> ExitRulePolicy:
     return ExitRulePolicy(**values)
 
 
+def _hardening_snapshot(
+    *,
+    quality_state: QualityState = QualityState.FRESH,
+    confidence: Decimal = Decimal("0.8"),
+) -> MomentumRegimeSnapshot:
+    token = TokenIdentity(id=TOKEN_ID, mint_address=MINT)
+    return MomentumRegimeSnapshot(
+        token=token,
+        as_of=BASE + timedelta(minutes=5),
+        expires_at=BASE + timedelta(minutes=10),
+        kind=MomentumRegimeKind.SURGE,
+        tier="SUSTAINED",
+        config_hash="exit-hardening-v1",
+        quality_state=quality_state,
+        confidence=confidence,
+        provenance=(
+            Provenance(
+                provider="hardening-fixture",
+                source_id="hardening:momentum",
+                observed_at=BASE + timedelta(minutes=5),
+                parser_version="hardening-fixture-v1",
+            ),
+        ),
+        evidence_refs=("hardening:momentum",),
+        reason_codes=(ReasonCode("MOMENTUM_SUSTAINED"),),
+    )
+
+
 def _codes(result: object) -> tuple[str, ...]:
     score = result.risk_score
     return tuple(reason.code for reason in score.reason_codes)
+
+
+def test_exit_risk_preserves_hardening_provenance_and_advisory_quality() -> None:
+    position = _position()
+    result = ExitEngine(_policy()).evaluate(
+        position,
+        _evidence(signal_hardening={"momentum": _hardening_snapshot()}),
+        now=BASE + timedelta(minutes=5),
+    )
+
+    assert "hardening:momentum" in result.risk_score.evidence_refs
+    assert "MOMENTUM_SUSTAINED" in _codes(result)
+    assert result.risk_score.confidence <= Decimal("0.8")
+    assert result.signal is None
+
+
+def test_unknown_hardening_cannot_be_treated_as_safe_exit_evidence() -> None:
+    position = _position()
+    result = ExitEngine(_policy()).evaluate(
+        position,
+        _evidence(
+            signal_hardening={
+                "momentum": _hardening_snapshot(
+                    quality_state=QualityState.UNKNOWN,
+                    confidence=Decimal("0"),
+                )
+            }
+        ),
+        now=BASE + timedelta(minutes=5),
+    )
+
+    assert result.risk_score.confidence == Decimal("0")
+    assert "EXIT_SIGNAL_HARDENING_UNKNOWN" in _codes(result)
+    assert result.risk_score.action is ExitAction.HOLD
 
 
 def test_fixed_stop_loss_is_an_explainable_close_without_mutating_position() -> None:

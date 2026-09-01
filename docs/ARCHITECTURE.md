@@ -556,6 +556,21 @@ scanner output is never persisted. The reviewed threat model and procedures
 are in [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) and
 [`docs/RUNBOOKS/SECURITY_REVIEW.md`](RUNBOOKS/SECURITY_REVIEW.md).
 
+The approved E11.4–E11.9 signal-hardening extension is a provider-independent
+application seam in
+`packages/application/src/memeradar_application/signal_hardening.py`. It
+normalizes sustained surge/revival, economic move funding, deployer
+self-activity/transfer deltas, bounded launch sniper/bundle footprints and
+token/vesting unlock evidence from the same `Observation` contract used by
+live and replay paths. `CorrelationWindowBuilder` carries typed snapshots;
+`FeatureWindowAggregator`, the evidence timeline and exit diagnostics expose
+them as corroborating quality/risk data without adding an AlphaScore component
+or execution authority. `ReplayHarness` invokes the same analyzer at each
+event-time checkpoint and pins `signal_hardening_version` alongside parser,
+registry, schema, strategy and config identity. Missing/stale/conflicted
+evidence remains explicit, healthy stream status is neutral to score, and
+MadeOnSol is not a runtime dependency or source of trading truth.
+
 ## Scaling strategy
 
 Do not split services until measurements justify it. Likely future extraction candidates:

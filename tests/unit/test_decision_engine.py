@@ -1,6 +1,7 @@
 """Unit contracts for the provider-independent Sprint 6.3 decision engine."""
 
 import asyncio
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -11,6 +12,10 @@ from memeradar_application.decision_engine import (
     DecisionEngine,
     DecisionPolicy,
     EvidenceTimelineProjector,
+)
+from memeradar_application.signal_hardening import (
+    MomentumRegimeKind,
+    MomentumRegimeSnapshot,
 )
 from memeradar_domain import (
     Candidate,
@@ -33,12 +38,13 @@ FEATURE_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 RISK_ID = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
 PREVIOUS_RISK_ID = UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
 MINT = "So11111111111111111111111111111111111111112"
+TOKEN_ID = UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
 
 
 def candidate() -> Candidate:
     return Candidate(
         id=CANDIDATE_ID,
-        token=TokenIdentity(mint_address=MINT),
+        token=TokenIdentity(id=TOKEN_ID, mint_address=MINT),
         discovered_at=NOW - timedelta(minutes=1),
         discovery_source="fixture.decision",
     )
@@ -108,6 +114,45 @@ def score(
         expires_at=expires_at,
         config_hash=CONFIG_HASH,
         quality_state=quality_state,
+    )
+
+
+def hardening_snapshot(
+    *,
+    as_of: datetime = NOW - timedelta(seconds=3),
+    quality_state: QualityState = QualityState.FRESH,
+) -> MomentumRegimeSnapshot:
+    return MomentumRegimeSnapshot(
+        token=candidate().token,
+        as_of=as_of,
+        expires_at=as_of + timedelta(minutes=5),
+        kind=MomentumRegimeKind.SURGE,
+        tier="SUSTAINED",
+        config_hash=CONFIG_HASH,
+        started_at=as_of - timedelta(seconds=10),
+        confirmed_at=as_of,
+        sustained_for_ms=10_000,
+        launch_market_cap=Decimal("100"),
+        current_market_cap=Decimal("150"),
+        market_cap_delta=Decimal("50"),
+        buy_trade_count=3,
+        buy_quote_volume=Decimal("60"),
+        unique_buyers=3,
+        liquidity=Decimal("30000"),
+        liquidity_to_market_cap_ratio=Decimal("200"),
+        quality_state=quality_state,
+        confidence=Decimal("0.9") if quality_state is QualityState.FRESH else Decimal("0"),
+        provenance=(
+            Provenance(
+                provider="hardening-fixture",
+                source_id="hardening:momentum",
+                observed_at=as_of - timedelta(seconds=1),
+                parser_version="hardening-fixture-v1",
+            ),
+        ),
+        evidence_refs=("hardening-fixture:momentum",),
+        reason_codes=(ReasonCode("MOMENTUM_SUSTAINED"),),
+        version="signal-hardening-fixture-v1",
     )
 
 
@@ -441,6 +486,62 @@ def test_timeline_projection_is_event_time_sorted_and_delivery_order_independent
     assert bounded.as_of == NOW
     assert all(entry.occurred_at <= NOW for entry in bounded.entries)
     assert not any(entry.source_id == "liquidity-1" for entry in bounded.entries)
+
+
+def test_timeline_projects_typed_hardening_with_provenance_and_stable_identity() -> None:
+    value = candidate()
+    snapshot = hardening_snapshot()
+    projector = EvidenceTimelineProjector()
+
+    first = projector.project(
+        value,
+        signal_hardening={"momentum": snapshot},
+    )
+    second = projector.project(
+        value,
+        signal_hardening={"momentum": snapshot},
+    )
+
+    assert first == second
+    entry = next(item for item in first.entries if item.kind == "signal_hardening.snapshot")
+    assert entry.quality_state is QualityState.FRESH
+    assert entry.source_id.startswith("signal-hardening:momentum:")
+    assert entry.provenance == snapshot.provenance
+    assert entry.evidence_refs == snapshot.evidence_refs
+    assert entry.payload["evidence_name"] == "momentum"
+    assert entry.payload["token_id"] == str(value.token.id)
+    projected = entry.payload["snapshot"]
+    assert isinstance(projected, Mapping)
+    assert projected["version"] == snapshot.version
+    assert projected["config_hash"] == snapshot.config_hash
+    assert projected["execution_eligible"] is False
+
+
+def test_timeline_excludes_future_hardening_and_rejects_cross_token_hardening() -> None:
+    value = candidate()
+    projector = EvidenceTimelineProjector()
+    future = hardening_snapshot(as_of=NOW + timedelta(seconds=1))
+
+    bounded = projector.project(
+        value,
+        signal_hardening={"momentum": future},
+        as_of=NOW,
+    )
+    assert not bounded.entries
+
+    foreign = MomentumRegimeSnapshot(
+        token=TokenIdentity(
+            id=UUID("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+            mint_address=MINT,
+        ),
+        as_of=NOW - timedelta(seconds=1),
+        expires_at=NOW + timedelta(minutes=5),
+        kind=MomentumRegimeKind.UNKNOWN,
+        tier="UNKNOWN",
+        config_hash=CONFIG_HASH,
+    )
+    with pytest.raises(ValueError, match="token_id"):
+        projector.project(value, signal_hardening={"momentum": foreign})
 
 
 def test_decision_engine_rejects_future_or_cross_candidate_inputs() -> None:

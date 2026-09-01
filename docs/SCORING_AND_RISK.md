@@ -271,6 +271,33 @@ Top1/top5/top10 effective concentration after identifying pools, programs and sy
 ### Momentum
 Multi-window return/volume acceleration adjusted for volatility and parabolic-extension risk. Pure price increase is not automatically positive.
 
+### E11 signal-hardening corroboration
+
+The provider-independent signal-hardening layer validates momentum and market
+movement before they are used as feature evidence. A `SURGE` or `REVIVAL`
+requires configuration-driven sustained samples, actual buy tape, buyer
+evidence and liquidity context; a market-cap/price mark alone is never
+economic momentum. `MoveFundingEvidence` retains quote units when USD is not
+independently available, discounts explicit wash/bot evidence and degrades
+thin-liquidity or non-fresh inputs.
+
+Deployer self-activity, transfer deltas, bounded early sniper/bundle
+footprints and token/vesting unlock schedules are corroborating risk evidence.
+Transfer deltas do not prove intent, absence of sniper labels is not a clean
+launch, token locks are distinct from LP locks, and a lock is not a safety
+verdict. Missing, stale, conflicted or unverified hardening evidence remains
+`UNKNOWN`/non-fresh and cannot clear a hard risk gate.
+
+Hardening snapshots are carried through correlation, existing feature-family
+diagnostics, timeline, exit evidence, replay and calibration identity. They do
+not create a new AlphaScore component, and healthy stream/hardening status
+does not add score. Any configured confidence or penalty effect must remain
+versioned and be calibrated against MemeRadar replay outcomes. Execution and
+market/reference price semantics are separate: effective execution prices are
+for cost basis/PnL, while market/reference prices are for market series and
+movement analytics. All hard gates remain authoritative and every hardening
+snapshot is advisory-only.
+
 ## 7. SmartWalletScore v1
 
 Inputs should include:

@@ -8,8 +8,8 @@ from enum import Enum
 from uuid import UUID, uuid4
 
 from .common import ensure_utc, freeze_mapping, require_text, to_decimal
-from .evidence import PriceSemantics
 from .events import ReasonCode, normalize_reason_codes
+from .evidence import PriceSemantics
 from .operations import PositionMode
 
 

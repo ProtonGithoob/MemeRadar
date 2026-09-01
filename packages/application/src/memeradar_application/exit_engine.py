@@ -38,11 +38,40 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .signal_hardening import (
+    DeployerActivitySnapshot,
+    LaunchFootprintSnapshot,
+    MomentumRegimeSnapshot,
+    MoveFundingEvidence,
+    TokenLockSnapshot,
+)
+
 EXIT_ENGINE_VERSION = "exit-engine-v1"
 _BPS_MAX = Decimal("10000")
 _RATIO_ONE = Decimal("1")
 _ZERO = Decimal("0")
 _ONE = Decimal("1")
+SignalHardeningEvidence = (
+    DeployerActivitySnapshot
+    | LaunchFootprintSnapshot
+    | MomentumRegimeSnapshot
+    | MoveFundingEvidence
+    | TokenLockSnapshot
+)
+_SIGNAL_HARDENING_TYPES = (
+    DeployerActivitySnapshot,
+    LaunchFootprintSnapshot,
+    MomentumRegimeSnapshot,
+    MoveFundingEvidence,
+    TokenLockSnapshot,
+)
+_QUALITY_PRIORITY = {
+    QualityState.FRESH: 0,
+    QualityState.STALE: 1,
+    QualityState.UNKNOWN: 2,
+    QualityState.CONFLICTED: 3,
+    QualityState.INVALID: 4,
+}
 
 
 class ExitAction(str, Enum):
@@ -351,6 +380,7 @@ class ExitEvidenceSnapshot:
     quote_deterioration_bps: Decimal | None = None
     alpha_score: Decimal | None = None
     previous_alpha_score: Decimal | None = None
+    signal_hardening: Mapping[str, SignalHardeningEvidence] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         occurred, observed, ingested = ensure_ordered_timestamps(
@@ -367,6 +397,21 @@ class ExitEvidenceSnapshot:
         object.__setattr__(self, "ingested_at", ingested)
         object.__setattr__(self, "expires_at", expires_at)
         object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        if not isinstance(self.signal_hardening, Mapping):
+            raise TypeError("signal_hardening must be a mapping")
+        normalized_hardening: dict[str, SignalHardeningEvidence] = {}
+        for raw_name, value in self.signal_hardening.items():
+            name = require_text(str(raw_name), "signal hardening evidence name", max_length=64)
+            if name in normalized_hardening:
+                raise ValueError(f"duplicate signal hardening evidence name: {name}")
+            if not isinstance(value, _SIGNAL_HARDENING_TYPES):
+                raise TypeError("signal_hardening values must be typed hardening snapshots")
+            normalized_hardening[name] = value
+        object.__setattr__(
+            self,
+            "signal_hardening",
+            freeze_mapping(normalized_hardening, "signal_hardening"),
+        )
         provenance = _normalized_provenance(self.provenance)
         if any(value.observed_at > observed for value in provenance):
             raise ValueError("provenance observed_at must not be later than observed_at")
@@ -374,7 +419,18 @@ class ExitEvidenceSnapshot:
         object.__setattr__(
             self,
             "evidence_refs",
-            _normalized_refs(self.evidence_refs, "evidence_refs", required=True),
+            _normalized_refs(
+                (
+                    *self.evidence_refs,
+                    *(
+                        reference
+                        for value in normalized_hardening.values()
+                        for reference in value.evidence_refs
+                    ),
+                ),
+                "evidence_refs",
+                required=True,
+            ),
         )
         object.__setattr__(
             self,
@@ -794,7 +850,12 @@ class ExitEngine:
     def _quality_reason(state: QualityState) -> str:
         return "EXIT_EVIDENCE_" + state.value
 
-    def _base_reasons(self, evidence: ExitEvidenceSnapshot) -> tuple[list[ReasonCode], Decimal]:
+    def _base_reasons(
+        self,
+        evidence: ExitEvidenceSnapshot,
+        *,
+        evaluated_at: datetime,
+    ) -> tuple[list[ReasonCode], Decimal, QualityState]:
         reasons: list[ReasonCode] = []
         optional_families = (
             (
@@ -843,7 +904,36 @@ class ExitEngine:
         confidence = Decimal("0.50") + Decimal("0.50") * Decimal(available) / Decimal("5")
         if evidence.external_distribution_pressure is not None:
             confidence = max(confidence, Decimal("0.50"))
-        return reasons, confidence
+        hardening_states: list[QualityState] = []
+        for name, value in sorted(evidence.signal_hardening.items()):
+            state = value.freshness.state_at(evaluated_at)
+            hardening_states.append(state)
+            for reason in normalize_reason_codes(value.reason_codes, required=True):
+                if reason.code not in {item.code for item in reasons}:
+                    reasons.append(
+                        ReasonCode(
+                            reason.code,
+                            detail=reason.detail,
+                            evidence_refs=value.evidence_refs,
+                        )
+                    )
+            if state is not QualityState.FRESH:
+                code = f"EXIT_SIGNAL_HARDENING_{state.value}"
+                if code not in {item.code for item in reasons}:
+                    reasons.append(
+                        ReasonCode(
+                            code,
+                            detail=name,
+                            evidence_refs=value.evidence_refs,
+                        )
+                    )
+            confidence = min(confidence, value.confidence if state is QualityState.FRESH else _ZERO)
+        hardening_quality = (
+            QualityState.FRESH
+            if not hardening_states
+            else max(hardening_states, key=lambda state: _QUALITY_PRIORITY[state])
+        )
+        return reasons, confidence, hardening_quality
 
     def _unknown(
         self,
@@ -898,6 +988,10 @@ class ExitEngine:
             "triggered_rules": tuple(triggered_rules),
             "action": risk_score.action.value,
             "exit_fraction": str(risk_score.exit_fraction),
+            "signal_hardening": {
+                name: value.to_mapping()
+                for name, value in sorted(evidence.signal_hardening.items())
+            },
             "policy_version": self.policy.version,
             "config_hash": self.policy.config_hash,
         }
@@ -953,6 +1047,9 @@ class ExitEngine:
         if not isinstance(evidence, ExitEvidenceSnapshot):
             raise TypeError("evidence must be an ExitEvidenceSnapshot")
         evaluated_at = ensure_utc(now, "now")
+        for value in evidence.signal_hardening.values():
+            if value.token.id != position.token_id:
+                raise ValueError("signal hardening token_id does not match position")
         consumed = frozenset(_normalized_refs(
             consumed_take_profit_levels,
             "consumed_take_profit_levels",
@@ -1243,7 +1340,10 @@ class ExitEngine:
                     detail=level.key,
                 )
                 break
-        base_reasons, confidence = self._base_reasons(evidence)
+        base_reasons, confidence, hardening_quality = self._base_reasons(
+            evidence,
+            evaluated_at=evaluated_at,
+        )
         if (
             evidence.smart_money_distribution_pressure is not None
             and evidence.smart_money_distribution_pressure >= policy.distribution_pressure_threshold
@@ -1282,7 +1382,7 @@ class ExitEngine:
         risk_score = ExitRiskScore(
             score=score_value,
             confidence=confidence,
-            quality_state=QualityState.FRESH,
+            quality_state=hardening_quality,
             components=components,
             reason_codes=normalize_reason_codes(reasons, required=True),
             evidence_refs=evidence.evidence_refs,

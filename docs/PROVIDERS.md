@@ -302,6 +302,27 @@ reason codes, source-category diversity, version and config hash. It is an
 advisory feature seam only; a social, market, protocol, wallet or external
 label burst cannot authorize `ENTRY_READY`.
 
+## E11.4–E11.9 signal hardening
+
+The MadeOnSol-derived signal-hardening extension is intentionally outside the
+provider layer. `SignalHardeningAnalyzer` consumes only normalized
+`Observation` values and emits versioned, provider-independent evidence for
+sustained momentum, economic tape funding, deployer/transfer deltas, bounded
+sniper/bundle footprints and token/vesting unlock schedules. It preserves
+quote units when an independent USD conversion is unavailable and keeps
+execution/effective price semantics separate from market/reference price
+semantics.
+
+MadeOnSol is not a required adapter or source of trading truth. A future live
+adapter, if separately approved and legally configured, may provide optional
+corroboration only; external labels and scores cannot replace internal
+deterministic risk, authorize `ENTRY_READY` or enable execution. Missing,
+stale, conflicted or unverified evidence remains explicit `UNKNOWN`/degraded
+data, and no live provider acceptance is claimed. Keyless fixtures and the
+replay contract live under
+`fixtures/providers/signal_hardening/` and
+`tests/contract/test_extension_e11_signal_hardening.py`.
+
 ## Feature-window aggregation
 
 Core Sprint 6.1 is intentionally outside the provider layer. The

@@ -374,6 +374,55 @@ a material bottleneck.
 
 ---
 
+## Extension E11.4–E11.9 — MadeOnSol-Derived Signal Hardening
+
+**When:** after Gate P11 and before any Phase 12 work. Phase 12 remains locked
+until its separate manual-execution acceptance is explicitly authorized.
+
+**Goal:** add provider-independent corroboration for sustained momentum,
+economic tape funding, deployer activity, bounded launch footprints and token
+unlock risk, while keeping execution/effective prices distinct from independent
+market/reference prices.
+
+### Tasks
+
+- [x] Add versioned, configuration-driven sustained `SURGE`/`REVIVAL`
+  evidence with duration, sample, buy-flow, buyer and liquidity requirements.
+- [x] Add economic move-funding evidence with quote-unit preservation,
+  liquidity/market-cap validation, wash adjustment and explicit unknown/stale
+  behavior.
+- [x] Add deployer self-activity, trade-derived/on-chain holdings and
+  transfer-without-swap delta evidence without inferring intent from a delta.
+- [x] Add bounded first-N-slot/first-duration sniper and bundle footprint
+  evidence with actor-cluster deduplication and explicit external-label
+  disagreement.
+- [x] Add token-versus-LP lock/vesting/unlock evidence with schedules,
+  cancelability, provenance, expiry and explicit unknown state.
+- [x] Keep execution/effective price and market/reference price semantics
+  separate in paper, trade and replay calculations.
+- [x] Carry typed evidence through correlation, existing feature families,
+  timeline, exit diagnostics, replay and calibration identity without adding
+  a new AlphaScore component or provider dependency.
+- [x] Cover deterministic fixtures, replay equivalence, no-lookahead and
+  missing/stale/conflicted evidence; mixed stale critical market/trade input
+  fails closed.
+
+**Keyless status (2026-09-01):** `DONE` for the provider-independent
+implementation and focused integration gate. The extension uses no MadeOnSol
+runtime dependency or live adapter. Hardening snapshots are advisory,
+configuration/version identified and `execution_eligible() == false`; no
+external label, stream-health value or provider score can authorize
+`ENTRY_READY`. Live provider acceptance remains `BLOCKED_EXTERNAL`, and the
+protected modes remain analysis-only/paper-trading with manual and automatic
+execution disabled.
+
+**Acceptance:** healthy stream status is neutral to score; unresolved,
+unverified, stale or conflicting evidence reduces quality/confidence or fails
+closed; replay uses the same normalized evidence boundary and preserves parser,
+registry, schema, strategy/config and hardening identities.
+
+---
+
 ## Extension E12.1 — Execution Simulation / Fee Accuracy
 
 **When:** Phase 12 before any manual live submission.
@@ -414,6 +463,8 @@ Phase 9 + E9.4 exit correlation
 Phase 10 + E10.1/E10.2 replay/calibration
         ↓
 Phase 11 + E11.1 latency benchmark
+        ↓
+E11.4–E11.9 signal hardening
         ↓
 E11.2 Rust/Yellowstone only if justified
         ↓

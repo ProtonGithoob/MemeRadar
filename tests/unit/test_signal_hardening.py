@@ -8,10 +8,14 @@ import pytest
 
 from memeradar_application.signal_hardening import (
     DeployerActivitySnapshot,
+    LaunchFootprintSnapshot,
+    LockAssetScope,
     MomentumRegimeKind,
     MoveFundingEvidence,
     SignalHardeningAnalyzer,
     SignalHardeningPolicy,
+    TokenLockSnapshot,
+    TokenUnlockEvent,
 )
 from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
 
@@ -119,6 +123,42 @@ def test_surge_requires_sustained_market_move_and_buy_tape() -> None:
     assert result.confidence > 0
     assert result.execution_eligible() is False
     assert result.config_hash == "hardening-config-v1"
+
+
+def test_sustained_price_move_without_liquidity_evidence_is_not_confirmed() -> None:
+    records = (
+        observation(
+            "no-liquidity-0",
+            "market.market_data",
+            NOW,
+            {"market_cap_usd": "100"},
+        ),
+        trade("no-liquidity-trade-1", 2, BUYERS[0]),
+        observation(
+            "no-liquidity-1",
+            "market.market_data",
+            NOW + timedelta(seconds=5),
+            {"market_cap_usd": "120"},
+        ),
+        trade("no-liquidity-trade-2", 7, BUYERS[1]),
+        observation(
+            "no-liquidity-2",
+            "market.market_data",
+            NOW + timedelta(seconds=10),
+            {"market_cap_usd": "150"},
+        ),
+        trade("no-liquidity-trade-3", 10, BUYERS[2]),
+    )
+
+    result = SignalHardeningAnalyzer(policy=policy()).analyze_momentum(
+        token(), records, now=NOW + timedelta(seconds=10), config_hash="hardening-config-v1"
+    )
+
+    assert result.kind is MomentumRegimeKind.NONE
+    assert result.confidence == Decimal("0")
+    assert "MOMENTUM_LIQUIDITY_EVIDENCE_MISSING" in {
+        reason.code for reason in result.reason_codes
+    }
 
 
 def test_one_tick_or_reversal_cannot_become_sustained_momentum() -> None:
@@ -231,6 +271,39 @@ def test_stale_conflict_and_future_input_are_explicit() -> None:
     assert "HARDENING_DUPLICATE_CONFLICT" in {reason.code for reason in conflicted.reason_codes}
     assert future.quality_state is QualityState.INVALID
     assert "HARDENING_FUTURE_EVIDENCE" in {reason.code for reason in future.reason_codes}
+
+
+def test_mixed_stale_market_or_trade_evidence_cannot_rehydrate_momentum() -> None:
+    records = (
+        market("mixed-market-0", 0, "100"),
+        observation(
+            "mixed-market-stale",
+            "market.market_data",
+            NOW + timedelta(seconds=3),
+            {"market_cap_usd": "115", "liquidity_usd": "30000"},
+            quality_state=QualityState.STALE,
+        ),
+        trade("mixed-trade-1", 4, BUYERS[0]),
+        market("mixed-market-1", 7, "130"),
+        trade("mixed-trade-2", 8, BUYERS[1]),
+        market("mixed-market-2", 10, "150"),
+        trade("mixed-trade-3", 10, BUYERS[2]),
+    )
+
+    momentum = SignalHardeningAnalyzer(policy=policy()).analyze_momentum(
+        token(), records, now=NOW + timedelta(seconds=10), config_hash="hardening-config-v1"
+    )
+    funding = SignalHardeningAnalyzer(policy=policy()).analyze_move_funding(
+        token(), records, now=NOW + timedelta(seconds=10), config_hash="hardening-config-v1"
+    )
+
+    assert momentum.kind is MomentumRegimeKind.UNKNOWN
+    assert momentum.quality_state is QualityState.STALE
+    assert momentum.confidence == Decimal("0")
+    assert "MOMENTUM_EVIDENCE_NOT_FRESH" in {reason.code for reason in momentum.reason_codes}
+    assert funding.quality_state is QualityState.STALE
+    assert funding.confidence == Decimal("0")
+    assert "MOVE_EVIDENCE_NOT_FRESH" in {reason.code for reason in funding.reason_codes}
 
 
 def test_policy_keeps_thresholds_versioned_and_protected() -> None:
@@ -373,6 +446,34 @@ def test_missing_tape_stale_liquidity_wash_and_future_move_are_explicit() -> Non
     assert wash.wash_adjusted_buy_volume_usd == Decimal("0")
     assert "WASH_VOLUME_DISCOUNTED" in {reason.code for reason in wash.reason_codes}
     assert future.quality_state is QualityState.INVALID
+
+
+def test_explicit_wash_volume_multiplier_is_configuration_driven() -> None:
+    result = SignalHardeningAnalyzer(
+        policy=policy(wash_volume_multiplier=Decimal("0.25"))
+    ).analyze_move_funding(
+        token(),
+        (
+            market("wash-multiplier-0", 0, "100"),
+            observation(
+                "wash-multiplier-trade",
+                "market.trade",
+                NOW + timedelta(seconds=5),
+                {
+                    "side": "buy",
+                    "quote_amount_usd": "100",
+                    "buyer": BUYERS[0],
+                    "wash_trade": True,
+                },
+            ),
+            market("wash-multiplier-1", 10, "150"),
+        ),
+        now=NOW + timedelta(seconds=10),
+        config_hash="hardening-config-v1",
+    )
+
+    assert result.wash_adjusted_buy_volume_usd == Decimal("25.00")
+    assert result.funding_confirmed is True
 
 
 def test_deployer_trade_derived_holdings_and_self_activity_are_explicit() -> None:
@@ -565,6 +666,357 @@ def test_deployer_census_missing_stale_conflict_and_future_fail_closed() -> None
 
     assert incomplete.quality_state is QualityState.UNKNOWN
     assert "DEPLOYER_ACTIVITY_UNKNOWN" in {reason.code for reason in incomplete.reason_codes}
+    assert stale.quality_state is QualityState.STALE
+    assert conflicted.quality_state is QualityState.CONFLICTED
+    assert future.quality_state is QualityState.INVALID
+
+
+def test_stale_deployer_evidence_remains_degraded_with_fresh_census() -> None:
+    result = SignalHardeningAnalyzer(policy=policy()).analyze_deployer_activity(
+        token(),
+        (
+            observation(
+                "mixed-deployer-launch",
+                "protocol.lifecycle",
+                NOW,
+                {"deployer": DEPLOYER, "initial_buy_amount": "100"},
+            ),
+            observation(
+                "mixed-deployer-buy",
+                "market.trade",
+                NOW + timedelta(seconds=1),
+                {
+                    "side": "buy",
+                    "wallet_address": DEPLOYER,
+                    "amount": "25",
+                    "quote_amount_usd": "25",
+                },
+                quality_state=QualityState.STALE,
+            ),
+            observation(
+                "mixed-deployer-census",
+                "wallet.balance",
+                NOW + timedelta(seconds=2),
+                {"wallet_address": DEPLOYER, "token_holdings": "125"},
+            ),
+        ),
+        deployer_wallet=DEPLOYER,
+        now=NOW + timedelta(seconds=2),
+        config_hash="hardening-config-v1",
+    )
+
+    assert result.quality_state is QualityState.STALE
+    assert result.confidence == Decimal("0")
+
+
+def test_launch_footprint_is_bounded_and_deduplicates_actor_clusters() -> None:
+    records = (
+        observation(
+            "launch-footprint",
+            "protocol.lifecycle",
+            NOW,
+            {
+                "event_type": "launch",
+                "launch_slot": 100,
+                "launch_at": NOW.isoformat(),
+            },
+        ),
+        observation(
+            "early-buy-a",
+            "market.trade",
+            NOW + timedelta(seconds=1),
+            {
+                "slot": 101,
+                "side": "buy",
+                "wallet_address": BUYERS[0],
+                "actor_cluster_id": "controller-one",
+                "is_sniper": True,
+                "bundle_cluster_id": "bundle-one",
+                "quote_amount": "10",
+                "quote_currency": "SOL",
+                "acquired_supply_pct": "0.25",
+                "current_holdings_pct": "0.10",
+            },
+        ),
+        observation(
+            "early-buy-b",
+            "market.trade",
+            NOW + timedelta(seconds=2),
+            {
+                "slot": 102,
+                "side": "buy",
+                "wallet_address": BUYERS[1],
+                "actor_cluster_id": "controller-one",
+                "is_sniper": True,
+                "bundle_cluster_id": "bundle-one",
+                "quote_amount": "20",
+                "quote_currency": "SOL",
+                "acquired_supply_pct": "0.25",
+                "current_holdings_pct": "0.15",
+            },
+        ),
+        observation(
+            "late-buy",
+            "market.trade",
+            NOW + timedelta(seconds=20),
+            {
+                "slot": 120,
+                "side": "buy",
+                "wallet_address": BUYERS[2],
+                "actor_cluster_id": "late-controller",
+                "is_sniper": True,
+                "bundle_cluster_id": "late-bundle",
+                "quote_amount": "100",
+                "quote_currency": "SOL",
+                "acquired_supply_pct": "0.50",
+            },
+        ),
+    )
+
+    result = SignalHardeningAnalyzer(policy=policy()).analyze_launch_footprint(
+        token(), records, now=NOW + timedelta(seconds=20), config_hash="hardening-config-v1"
+    )
+
+    assert isinstance(result, LaunchFootprintSnapshot)
+    assert result.early_buyer_count == 2
+    assert result.sniper_wallet_count == 2
+    assert result.bundle_actor_cluster_count == 1
+    assert result.quote_acquired == Decimal("30")
+    assert result.quote_unit == "SOL"
+    assert result.supply_acquired_pct == Decimal("0.50")
+    assert result.still_held_pct == Decimal("0.25")
+    assert result.actor_cluster_adjusted_concentration == Decimal("1")
+    assert result.data_available is True
+    assert "SNIPER_FOOTPRINT_HIGH" in {reason.code for reason in result.reason_codes}
+    assert "BUNDLED_LAUNCH_EVIDENCE" in {reason.code for reason in result.reason_codes}
+    assert result.execution_eligible() is False
+
+
+def test_launch_footprint_external_label_disagreement_is_conflicted() -> None:
+    result = SignalHardeningAnalyzer(policy=policy()).analyze_launch_footprint(
+        token(),
+        (
+            observation(
+                "conflict-launch",
+                "protocol.lifecycle",
+                NOW,
+                {"event_type": "launch", "launch_slot": 200},
+            ),
+            observation(
+                "conflict-buy",
+                "market.trade",
+                NOW + timedelta(seconds=1),
+                {
+                    "slot": 201,
+                    "side": "buy",
+                    "wallet_address": BUYERS[0],
+                    "is_sniper": True,
+                    "external_sniper_label": False,
+                    "quote_amount_usd": "10",
+                },
+            ),
+        ),
+        now=NOW + timedelta(seconds=1),
+        config_hash="hardening-config-v1",
+    )
+
+    assert result.quality_state is QualityState.CONFLICTED
+    assert "SNIPER_CLASSIFICATION_CONFLICT" in {reason.code for reason in result.reason_codes}
+    assert result.confidence == Decimal("0")
+
+
+def test_launch_footprint_missing_history_stale_and_future_fail_closed() -> None:
+    missing = SignalHardeningAnalyzer(policy=policy()).analyze_launch_footprint(
+        token(),
+        (trade("footprint-without-launch", 1, BUYERS[0]),),
+        now=NOW + timedelta(seconds=1),
+        config_hash="hardening-config-v1",
+    )
+    stale = SignalHardeningAnalyzer(policy=policy()).analyze_launch_footprint(
+        token(),
+        (
+            observation(
+                "stale-footprint-launch",
+                "protocol.lifecycle",
+                NOW,
+                {"event_type": "launch", "launch_slot": 300},
+                quality_state=QualityState.STALE,
+            ),
+            observation(
+                "stale-footprint-buy",
+                "market.trade",
+                NOW + timedelta(seconds=1),
+                {
+                    "slot": 301,
+                    "side": "buy",
+                    "wallet_address": BUYERS[0],
+                    "quote_amount_usd": "10",
+                },
+                quality_state=QualityState.STALE,
+            ),
+        ),
+        now=NOW + timedelta(seconds=1),
+        config_hash="hardening-config-v1",
+    )
+    future = SignalHardeningAnalyzer(policy=policy()).analyze_launch_footprint(
+        token(),
+        (
+            observation(
+                "future-footprint-launch",
+                "protocol.lifecycle",
+                NOW + timedelta(seconds=1),
+                {"event_type": "launch", "launch_slot": 400},
+            ),
+        ),
+        now=NOW,
+        config_hash="hardening-config-v1",
+    )
+
+    assert missing.quality_state is QualityState.UNKNOWN
+    assert "LAUNCH_HISTORY_UNKNOWN" in {reason.code for reason in missing.reason_codes}
+    assert stale.quality_state is QualityState.STALE
+    assert "EARLY_BUYER_DATA_INCOMPLETE" in {reason.code for reason in stale.reason_codes}
+    assert future.quality_state is QualityState.INVALID
+
+
+def test_token_lock_snapshot_keeps_schedule_and_cancelability_explicit() -> None:
+    next_unlock = NOW + timedelta(hours=1)
+    result = SignalHardeningAnalyzer(policy=policy()).analyze_token_lock(
+        token(),
+        (
+            observation(
+                "token-lock",
+                "token.lock",
+                NOW,
+                {
+                    "asset_scope": "TOKEN",
+                    "locker_program": "11111111111111111111111111111116",
+                    "deposited_amount": "1000",
+                    "locked_amount": "1000",
+                    "unlocked_amount": "0",
+                    "withdrawn_amount": "0",
+                    "claimable_amount": "0",
+                    "next_unlock_at": next_unlock.isoformat(),
+                    "unlock_type": "cliff",
+                    "cancelable_by_sender": True,
+                    "scheduled_unlocks": {"1h": "500", "24h": "500"},
+                },
+            ),
+        ),
+        now=NOW,
+        config_hash="hardening-config-v1",
+    )
+
+    assert isinstance(result, TokenLockSnapshot)
+    assert result.asset_scope is LockAssetScope.TOKEN
+    assert result.token_lock_present is True
+    assert result.deposited_amount == Decimal("1000")
+    assert result.locked_amount == Decimal("1000")
+    assert result.next_unlock_at == next_unlock
+    assert result.scheduled_unlock_amount("1h") == Decimal("500")
+    assert result.cancelable_by_sender is True
+    assert result.quality_state is QualityState.FRESH
+    assert {"VESTING_SCHEDULE_PRESENT", "LOCK_CANCELABLE_BY_SENDER", "LARGE_UNLOCK_IMMINENT"} <= {
+        reason.code for reason in result.reason_codes
+    }
+    assert result.execution_eligible() is False
+    assert result.unlock_events == ()
+
+
+def test_lp_lock_is_not_a_token_lock_and_unlock_event_is_preserved() -> None:
+    unlock_at = NOW + timedelta(minutes=30)
+    result = SignalHardeningAnalyzer(policy=policy()).analyze_token_lock(
+        token(),
+        (
+            observation(
+                "lp-lock",
+                "lp.lock",
+                NOW,
+                {
+                    "asset_scope": "LP",
+                    "locker_program": "11111111111111111111111111111117",
+                    "locked_amount": "500",
+                },
+            ),
+            observation(
+                "token-unlock",
+                "token.unlock",
+                NOW + timedelta(seconds=1),
+                {
+                    "asset_scope": "TOKEN",
+                    "locker_program": "11111111111111111111111111111118",
+                    "event_type": "unlock",
+                    "amount": "100",
+                    "unlock_at": unlock_at.isoformat(),
+                    "unlock_type": "tranche",
+                },
+            ),
+        ),
+        now=NOW + timedelta(seconds=1),
+        config_hash="hardening-config-v1",
+    )
+
+    assert result.asset_scope is LockAssetScope.TOKEN
+    assert result.token_lock_present is None
+    assert result.unlocked_amount == Decimal("100")
+    assert result.next_unlock_at == unlock_at
+    assert len(result.unlock_events) == 1
+    assert isinstance(result.unlock_events[0], TokenUnlockEvent)
+    assert result.unlock_events[0].unlock_type == "TRANCHE"
+    assert "TOKEN_LOCK_DATA_UNKNOWN" in {reason.code for reason in result.reason_codes}
+    assert "LP_LOCK_SEPARATE_FROM_TOKEN_LOCK" in {reason.code for reason in result.reason_codes}
+
+
+def test_token_lock_missing_stale_conflict_and_future_are_fail_closed() -> None:
+    missing = SignalHardeningAnalyzer(policy=policy()).analyze_token_lock(
+        token(), (), now=NOW, config_hash="hardening-config-v1"
+    )
+    stale = SignalHardeningAnalyzer(policy=policy()).analyze_token_lock(
+        token(),
+        (
+            observation(
+                "stale-lock",
+                "token.lock",
+                NOW,
+                {"asset_scope": "TOKEN", "locked_amount": "100"},
+                quality_state=QualityState.STALE,
+            ),
+        ),
+        now=NOW,
+        config_hash="hardening-config-v1",
+    )
+    conflict_a = observation(
+        "lock-conflict",
+        "token.lock",
+        NOW,
+        {"asset_scope": "TOKEN", "locked_amount": "100"},
+    )
+    conflict_b = observation(
+        "lock-conflict",
+        "token.lock",
+        NOW,
+        {"asset_scope": "TOKEN", "locked_amount": "90"},
+    )
+    conflicted = SignalHardeningAnalyzer(policy=policy()).analyze_token_lock(
+        token(), (conflict_a, conflict_b), now=NOW, config_hash="hardening-config-v1"
+    )
+    future = SignalHardeningAnalyzer(policy=policy()).analyze_token_lock(
+        token(),
+        (
+            observation(
+                "future-lock",
+                "token.lock",
+                NOW + timedelta(seconds=1),
+                {"asset_scope": "TOKEN", "locked_amount": "100"},
+            ),
+        ),
+        now=NOW,
+        config_hash="hardening-config-v1",
+    )
+
+    assert missing.quality_state is QualityState.UNKNOWN
+    assert missing.locked_amount is None
+    assert "LOCK_DATA_UNKNOWN" in {reason.code for reason in missing.reason_codes}
     assert stale.quality_state is QualityState.STALE
     assert conflicted.quality_state is QualityState.CONFLICTED
     assert future.quality_state is QualityState.INVALID

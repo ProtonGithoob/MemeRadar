@@ -138,6 +138,10 @@ def test_harness_selects_on_train_only_and_keeps_candidates_shadow_only() -> Non
     assert report.promotion.status == "BLOCKED_INSUFFICIENT_EVIDENCE"
     assert report.promotion.manual_approval_required is True
     assert report.execution_eligible(NOW) is False
+    assert (
+        report.to_json_dict()["manifest"]["signal_hardening_version"]
+        == replay.manifest.signal_hardening_version
+    )
     assert report.artifact_digest == ScoreCalibrationHarness().run(
         replay,
         candidates=(strict, baseline),

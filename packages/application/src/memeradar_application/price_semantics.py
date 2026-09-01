@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
-from enum import Enum
+
 from memeradar_domain import (
     Freshness,
     Observation,
@@ -158,7 +158,9 @@ class PriceEvidence:
         if any(not isinstance(value, Provenance) for value in provenance):
             raise TypeError("provenance must contain Provenance values")
         object.__setattr__(self, "provenance", provenance)
-        object.__setattr__(self, "evidence_refs", normalize_texts(self.evidence_refs, "evidence_refs"))
+        object.__setattr__(
+            self, "evidence_refs", normalize_texts(self.evidence_refs, "evidence_refs")
+        )
         object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
 
     @property
@@ -188,7 +190,15 @@ def _resolve_input(
     quality_state: QualityState,
     provenance: Sequence[Provenance],
     evidence_refs: Sequence[str],
-) -> tuple[Mapping[str, object], str, datetime, datetime | None, QualityState, tuple[Provenance, ...], tuple[str, ...]]:
+) -> tuple[
+    Mapping[str, object],
+    str,
+    datetime,
+    datetime | None,
+    QualityState,
+    tuple[Provenance, ...],
+    tuple[str, ...],
+]:
     if isinstance(value, Observation):
         if kind is not None or observed_at is not None or provenance:
             raise TypeError("observation input cannot be combined with explicit metadata")

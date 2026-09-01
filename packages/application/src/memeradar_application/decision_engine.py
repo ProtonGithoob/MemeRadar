@@ -38,10 +38,33 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .signal_hardening import (
+    DeployerActivitySnapshot,
+    LaunchFootprintSnapshot,
+    MomentumRegimeSnapshot,
+    MoveFundingEvidence,
+    TokenLockSnapshot,
+)
+
 DECISION_POLICY_VERSION = "decision-policy-v1"
 TIMELINE_VERSION = "evidence-timeline-v1"
 SCORE_DELTA_EVENT_KIND = "AlphaScoreDelta"
 RISK_ESCALATION_EVENT_KIND = "RiskEscalation"
+
+SignalHardeningEvidence = (
+    DeployerActivitySnapshot
+    | LaunchFootprintSnapshot
+    | MomentumRegimeSnapshot
+    | MoveFundingEvidence
+    | TokenLockSnapshot
+)
+_SIGNAL_HARDENING_TYPES = (
+    DeployerActivitySnapshot,
+    LaunchFootprintSnapshot,
+    MomentumRegimeSnapshot,
+    MoveFundingEvidence,
+    TokenLockSnapshot,
+)
 
 _DECISION_STATES = frozenset(
     {
@@ -411,6 +434,7 @@ class EvidenceTimelineProjector:
         feature_snapshot: FeatureSnapshot | None = None,
         risk_assessment: RiskAssessment | None = None,
         score_snapshot: ScoreSnapshot | None = None,
+        signal_hardening: Mapping[str, SignalHardeningEvidence] | None = None,
         as_of: datetime | None = None,
     ) -> EvidenceTimeline:
         candidate_id, transitions = self._candidate_context(candidate)
@@ -453,6 +477,63 @@ class EvidenceTimelineProjector:
                 },
             )
             self._add_entry(entries_by_id, entry)
+
+        if signal_hardening is not None:
+            if not isinstance(signal_hardening, Mapping):
+                raise TypeError("signal_hardening must be a mapping")
+            normalized_hardening: dict[str, SignalHardeningEvidence] = {}
+            for raw_name, evidence in signal_hardening.items():
+                name = require_text(str(raw_name), "signal hardening evidence name", max_length=64)
+                if name in normalized_hardening:
+                    raise ValueError(f"duplicate signal hardening evidence name: {name}")
+                if not isinstance(evidence, _SIGNAL_HARDENING_TYPES):
+                    raise TypeError("signal_hardening values must be typed hardening snapshots")
+                if isinstance(candidate, Candidate) and evidence.token.id != candidate.token.id:
+                    raise ValueError("signal hardening token_id does not match timeline candidate")
+                if projection_as_of is not None and (
+                    evidence.as_of > projection_as_of
+                    or any(
+                        provenance.observed_at > projection_as_of
+                        for provenance in evidence.provenance
+                    )
+                ):
+                    continue
+                normalized_hardening[name] = evidence
+
+            for name, evidence in normalized_hardening.items():
+                observed_at = max(
+                    [evidence.as_of]
+                    + [provenance.observed_at for provenance in evidence.provenance]
+                )
+                entry = EvidenceTimelineEntry(
+                    id=_stable_identity(
+                        "signal-hardening",
+                        (
+                            f"{candidate_id}:{evidence.token.id}:{name}:"
+                            f"{evidence.as_of.isoformat()}:{evidence.version}:"
+                            f"{evidence.config_hash}"
+                        ),
+                    ),
+                    candidate_id=candidate_id,
+                    kind="signal_hardening.snapshot",
+                    source_id=f"signal-hardening:{name}:{evidence.as_of.isoformat()}",
+                    occurred_at=evidence.as_of,
+                    observed_at=observed_at,
+                    ingested_at=observed_at,
+                    quality_state=evidence.quality_state,
+                    reason_codes=normalize_reason_codes(evidence.reason_codes, required=True),
+                    evidence_refs=evidence.evidence_refs,
+                    payload={
+                        "evidence_name": name,
+                        "token_id": str(evidence.token.id),
+                        "snapshot": evidence.to_mapping(),
+                        "version": evidence.version,
+                        "config_hash": evidence.config_hash,
+                        "execution_eligible": False,
+                    },
+                    provenance=evidence.provenance,
+                )
+                self._add_entry(entries_by_id, entry)
 
         for event in events:
             if not isinstance(event, EventEnvelope):

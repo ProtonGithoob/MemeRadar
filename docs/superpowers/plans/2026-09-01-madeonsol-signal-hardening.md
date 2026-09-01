@@ -63,34 +63,34 @@
 
 ## Task 5: E11.7 launch sniper/bundle footprint
 
-- [ ] Add tests for first-N-slot/first-duration bounded footprint, internal
+- [x] Add tests for first-N-slot/first-duration bounded footprint, internal
   actor clustering, optional external corroboration, concentration, missing
   launch history and unknown/stale/conflict behavior.
-- [ ] Implement `LaunchFootprintSnapshot` using normalized events and existing
+- [x] Implement `LaunchFootprintSnapshot` using normalized events and existing
   holder/wallet graph inputs where available.  Absence of evidence is never a
   clean-launch assertion.
 
 ## Task 6: E11.8 token lock/vesting/unlock evidence
 
-- [ ] Add tests for token locks versus LP locks, scheduled unlock windows,
+- [x] Add tests for token locks versus LP locks, scheduled unlock windows,
   cancelable/unknown metadata, unlock events, stale/conflicted evidence and
   the rule that a lock is not a safety verdict.
-- [ ] Implement provider-neutral `TokenLockSnapshot` and `TokenUnlockEvent`
+- [x] Implement provider-neutral `TokenLockSnapshot` and `TokenUnlockEvent`
   parsing with bounded schedules, provenance, expiry and explicit quality.
 
 ## Task 7: Architecture integration
 
-- [ ] Carry typed hardening snapshots into `CorrelationWindowFeatures` without
+- [x] Carry typed hardening snapshots into `CorrelationWindowFeatures` without
   creating a new AlphaScore component or provider dependency.
-- [ ] Project the evidence into existing market/momentum/wallet/
+- [x] Project the evidence into existing market/momentum/wallet/
   on-chain-safety feature families.  Only configured corroboration/quality
   penalties may affect momentum confidence; stream health never adds score.
-- [ ] Wire the same analyzer into `ReplayHarness` before correlation/features,
+- [x] Wire the same analyzer into `ReplayHarness` before correlation/features,
   persist hardening/parser/registry/schema/config identity in replay artifacts,
   and keep calibration consumption deterministic.
-- [ ] Add evidence-timeline projection for hardening summaries while retaining
+- [x] Add evidence-timeline projection for hardening summaries while retaining
   read-only/no-execution guarantees.
-- [ ] Add fixture README/data, provider-independent doctor/contract coverage
+- [x] Add fixture README/data, provider-independent doctor/contract coverage
   where useful, and import-boundary/protected-mode tests.
 
 ## Task 8: Verification and handoff

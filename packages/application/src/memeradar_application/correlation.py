@@ -17,8 +17,8 @@ from types import MappingProxyType
 from memeradar_domain import (
     Freshness,
     Observation,
-    Provenance,
     PriceSemantics,
+    Provenance,
     QualityState,
     ReasonCode,
     RiskAssessment,
@@ -41,9 +41,30 @@ from .confluence import (
     TokenSmartMoneyScore,
 )
 from .provider_contracts import SocialMention
+from .signal_hardening import (
+    DeployerActivitySnapshot,
+    LaunchFootprintSnapshot,
+    MomentumRegimeSnapshot,
+    MoveFundingEvidence,
+    TokenLockSnapshot,
+)
 from .wallet_tracking import WalletAction, WalletActivity
 
 CORRELATION_VERSION = "correlation-window-v1"
+SignalHardeningEvidence = (
+    DeployerActivitySnapshot
+    | LaunchFootprintSnapshot
+    | MomentumRegimeSnapshot
+    | MoveFundingEvidence
+    | TokenLockSnapshot
+)
+_SIGNAL_HARDENING_TYPES = (
+    DeployerActivitySnapshot,
+    LaunchFootprintSnapshot,
+    MomentumRegimeSnapshot,
+    MoveFundingEvidence,
+    TokenLockSnapshot,
+)
 DEFAULT_CORRELATION_WINDOWS: tuple[tuple[str, timedelta], ...] = (
     ("5s", timedelta(seconds=5)),
     ("15s", timedelta(seconds=15)),
@@ -298,6 +319,7 @@ class CorrelationWindowFeatures:
     weighted_entry_quality: Decimal | int | float | str | None = None
     tracked_supply_pct: Decimal | int | float | str | None = None
     creator_related_sell_pressure: Decimal | int | float | str | None = None
+    signal_hardening: Mapping[str, SignalHardeningEvidence] = field(default_factory=dict)
     risk_disposition: RiskDisposition | str | None = None
     risk_quality_state: QualityState = QualityState.UNKNOWN
     source_independence_count: int = 0
@@ -357,12 +379,16 @@ class CorrelationWindowFeatures:
             value = getattr(self, field_name)
             if value is not None:
                 parsed = to_decimal(value, field_name)
-                if field_name in {
-                    "buyer_arrival_rate",
-                    "buy_quote_volume",
-                    "sell_quote_volume",
-                    "buy_sell_ratio",
-                } and parsed < 0:
+                if (
+                    field_name
+                    in {
+                        "buyer_arrival_rate",
+                        "buy_quote_volume",
+                        "sell_quote_volume",
+                        "buy_sell_ratio",
+                    }
+                    and parsed < 0
+                ):
                     raise ValueError(f"{field_name} must be non-negative")
                 object.__setattr__(self, field_name, parsed)
         for field_name in (
@@ -420,11 +446,7 @@ class CorrelationWindowFeatures:
             raise TypeError("protocol_event_counts must be a mapping")
         for key, raw_count in self.protocol_event_counts.items():
             normalized_key = require_text(str(key), "protocol event type", max_length=64)
-            if (
-                not isinstance(raw_count, int)
-                or isinstance(raw_count, bool)
-                or raw_count < 0
-            ):
+            if not isinstance(raw_count, int) or isinstance(raw_count, bool) or raw_count < 0:
                 raise ValueError("protocol event counts must be non-negative integers")
             normalized_protocol_counts[normalized_key] = raw_count
         object.__setattr__(
@@ -432,6 +454,15 @@ class CorrelationWindowFeatures:
             "protocol_event_counts",
             MappingProxyType(normalized_protocol_counts),
         )
+        if not isinstance(self.signal_hardening, Mapping):
+            raise TypeError("signal_hardening must be a mapping")
+        normalized_hardening: dict[str, SignalHardeningEvidence] = {}
+        for raw_name, evidence in self.signal_hardening.items():
+            name = require_text(str(raw_name), "signal hardening evidence name", max_length=64)
+            if not isinstance(evidence, _SIGNAL_HARDENING_TYPES):
+                raise TypeError("signal_hardening values must be typed hardening snapshots")
+            normalized_hardening[name] = evidence
+        object.__setattr__(self, "signal_hardening", MappingProxyType(normalized_hardening))
         if self.risk_disposition is not None:
             object.__setattr__(
                 self,
@@ -439,12 +470,16 @@ class CorrelationWindowFeatures:
                 RiskDisposition(self.risk_disposition),
             )
         object.__setattr__(self, "risk_quality_state", QualityState(self.risk_quality_state))
-        object.__setattr__(self, "source_diversity_confidence", bounded_decimal(
-            self.source_diversity_confidence,
+        object.__setattr__(
+            self,
             "source_diversity_confidence",
-            Decimal("0"),
-            Decimal("1"),
-        ))
+            bounded_decimal(
+                self.source_diversity_confidence,
+                "source_diversity_confidence",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
         object.__setattr__(self, "quality_state", QualityState(self.quality_state))
         object.__setattr__(
             self,
@@ -841,9 +876,7 @@ class CorrelationWindowBuilder:
             payload = {
                 "wallet_address": value.wallet_address,
                 "action": (
-                    value.action.value
-                    if isinstance(value.action, WalletAction)
-                    else value.action
+                    value.action.value if isinstance(value.action, WalletAction) else value.action
                 ),
                 "quantity": value.quantity,
                 "quote_amount": value.quote_amount,
@@ -921,9 +954,7 @@ class CorrelationWindowBuilder:
                 event_refs = (*event.evidence_refs, *value.evidence_refs)
                 event_provenance = event.provenance or value.provenance
                 provenance_source = (
-                    event_provenance[0].source_id
-                    if event_provenance
-                    else "smart-money"
+                    event_provenance[0].source_id if event_provenance else "smart-money"
                 )
                 event_type = (
                     event.event_type.value
@@ -1167,6 +1198,7 @@ class CorrelationWindowBuilder:
             circular_flow_ratio=None,
             rapid_round_trip_ratio=None,
             protocol_event_counts={},
+            signal_hardening={},
             bonding_curve_progress_bps=None,
             independent_entry_clusters=0,
             weighted_entry_quality=None,
@@ -1244,6 +1276,7 @@ class CorrelationWindowBuilder:
         risk_record: _CorrelationRecord | None,
         creator_wallets: frozenset[str],
         related_wallets: frozenset[str],
+        signal_hardening: Mapping[str, SignalHardeningEvidence],
         force_invalid: bool,
     ) -> CorrelationWindowFeatures:
         current_all = tuple(
@@ -1269,9 +1302,7 @@ class CorrelationWindowBuilder:
         )
         current_signal_all = tuple(record for record in current_all if record.category != "risk")
         current_signal = tuple(
-            record
-            for record in current_signal_all
-            if record.quality_state is QualityState.FRESH
+            record for record in current_signal_all if record.quality_state is QualityState.FRESH
         )
         previous_signal = tuple(
             record
@@ -1406,9 +1437,7 @@ class CorrelationWindowBuilder:
         directed_pairs = {
             (trade.buyer, trade.seller)
             for trade in parsed_trades
-            if trade.buyer is not None
-            and trade.seller is not None
-            and trade.buyer != trade.seller
+            if trade.buyer is not None and trade.seller is not None and trade.buyer != trade.seller
         }
         if transaction_count:
             circular_rows = sum(
@@ -1452,9 +1481,7 @@ class CorrelationWindowBuilder:
                 parsed = self._parse_liquidity(record)
                 if parsed.liquidity is not None or parsed.tracked_supply_pct is not None:
                     previous_liquidity_values.append((record, parsed))
-        previous_previous_liquidity_values: list[
-            tuple[_CorrelationRecord, _LiquidityValues]
-        ] = []
+        previous_previous_liquidity_values: list[tuple[_CorrelationRecord, _LiquidityValues]] = []
         for record in previous_previous_all:
             if record.category == "market" and record.quality_state is QualityState.FRESH:
                 parsed = self._parse_liquidity(record)
@@ -1533,9 +1560,7 @@ class CorrelationWindowBuilder:
                 bonding_curve_progress_bps = progress
 
         smart_records = tuple(
-            record
-            for record in wallet_records
-            if record.payload.get("smart_money") is True
+            record for record in wallet_records if record.payload.get("smart_money") is True
         )
         cluster_scores: dict[str, list[Decimal]] = defaultdict(list)
         for record in smart_records:
@@ -1617,9 +1642,9 @@ class CorrelationWindowBuilder:
             if not current_signal_all or (
                 quality_state is QualityState.FRESH
                 and (
-                not sample_sufficient
-                or not sources_sufficient
-                or risk_state is not QualityState.FRESH
+                    not sample_sufficient
+                    or not sources_sufficient
+                    or risk_state is not QualityState.FRESH
                 )
             ):
                 quality_state = QualityState.UNKNOWN
@@ -1631,9 +1656,7 @@ class CorrelationWindowBuilder:
                 Decimal("1"),
                 Decimal(source_count) / Decimal(self.policy.minimum_independent_sources),
             )
-            risk_factor = (
-                Decimal("1") if risk_state is QualityState.FRESH else Decimal("0")
-            )
+            risk_factor = Decimal("1") if risk_state is QualityState.FRESH else Decimal("0")
             confidence = min(
                 sample_factor,
                 source_factor,
@@ -1675,6 +1698,7 @@ class CorrelationWindowBuilder:
             weighted_entry_quality=weighted_entry_quality,
             tracked_supply_pct=tracked_supply_pct,
             creator_related_sell_pressure=creator_related_sell_pressure,
+            signal_hardening=signal_hardening,
             risk_disposition=risk_disposition,
             risk_quality_state=risk_state,
             source_independence_count=source_count,
@@ -1696,6 +1720,7 @@ class CorrelationWindowBuilder:
         risk_assessment: RiskAssessment | None = None,
         creator_wallets: Sequence[str] = (),
         related_wallets: Sequence[str] = (),
+        signal_hardening: Mapping[str, Mapping[str, SignalHardeningEvidence]] | None = None,
         now: datetime,
         config_hash: str,
     ) -> CorrelationSnapshot:
@@ -1734,6 +1759,17 @@ class CorrelationWindowBuilder:
         related_set = frozenset(
             require_solana_address(address, "related wallet") for address in related_wallets
         )
+        hardening_by_window: dict[str, Mapping[str, SignalHardeningEvidence]] = {}
+        if signal_hardening is not None:
+            if not isinstance(signal_hardening, Mapping):
+                raise TypeError("signal_hardening must be a mapping")
+            for raw_window, raw_evidence in signal_hardening.items():
+                window_name = require_text(
+                    str(raw_window), "signal hardening window", max_length=16
+                )
+                if not isinstance(raw_evidence, Mapping):
+                    raise TypeError("signal hardening windows must contain mappings")
+                hardening_by_window[window_name] = raw_evidence
         try:
             evidence = self._normalise(
                 token,
@@ -1764,6 +1800,7 @@ class CorrelationWindowBuilder:
                     risk_record=evidence.risk_record,
                     creator_wallets=creator_set,
                     related_wallets=related_set,
+                    signal_hardening=hardening_by_window.get(name, {}),
                     force_invalid=force_invalid,
                 )
         except (TypeError, ValueError, OverflowError):
@@ -1793,10 +1830,7 @@ class CorrelationWindowBuilder:
             source_count,
             self.policy.source_diversity_target,
         )
-        quality_states = [
-            record.quality_state
-            for record in global_relevant_records
-        ]
+        quality_states = [record.quality_state for record in global_relevant_records]
         if evidence.risk_record is not None:
             quality_states.append(evidence.risk_record.quality_state)
         if force_invalid:
@@ -1808,8 +1842,7 @@ class CorrelationWindowBuilder:
         else:
             quality_state = _combined_quality(quality_states)
             confidence = max(
-                to_decimal(feature.confidence, "window confidence")
-                for feature in windows.values()
+                to_decimal(feature.confidence, "window confidence") for feature in windows.values()
             )
             if evidence.risk_record is None or quality_state is not QualityState.FRESH:
                 quality_state = QualityState.UNKNOWN
@@ -1823,10 +1856,7 @@ class CorrelationWindowBuilder:
             reasons.append(ReasonCode("CORRELATION_EVIDENCE_MISSING"))
         if source_count < self.policy.minimum_independent_sources:
             reasons.append(ReasonCode("CORRELATION_SOURCES_INSUFFICIENT"))
-        if (
-            windows[self.policy.window_names[-1]].event_count
-            < self.policy.minimum_sample_size
-        ):
+        if windows[self.policy.window_names[-1]].event_count < self.policy.minimum_sample_size:
             reasons.append(ReasonCode("CORRELATION_SAMPLE_INSUFFICIENT"))
         if evidence.risk_record is None:
             reasons.append(ReasonCode("CORRELATION_RISK_EVIDENCE_MISSING"))
@@ -1838,9 +1868,7 @@ class CorrelationWindowBuilder:
                 risk_disposition = RiskDisposition(raw_disposition)
             risk_quality_state = evidence.risk_record.quality_state
             if risk_quality_state is not QualityState.FRESH:
-                reasons.append(
-                    ReasonCode(f"CORRELATION_RISK_EVIDENCE_{risk_quality_state.value}")
-                )
+                reasons.append(ReasonCode(f"CORRELATION_RISK_EVIDENCE_{risk_quality_state.value}"))
         if force_invalid:
             reasons.append(ReasonCode("CORRELATION_DATA_INVALID"))
         return CorrelationSnapshot(

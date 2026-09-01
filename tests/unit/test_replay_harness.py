@@ -10,8 +10,8 @@ import pytest
 from memeradar_application.alpha_strategy import AlphaScoreV1Strategy, ReferenceStrategy
 from memeradar_application.replay_harness import (
     DEFAULT_OUTCOME_HORIZONS,
-    OutcomeLabelPolicy,
     OutcomeLabeler,
+    OutcomeLabelPolicy,
     ReplayCheckpoint,
     ReplayDataset,
     ReplayEventRecord,

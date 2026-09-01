@@ -36,9 +36,14 @@ from memeradar_domain.common import ensure_utc, normalize_texts, require_text, t
 from memeradar_domain.events import normalize_reason_codes
 
 from .alpha_strategy import AlphaStrategy, StrategySnapshot
-from .correlation import CorrelationSnapshot, CorrelationWindowBuilder
+from .correlation import (
+    CorrelationSnapshot,
+    CorrelationWindowBuilder,
+    SignalHardeningEvidence,
+)
 from .feature_windows import FeatureWindowAggregator
 from .price_semantics import market_reference_price
+from .signal_hardening import SIGNAL_HARDENING_VERSION, SignalHardeningAnalyzer
 
 REPLAY_HARNESS_VERSION = "research-replay-v1"
 REPLAY_DATASET_SCHEMA_VERSION = 1
@@ -642,6 +647,7 @@ class ResearchReplayManifest:
     feature_window: str = "1m"
     dataset_digest: str | None = None
     schema_version: int = 1
+    signal_hardening_version: str = SIGNAL_HARDENING_VERSION
 
     def __post_init__(self) -> None:
         for field_name, max_length in (
@@ -677,6 +683,11 @@ class ResearchReplayManifest:
             object.__setattr__(
                 self, "dataset_digest", require_text(self.dataset_digest, "dataset_digest")
             )
+        object.__setattr__(
+            self,
+            "signal_hardening_version",
+            require_text(self.signal_hardening_version, "signal_hardening_version", max_length=64),
+        )
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -693,6 +704,7 @@ class ResearchReplayManifest:
             "outcome_policy_version": self.outcome_policy_version,
             "feature_window": self.feature_window,
             "dataset_digest": self.dataset_digest,
+            "signal_hardening_version": self.signal_hardening_version,
         }
 
     @classmethod
@@ -711,6 +723,10 @@ class ResearchReplayManifest:
             outcome_policy_version=cast(str, value.get("outcome_policy_version")),
             feature_window=cast(str, value.get("feature_window", "1m")),
             dataset_digest=cast(str | None, value.get("dataset_digest")),
+            signal_hardening_version=cast(
+                str,
+                value.get("signal_hardening_version", SIGNAL_HARDENING_VERSION),
+            ),
         )
 
 
@@ -1361,6 +1377,10 @@ def _correlation_to_json(value: CorrelationSnapshot) -> dict[str, object]:
                 "quality_state": feature.quality_state.value,
                 "confidence": str(feature.confidence),
                 "reason_codes": _json_safe(feature.reason_codes),
+                "signal_hardening": {
+                    key: _json_safe(snapshot.to_mapping())
+                    for key, snapshot in feature.signal_hardening.items()
+                },
             }
             for name, feature in sorted(value.windows.items())
         },
@@ -1907,10 +1927,12 @@ class ReplayHarness:
         correlation_builder: CorrelationWindowBuilder | None = None,
         feature_aggregator: FeatureWindowAggregator | None = None,
         outcome_policy: OutcomeLabelPolicy | None = None,
+        signal_hardening_analyzer: SignalHardeningAnalyzer | None = None,
     ) -> None:
         self.correlation_builder = correlation_builder or CorrelationWindowBuilder()
         self.feature_aggregator = feature_aggregator or FeatureWindowAggregator()
         self.outcome_labeler = OutcomeLabeler(outcome_policy)
+        self.signal_hardening_analyzer = signal_hardening_analyzer or SignalHardeningAnalyzer()
 
     def replay(
         self,
@@ -1932,6 +1954,8 @@ class ReplayHarness:
             raise ValueError("manifest dataset_digest does not match dataset")
         if manifest.outcome_policy_version != self.outcome_labeler.policy.version:
             raise ValueError("manifest outcome_policy_version does not match label policy")
+        if manifest.signal_hardening_version != self.signal_hardening_analyzer.policy.version:
+            raise ValueError("manifest signal_hardening_version does not match analyzer")
         if strategy is not None:
             if not isinstance(strategy, AlphaStrategy):
                 raise TypeError("strategy must implement AlphaStrategy")
@@ -1977,11 +2001,19 @@ class ReplayHarness:
                     key=str,
                 )
             )
+            token = dataset.token(checkpoint.token_id)
+            signal_hardening_by_window = self._signal_hardening_by_window(
+                token,
+                tuple(record.observation for record in included),
+                now=checkpoint.as_of,
+                config_hash=manifest.config_hash,
+            )
             correlation = self.correlation_builder.build(
-                dataset.token(checkpoint.token_id),
+                token,
                 observations=tuple(record.observation for record in included),
                 now=checkpoint.as_of,
                 config_hash=manifest.config_hash,
+                signal_hardening=signal_hardening_by_window,
             )
             features = self.feature_aggregator.build(
                 checkpoint.candidate_id,
@@ -2038,6 +2070,57 @@ class ReplayHarness:
             partition_counts=dataset.partition_counts,
             cohorts=_cohort_summaries(checkpoint_results),
         )
+
+    def _signal_hardening_by_window(
+        self,
+        token: TokenIdentity,
+        observations: Sequence[Observation],
+        *,
+        now: datetime,
+        config_hash: str,
+    ) -> Mapping[str, Mapping[str, SignalHardeningEvidence]]:
+        """Build all hardening evidence from the same included replay observations."""
+
+        windows: dict[str, Mapping[str, SignalHardeningEvidence]] = {}
+        for name, duration in self.correlation_builder.policy.window_durations:
+            window_start = now - duration
+            windows[name] = {
+                "momentum": self.signal_hardening_analyzer.analyze_momentum(
+                    token,
+                    observations,
+                    now=now,
+                    config_hash=config_hash,
+                    window_start=window_start,
+                    window_end=now,
+                ),
+                "move_funding": self.signal_hardening_analyzer.analyze_move_funding(
+                    token,
+                    observations,
+                    now=now,
+                    config_hash=config_hash,
+                    window_start=window_start,
+                    window_end=now,
+                ),
+                "deployer": self.signal_hardening_analyzer.analyze_deployer_activity(
+                    token,
+                    observations,
+                    now=now,
+                    config_hash=config_hash,
+                ),
+                "launch_footprint": self.signal_hardening_analyzer.analyze_launch_footprint(
+                    token,
+                    observations,
+                    now=now,
+                    config_hash=config_hash,
+                ),
+                "token_lock": self.signal_hardening_analyzer.analyze_token_lock(
+                    token,
+                    observations,
+                    now=now,
+                    config_hash=config_hash,
+                ),
+            }
+        return windows
 
     def compare_strategies(
         self,

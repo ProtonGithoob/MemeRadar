@@ -77,6 +77,18 @@ _BALANCE_KINDS = frozenset(
         "onchain.wallet_balance",
     }
 )
+_LOCK_KINDS = frozenset(
+    {
+        "token.lock",
+        "token.vesting",
+        "token.unlock",
+        "token.unlock_event",
+        "lock.snapshot",
+        "vesting.snapshot",
+        "lp.lock",
+        "liquidity.lock",
+    }
+)
 
 
 def _field(payload: Mapping[str, object], *names: str) -> object:
@@ -144,6 +156,62 @@ def _side(value: object) -> str | None:
     if normalized in {"sell", "sold", "ask", "exit", "sale"}:
         return "sell"
     return None
+
+
+def _optional_bool(value: object, field_name: str) -> bool | None:
+    if value is _MISSING or value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes", "1"}:
+            return True
+        if normalized in {"false", "no", "0"}:
+            return False
+        if normalized in {"unknown", "unverified", ""}:
+            return None
+    raise TypeError(f"{field_name} must be a boolean")
+
+
+class LockAssetScope(str, Enum):
+    """Asset scope for a lock; token locks and LP locks are not interchangeable."""
+
+    TOKEN = "TOKEN"
+    LP = "LP"
+    UNKNOWN = "UNKNOWN"
+
+
+def _lock_scope(value: object, *, kind: str | None = None) -> LockAssetScope:
+    if value is _MISSING or value is None:
+        normalized_kind = (kind or "").lower()
+        if normalized_kind in {"lp.lock", "liquidity.lock"}:
+            return LockAssetScope.LP
+        if normalized_kind.startswith("token.") or normalized_kind in {
+            "vesting.snapshot",
+            "lock.snapshot",
+        }:
+            return LockAssetScope.TOKEN
+        return LockAssetScope.UNKNOWN
+    normalized = str(value).strip().lower().replace("-", "_")
+    if normalized in {
+        "token",
+        "tokens",
+        "vesting",
+        "token_lock",
+        "token_vesting",
+        "token_supply",
+    }:
+        return LockAssetScope.TOKEN
+    if normalized in {
+        "lp",
+        "lp_token",
+        "liquidity",
+        "liquidity_pool",
+        "lp_lock",
+    }:
+        return LockAssetScope.LP
+    return LockAssetScope.UNKNOWN
 
 
 def _canonical(value: object) -> object:
@@ -219,6 +287,8 @@ class SignalHardeningPolicy:
     thin_liquidity_ratio: Decimal = Decimal("0.01")
     launch_max_slots: int = 10
     launch_max_duration: timedelta = timedelta(seconds=10)
+    high_early_capture_pct: Decimal = Decimal("0.5")
+    large_unlock_ratio: Decimal = Decimal("0.25")
     unlock_horizons: tuple[tuple[str, timedelta], ...] = (
         ("1h", timedelta(hours=1)),
         ("24h", timedelta(hours=24)),
@@ -256,6 +326,8 @@ class SignalHardeningPolicy:
             "minimum_funding_ratio",
             "wash_volume_multiplier",
             "thin_liquidity_ratio",
+            "high_early_capture_pct",
+            "large_unlock_ratio",
         ):
             value = to_decimal(getattr(self, field_name), field_name)
             if value < 0 or (
@@ -401,6 +473,12 @@ class MomentumRegimeSnapshot:
     @property
     def freshness(self) -> Freshness:
         return Freshness(self.as_of, self.expires_at, self.quality_state)
+
+    @property
+    def data_completeness(self) -> Decimal:
+        """Expose confidence as the bounded completeness proxy for momentum evidence."""
+
+        return self.confidence if self.quality_state is QualityState.FRESH else Decimal("0")
 
     def execution_eligible(self) -> bool:
         return False
@@ -721,6 +799,396 @@ class DeployerActivitySnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class LaunchFootprintSnapshot:
+    """Bounded early-launch footprint and actor-cluster evidence."""
+
+    token: TokenIdentity
+    as_of: datetime
+    expires_at: datetime
+    config_hash: str
+    first_n_slots: int = 10
+    first_n_seconds: int = 10
+    launch_slot: int | None = None
+    launch_timestamp: datetime | None = None
+    early_buyer_count: int | None = None
+    sniper_wallet_count: int | None = None
+    bundle_actor_cluster_count: int | None = None
+    quote_acquired: Decimal | None = None
+    quote_unit: str | None = None
+    supply_acquired_pct: Decimal | None = None
+    still_held_pct: Decimal | None = None
+    actor_cluster_adjusted_concentration: Decimal | None = None
+    data_available: bool = False
+    data_completeness: Decimal = Decimal("0")
+    quality_state: QualityState = QualityState.UNKNOWN
+    confidence: Decimal = Decimal("0")
+    provenance: tuple[Provenance, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    reason_codes: tuple[ReasonCode | str, ...] = ("EARLY_BUYER_DATA_INCOMPLETE",)
+    version: str = SIGNAL_HARDENING_VERSION
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.token, TokenIdentity):
+            raise TypeError("token must be a TokenIdentity")
+        as_of = ensure_utc(self.as_of, "as_of")
+        expires_at = ensure_utc(self.expires_at, "expires_at")
+        if expires_at <= as_of:
+            raise ValueError("expires_at must be later than as_of")
+        object.__setattr__(self, "as_of", as_of)
+        object.__setattr__(self, "expires_at", expires_at)
+        object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
+        for field_name in ("first_n_slots", "first_n_seconds"):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"{field_name} must be a positive integer")
+        if self.launch_slot is not None and (
+            not isinstance(self.launch_slot, int)
+            or isinstance(self.launch_slot, bool)
+            or self.launch_slot < 0
+        ):
+            raise ValueError("launch_slot must be a non-negative integer")
+        if self.launch_timestamp is not None:
+            object.__setattr__(
+                self,
+                "launch_timestamp",
+                ensure_utc(self.launch_timestamp, "launch_timestamp"),
+            )
+        for field_name in (
+            "early_buyer_count",
+            "sniper_wallet_count",
+            "bundle_actor_cluster_count",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and (
+                not isinstance(value, int) or isinstance(value, bool) or value < 0
+            ):
+                raise ValueError(f"{field_name} must be a non-negative integer or None")
+        if self.quote_unit is not None:
+            object.__setattr__(
+                self,
+                "quote_unit",
+                require_text(self.quote_unit, "quote_unit", max_length=32).upper(),
+            )
+        for field_name in (
+            "quote_acquired",
+            "supply_acquired_pct",
+            "still_held_pct",
+            "actor_cluster_adjusted_concentration",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                parsed = _optional_decimal(value, field_name)
+                if field_name != "quote_acquired" and parsed is not None and parsed > 1:
+                    raise ValueError(f"{field_name} must be between zero and one")
+                object.__setattr__(self, field_name, parsed)
+        if not isinstance(self.data_available, bool):
+            raise TypeError("data_available must be a boolean")
+        object.__setattr__(
+            self,
+            "data_completeness",
+            bounded_decimal(
+                self.data_completeness,
+                "data_completeness",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        object.__setattr__(
+            self,
+            "confidence",
+            bounded_decimal(self.confidence, "confidence", Decimal("0"), Decimal("1")),
+        )
+        object.__setattr__(self, "provenance", _normalize_provenance(self.provenance))
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(self.evidence_refs, "evidence_refs"),
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            normalize_reason_codes(self.reason_codes, required=True),
+        )
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+    @property
+    def freshness(self) -> Freshness:
+        return Freshness(self.as_of, self.expires_at, self.quality_state)
+
+    def execution_eligible(self) -> bool:
+        return False
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return MappingProxyType(
+            {
+                "first_n_slots": self.first_n_slots,
+                "first_n_seconds": self.first_n_seconds,
+                "launch_slot": self.launch_slot,
+                "launch_timestamp": self.launch_timestamp,
+                "early_buyer_count": self.early_buyer_count,
+                "sniper_wallet_count": self.sniper_wallet_count,
+                "bundle_actor_cluster_count": self.bundle_actor_cluster_count,
+                "quote_acquired": self.quote_acquired,
+                "quote_unit": self.quote_unit,
+                "supply_acquired_pct": self.supply_acquired_pct,
+                "still_held_pct": self.still_held_pct,
+                "actor_cluster_adjusted_concentration": self.actor_cluster_adjusted_concentration,
+                "data_available": self.data_available,
+                "data_completeness": self.data_completeness,
+                "quality_state": self.quality_state.value,
+                "confidence": self.confidence,
+                "reason_codes": tuple(_reason_code_value(reason) for reason in self.reason_codes),
+                "evidence_refs": self.evidence_refs,
+                "version": self.version,
+                "config_hash": self.config_hash,
+                "execution_eligible": False,
+            }
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TokenUnlockEvent:
+    """An immutable future-supply release observation."""
+
+    token: TokenIdentity
+    as_of: datetime
+    expires_at: datetime
+    config_hash: str
+    unlock_at: datetime
+    amount: Decimal
+    unlock_type: str
+    asset_scope: LockAssetScope | str = LockAssetScope.TOKEN
+    locker_program: str | None = None
+    cancelable_by_sender: bool | None = None
+    quality_state: QualityState = QualityState.UNKNOWN
+    provenance: tuple[Provenance, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    reason_codes: tuple[ReasonCode | str, ...] = ("VESTING_SCHEDULE_PRESENT",)
+    version: str = SIGNAL_HARDENING_VERSION
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.token, TokenIdentity):
+            raise TypeError("token must be a TokenIdentity")
+        as_of = ensure_utc(self.as_of, "as_of")
+        expires_at = ensure_utc(self.expires_at, "expires_at")
+        if expires_at <= as_of:
+            raise ValueError("expires_at must be later than as_of")
+        object.__setattr__(self, "as_of", as_of)
+        object.__setattr__(self, "expires_at", expires_at)
+        object.__setattr__(self, "unlock_at", ensure_utc(self.unlock_at, "unlock_at"))
+        object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
+        amount = to_decimal(self.amount, "amount")
+        if amount < 0:
+            raise ValueError("amount must be non-negative")
+        object.__setattr__(self, "amount", amount)
+        object.__setattr__(
+            self,
+            "unlock_type",
+            require_text(self.unlock_type, "unlock_type", max_length=32).upper(),
+        )
+        object.__setattr__(self, "asset_scope", LockAssetScope(self.asset_scope))
+        if self.locker_program is not None:
+            object.__setattr__(
+                self,
+                "locker_program",
+                require_text(self.locker_program, "locker_program", max_length=128),
+            )
+        if self.cancelable_by_sender is not None and not isinstance(
+            self.cancelable_by_sender, bool
+        ):
+            raise TypeError("cancelable_by_sender must be a boolean or None")
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        object.__setattr__(self, "provenance", _normalize_provenance(self.provenance))
+        object.__setattr__(
+            self, "evidence_refs", normalize_texts(self.evidence_refs, "evidence_refs")
+        )
+        object.__setattr__(
+            self, "reason_codes", normalize_reason_codes(self.reason_codes, required=True)
+        )
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return MappingProxyType(
+            {
+                "unlock_at": self.unlock_at,
+                "amount": self.amount,
+                "unlock_type": self.unlock_type,
+                "asset_scope": LockAssetScope(self.asset_scope).value,
+                "locker_program": self.locker_program,
+                "cancelable_by_sender": self.cancelable_by_sender,
+                "quality_state": self.quality_state.value,
+                "evidence_refs": self.evidence_refs,
+                "reason_codes": tuple(_reason_code_value(reason) for reason in self.reason_codes),
+                "version": self.version,
+                "config_hash": self.config_hash,
+            }
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TokenLockSnapshot:
+    """Token/vesting lock state, deliberately distinct from LP lock state."""
+
+    token: TokenIdentity
+    as_of: datetime
+    expires_at: datetime
+    config_hash: str
+    asset_scope: LockAssetScope | str = LockAssetScope.UNKNOWN
+    locker_program: str | None = None
+    lock_present: bool | None = None
+    deposited_amount: Decimal | None = None
+    locked_amount: Decimal | None = None
+    unlocked_amount: Decimal | None = None
+    withdrawn_amount: Decimal | None = None
+    claimable_amount: Decimal | None = None
+    next_unlock_at: datetime | None = None
+    next_unlock_type: str | None = None
+    cancelable_by_sender: bool | None = None
+    scheduled_unlocks: tuple[tuple[str, Decimal], ...] = ()
+    unlock_events: tuple[TokenUnlockEvent, ...] = ()
+    data_completeness: Decimal = Decimal("0")
+    quality_state: QualityState = QualityState.UNKNOWN
+    confidence: Decimal = Decimal("0")
+    provenance: tuple[Provenance, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    reason_codes: tuple[ReasonCode | str, ...] = ("LOCK_DATA_UNKNOWN",)
+    version: str = SIGNAL_HARDENING_VERSION
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.token, TokenIdentity):
+            raise TypeError("token must be a TokenIdentity")
+        as_of = ensure_utc(self.as_of, "as_of")
+        expires_at = ensure_utc(self.expires_at, "expires_at")
+        if expires_at <= as_of:
+            raise ValueError("expires_at must be later than as_of")
+        object.__setattr__(self, "as_of", as_of)
+        object.__setattr__(self, "expires_at", expires_at)
+        object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
+        object.__setattr__(self, "asset_scope", LockAssetScope(self.asset_scope))
+        if self.locker_program is not None:
+            object.__setattr__(
+                self,
+                "locker_program",
+                require_text(self.locker_program, "locker_program", max_length=128),
+            )
+        if self.lock_present is not None and not isinstance(self.lock_present, bool):
+            raise TypeError("lock_present must be a boolean or None")
+        for field_name in (
+            "deposited_amount",
+            "locked_amount",
+            "unlocked_amount",
+            "withdrawn_amount",
+            "claimable_amount",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                parsed = to_decimal(value, field_name)
+                if parsed < 0:
+                    raise ValueError(f"{field_name} must be non-negative")
+                object.__setattr__(self, field_name, parsed)
+        if self.next_unlock_at is not None:
+            object.__setattr__(
+                self, "next_unlock_at", ensure_utc(self.next_unlock_at, "next_unlock_at")
+            )
+        if self.next_unlock_type is not None:
+            object.__setattr__(
+                self,
+                "next_unlock_type",
+                require_text(self.next_unlock_type, "next_unlock_type", max_length=32).upper(),
+            )
+        if self.cancelable_by_sender is not None and not isinstance(
+            self.cancelable_by_sender, bool
+        ):
+            raise TypeError("cancelable_by_sender must be a boolean or None")
+        normalized_schedule: list[tuple[str, Decimal]] = []
+        seen_schedule: set[str] = set()
+        for name, amount in self.scheduled_unlocks:
+            normalized_name = require_text(name, "unlock horizon", max_length=32)
+            if normalized_name in seen_schedule:
+                raise ValueError("scheduled_unlocks must not contain duplicate horizons")
+            parsed_amount = to_decimal(amount, f"scheduled unlock {normalized_name}")
+            if parsed_amount < 0:
+                raise ValueError("scheduled unlock amount must be non-negative")
+            normalized_schedule.append((normalized_name, parsed_amount))
+            seen_schedule.add(normalized_name)
+        object.__setattr__(self, "scheduled_unlocks", tuple(normalized_schedule))
+        if any(not isinstance(event, TokenUnlockEvent) for event in self.unlock_events):
+            raise TypeError("unlock_events must contain TokenUnlockEvent values")
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        object.__setattr__(
+            self,
+            "data_completeness",
+            bounded_decimal(
+                self.data_completeness,
+                "data_completeness",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
+        object.__setattr__(
+            self,
+            "confidence",
+            bounded_decimal(self.confidence, "confidence", Decimal("0"), Decimal("1")),
+        )
+        object.__setattr__(self, "provenance", _normalize_provenance(self.provenance))
+        object.__setattr__(
+            self, "evidence_refs", normalize_texts(self.evidence_refs, "evidence_refs")
+        )
+        object.__setattr__(
+            self, "reason_codes", normalize_reason_codes(self.reason_codes, required=True)
+        )
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+    @property
+    def token_lock_present(self) -> bool | None:
+        if self.asset_scope is not LockAssetScope.TOKEN:
+            return None
+        return self.lock_present
+
+    @property
+    def freshness(self) -> Freshness:
+        return Freshness(self.as_of, self.expires_at, self.quality_state)
+
+    def scheduled_unlock_amount(self, horizon: str) -> Decimal | None:
+        for name, amount in self.scheduled_unlocks:
+            if name == horizon:
+                return amount
+        return None
+
+    def execution_eligible(self) -> bool:
+        return False
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return MappingProxyType(
+            {
+                "asset_scope": LockAssetScope(self.asset_scope).value,
+                "locker_program": self.locker_program,
+                "lock_present": self.lock_present,
+                "token_lock_present": self.token_lock_present,
+                "deposited_amount": self.deposited_amount,
+                "locked_amount": self.locked_amount,
+                "unlocked_amount": self.unlocked_amount,
+                "withdrawn_amount": self.withdrawn_amount,
+                "claimable_amount": self.claimable_amount,
+                "next_unlock_at": self.next_unlock_at,
+                "next_unlock_type": self.next_unlock_type,
+                "cancelable_by_sender": self.cancelable_by_sender,
+                "scheduled_unlocks": MappingProxyType(dict(self.scheduled_unlocks)),
+                "unlock_events": tuple(event.to_mapping() for event in self.unlock_events),
+                "data_completeness": self.data_completeness,
+                "quality_state": self.quality_state.value,
+                "confidence": self.confidence,
+                "reason_codes": tuple(_reason_code_value(reason) for reason in self.reason_codes),
+                "evidence_refs": self.evidence_refs,
+                "version": self.version,
+                "config_hash": self.config_hash,
+                "execution_eligible": False,
+            }
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _TimedObservation:
     observation: Observation
     event_at: datetime
@@ -934,6 +1402,26 @@ class SignalHardeningAnalyzer:
                 quality_state=QualityState.CONFLICTED,
             )
         current = tuple(record for record in records if start < record.event_at <= checked_end)
+        critical_current = tuple(
+            record
+            for record in current
+            if record.observation.kind in _MARKET_KINDS | _TRADE_KINDS
+        )
+        nonfresh_critical = tuple(
+            record for record in critical_current if record.quality_state is not QualityState.FRESH
+        )
+        if nonfresh_critical:
+            state = _combined_quality(
+                tuple(record.quality_state for record in nonfresh_critical)
+            )
+            return self._unknown_momentum(
+                token,
+                now=checked_end,
+                config_hash=normalized_hash,
+                records=current,
+                reasons=("MOMENTUM_EVIDENCE_NOT_FRESH", f"MOMENTUM_EVIDENCE_{state.value}"),
+                quality_state=state,
+            )
         fresh_current = tuple(
             record for record in current if record.quality_state is QualityState.FRESH
         )
@@ -1152,7 +1640,9 @@ class SignalHardeningAnalyzer:
             base_reasons.extend(("MOMENTUM_NOT_SUSTAINED", "ONE_TICK_PRICE_SPIKE"))
         if not enough_buy_flow:
             base_reasons.append("MOMENTUM_BUY_EVIDENCE_MISSING")
-        if liquidity_ratio is not None and liquidity_ratio < self.policy.thin_liquidity_ratio:
+        if current_liquidity is None:
+            base_reasons.append("MOMENTUM_LIQUIDITY_EVIDENCE_MISSING")
+        elif liquidity_ratio is not None and liquidity_ratio < self.policy.thin_liquidity_ratio:
             base_reasons.append("THIN_LIQUIDITY_MARK")
         if not positive_move:
             base_reasons.append("MOMENTUM_MOVE_NOT_POSITIVE")
@@ -1162,6 +1652,7 @@ class SignalHardeningAnalyzer:
             and enough_duration
             and no_immediate_reversal
             and enough_buy_flow
+            and current_liquidity is not None
         )
         if not confirmed:
             if prior_trade_records == () and current:
@@ -1218,6 +1709,8 @@ class SignalHardeningAnalyzer:
             Decimal(len(buyers)) / Decimal(self.policy.minimum_unique_buyers),
         )
         confidence = min(duration_factor, sample_factor, buyer_factor)
+        if liquidity_ratio is not None and liquidity_ratio < self.policy.thin_liquidity_ratio:
+            confidence = min(confidence, Decimal("0.25"))
         return self._snapshot(
             token,
             now=checked_end,
@@ -1292,8 +1785,8 @@ class SignalHardeningAnalyzer:
             version=self.policy.version,
         )
 
-    @staticmethod
     def _trade_volume(
+        self,
         record: _TimedObservation,
     ) -> tuple[Decimal | None, Decimal | None, str | None, Decimal | None]:
         payload = record.observation.normalized_payload
@@ -1335,11 +1828,11 @@ class SignalHardeningAnalyzer:
         if wash_flag is True or (
             isinstance(wash_flag, str) and wash_flag.strip().lower() in {"true", "yes", "1"}
         ):
-            wash_factor = Decimal("0")
+            wash_factor = self.policy.wash_volume_multiplier
         else:
             wash_score = _optional_decimal(_field(payload, "wash_score", "bot_score"), "wash_score")
             if wash_score is not None:
-                wash_factor = Decimal("1") - min(Decimal("1"), wash_score)
+                wash_factor = max(Decimal("0"), Decimal("1") - min(Decimal("1"), wash_score))
         return amount, usd, unit, amount * wash_factor
 
     def analyze_move_funding(
@@ -1387,6 +1880,43 @@ class SignalHardeningAnalyzer:
                 reasons=("HARDENING_DUPLICATE_CONFLICT",),
             )
         current = tuple(record for record in records if start < record.event_at <= checked_end)
+        critical_current = tuple(
+            record
+            for record in current
+            if record.observation.kind in _MARKET_KINDS | _TRADE_KINDS
+        )
+        nonfresh_critical = tuple(
+            record for record in critical_current if record.quality_state is not QualityState.FRESH
+        )
+        if nonfresh_critical:
+            state = _combined_quality(
+                tuple(record.quality_state for record in nonfresh_critical)
+            )
+            stale_reasons: list[ReasonCode | str] = [
+                "MOVE_EVIDENCE_NOT_FRESH",
+                f"MOVE_EVIDENCE_{state.value}",
+            ]
+            if any(
+                record.observation.kind in _MARKET_KINDS
+                and record.quality_state is QualityState.STALE
+                and _field(
+                    record.observation.normalized_payload,
+                    "liquidity_usd",
+                    "liquidity",
+                    "liquidityUsd",
+                )
+                is not _MISSING
+                for record in nonfresh_critical
+            ):
+                stale_reasons.append("MOVE_LIQUIDITY_STALE")
+            return self._funding_snapshot(
+                token,
+                now=checked_end,
+                config_hash=normalized_hash,
+                records=current,
+                quality_state=state,
+                reasons=stale_reasons,
+            )
         current_market = tuple(
             record for record in current if record.observation.kind in _MARKET_KINDS
         )
@@ -1785,11 +2315,14 @@ class SignalHardeningAnalyzer:
                 initial_buy_amount=initial_buy_amount,
                 initial_acquired_supply_pct=initial_acquired_supply_pct,
             )
+        relevant_quality = _combined_quality(
+            tuple(record.quality_state for record in relevant)
+        )
         trade_records = tuple(
             record
             for record in records
             if record.observation.kind in _TRADE_KINDS
-            and record.quality_state not in {QualityState.INVALID, QualityState.CONFLICTED}
+            and record.quality_state is QualityState.FRESH
             and (
                 _optional_address(
                     _field(
@@ -1920,6 +2453,10 @@ class SignalHardeningAnalyzer:
             reasons.append("DEPLOYER_TRANSFER_EVIDENCE_MISSING")
         if balance_record is None or observed_holdings is None:
             reasons.append("DEPLOYER_ACTIVITY_UNKNOWN")
+        if relevant_quality is not QualityState.FRESH:
+            reasons.extend(
+                ("DEPLOYER_EVIDENCE_NOT_FRESH", f"DEPLOYER_EVIDENCE_{relevant_quality.value}")
+            )
         if not reasons:
             reasons.append("DEPLOYER_ACTIVITY_OBSERVED")
         if balance_record is None or observed_holdings is None:
@@ -1928,6 +2465,7 @@ class SignalHardeningAnalyzer:
             state = balance_record.quality_state
         else:
             state = QualityState.FRESH
+        state = _combined_quality((state, relevant_quality))
         completeness = Decimal("0")
         required = (
             candidate_deployer is not None,
@@ -1964,6 +2502,889 @@ class SignalHardeningAnalyzer:
             confidence=confidence,
         )
 
+    def _launch_snapshot(
+        self,
+        token: TokenIdentity,
+        *,
+        now: datetime,
+        config_hash: str,
+        records: Sequence[_TimedObservation],
+        quality_state: QualityState,
+        reasons: Sequence[ReasonCode | str],
+        launch_slot: int | None = None,
+        launch_timestamp: datetime | None = None,
+        early_buyer_count: int | None = None,
+        sniper_wallet_count: int | None = None,
+        bundle_actor_cluster_count: int | None = None,
+        quote_acquired: Decimal | None = None,
+        quote_unit: str | None = None,
+        supply_acquired_pct: Decimal | None = None,
+        still_held_pct: Decimal | None = None,
+        actor_cluster_adjusted_concentration: Decimal | None = None,
+        data_available: bool = False,
+        data_completeness: Decimal = Decimal("0"),
+        confidence: Decimal = Decimal("0"),
+    ) -> LaunchFootprintSnapshot:
+        return LaunchFootprintSnapshot(
+            token=token,
+            as_of=now,
+            expires_at=now + self.policy.evidence_ttl,
+            config_hash=config_hash,
+            first_n_slots=self.policy.launch_max_slots,
+            first_n_seconds=int(self.policy.launch_max_duration.total_seconds()),
+            launch_slot=launch_slot,
+            launch_timestamp=launch_timestamp,
+            early_buyer_count=early_buyer_count,
+            sniper_wallet_count=sniper_wallet_count,
+            bundle_actor_cluster_count=bundle_actor_cluster_count,
+            quote_acquired=quote_acquired,
+            quote_unit=quote_unit,
+            supply_acquired_pct=supply_acquired_pct,
+            still_held_pct=still_held_pct,
+            actor_cluster_adjusted_concentration=actor_cluster_adjusted_concentration,
+            data_available=data_available,
+            data_completeness=data_completeness,
+            quality_state=quality_state,
+            confidence=confidence,
+            provenance=self._provenance(records),
+            evidence_refs=self._refs(records),
+            reason_codes=tuple(reasons),
+            version=self.policy.version,
+        )
+
+    def analyze_launch_footprint(
+        self,
+        token: TokenIdentity,
+        observations: Sequence[Observation],
+        *,
+        now: datetime,
+        config_hash: str,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
+    ) -> LaunchFootprintSnapshot:
+        """Measure bounded launch capture and clustering without clean/unsafe claims."""
+
+        if not isinstance(token, TokenIdentity):
+            raise TypeError("token must be a TokenIdentity")
+        checked_end = ensure_utc(now if window_end is None else window_end, "window_end")
+        if checked_end > ensure_utc(now, "now"):
+            raise ValueError("window_end cannot be in the future")
+        start = None if window_start is None else ensure_utc(window_start, "window_start")
+        if start is not None and start >= checked_end:
+            raise ValueError("window_start must precede window_end")
+        normalized_hash = require_text(config_hash, "config_hash")
+        records, future, conflict = self._prepare(token, observations, now=checked_end)
+        scoped = tuple(record for record in records if start is None or record.event_at >= start)
+        if future:
+            return self._launch_snapshot(
+                token,
+                now=checked_end,
+                config_hash=normalized_hash,
+                records=scoped,
+                quality_state=QualityState.INVALID,
+                reasons=("HARDENING_FUTURE_EVIDENCE",),
+            )
+        if conflict:
+            return self._launch_snapshot(
+                token,
+                now=checked_end,
+                config_hash=normalized_hash,
+                records=scoped,
+                quality_state=QualityState.CONFLICTED,
+                reasons=("HARDENING_DUPLICATE_CONFLICT",),
+            )
+
+        launch_record: _TimedObservation | None = None
+        for record in scoped:
+            payload = record.observation.normalized_payload
+            event_type_value = _field(
+                payload,
+                "event_type",
+                "lifecycle_event",
+                "type",
+                "action",
+            )
+            event_type = (
+                "" if event_type_value is _MISSING else str(event_type_value).strip().lower()
+            )
+            slot_value = _field(payload, "launch_slot", "created_slot", "slot")
+            if (
+                event_type in {"create", "created", "launch", "launched", "token_created"}
+                or slot_value is not _MISSING
+            ) and (launch_record is None or record.event_at < launch_record.event_at):
+                launch_record = record
+        if launch_record is None:
+            return self._launch_snapshot(
+                token,
+                now=checked_end,
+                config_hash=normalized_hash,
+                records=scoped,
+                quality_state=QualityState.UNKNOWN,
+                reasons=("LAUNCH_HISTORY_UNKNOWN",),
+            )
+
+        launch_payload = launch_record.observation.normalized_payload
+        launch_slot = _optional_int(
+            _field(launch_payload, "launch_slot", "created_slot", "slot"),
+            "launch_slot",
+        )
+        launch_timestamp = (
+            _optional_datetime(
+                _field(launch_payload, "launch_at", "launch_timestamp", "created_at"),
+                "launch_timestamp",
+            )
+            or launch_record.event_at
+        )
+        reasons: list[ReasonCode | str] = []
+        incomplete = launch_slot is None
+        if launch_slot is None:
+            reasons.append("EARLY_BUYER_DATA_INCOMPLETE")
+
+        early_records: list[_TimedObservation] = []
+        wallet_missing = False
+        for record in scoped:
+            if record is launch_record or record.observation.kind not in _TRADE_KINDS:
+                continue
+            if record.quality_state in {QualityState.INVALID, QualityState.CONFLICTED}:
+                incomplete = True
+                continue
+            payload = record.observation.normalized_payload
+            if _side(_field(payload, "side", "action", "direction")) != "buy":
+                continue
+            if record.event_at < launch_timestamp:
+                continue
+            trade_slot = _optional_int(
+                _field(payload, "slot", "slot_number", "transaction_slot"),
+                "trade slot",
+            )
+            in_slot_window = True
+            in_time_window = record.event_at <= launch_timestamp + self.policy.launch_max_duration
+            if launch_slot is not None:
+                if trade_slot is None:
+                    incomplete = True
+                else:
+                    in_slot_window = (
+                        launch_slot <= trade_slot < launch_slot + self.policy.launch_max_slots
+                    )
+            elif trade_slot is None:
+                incomplete = True
+            if trade_slot is None and not in_time_window:
+                continue
+            if not in_slot_window or not in_time_window:
+                continue
+            wallet = _optional_address(
+                _field(payload, "wallet_address", "wallet", "buyer", "trader", "maker"),
+                "early buyer wallet",
+            )
+            if wallet is None:
+                wallet_missing = True
+                incomplete = True
+                continue
+            early_records.append(record)
+
+        if not early_records:
+            reasons.append("EARLY_BUYER_DATA_INCOMPLETE")
+            no_trade_state = (
+                QualityState.UNKNOWN
+                if launch_record.quality_state is QualityState.FRESH
+                else launch_record.quality_state
+            )
+            return self._launch_snapshot(
+                token,
+                now=checked_end,
+                config_hash=normalized_hash,
+                records=(launch_record,),
+                quality_state=no_trade_state,
+                reasons=reasons,
+                launch_slot=launch_slot,
+                launch_timestamp=launch_timestamp,
+                early_buyer_count=0,
+                data_available=False,
+            )
+
+        early_wallets: set[str] = set()
+        internal_sniper_wallets: set[str] = set()
+        sniper_label_seen = False
+        bundle_label_seen = False
+        bundle_clusters: set[str] = set()
+        cluster_supply: dict[str, Decimal] = {}
+        quote_by_unit: dict[str, Decimal] = {}
+        supply_values: list[Decimal] = []
+        supply_missing = False
+        quote_missing = False
+        held_by_wallet: dict[str, tuple[datetime, Decimal, QualityState]] = {}
+        quality_records: list[_TimedObservation] = [launch_record, *early_records]
+        external_conflict = False
+        for record in early_records:
+            payload = record.observation.normalized_payload
+            wallet = _optional_address(
+                _field(payload, "wallet_address", "wallet", "buyer", "trader", "maker"),
+                "early buyer wallet",
+            )
+            assert wallet is not None
+            early_wallets.add(wallet)
+            internal_label = _optional_bool(
+                _field(payload, "is_sniper", "sniper", "sniper_label", "internal_sniper"),
+                "sniper label",
+            )
+            external_label = _optional_bool(
+                _field(
+                    payload,
+                    "external_sniper_label",
+                    "external_is_sniper",
+                    "external_sniper",
+                ),
+                "external sniper label",
+            )
+            if internal_label is not None:
+                sniper_label_seen = True
+                if internal_label:
+                    internal_sniper_wallets.add(wallet)
+            if (
+                external_label is not None
+                and internal_label is not None
+                and external_label != internal_label
+            ):
+                external_conflict = True
+
+            cluster_value = _field(
+                payload,
+                "actor_cluster_id",
+                "wallet_cluster_id",
+                "controller_wallet",
+                "cluster_id",
+            )
+            cluster = (
+                wallet if cluster_value is _MISSING or cluster_value is None else str(cluster_value)
+            )
+            bundle_value = _field(
+                payload,
+                "bundle_cluster_id",
+                "bundle_id",
+                "bundle_actor_cluster",
+            )
+            bundle_flag = _optional_bool(
+                _field(payload, "is_bundle", "bundled", "bundle"),
+                "bundle label",
+            )
+            if bundle_value is not _MISSING and bundle_value is not None:
+                bundle_label_seen = True
+                bundle_clusters.add(str(bundle_value))
+            elif bundle_flag is not None:
+                bundle_label_seen = True
+                if bundle_flag:
+                    bundle_clusters.add(cluster)
+
+            supply = _optional_decimal(
+                _field(
+                    payload,
+                    "acquired_supply_pct",
+                    "supply_acquired_pct",
+                    "token_supply_pct",
+                    "amount_supply_pct",
+                ),
+                "acquired_supply_pct",
+            )
+            if supply is None:
+                supply_missing = True
+            else:
+                if supply > 1:
+                    raise ValueError("acquired_supply_pct must be between zero and one")
+                supply_values.append(supply)
+                cluster_supply[cluster] = cluster_supply.get(cluster, Decimal("0")) + supply
+
+            quote = _optional_decimal(
+                _field(payload, "quote_amount_usd", "quote_volume_usd", "notional_usd"),
+                "early buy quote amount usd",
+            )
+            unit = "USD"
+            if quote is None:
+                quote = _optional_decimal(
+                    _field(payload, "quote_amount", "quote_volume", "notional"),
+                    "early buy quote amount",
+                )
+                raw_unit = _field(payload, "quote_currency", "quote_unit", "currency")
+                unit = (
+                    "QUOTE" if raw_unit is _MISSING or raw_unit is None else str(raw_unit).upper()
+                )
+            if quote is None:
+                quote_missing = True
+            else:
+                quote_by_unit[unit] = quote_by_unit.get(unit, Decimal("0")) + quote
+
+            held = _optional_decimal(
+                _field(payload, "current_holdings_pct", "still_held_pct", "still_held_supply_pct"),
+                "still_held_pct",
+            )
+            if held is not None:
+                if held > 1:
+                    raise ValueError("still_held_pct must be between zero and one")
+                prior = held_by_wallet.get(wallet)
+                if prior is None or record.event_at >= prior[0]:
+                    held_by_wallet[wallet] = (record.event_at, held, record.quality_state)
+
+        for record in scoped:
+            if record.observation.kind not in _BALANCE_KINDS:
+                continue
+            payload = record.observation.normalized_payload
+            wallet = _optional_address(
+                _field(payload, "wallet_address", "wallet", "owner"),
+                "early buyer balance wallet",
+            )
+            if wallet not in early_wallets:
+                continue
+            held = _optional_decimal(
+                _field(payload, "current_holdings_pct", "holdings_pct", "supply_pct"),
+                "early buyer current holdings pct",
+            )
+            if held is None:
+                continue
+            if held > 1:
+                raise ValueError("current_holdings_pct must be between zero and one")
+            prior = held_by_wallet.get(wallet)
+            if prior is None or record.event_at >= prior[0]:
+                held_by_wallet[wallet] = (record.event_at, held, record.quality_state)
+                quality_records.append(record)
+
+        if (
+            wallet_missing
+            or quote_missing
+            or supply_missing
+            or len(held_by_wallet) < len(early_wallets)
+        ):
+            incomplete = True
+        if not sniper_label_seen:
+            incomplete = True
+            reasons.append("SNIPER_EVIDENCE_ABSENT_NOT_CLEAN")
+        elif not internal_sniper_wallets:
+            reasons.append("SNIPER_EVIDENCE_ABSENT_NOT_CLEAN")
+        if not bundle_label_seen:
+            incomplete = True
+            reasons.append("BUNDLE_EVIDENCE_ABSENT_NOT_CLEAN")
+        if external_conflict:
+            reasons.append("SNIPER_CLASSIFICATION_CONFLICT")
+        if not quote_by_unit:
+            quote_acquired = None
+            quote_unit = None
+        elif len(quote_by_unit) == 1:
+            quote_unit, quote_acquired = next(iter(quote_by_unit.items()))
+        else:
+            quote_acquired = None
+            quote_unit = "MIXED"
+            incomplete = True
+            reasons.append("EARLY_BUYER_QUOTE_UNIT_CONFLICT")
+        supply_acquired = None if supply_missing else sum(supply_values, Decimal("0"))
+        still_held = None
+        if len(held_by_wallet) == len(early_wallets):
+            still_held = sum((value[1] for value in held_by_wallet.values()), Decimal("0"))
+        concentration = None
+        if supply_acquired is not None and supply_acquired > 0:
+            concentration = max(cluster_supply.values(), default=Decimal("0")) / supply_acquired
+        if supply_acquired is not None and still_held is not None and still_held < supply_acquired:
+            reasons.append("EARLY_BUYERS_EXITING")
+        if len(internal_sniper_wallets) > 0 and (
+            concentration is not None and concentration >= self.policy.high_early_capture_pct
+        ):
+            reasons.append("SNIPER_FOOTPRINT_HIGH")
+        if bundle_clusters:
+            reasons.append("BUNDLED_LAUNCH_EVIDENCE")
+        state: QualityState = _combined_quality(
+            tuple(record.quality_state for record in quality_records)
+        )
+        if external_conflict:
+            state = QualityState.CONFLICTED
+        if incomplete and "EARLY_BUYER_DATA_INCOMPLETE" not in reasons:
+            reasons.append("EARLY_BUYER_DATA_INCOMPLETE")
+        if not reasons:
+            reasons.append("EARLY_BUYER_DATA_OBSERVED")
+        completeness_values = (
+            launch_slot is not None,
+            bool(early_wallets) and not wallet_missing,
+            quote_acquired is not None,
+            supply_acquired is not None,
+            sniper_label_seen,
+            bundle_label_seen,
+            still_held is not None,
+        )
+        data_completeness = Decimal(sum(completeness_values)) / Decimal(len(completeness_values))
+        confidence = data_completeness if state is QualityState.FRESH else Decimal("0")
+        return self._launch_snapshot(
+            token,
+            now=checked_end,
+            config_hash=normalized_hash,
+            records=quality_records,
+            quality_state=state,
+            reasons=reasons,
+            launch_slot=launch_slot,
+            launch_timestamp=launch_timestamp,
+            early_buyer_count=len(early_wallets),
+            sniper_wallet_count=len(internal_sniper_wallets) if sniper_label_seen else None,
+            bundle_actor_cluster_count=len(bundle_clusters) if bundle_label_seen else None,
+            quote_acquired=quote_acquired,
+            quote_unit=quote_unit,
+            supply_acquired_pct=supply_acquired,
+            still_held_pct=still_held,
+            actor_cluster_adjusted_concentration=concentration,
+            data_available=True,
+            data_completeness=data_completeness,
+            confidence=confidence,
+        )
+
+    def _token_lock_snapshot(
+        self,
+        token: TokenIdentity,
+        *,
+        now: datetime,
+        config_hash: str,
+        records: Sequence[_TimedObservation],
+        quality_state: QualityState,
+        reasons: Sequence[ReasonCode | str],
+        asset_scope: LockAssetScope = LockAssetScope.UNKNOWN,
+        locker_program: str | None = None,
+        lock_present: bool | None = None,
+        deposited_amount: Decimal | None = None,
+        locked_amount: Decimal | None = None,
+        unlocked_amount: Decimal | None = None,
+        withdrawn_amount: Decimal | None = None,
+        claimable_amount: Decimal | None = None,
+        next_unlock_at: datetime | None = None,
+        next_unlock_type: str | None = None,
+        cancelable_by_sender: bool | None = None,
+        scheduled_unlocks: Sequence[tuple[str, Decimal]] = (),
+        unlock_events: Sequence[TokenUnlockEvent] = (),
+        data_completeness: Decimal = Decimal("0"),
+        confidence: Decimal = Decimal("0"),
+    ) -> TokenLockSnapshot:
+        return TokenLockSnapshot(
+            token=token,
+            as_of=now,
+            expires_at=now + self.policy.evidence_ttl,
+            config_hash=config_hash,
+            asset_scope=asset_scope,
+            locker_program=locker_program,
+            lock_present=lock_present,
+            deposited_amount=deposited_amount,
+            locked_amount=locked_amount,
+            unlocked_amount=unlocked_amount,
+            withdrawn_amount=withdrawn_amount,
+            claimable_amount=claimable_amount,
+            next_unlock_at=next_unlock_at,
+            next_unlock_type=next_unlock_type,
+            cancelable_by_sender=cancelable_by_sender,
+            scheduled_unlocks=tuple(scheduled_unlocks),
+            unlock_events=tuple(unlock_events),
+            data_completeness=data_completeness,
+            quality_state=quality_state,
+            confidence=confidence,
+            provenance=self._provenance(records),
+            evidence_refs=self._refs(records),
+            reason_codes=tuple(reasons),
+            version=self.policy.version,
+        )
+
+    def analyze_token_lock(
+        self,
+        token: TokenIdentity,
+        observations: Sequence[Observation],
+        *,
+        now: datetime,
+        config_hash: str,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
+    ) -> TokenLockSnapshot:
+        """Normalize token-lock, vesting and unlock observations at event time."""
+
+        if not isinstance(token, TokenIdentity):
+            raise TypeError("token must be a TokenIdentity")
+        checked_end = ensure_utc(now if window_end is None else window_end, "window_end")
+        if checked_end > ensure_utc(now, "now"):
+            raise ValueError("window_end cannot be in the future")
+        start = None if window_start is None else ensure_utc(window_start, "window_start")
+        if start is not None and start >= checked_end:
+            raise ValueError("window_start must precede window_end")
+        normalized_hash = require_text(config_hash, "config_hash")
+        records, future, conflict = self._prepare(token, observations, now=checked_end)
+        scoped = tuple(record for record in records if start is None or record.event_at >= start)
+        if future:
+            return self._token_lock_snapshot(
+                token,
+                now=checked_end,
+                config_hash=normalized_hash,
+                records=scoped,
+                quality_state=QualityState.INVALID,
+                reasons=("HARDENING_FUTURE_EVIDENCE",),
+            )
+        if conflict:
+            return self._token_lock_snapshot(
+                token,
+                now=checked_end,
+                config_hash=normalized_hash,
+                records=scoped,
+                quality_state=QualityState.CONFLICTED,
+                reasons=("HARDENING_DUPLICATE_CONFLICT",),
+            )
+
+        lock_records = tuple(
+            record for record in scoped if record.observation.kind.lower() in _LOCK_KINDS
+        )
+        if not lock_records:
+            return self._token_lock_snapshot(
+                token,
+                now=checked_end,
+                config_hash=normalized_hash,
+                records=scoped,
+                quality_state=QualityState.UNKNOWN,
+                reasons=("LOCK_DATA_UNKNOWN",),
+            )
+        token_records = tuple(
+            record
+            for record in lock_records
+            if _lock_scope(
+                _field(
+                    record.observation.normalized_payload, "asset_scope", "asset_type", "lock_type"
+                ),
+                kind=record.observation.kind,
+            )
+            is LockAssetScope.TOKEN
+        )
+        lp_records = tuple(
+            record
+            for record in lock_records
+            if _lock_scope(
+                _field(
+                    record.observation.normalized_payload, "asset_scope", "asset_type", "lock_type"
+                ),
+                kind=record.observation.kind,
+            )
+            is LockAssetScope.LP
+        )
+        unknown_records = tuple(
+            record
+            for record in lock_records
+            if _lock_scope(
+                _field(
+                    record.observation.normalized_payload, "asset_scope", "asset_type", "lock_type"
+                ),
+                kind=record.observation.kind,
+            )
+            is LockAssetScope.UNKNOWN
+        )
+        asset_scope = (
+            LockAssetScope.TOKEN
+            if token_records
+            else LockAssetScope.LP
+            if lp_records
+            else LockAssetScope.UNKNOWN
+        )
+        scoped_records = token_records or lp_records or unknown_records
+        latest_values: dict[str, tuple[datetime, Decimal]] = {}
+        latest_strings: dict[str, tuple[datetime, str]] = {}
+        latest_bools: dict[str, tuple[datetime, bool]] = {}
+        future_unlocks: list[tuple[datetime, str]] = []
+        schedule_amounts: dict[str, Decimal] = {}
+        unlock_events: list[TokenUnlockEvent] = []
+        event_unlocked = Decimal("0")
+        event_withdrawn = Decimal("0")
+        event_claimable = Decimal("0")
+        token_lock_observed = False
+        token_lock_explicit: bool | None = None
+
+        for record in scoped_records:
+            payload = record.observation.normalized_payload
+            kind = record.observation.kind.lower()
+            scope = _lock_scope(
+                _field(payload, "asset_scope", "asset_type", "lock_type"),
+                kind=kind,
+            )
+            if scope is LockAssetScope.TOKEN:
+                explicit_present = _optional_bool(
+                    _field(payload, "lock_present", "is_locked", "locked"),
+                    "lock_present",
+                )
+                if explicit_present is not None:
+                    token_lock_explicit = explicit_present
+                    token_lock_observed = True
+                event_type_value = _field(
+                    payload,
+                    "event_type",
+                    "unlock_type",
+                    "lock_event_type",
+                    "action",
+                )
+                event_type = (
+                    "" if event_type_value is _MISSING else str(event_type_value).strip().lower()
+                )
+                if event_type == "" and kind.endswith("unlock"):
+                    event_type = "unlock"
+                if event_type in {
+                    "lock",
+                    "deposit",
+                    "vest",
+                    "vesting",
+                    "snapshot",
+                    "create",
+                } or any(
+                    _field(payload, name) is not _MISSING
+                    for name in ("deposited_amount", "locked_amount")
+                ):
+                    token_lock_observed = True
+                locker = _field(payload, "locker_program", "locker", "program_id", "program")
+                if locker is not _MISSING and locker is not None:
+                    latest_strings["locker_program"] = (record.event_at, str(locker))
+                for field_name, aliases in {
+                    "deposited_amount": ("deposited_amount", "deposited", "amount_deposited"),
+                    "locked_amount": ("locked_amount", "locked", "amount_locked"),
+                    "unlocked_amount": ("unlocked_amount", "unlocked", "amount_unlocked"),
+                    "withdrawn_amount": ("withdrawn_amount", "withdrawn", "amount_withdrawn"),
+                    "claimable_amount": ("claimable_amount", "claimable", "amount_claimable"),
+                }.items():
+                    value = _optional_decimal(_field(payload, *aliases), field_name)
+                    if value is not None:
+                        latest_values[field_name] = (record.event_at, value)
+                amount = _optional_decimal(
+                    _field(payload, "amount", "unlock_amount", "token_amount"),
+                    "unlock amount",
+                )
+                if event_type in {"unlock", "unlocked", "release", "released", "tranche"}:
+                    if (
+                        amount is not None
+                        and _field(payload, "unlocked_amount", "unlocked", "amount_unlocked")
+                        is _MISSING
+                    ):
+                        event_unlocked += amount
+                elif event_type in {"withdraw", "withdrawn"}:
+                    if (
+                        amount is not None
+                        and _field(payload, "withdrawn_amount", "withdrawn", "amount_withdrawn")
+                        is _MISSING
+                    ):
+                        event_withdrawn += amount
+                elif event_type in {"claim", "claimed"} and (
+                    amount is not None
+                    and _field(payload, "claimable_amount", "claimable", "amount_claimable")
+                    is _MISSING
+                ):
+                    event_claimable += amount
+                unlock_at = _optional_datetime(
+                    _field(payload, "next_unlock_at", "unlock_at", "scheduled_at"),
+                    "unlock_at",
+                )
+                if unlock_at is not None:
+                    unlock_type_value = _field(payload, "unlock_type", "event_type")
+                    unlock_type = (
+                        "TRANCHE" if unlock_type_value is _MISSING else str(unlock_type_value)
+                    )
+                    if unlock_at >= checked_end:
+                        future_unlocks.append((unlock_at, unlock_type.upper()))
+                cancelable = _optional_bool(
+                    _field(
+                        payload,
+                        "cancelable_by_sender",
+                        "cancelable",
+                        "cancellable_by_sender",
+                    ),
+                    "cancelable_by_sender",
+                )
+                if cancelable is not None:
+                    latest_bools["cancelable_by_sender"] = (record.event_at, cancelable)
+                schedule = _field(payload, "scheduled_unlocks", "unlock_schedule", "schedule")
+                if isinstance(schedule, Mapping):
+                    for horizon, raw_amount in schedule.items():
+                        value = raw_amount
+                        if isinstance(raw_amount, Mapping):
+                            value = raw_amount.get("amount", _MISSING)
+                        amount_value = _optional_decimal(value, f"scheduled unlock {horizon}")
+                        if amount_value is not None:
+                            name = require_text(str(horizon), "unlock horizon", max_length=32)
+                            schedule_amounts[name] = (
+                                schedule_amounts.get(name, Decimal("0")) + amount_value
+                            )
+                elif isinstance(schedule, Sequence) and not isinstance(
+                    schedule, str | bytes | bytearray
+                ):
+                    for item in schedule:
+                        if not isinstance(item, Mapping):
+                            raise TypeError("unlock schedule entries must be mappings")
+                        item_at = _optional_datetime(
+                            item.get("unlock_at", item.get("at", _MISSING)),
+                            "scheduled unlock at",
+                        )
+                        item_amount = _optional_decimal(
+                            item.get("amount", _MISSING),
+                            "scheduled unlock amount",
+                        )
+                        if item_at is None or item_amount is None or item_at < checked_end:
+                            continue
+                        for horizon, duration in self.policy.unlock_horizons:
+                            if item_at <= checked_end + duration:
+                                schedule_amounts[horizon] = (
+                                    schedule_amounts.get(horizon, Decimal("0")) + item_amount
+                                )
+                if (
+                    event_type in {"unlock", "unlocked", "release", "released", "tranche"}
+                    and amount is not None
+                ):
+                    unlock_at_for_event = (
+                        _optional_datetime(
+                            _field(payload, "unlock_at", "scheduled_at"),
+                            "unlock_at",
+                        )
+                        or record.event_at
+                    )
+                    unlock_events.append(
+                        TokenUnlockEvent(
+                            token=token,
+                            as_of=record.event_at,
+                            expires_at=record.event_at + self.policy.evidence_ttl,
+                            config_hash=normalized_hash,
+                            unlock_at=unlock_at_for_event,
+                            amount=amount,
+                            unlock_type=(
+                                "TRANCHE"
+                                if _field(
+                                    payload,
+                                    "unlock_type",
+                                    "lock_event_type",
+                                    "event_type",
+                                )
+                                is _MISSING
+                                else str(
+                                    _field(
+                                        payload,
+                                        "unlock_type",
+                                        "lock_event_type",
+                                        "event_type",
+                                    )
+                                )
+                            ),
+                            asset_scope=LockAssetScope.TOKEN,
+                            locker_program=None
+                            if locker is _MISSING or locker is None
+                            else str(locker),
+                            cancelable_by_sender=cancelable,
+                            quality_state=record.quality_state,
+                            provenance=(record.observation.provenance,),
+                            evidence_refs=(
+                                f"{record.observation.provenance.provider}:{record.observation.provenance.source_id}",
+                            ),
+                            reason_codes=("VESTING_SCHEDULE_PRESENT",),
+                            version=self.policy.version,
+                        )
+                    )
+
+        def latest_decimal(name: str) -> Decimal | None:
+            value = latest_values.get(name)
+            return None if value is None else value[1]
+
+        def latest_string(name: str) -> str | None:
+            value = latest_strings.get(name)
+            return None if value is None else value[1]
+
+        def latest_bool(name: str) -> bool | None:
+            value = latest_bools.get(name)
+            return None if value is None else value[1]
+
+        deposited_amount = latest_decimal("deposited_amount")
+        locked_amount = latest_decimal("locked_amount")
+        unlocked_amount = latest_decimal("unlocked_amount")
+        if unlocked_amount is None and event_unlocked > 0:
+            unlocked_amount = event_unlocked
+        withdrawn_amount = latest_decimal("withdrawn_amount")
+        if withdrawn_amount is None and event_withdrawn > 0:
+            withdrawn_amount = event_withdrawn
+        claimable_amount = latest_decimal("claimable_amount")
+        if claimable_amount is None and event_claimable > 0:
+            claimable_amount = event_claimable
+        next_unlock = min(future_unlocks, default=None)
+        next_unlock_at = None if next_unlock is None else next_unlock[0]
+        next_unlock_type = None if next_unlock is None else next_unlock[1]
+        if token_lock_explicit is not None:
+            lock_present = token_lock_explicit if token_records else None
+        elif token_records and token_lock_observed:
+            lock_present = True
+        else:
+            lock_present = True if lp_records and not token_records else None
+        reasons: list[ReasonCode | str] = []
+        if lp_records:
+            reasons.append("LP_LOCK_SEPARATE_FROM_TOKEN_LOCK")
+        if not token_records or lock_present is None:
+            reasons.append("TOKEN_LOCK_DATA_UNKNOWN")
+        if unknown_records:
+            reasons.append("LOCK_DATA_UNKNOWN")
+        if not any(
+            value is not None
+            for value in (
+                deposited_amount,
+                locked_amount,
+                unlocked_amount,
+                withdrawn_amount,
+                claimable_amount,
+            )
+        ):
+            reasons.append("LOCK_DATA_UNKNOWN")
+        if schedule_amounts or unlock_events:
+            reasons.append("VESTING_SCHEDULE_PRESENT")
+        if latest_bool("cancelable_by_sender") is True:
+            reasons.append("LOCK_CANCELABLE_BY_SENDER")
+        first_horizon_name = self.policy.unlock_horizons[0][0]
+        first_horizon_amount = schedule_amounts.get(first_horizon_name)
+        lock_base = locked_amount or deposited_amount
+        if (
+            first_horizon_amount is not None
+            and lock_base is not None
+            and lock_base > 0
+            and first_horizon_amount / lock_base >= self.policy.large_unlock_ratio
+        ):
+            reasons.append("LARGE_UNLOCK_IMMINENT")
+        if not reasons:
+            reasons.append("LOCK_EVIDENCE_OBSERVED")
+        scope_known = asset_scope is not LockAssetScope.UNKNOWN
+        amount_known = any(
+            value is not None
+            for value in (
+                deposited_amount,
+                locked_amount,
+                unlocked_amount,
+                withdrawn_amount,
+                claimable_amount,
+            )
+        )
+        data_completeness_values = (
+            scope_known,
+            amount_known,
+            next_unlock_at is not None or bool(schedule_amounts),
+            latest_bool("cancelable_by_sender") is not None,
+            bool(token_records),
+        )
+        data_completeness = Decimal(sum(data_completeness_values)) / Decimal(
+            len(data_completeness_values)
+        )
+        state = _combined_quality(tuple(record.quality_state for record in lock_records))
+        confidence = data_completeness if state is QualityState.FRESH else Decimal("0")
+        return self._token_lock_snapshot(
+            token,
+            now=checked_end,
+            config_hash=normalized_hash,
+            records=lock_records,
+            quality_state=state,
+            reasons=reasons,
+            asset_scope=asset_scope,
+            locker_program=latest_string("locker_program"),
+            lock_present=lock_present,
+            deposited_amount=deposited_amount,
+            locked_amount=locked_amount,
+            unlocked_amount=unlocked_amount,
+            withdrawn_amount=withdrawn_amount,
+            claimable_amount=claimable_amount,
+            next_unlock_at=next_unlock_at,
+            next_unlock_type=next_unlock_type,
+            cancelable_by_sender=latest_bool("cancelable_by_sender"),
+            scheduled_unlocks=tuple(schedule_amounts.items()),
+            unlock_events=unlock_events,
+            data_completeness=data_completeness,
+            confidence=confidence,
+        )
+
 
 __all__ = [
     "DEFAULT_SIGNAL_EVIDENCE_TTL",
@@ -1971,7 +3392,11 @@ __all__ = [
     "MomentumRegimeSnapshot",
     "MoveFundingEvidence",
     "DeployerActivitySnapshot",
+    "LaunchFootprintSnapshot",
+    "LockAssetScope",
     "SIGNAL_HARDENING_VERSION",
     "SignalHardeningAnalyzer",
     "SignalHardeningPolicy",
+    "TokenLockSnapshot",
+    "TokenUnlockEvent",
 ]
