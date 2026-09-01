@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from types import MappingProxyType
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 from memeradar_domain import (
@@ -44,6 +44,9 @@ from .correlation import (
 from .feature_windows import FeatureWindowAggregator
 from .price_semantics import market_reference_price
 from .signal_hardening import SIGNAL_HARDENING_VERSION, SignalHardeningAnalyzer
+
+if TYPE_CHECKING:
+    from .early_replay import EarlyOutcomeLabel, EarlyOutcomePolicy
 
 REPLAY_HARNESS_VERSION = "research-replay-v1"
 REPLAY_DATASET_SCHEMA_VERSION = 1
@@ -1046,6 +1049,7 @@ class ReplayCheckpointResult:
     included_event_ids: tuple[UUID, ...]
     excluded_future_event_ids: tuple[UUID, ...]
     cohort: ReplayCohortKey | None = None
+    early_outcome: EarlyOutcomeLabel | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.checkpoint, ReplayCheckpoint):
@@ -1085,6 +1089,9 @@ class ReplayCheckpointResult:
                 else _strategy_to_json(self.strategy_snapshot)
             ),
             "outcome": self.outcome.to_json_dict(),
+            "early_outcome": (
+                None if self.early_outcome is None else self.early_outcome.to_json_dict()
+            ),
         }
 
 
@@ -1181,6 +1188,7 @@ class ResearchReplayResult:
             "rugged",
             "creator_dump",
             "paper_exit_action",
+            "early_outcome",
             "quality_state",
         )
         output = io.StringIO()
@@ -1210,6 +1218,9 @@ class ResearchReplayResult:
                         "rugged": _csv_value(horizon.rugged),
                         "creator_dump": _csv_value(horizon.creator_dump),
                         "paper_exit_action": _csv_value(horizon.paper_exit_action),
+                        "early_outcome": _canonical_json(checkpoint.early_outcome.to_json_dict())
+                        if checkpoint.early_outcome is not None
+                        else None,
                         "quality_state": horizon.quality_state.value,
                     }
                 )
@@ -1927,11 +1938,15 @@ class ReplayHarness:
         correlation_builder: CorrelationWindowBuilder | None = None,
         feature_aggregator: FeatureWindowAggregator | None = None,
         outcome_policy: OutcomeLabelPolicy | None = None,
+        early_outcome_policy: EarlyOutcomePolicy | None = None,
         signal_hardening_analyzer: SignalHardeningAnalyzer | None = None,
     ) -> None:
+        from .early_replay import EarlyOutcomeLabeler
+
         self.correlation_builder = correlation_builder or CorrelationWindowBuilder()
         self.feature_aggregator = feature_aggregator or FeatureWindowAggregator()
         self.outcome_labeler = OutcomeLabeler(outcome_policy)
+        self.early_outcome_labeler = EarlyOutcomeLabeler(early_outcome_policy)
         self.signal_hardening_analyzer = signal_hardening_analyzer or SignalHardeningAnalyzer()
 
     def replay(
@@ -2043,6 +2058,7 @@ class ReplayHarness:
                     config_hash=manifest.config_hash,
                 )
             outcome = self.outcome_labeler.label(token_records, checkpoint)
+            early_outcome = self.early_outcome_labeler.label(token_records, checkpoint)
             cohort = _cohort_key(
                 token_records,
                 checkpoint,
@@ -2060,6 +2076,7 @@ class ReplayHarness:
                     included_event_ids=tuple(record.event_id for record in included),
                     excluded_future_event_ids=excluded,
                     cohort=cohort,
+                    early_outcome=early_outcome,
                 )
             )
         checkpoint_results = tuple(results)

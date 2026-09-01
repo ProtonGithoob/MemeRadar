@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a bounded, keyless research replay from a normalized JSON bundle."""
+"""Run a bounded, keyless replay with early forward-outcome artifacts."""
 
 from __future__ import annotations
 
@@ -65,7 +65,10 @@ def load_replay_bundle(input_path: Path) -> tuple[ReplayDataset, ResearchReplayM
 
 def load_replay_result(input_path: Path):
     dataset, manifest = load_replay_bundle(input_path)
-    return ReplayHarness().replay(dataset, manifest=manifest)
+    result = ReplayHarness().replay(dataset, manifest=manifest)
+    if any(checkpoint.early_outcome is None for checkpoint in result.checkpoints):
+        raise ValueError("replay did not produce early forward-outcome labels")
+    return result
 
 
 def _run(input_path: Path, output_format: str = "json") -> str:

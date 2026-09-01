@@ -36,6 +36,7 @@ from .alpha_strategy import (
     StrategyPolicy,
 )
 from .backtesting import BacktestHarness, BacktestMetrics, BacktestPolicy
+from .early_replay import EarlyOutcomeLabel
 from .replay_harness import (
     ReplayCheckpointResult,
     ResearchReplayManifest,
@@ -61,6 +62,32 @@ _SECRET_KEY_PARTS = frozenset(
         "sessiontoken",
     }
 )
+
+
+def _early_score_bucket(score: Decimal) -> str:
+    if score < Decimal("40"):
+        return "REJECT/LOW"
+    if score < Decimal("60"):
+        return "WATCH"
+    if score < Decimal("75"):
+        return "EARLY_WATCH"
+    if score < Decimal("85"):
+        return "STRONG_SETUP"
+    return "HIGH_CONFLUENCE"
+
+
+def _early_age_segment(age_seconds: Decimal | None) -> str:
+    if age_seconds is None:
+        return "UNKNOWN"
+    if age_seconds < Decimal("1"):
+        return "0-1s"
+    if age_seconds < Decimal("5"):
+        return "1-5s"
+    if age_seconds < Decimal("15"):
+        return "5-15s"
+    if age_seconds < Decimal("60"):
+        return "15-60s"
+    return "60s+"
 
 
 def _canonical_component(value: object) -> str | None:
@@ -309,6 +336,214 @@ class CalibrationCandidate:
             "entry_score_threshold": str(self.entry_score_threshold),
             "min_confidence": str(self.min_confidence),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class EarlyCalibrationSample:
+    """One EarlyScore/launch-age sample joined to future-only labels."""
+
+    sample_id: str
+    score: Decimal
+    launch_age_seconds: Decimal | None
+    outcome: EarlyOutcomeLabel
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "sample_id", require_text(self.sample_id, "sample_id"))
+        object.__setattr__(
+            self,
+            "score",
+            bounded_decimal(self.score, "score", Decimal("0"), Decimal("100")),
+        )
+        if self.launch_age_seconds is not None:
+            age = to_decimal(self.launch_age_seconds, "launch_age_seconds")
+            if age < 0:
+                raise ValueError("launch_age_seconds must be non-negative")
+            object.__setattr__(self, "launch_age_seconds", age)
+        if not isinstance(self.outcome, EarlyOutcomeLabel):
+            raise TypeError("outcome must be an EarlyOutcomeLabel")
+
+
+@dataclass(frozen=True, slots=True)
+class EarlyCalibrationBucket:
+    """Outcome summary for one EarlyScore and launch-age cohort."""
+
+    early_score_bucket: str
+    launch_age_segment: str
+    sample_count: int
+    labeled_count: int
+    mean_max_return_5m: Decimal | None
+    milestone_precision_50k: Decimal | None
+    rug_rate_5m: Decimal | None
+    promotion_allowed: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "early_score_bucket",
+            require_text(self.early_score_bucket, "early_score_bucket", max_length=32),
+        )
+        object.__setattr__(
+            self,
+            "launch_age_segment",
+            require_text(self.launch_age_segment, "launch_age_segment", max_length=32),
+        )
+        for field_name in ("sample_count", "labeled_count"):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        if self.labeled_count > self.sample_count:
+            raise ValueError("labeled_count cannot exceed sample_count")
+        if self.mean_max_return_5m is not None:
+            object.__setattr__(
+                self,
+                "mean_max_return_5m",
+                to_decimal(self.mean_max_return_5m, "mean_max_return_5m"),
+            )
+        for field_name in ("milestone_precision_50k", "rug_rate_5m"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    bounded_decimal(value, field_name, Decimal("0"), Decimal("1")),
+                )
+        if self.promotion_allowed:
+            raise ValueError("early calibration cannot authorize production promotion")
+
+    @property
+    def promotion_status(self) -> str:
+        return "INSUFFICIENT_SAMPLES" if self.sample_count < 20 else "MANUAL_REVIEW_ONLY"
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "early_score_bucket": self.early_score_bucket,
+            "launch_age_segment": self.launch_age_segment,
+            "sample_count": self.sample_count,
+            "labeled_count": self.labeled_count,
+            "mean_max_return_5m": (
+                None if self.mean_max_return_5m is None else str(self.mean_max_return_5m)
+            ),
+            "milestone_precision_50k": (
+                None
+                if self.milestone_precision_50k is None
+                else str(self.milestone_precision_50k)
+            ),
+            "rug_rate_5m": None if self.rug_rate_5m is None else str(self.rug_rate_5m),
+            "promotion_allowed": False,
+            "promotion_status": self.promotion_status,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class EarlyCalibrationSummary:
+    """Deterministic EarlyScore calibration report that remains shadow-only."""
+
+    buckets: tuple[EarlyCalibrationBucket, ...]
+    sample_count: int
+    minimum_samples: int
+    promotion_allowed: bool = False
+
+    def __post_init__(self) -> None:
+        buckets = tuple(self.buckets)
+        if any(not isinstance(value, EarlyCalibrationBucket) for value in buckets):
+            raise TypeError("buckets must contain EarlyCalibrationBucket values")
+        if tuple(
+            sorted(buckets, key=lambda value: (value.early_score_bucket, value.launch_age_segment))
+        ) != buckets:
+            raise ValueError("buckets must be sorted deterministically")
+        if not isinstance(self.sample_count, int) or isinstance(self.sample_count, bool):
+            raise TypeError("sample_count must be an integer")
+        if self.sample_count < 0:
+            raise ValueError("sample_count must be non-negative")
+        if not isinstance(self.minimum_samples, int) or isinstance(self.minimum_samples, bool):
+            raise TypeError("minimum_samples must be an integer")
+        if self.minimum_samples < 1:
+            raise ValueError("minimum_samples must be positive")
+        if self.promotion_allowed:
+            raise ValueError("early calibration cannot authorize production promotion")
+
+    @property
+    def promotion_status(self) -> str:
+        return (
+            "INSUFFICIENT_SAMPLES"
+            if self.sample_count < self.minimum_samples
+            else "MANUAL_REVIEW_ONLY"
+        )
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "sample_count": self.sample_count,
+            "minimum_samples": self.minimum_samples,
+            "promotion_allowed": False,
+            "promotion_status": self.promotion_status,
+            "buckets": [value.to_json_dict() for value in self.buckets],
+        }
+
+
+class EarlyCalibrationAnalyzer:
+    """Summarize early labels without promoting any threshold automatically."""
+
+    def summarize(
+        self,
+        samples: Sequence[EarlyCalibrationSample],
+        *,
+        minimum_samples: int = 20,
+    ) -> EarlyCalibrationSummary:
+        if isinstance(samples, str | bytes | bytearray):
+            raise TypeError("samples must be a sequence")
+        if not isinstance(minimum_samples, int) or isinstance(minimum_samples, bool):
+            raise TypeError("minimum_samples must be an integer")
+        if minimum_samples < 1:
+            raise ValueError("minimum_samples must be positive")
+        normalized = tuple(samples)
+        if any(not isinstance(value, EarlyCalibrationSample) for value in normalized):
+            raise TypeError("samples must contain EarlyCalibrationSample values")
+        grouped: dict[tuple[str, str], list[EarlyCalibrationSample]] = {}
+        for sample in normalized:
+            key = (_early_score_bucket(sample.score), _early_age_segment(sample.launch_age_seconds))
+            grouped.setdefault(key, []).append(sample)
+        buckets: list[EarlyCalibrationBucket] = []
+        for (score_bucket, age_segment), values in sorted(grouped.items()):
+            five_minute = [value.outcome.horizon("5m") for value in values]
+            known_returns = [
+                value.max_return for value in five_minute if value.max_return is not None
+            ]
+            milestone_values = [
+                value.market_cap_crossed.get("50K")
+                for value in five_minute
+                if value.market_cap_crossed.get("50K") is not None
+            ]
+            rug_values = [value.rugged for value in five_minute if value.rugged is not None]
+            buckets.append(
+                EarlyCalibrationBucket(
+                    early_score_bucket=score_bucket,
+                    launch_age_segment=age_segment,
+                    sample_count=len(values),
+                    labeled_count=len(known_returns),
+                    mean_max_return_5m=(
+                        None
+                        if not known_returns
+                        else sum(known_returns, Decimal("0")) / Decimal(len(known_returns))
+                    ),
+                    milestone_precision_50k=(
+                        None
+                        if not milestone_values
+                        else Decimal(sum(value is True for value in milestone_values))
+                        / Decimal(len(milestone_values))
+                    ),
+                    rug_rate_5m=(
+                        None
+                        if not rug_values
+                        else Decimal(sum(value is True for value in rug_values))
+                        / Decimal(len(rug_values))
+                    ),
+                )
+            )
+        return EarlyCalibrationSummary(
+            buckets=tuple(buckets),
+            sample_count=len(normalized),
+            minimum_samples=minimum_samples,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1319,6 +1554,10 @@ __all__ = [
     "CalibrationReport",
     "CalibrationSplitMetrics",
     "CalibrationTimeSplit",
+    "EarlyCalibrationAnalyzer",
+    "EarlyCalibrationBucket",
+    "EarlyCalibrationSample",
+    "EarlyCalibrationSummary",
     "PromotionAssessment",
     "PromotionEvidencePolicy",
     "ScoreCalibrationHarness",

@@ -174,6 +174,12 @@ def _mean(values: Sequence[Decimal]) -> Decimal | None:
     return None if not values else sum(values, Decimal("0")) / Decimal(len(values))
 
 
+def _early_outcome_json(item: ReplayCheckpointResult) -> Mapping[str, object] | None:
+    if item.early_outcome is None:
+        return None
+    return item.early_outcome.to_json_dict()
+
+
 def _seconds_to_delta(seconds: Decimal) -> timedelta:
     if seconds < 0:
         raise ValueError("seconds must not be negative")
@@ -468,6 +474,7 @@ class BacktestSkippedSignal:
     segment_key: BacktestSegmentKey
     reason_codes: tuple[ReasonCode, ...]
     evidence_refs: tuple[str, ...] = ()
+    early_outcome: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.checkpoint_id, UUID) or not isinstance(self.token_id, UUID):
@@ -501,6 +508,10 @@ class BacktestSkippedSignal:
             "evidence_refs",
             normalize_texts(self.evidence_refs, "evidence_refs"),
         )
+        if self.early_outcome is not None:
+            if not isinstance(self.early_outcome, Mapping):
+                raise TypeError("early_outcome must be a mapping or None")
+            object.__setattr__(self, "early_outcome", MappingProxyType(dict(self.early_outcome)))
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -513,6 +524,7 @@ class BacktestSkippedSignal:
             "segment": self.segment_key.to_json_dict(),
             "reason_codes": _canonical(self.reason_codes),
             "evidence_refs": list(self.evidence_refs),
+            "early_outcome": _canonical(self.early_outcome),
         }
 
 
@@ -548,6 +560,7 @@ class BacktestTrade:
     quality_state: QualityState
     reason_codes: tuple[ReasonCode, ...]
     evidence_refs: tuple[str, ...]
+    early_outcome: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("id", "checkpoint_id", "token_id"):
@@ -619,6 +632,10 @@ class BacktestTrade:
             "evidence_refs",
             normalize_texts(self.evidence_refs, "evidence_refs"),
         )
+        if self.early_outcome is not None:
+            if not isinstance(self.early_outcome, Mapping):
+                raise TypeError("early_outcome must be a mapping or None")
+            object.__setattr__(self, "early_outcome", MappingProxyType(dict(self.early_outcome)))
 
     @property
     def trade_id(self) -> UUID:
@@ -654,6 +671,7 @@ class BacktestTrade:
             "quality_state": self.quality_state.value,
             "reason_codes": _canonical(self.reason_codes),
             "evidence_refs": list(self.evidence_refs),
+            "early_outcome": _canonical(self.early_outcome),
         }
 
 
@@ -954,6 +972,7 @@ class BacktestReport:
             "segment_key",
             "net_pnl",
             "net_return",
+            "early_outcome",
             "reason_codes",
         )
         output = io.StringIO()
@@ -978,6 +997,11 @@ class BacktestReport:
                     "segment_key": trade.segment_key.key,
                     "net_pnl": str(trade.net_pnl),
                     "net_return": str(trade.net_return),
+                    "early_outcome": (
+                        _canonical_json(trade.early_outcome)
+                        if trade.early_outcome is not None
+                        else None
+                    ),
                     "reason_codes": ";".join(reason.code for reason in trade.reason_codes),
                 }
             )
@@ -1000,6 +1024,11 @@ class BacktestReport:
                     "segment_key": skip.segment_key.key,
                     "net_pnl": None,
                     "net_return": None,
+                    "early_outcome": (
+                        _canonical_json(skip.early_outcome)
+                        if skip.early_outcome is not None
+                        else None
+                    ),
                     "reason_codes": ";".join(reason.code for reason in skip.reason_codes),
                 }
             )
@@ -1072,6 +1101,7 @@ class BacktestHarness:
                         evidence_refs=()
                         if snapshot is None
                         else snapshot.evidence_refs,
+                        early_outcome=_early_outcome_json(item),
                     )
                 )
                 continue
@@ -1101,6 +1131,7 @@ class BacktestHarness:
                         segment_key=segment,
                         reason_codes=exit_errors,
                         evidence_refs=item.outcome.evidence_refs,
+                        early_outcome=_early_outcome_json(item),
                     )
                 )
                 continue
@@ -1128,6 +1159,7 @@ class BacktestHarness:
                         segment_key=segment,
                         reason_codes=(ReasonCode("BACKTEST_FILL_UNUSABLE", detail=str(exc)),),
                         evidence_refs=item.outcome.evidence_refs,
+                        early_outcome=_early_outcome_json(item),
                     )
                 )
 
@@ -1540,6 +1572,7 @@ class BacktestHarness:
                 ReasonCode(exit_plan.exit_reason),
             ),
             evidence_refs=evidence_refs,
+            early_outcome=_early_outcome_json(item),
         )
 
     @staticmethod

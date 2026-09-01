@@ -74,6 +74,19 @@ that canonical engine. Focused evidence: 13 shadow/paper execution tests pass,
 including poison execution, stale/high-impact/non-sellable, missed-fill and
 duplicate cases; Ruff and full mypy are clean. Tasks 8-13 remain in progress.
 
+Task 8 is now complete for its keyless replay/calibration seam. The canonical
+replay harness computes future-only ultra-early labels at 1m/3m/5m/15m/30m/1h
+with pre-target drawdown, 50K/100K/250K market-cap crossing/time labels,
+liquidity survival, severe-dump/rug and shadow-exit executability evidence.
+Checkpoint JSON/CSV and backtest trade/skip artifacts carry the early outcome
+projection while preserving the existing replay manifest, parser, registry,
+strategy and config identities. Early calibration is bucketed by explicit
+EarlyScore band and launch-age segment, but insufficient samples remain
+`INSUFFICIENT_SAMPLES` and no calibration result can auto-promote production
+thresholds. Focused evidence: 34 replay/backtest/calibration contract tests
+pass, two repeated replay CLI artifacts are byte-identical, and Ruff/full
+mypy are clean. Tasks 9-13 remain in progress.
+
 ## Current verdict
 
 `PHASE_11_SPRINT_11_3_COMPLETE_CROSS_CUTTING_HARDENING_COMPLETE_KEYLESS_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`

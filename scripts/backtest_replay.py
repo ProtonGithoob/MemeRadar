@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a bounded, keyless backtest over a normalized replay bundle."""
+"""Run a bounded, keyless backtest with early outcome projections."""
 
 from __future__ import annotations
 
@@ -86,6 +86,8 @@ def _run(arguments: argparse.Namespace) -> str:
         manifest=manifest,
         strategy=selected_strategy,
     )
+    if any(checkpoint.early_outcome is None for checkpoint in replay.checkpoints):
+        raise ValueError("replay did not produce early forward-outcome labels")
     report = BacktestHarness().run(
         replay,
         policy=BacktestPolicy(
