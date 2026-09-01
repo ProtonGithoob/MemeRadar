@@ -5,7 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/infra/compose/docker-compose.yml"
 API_URL="${MEMERADAR_API_URL:-http://localhost:8000}"
 WEB_URL="${MEMERADAR_WEB_URL:-http://localhost:3000}"
-export REDIS_HOST_PORT="${REDIS_HOST_PORT:-6380}"
+export POSTGRES_HOST_PORT="${POSTGRES_HOST_PORT:-55432}"
+export REDIS_HOST_PORT="${REDIS_HOST_PORT:-56379}"
 
 log() {
   printf '[MemeRadar] %s\n' "$*"
@@ -24,6 +25,7 @@ cd "${ROOT_DIR}"
 
 log "Starting MemeRadar in protected analysis/paper mode..."
 log "ANALYSIS_ONLY=true | PAPER_TRADING=true | MANUAL_EXECUTION=false | AUTO_EXECUTION=false"
+log "PostgreSQL host port: ${POSTGRES_HOST_PORT} (container port remains 5432)"
 log "Redis host port: ${REDIS_HOST_PORT} (container port remains 6379)"
 
 docker compose -f "${COMPOSE_FILE}" up -d --build
@@ -49,6 +51,7 @@ log "MemeRadar started successfully."
 log "Web: ${WEB_URL}"
 log "API: ${API_URL}"
 log "API health: ${API_URL}/health/live"
+log "PostgreSQL host: localhost:${POSTGRES_HOST_PORT}"
 log "Redis host: localhost:${REDIS_HOST_PORT}"
 log "Logs: docker compose -f infra/compose/docker-compose.yml logs -f"
 log "Stop: make down"
