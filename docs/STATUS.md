@@ -39,6 +39,15 @@ adjacent-window acceleration only when both windows are valid. Focused
 evidence: 13 feature/correlation tests pass and the full application mypy
 check is clean. Tasks 4-13 remain in progress.
 
+Task 4 is complete for launch-specific hardening: `LaunchRiskAnalyzer` emits
+bundle, first-block, creator-related, shared-funder and fresh-wallet ratios
+with explicit confidence, penalties, reason codes and hard-block candidates.
+Existing E11 launch/deployer/holder evidence can be supplied as projections;
+missing or stale/conflicted graph evidence remains UNKNOWN and cannot become a
+clean-launch PASS. Focused evidence: 55 launch-risk, decision, holder, wallet
+and signal-hardening tests pass; Ruff and full mypy are clean. Tasks 5-13
+remain in progress.
+
 ## Current verdict
 
 `PHASE_11_SPRINT_11_3_COMPLETE_CROSS_CUTTING_HARDENING_COMPLETE_KEYLESS_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`
