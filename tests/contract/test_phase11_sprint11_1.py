@@ -35,6 +35,7 @@ def test_reliability_measurement_is_provider_free_and_non_authorizing() -> None:
         assert not any(value in source for value in forbidden)
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "reliability-benchmark:" in makefile
+    assert "early-detection-benchmark:" in makefile
     assert "reliability-doctor:" in makefile
 
 

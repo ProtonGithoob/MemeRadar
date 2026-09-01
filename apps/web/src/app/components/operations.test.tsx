@@ -39,6 +39,23 @@ const overview: OperationsRecord = {
     reasonCodes: ["STALE_EVIDENCE"]
   }],
   metrics: { counters: { queue_saturations: 0 } },
+  earlyDetection: {
+    measurement_method: "synthetic_local",
+    evidence_class: "SYNTHETIC",
+    counters: { candidates_detected: 3, entry_ready: 1, shadow_fills: 1 },
+    rates: { entry_ready_rate: 0.333333, shadow_fill_rate: 0.333333 },
+    latencies: {
+      first_seen_to_decision_ms: {
+        SYNTHETIC: { p50_ms: 42, p95_ms: 48, p99_ms: 48 }
+      }
+    },
+    modes: {
+      analysis_only: true,
+      paper_trading: true,
+      manual_execution: false,
+      auto_execution: false
+    }
+  },
   modes: {
     analysisOnly: true,
     paperTrading: true,
@@ -65,6 +82,10 @@ describe("OperationsDashboard", () => {
     expect(screen.getByText("4 remaining / 100 limit")).toBeInTheDocument();
     expect(screen.getByText("$10.00 / $10.00 budget")).toBeInTheDocument();
     expect(screen.getByText("PROVIDER_DEGRADED")).toBeInTheDocument();
+    expect(screen.getByText("Ultra-early detection")).toBeInTheDocument();
+    expect(screen.getByText("SYNTHETIC / synthetic_local")).toBeInTheDocument();
+    expect(screen.getByText("42 ms p50 / 48 ms p95")).toBeInTheDocument();
+    expect(screen.getByText("AUTO EXECUTION: LOCKED")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "MODE: ANALYSIS ONLY" })).toBeInTheDocument();
   });
 

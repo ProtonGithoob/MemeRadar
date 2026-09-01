@@ -19,13 +19,15 @@ CALIBRATION_OUTPUT ?=
 PROFILE_ITERATIONS ?= 10
 RELIABILITY_ITERATIONS ?= 1000
 RELIABILITY_OUTPUT ?=
+EARLY_DETECTION_ITERATIONS ?= 100
+EARLY_DETECTION_OUTPUT ?=
 SBOM_OUTPUT ?=
 
 .PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-	backtest-replay calibrate-score reliability-benchmark reliability-doctor \
+	backtest-replay calibrate-score reliability-benchmark early-detection-benchmark reliability-doctor \
 	security-review security-review-external sbom
 
 
@@ -65,6 +67,10 @@ calibrate-score:
 reliability-benchmark:
 	$(PYTHON) scripts/reliability_benchmark.py --iterations $(RELIABILITY_ITERATIONS) \
 		$(if $(RELIABILITY_OUTPUT),--output $(RELIABILITY_OUTPUT),)
+
+early-detection-benchmark:
+	$(PYTHON) scripts/early_detection_benchmark.py --iterations $(EARLY_DETECTION_ITERATIONS) \
+		$(if $(EARLY_DETECTION_OUTPUT),--output $(EARLY_DETECTION_OUTPUT),)
 
 frontend-lint:
 	cd $(WEB_DIR) && npm run lint

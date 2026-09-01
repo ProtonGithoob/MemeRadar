@@ -22,6 +22,7 @@ from typing import Protocol, cast
 from memeradar_domain import AlertSeverity, QualityState
 from memeradar_domain.common import ensure_utc, freeze_mapping, normalize_texts, require_text
 
+from .early_observability import EarlyDetectionSnapshot
 from .reliability import LatencyMetric, ReliabilityMetrics, ReliabilitySnapshot
 
 
@@ -426,6 +427,7 @@ class OperationsOverview:
     providers: tuple[ProviderOperationalStatus, ...]
     alerts: tuple[OperationalAlert, ...]
     metrics: Mapping[str, object]
+    early_detection: Mapping[str, object] | EarlyDetectionSnapshot = field(default_factory=dict)
     modes: Mapping[str, bool] = field(default_factory=lambda: dict(_MODES))
     execution_eligible: bool = False
     schema_version: str = "operations-overview-v1"
@@ -454,6 +456,20 @@ class OperationsOverview:
             "metrics",
             freeze_mapping(cast(Mapping[str, object], safe_metrics), "metrics"),
         )
+        early_detection = self.early_detection
+        if isinstance(early_detection, EarlyDetectionSnapshot):
+            early_detection = early_detection.to_dict()
+        safe_early_detection = _safe_nested(early_detection)
+        if not isinstance(safe_early_detection, Mapping):
+            raise TypeError("early_detection must be a mapping")
+        object.__setattr__(
+            self,
+            "early_detection",
+            freeze_mapping(
+                cast(Mapping[str, object], safe_early_detection),
+                "early_detection",
+            ),
+        )
         normalized_modes = dict(self.modes)
         if normalized_modes != _MODES:
             raise ValueError("operations projection modes must remain protected")
@@ -474,6 +490,7 @@ class OperationsOverview:
             "providers": [provider.to_dict() for provider in self.providers],
             "alerts": [alert.to_dict() for alert in self.alerts],
             "metrics": _safe_nested(self.metrics),
+            "early_detection": _safe_nested(self.early_detection),
             "modes": dict(self.modes),
             "execution_eligible": False,
         }
@@ -537,6 +554,7 @@ class OperationsProjector:
         as_of: datetime,
         providers: Sequence[ProviderOperationalInput],
         reliability: ReliabilitySnapshot,
+        early_detection: EarlyDetectionSnapshot | Mapping[str, object] | None = None,
     ) -> OperationsOverview:
         normalized_as_of = ensure_utc(as_of, "as_of")
         if not isinstance(reliability, ReliabilitySnapshot):
@@ -607,6 +625,15 @@ class OperationsProjector:
             providers=tuple(statuses),
             alerts=tuple(alerts),
             metrics=reliability.to_dict(),
+            early_detection=(
+                {}
+                if early_detection is None
+                else (
+                    early_detection.to_dict()
+                    if isinstance(early_detection, EarlyDetectionSnapshot)
+                    else early_detection
+                )
+            ),
         )
 
     def _provider_status(
@@ -802,6 +829,7 @@ class InMemoryOperationsQueryService:
         providers: Sequence[ProviderOperationalInput] = (),
         policy: ProviderSloPolicy | None = None,
         clock: Callable[[], datetime] | None = None,
+        early_detection: EarlyDetectionSnapshot | Mapping[str, object] | None = None,
     ) -> None:
         if reliability is not None and not isinstance(
             reliability,
@@ -812,6 +840,12 @@ class InMemoryOperationsQueryService:
             raise TypeError("providers must contain ProviderOperationalInput values")
         self._reliability = reliability if reliability is not None else ReliabilityMetrics()
         self._providers = tuple(providers)
+        if early_detection is not None and not isinstance(
+            early_detection,
+            EarlyDetectionSnapshot | Mapping,
+        ):
+            raise TypeError("early_detection must be an EarlyDetectionSnapshot, mapping or None")
+        self._early_detection = early_detection
         self._projector = OperationsProjector(policy=policy)
         self._clock = clock or (lambda: datetime.now(UTC))
 
@@ -826,6 +860,7 @@ class InMemoryOperationsQueryService:
             as_of=normalized_as_of,
             providers=self._providers,
             reliability=snapshot,
+            early_detection=self._early_detection,
         )
 
 

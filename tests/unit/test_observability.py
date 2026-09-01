@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+from memeradar_application.early_observability import EarlyDetectionMetrics
 from memeradar_application.observability import (
     OperationalAlertCode,
     OperationalSloState,
@@ -171,3 +172,23 @@ def test_empty_operations_projection_is_unknown_and_does_not_fabricate_health() 
     assert overview.slo_state is OperationalSloState.UNVERIFIED
     assert overview.providers == ()
     assert overview.alerts == ()
+
+
+def test_early_detection_projection_is_read_only_and_preserves_evidence_class() -> None:
+    early_metrics = EarlyDetectionMetrics(measurement_method="synthetic_local")
+    early_metrics.record_candidate(source="direct_chain", launch_age_seconds=1)
+    early_metrics.record_entry_ready()
+    early_metrics.observe_latency("first_seen_to_decision_ms", 42, evidence_class="SYNTHETIC")
+
+    overview = OperationsProjector().project(
+        as_of=NOW,
+        providers=(),
+        reliability=ReliabilityMetrics().snapshot(),
+        early_detection=early_metrics.snapshot(),
+    )
+
+    payload = overview.to_dict()
+    assert payload["early_detection"]["measurement_method"] == "synthetic_local"
+    assert payload["early_detection"]["evidence_class"] == "SYNTHETIC"
+    assert payload["early_detection"]["counters"]["entry_ready"] == 1
+    assert payload["execution_eligible"] is False

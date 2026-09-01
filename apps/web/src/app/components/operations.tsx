@@ -41,6 +41,38 @@ function counterValue(metrics: Record<string, unknown>, name: string): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
+function nestedRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function earlyCounterValue(metrics: Record<string, unknown>, name: string): number {
+  const counters = nestedRecord(metrics.counters);
+  const value = counters?.[name];
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function earlyLatencySummary(metrics: Record<string, unknown>): string {
+  const latencies = nestedRecord(metrics.latencies);
+  const decisionLatency = nestedRecord(latencies?.first_seen_to_decision_ms);
+  if (decisionLatency === null) return "UNVERIFIED LATENCY";
+  const evidenceClass = typeof metrics.evidence_class === "string" ? metrics.evidence_class : "UNVERIFIED";
+  const summary = nestedRecord(decisionLatency[evidenceClass]) ??
+    Object.values(decisionLatency).map(nestedRecord).find((item) => item !== null) ?? null;
+  if (summary === null) return "UNVERIFIED LATENCY";
+  const p50 = summary.p50_ms;
+  const p95 = summary.p95_ms;
+  if (typeof p50 !== "number" || typeof p95 !== "number") return "UNVERIFIED LATENCY";
+  return `${p50} ms p50 / ${p95} ms p95`;
+}
+
+function earlyEvidenceSummary(metrics: Record<string, unknown>): string {
+  const evidence = typeof metrics.evidence_class === "string" ? metrics.evidence_class : "UNVERIFIED";
+  const method = typeof metrics.measurement_method === "string" ? metrics.measurement_method : "unknown";
+  return `${evidence} / ${method}`;
+}
+
 function failureMessage(result: ReadResult<OperationsRecord>): string | null {
   if (result.ok) return null;
   switch (result.reason) {
@@ -162,6 +194,42 @@ function OperationsContent({ result }: { result: ReadResult<OperationsRecord> })
             ))}
           </div>
         )}
+      </section>
+
+      <section className="section-block" aria-labelledby="operations-early-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">ULTRA-EARLY / SHADOW OBSERVABILITY</p>
+            <h3 id="operations-early-title">Ultra-early detection</h3>
+          </div>
+          <p className="section-note">Local fixture latency is evidence, not a production SLO.</p>
+        </div>
+        <div className="operations-counter-grid">
+          <div className="detail-panel">
+            <span className="card-label">EVIDENCE CLASS / METHOD</span>
+            <strong>{earlyEvidenceSummary(data.earlyDetection)}</strong>
+            <small>{earlyLatencySummary(data.earlyDetection)}</small>
+          </div>
+          <div className="detail-panel">
+            <span className="card-label">CANDIDATES / ENTRY READY</span>
+            <strong className="operations-big-value">
+              {earlyCounterValue(data.earlyDetection, "candidates_detected")} / {earlyCounterValue(data.earlyDetection, "entry_ready")}
+            </strong>
+            <small>ENTRY_READY RATE IS OBSERVATIONAL ONLY</small>
+          </div>
+          <div className="detail-panel">
+            <span className="card-label">SHADOW FILLS</span>
+            <strong className="operations-big-value">
+              {earlyCounterValue(data.earlyDetection, "shadow_fills")}
+            </strong>
+            <small>PAPER PATH ONLY</small>
+          </div>
+          <div className="detail-panel">
+            <span className="card-label">EXECUTION BOUNDARY</span>
+            <strong>AUTO EXECUTION: LOCKED</strong>
+            <small>NO SIGNER OR LIVE SUBMISSION PATH</small>
+          </div>
+        </div>
       </section>
 
       <section className="section-block" aria-labelledby="operations-metrics-title">

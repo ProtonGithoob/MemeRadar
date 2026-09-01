@@ -26,6 +26,11 @@ for source_root in (
         sys.path.insert(0, source_root_text)
 
 from memeradar_application.config import Settings  # noqa: E402
+from memeradar_application.early_observability import (  # noqa: E402
+    EarlyDetectionMetrics,
+    EarlyEvidenceClass,
+    EarlyLatencyMetric,
+)
 from memeradar_application.reliability import (  # noqa: E402
     LatencyMetric,
     ReliabilityMetrics,
@@ -61,6 +66,10 @@ def _internal_work(iteration: int, rounds: int) -> bytes:
 def _report(iterations: int) -> dict[str, object]:
     settings = Settings.from_env()
     metrics = ReliabilityMetrics(
+        max_samples=min(iterations, 10_000),
+        measurement_method="synthetic_local",
+    )
+    early_metrics = EarlyDetectionMetrics(
         max_samples=min(iterations, 10_000),
         measurement_method="synthetic_local",
     )
@@ -113,9 +122,29 @@ def _report(iterations: int) -> dict[str, object]:
             alert_ms,
             source=ReliabilitySource.INTERNAL,
         )
+        early_metrics.record_candidate(
+            source="fixture_chain",
+            launch_age_seconds=iteration % 300,
+            early_score=55 + (iteration % 40),
+            hard_block_reasons=("RISK_UNKNOWN",) if iteration % 13 == 0 else (),
+        )
+        early_metrics.observe_latency(
+            EarlyLatencyMetric.FIRST_SEEN_TO_DECISION,
+            8.0 + (iteration % 5) * 0.5,
+            evidence_class=EarlyEvidenceClass.SYNTHETIC,
+        )
+        early_metrics.observe_latency(
+            EarlyLatencyMetric.FIRST_SEEN_TO_ENTRY_READY,
+            12.0 + (iteration % 7) * 0.75,
+            evidence_class=EarlyEvidenceClass.SYNTHETIC,
+        )
+        early_metrics.record_stream_counter("stream_reconnects", int(iteration % 3 == 0))
+        early_metrics.record_stream_counter("gaps_detected", int(iteration % 17 == 0))
+        early_metrics.record_stream_counter("backpressure_events", int(iteration % 29 == 0))
 
     elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
     snapshot = metrics.snapshot()
+    early_snapshot = early_metrics.snapshot()
     metrics_dict = snapshot.to_dict()
     latency_names = (
         LatencyMetric.CHAIN_EVENT_TO_INGEST.value,
@@ -169,6 +198,7 @@ def _report(iterations: int) -> dict[str, object]:
             "manual_execution": settings.manual_execution,
             "auto_execution": settings.auto_execution,
         },
+        "early_detection": early_snapshot.to_dict(),
     }
     digest_material = json.dumps(report, sort_keys=True, separators=(",", ":"))
     report["artifact_digest"] = f"sha256:{sha256(digest_material.encode('utf-8')).hexdigest()}"

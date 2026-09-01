@@ -161,6 +161,10 @@ explicit future-outcome samples. Insufficient fixture evidence blocks
 promotion; no production config was changed or automatically frozen, and no
 execution, signing, provider or live-money authority was added. Live
 market-data and Telegram acceptance remains `BLOCKED_EXTERNAL`.
+Ultra-Early Option A Tasks 1-9 are complete for their keyless implementation
+and replay/benchmark seams. The approved path preserves the canonical
+decoder, event-time windows, deterministic risk and AlphaScore gates, paper
+ledger, forward labels and external-call measurement-only boundary.
 Phase 11 / Sprint 11.1 and research extension E11.1 are now complete for
 their keyless reliability and measurement seams: bounded percentile
 histograms, provider-labelled reconnect/fallback/duplicate/conflict/malformed
@@ -182,6 +186,16 @@ dashboard remain GET-only; synthetic or insufficient provider-network timing
 is `UNVERIFIED`, operational health is neutral to AlphaScore and execution,
 and no production SLO is claimed without live evidence. Live provider,
 Telegram and execution acceptance remains `BLOCKED_EXTERNAL`.
+
+Ultra-Early Option A Task 11 is now complete for its keyless observability
+seam: bounded candidate/source/risk/outcome/stream counters, score-by-age and
+classified latency percentiles are exposed through the existing operations
+projection and dashboard. The deterministic `early-detection-benchmark`
+reports synthetic evidence explicitly and never claims a production SLO;
+reliability benchmarking reuses the same projection. Focused backend and
+frontend operations tests pass, full Python lint/typecheck pass, all 44 web
+tests pass, and repeated benchmark artifacts are byte-identical. Tasks 12-13
+remain in progress.
 
 Phase 11 / Sprint 11.3 is now complete for its keyless security review. The
 versioned `security-review-v1` diagnostic verifies exact Python/npm lock

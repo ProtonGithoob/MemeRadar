@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from memeradar_api.main import create_app
 from memeradar_application.config import Settings
+from memeradar_application.early_observability import EarlyDetectionMetrics
 from memeradar_application.observability import (
     InMemoryOperationsQueryService,
     OperationalState,
@@ -20,8 +21,11 @@ NOW = datetime(2026, 9, 1, 6, 0, tzinfo=UTC)
 
 
 def test_operations_overview_is_bounded_get_only_and_preserves_unknown_states() -> None:
+    early_metrics = EarlyDetectionMetrics(measurement_method="synthetic_local")
+    early_metrics.record_candidate(source="fixture")
     service = InMemoryOperationsQueryService(
         reliability=ReliabilityMetrics().snapshot(),
+        early_detection=early_metrics.snapshot(),
         providers=(
             ProviderOperationalInput(
                 provider="fixture",
@@ -45,6 +49,9 @@ def test_operations_overview_is_bounded_get_only_and_preserves_unknown_states() 
     assert body["slo_state"] == "UNVERIFIED"
     assert body["providers"][0]["freshness_state"] == "UNKNOWN"
     assert body["execution_eligible"] is False
+    assert body["early_detection"]["measurement_method"] == "synthetic_local"
+    assert body["early_detection"]["evidence_class"] == "UNVERIFIED"
+    assert body["early_detection"]["counters"]["candidates_detected"] == 1
     assert body["modes"] == {
         "analysis_only": True,
         "paper_trading": True,

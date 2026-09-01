@@ -63,6 +63,7 @@ class OperationsOverviewResponse(_StrictModel):
     providers: list[ProviderOperationalResponse] = Field(default_factory=list)
     alerts: list[OperationalAlertResponse] = Field(default_factory=list)
     metrics: dict[str, object] = Field(default_factory=dict)
+    early_detection: dict[str, object] = Field(default_factory=dict)
     modes: dict[str, bool]
     execution_eligible: bool = False
 
@@ -107,6 +108,9 @@ def _overview_response(value: OperationsOverview) -> OperationsOverviewResponse:
     metrics = serialized["metrics"]
     if not isinstance(metrics, dict):
         raise ValueError("operations metrics must serialize to a mapping")
+    early_detection = serialized["early_detection"]
+    if not isinstance(early_detection, dict):
+        raise ValueError("early detection metrics must serialize to a mapping")
     return OperationsOverviewResponse(
         schema_version=value.schema_version,
         as_of=value.as_of,
@@ -117,6 +121,7 @@ def _overview_response(value: OperationsOverview) -> OperationsOverviewResponse:
         providers=[_provider_response(item) for item in value.providers],
         alerts=[_alert_response(item) for item in value.alerts],
         metrics=metrics,
+        early_detection=early_detection,
         modes=dict(value.modes),
         execution_eligible=False,
     )

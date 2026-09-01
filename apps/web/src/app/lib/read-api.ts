@@ -229,6 +229,7 @@ export interface OperationsRecord {
   providers: OperationalProviderRecord[];
   alerts: OperationalAlertRecord[];
   metrics: Record<string, unknown>;
+  earlyDetection: Record<string, unknown>;
   modes: OperationsModesRecord;
   executionEligible: false;
 }
@@ -1024,6 +1025,7 @@ function parseOperations(value: unknown): OperationsRecord | null {
     ? rawAlerts.map(parseOperationalAlert)
     : null;
   const metrics = safePayload(value.metrics ?? {});
+  const earlyDetection = safePayload(value.early_detection ?? {});
   const modes = value.modes;
   if (!isRecord(modes)) return null;
   const normalizedModes = {
@@ -1038,6 +1040,7 @@ function parseOperations(value: unknown): OperationsRecord | null {
     !OPERATIONAL_SLO_STATES.has(sloState as OperationalSloState) || policyVersion === null ||
     measurementMethod === null || providers === null || providers.some((item) => item === null) ||
     alerts === null || alerts.some((item) => item === null) || metrics === null ||
+    earlyDetection === null ||
     normalizedModes.analysisOnly !== true || normalizedModes.paperTrading !== true ||
     normalizedModes.manualExecution !== false || normalizedModes.autoExecution !== false ||
     value.execution_eligible !== false
@@ -1054,6 +1057,7 @@ function parseOperations(value: unknown): OperationsRecord | null {
     providers: providers as OperationalProviderRecord[],
     alerts: alerts as OperationalAlertRecord[],
     metrics,
+    earlyDetection,
     modes: normalizedModes as OperationsModesRecord,
     executionEligible: false
   };
