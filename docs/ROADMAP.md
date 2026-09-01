@@ -730,7 +730,9 @@ Prerequisites include sufficient paper/manual sample, calibrated risk, reliabili
 
 Execute where relevant, not as an isolated final cleanup:
 
-- [ ] API schema/versioning and OpenAPI docs.
+- [x] API schema/versioning and OpenAPI docs — generated `/openapi.json`,
+  versioned `/v1` business routes and compatibility rules are documented in
+  `docs/API.md` and contract-tested.
 - [x] Data retention/partition policies — `data-handling-v1` documents
   minimization, replay evidence, non-destructive retention and physical
   partition guidance.

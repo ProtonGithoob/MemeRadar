@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current verdict
 
-`PHASE_11_SPRINT_11_3_COMPLETE_CROSS_CUTTING_HARDENING_IN_PROGRESS_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`
+`PHASE_11_SPRINT_11_3_COMPLETE_CROSS_CUTTING_HARDENING_COMPLETE_KEYLESS_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
@@ -149,7 +149,8 @@ Telegram and live-money acceptance remains externally blocked.
 - Completed: `Cross-cutting hardening / Task 3 — data handling and architecture records` (keyless policy/ADR contract; legal/provider acceptance remains external)
 - Completed: `Cross-cutting hardening / Task 4 — deterministic invariants` (keyless fixed-seed property-style contract)
 - Completed: `Cross-cutting hardening / Task 5 — provider health comparison/routing seam` (keyless normalized evidence contract; live acceptance remains external)
-- Next checkpoint: `Cross-cutting hardening Task 6 — final quality gate and checkpoint`; after the independent backlog, preserve Gate P9 live
+- Completed: `Cross-cutting hardening / Task 6 — final quality gate and checkpoint` (keyless gate)
+- Next checkpoint: `Phase 12 — Manual Live Execution (locked by default)`; preserve Gate P9 live
   read-only market-data and Telegram acceptance `BLOCKED_EXTERNAL`, and
   preserve all protected modes. Phase 12 cannot start without explicit
   operator decision plus P9-P11 acceptance evidence. E11.2 Rust/Yellowstone
@@ -166,9 +167,9 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: cross-cutting hardening Task 6 — final quality gate and checkpoint;
-  Phase 12 manual-live work remains locked pending explicit operator decision
-  plus P9-P11 acceptance evidence.
+- Task: maintain the keyless analysis-only boundary; Phase 12 manual-live work
+  remains locked pending explicit operator decision plus P9-P11 acceptance
+  evidence.
 - Sprint 11.3 design and plan are recorded in
   `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-3-security-review-design.md`
   and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-3-security-review.md`.
@@ -888,14 +889,14 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Cross-cutting hardening Task 3 verification: `./.venv/bin/pytest tests/contract/test_cross_cutting_documents.py -q` passes `3 tests`; `data-handling-v1`, `privacy-provider-terms-v1` and ADR 0001/0002 preserve non-destructive retention, minimization, compliant-source rules, provider independence and protected paper-first execution. Legal, provider-contract and production retention approval remain `BLOCKED_EXTERNAL`.
 - Cross-cutting hardening Task 4 verification: `./.venv/bin/pytest tests/property/test_invariants.py -q` passes `3 tests`; fixed-seed property-style cases exercise 128 score evaluations, lifecycle random walks and 64 unresolved-gap/resume cases without weakening existing unit/contract suites.
 - Cross-cutting hardening Task 5 verification: `./.venv/bin/pytest tests/unit/test_provider_routing.py -q` passes `6 tests`; `ProviderHealthRouter` deterministically selects only fresh healthy candidates, preserves degraded/unknown/unavailable alternatives, fails closed on conflict and has no score or execution authority.
+- Cross-cutting hardening final gate: `make verify` exits `0`; Ruff, strict mypy (`82 source files`), `642 passed, 11 skipped`, branch-aware coverage `78%`, frontend lint/typecheck/Vitest (`14 files / 41 tests`), Compose config, secret scan, migration parity, `security-review-v1` and `security-sbom-v1` all pass. `make frontend-build` exits `0` with the expected operator routes.
+- Cross-cutting hardening external review: `make security-review-external` exits `2` with `container_scan`, `npm_audit` and `pip_audit` all `BLOCKED_EXTERNAL`; direct read-only npm audit evidence remains clean after the Playwright remediation, but no complete production vulnerability scan is claimed.
 
 ## Next task
 
-Run cross-cutting hardening Task 6 (final quality gate and checkpoint)
-and the remaining independent keyless backlog. Phase 12 is intentionally locked
-by default. Do not implement or enable manual-live execution without the
-explicit operator decision and P9-P11 acceptance evidence required by
-`docs/ROADMAP.md`; preserve
+Phase 12 is intentionally locked by default. Do not implement or enable
+manual-live execution without the explicit operator decision and P9-P11
+acceptance evidence required by `docs/ROADMAP.md`; preserve
 `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, and
 `AUTO_EXECUTION=false`. Continue only independent keyless cross-cutting work
 or approved research extensions. E11.2 Rust/Yellowstone remains conditional on
