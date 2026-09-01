@@ -153,6 +153,17 @@ clear a kill switch, mutate protected modes or authorize execution. Missing
 provider or role credentials are configuration blockers for their live
 acceptance, not provider PASS results.
 
+The cross-cutting `ProviderHealthRouter` compares normalized
+`ProviderOperationalInput` values for one capability and selects only a fresh
+healthy candidate using deterministic priority, latency and provider-name
+ordering. Missing freshness, stale/degraded state, unknown state, provider
+disagreement and all-down conditions remain explicit route outcomes; a
+conflicted candidate fails closed even when another candidate is healthy. The
+selection is an application diagnostic seam only: it does not call a provider,
+change AlphaScore, authorize `ENTRY_READY` or grant execution eligibility.
+Live multi-provider comparison and contractual acceptance remain
+`BLOCKED_EXTERNAL` until configured read-only providers are available.
+
 Sprint 9.3 position views are not a provider adapter. The SQLAlchemy read
 projection consumes existing normalized `ObservationRow` market records and
 paper `PositionRow` values, allow-lists price fields, and preserves source,

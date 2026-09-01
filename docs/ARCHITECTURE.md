@@ -195,6 +195,13 @@ Optional extension ports may be introduced only if current normalized contracts 
 
 Adapters own transport, auth, provider payload mapping, timeout/retry/rate-limit semantics and health telemetry. External labels and third-party token scores are evidence, never authority.
 
+The provider-health comparison seam in
+`memeradar_application.provider_routing` consumes normalized operational
+health records only. It deterministically prefers fresh healthy candidates and
+returns explicit degraded, unknown, conflicted or unavailable outcomes when a
+safe selection is not possible. It has no provider SDK, scoring, configuration
+mutation, signer or execution authority.
+
 ## Launch-time micro-feature path
 
 In addition to normal `1m/5m/15m` feature windows, newly launched candidates may use `5s/15s/30s/60s` bounded micro-windows for:

@@ -748,5 +748,8 @@ Execute where relevant, not as an isolated final cleanup:
   from the pinned Python/npm locks and versioned container bases; unavailable
   external vulnerability scanners remain `BLOCKED_EXTERNAL`.
 - [x] Disaster-recovery documentation.
-- [ ] Multi-provider comparison/health routing.
+- [x] Multi-provider comparison/health routing — normalized provider-health
+  selection is deterministic and fails closed for missing, degraded, unknown,
+  conflicted and unavailable evidence; live contractual acceptance remains
+  `BLOCKED_EXTERNAL`.
 - [ ] Optional future multi-chain abstraction only after Solana product fit is validated.

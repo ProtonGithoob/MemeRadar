@@ -213,6 +213,20 @@ for a concrete external finding. See
 [`docs/RUNBOOKS/SECURITY_REVIEW.md`](RUNBOOKS/SECURITY_REVIEW.md) and
 [`docs/THREAT_MODEL.md`](THREAT_MODEL.md).
 
+## Cross-cutting hardening contracts
+
+The keyless hardening suite also covers the generated API version/OpenAPI
+surface, retention/privacy/terms/ADR records, fixed-seed score/lifecycle/stream
+invariants and normalized provider-health selection:
+
+```text
+./.venv/bin/pytest tests/contract/test_api_schema.py tests/contract/test_cross_cutting_documents.py tests/unit/test_sbom.py tests/property/test_invariants.py tests/unit/test_provider_routing.py -q
+```
+
+Provider-health routing is evidence-only. A missing, stale, unknown or
+conflicted candidate never becomes a safe fallback, and the suite does not
+claim live-provider or contractual acceptance.
+
 ## Phase 10.1 replay harness
 
 The keyless replay suite covers normalized dataset round trips, deterministic

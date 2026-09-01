@@ -35,11 +35,11 @@
 
 ## Task 5: Provider health comparison/routing seam
 
-- [ ] Add normalized provider-health selection/comparison contracts outside the
+- [x] Add normalized provider-health selection/comparison contracts outside the
   domain and without provider SDK imports.
-- [ ] Test deterministic healthy preference, degraded/unknown/conflicted
-  outcomes and no execution/score authority.
-- [ ] Document that routing remains evidence-only until live acceptance.
+- [x] Test deterministic healthy preference, degraded/unknown/conflicted
+  outcomes and no execution/score authority (`6 passed`).
+- [x] Document that routing remains evidence-only until live acceptance.
 
 ## Task 6: Checkpoint
 

@@ -148,7 +148,8 @@ Telegram and live-money acceptance remains externally blocked.
 - Completed: `Cross-cutting hardening / Task 2 — deterministic SBOM and dependency evidence` (keyless contract)
 - Completed: `Cross-cutting hardening / Task 3 — data handling and architecture records` (keyless policy/ADR contract; legal/provider acceptance remains external)
 - Completed: `Cross-cutting hardening / Task 4 — deterministic invariants` (keyless fixed-seed property-style contract)
-- Next checkpoint: `Cross-cutting hardening Task 5 — provider health comparison/routing seam`; after the independent backlog, preserve Gate P9 live
+- Completed: `Cross-cutting hardening / Task 5 — provider health comparison/routing seam` (keyless normalized evidence contract; live acceptance remains external)
+- Next checkpoint: `Cross-cutting hardening Task 6 — final quality gate and checkpoint`; after the independent backlog, preserve Gate P9 live
   read-only market-data and Telegram acceptance `BLOCKED_EXTERNAL`, and
   preserve all protected modes. Phase 12 cannot start without explicit
   operator decision plus P9-P11 acceptance evidence. E11.2 Rust/Yellowstone
@@ -165,9 +166,9 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: cross-cutting hardening Task 5 — provider health comparison/routing
-  seam; Phase 12 manual-live work remains locked pending explicit operator
-  decision plus P9-P11 acceptance evidence.
+- Task: cross-cutting hardening Task 6 — final quality gate and checkpoint;
+  Phase 12 manual-live work remains locked pending explicit operator decision
+  plus P9-P11 acceptance evidence.
 - Sprint 11.3 design and plan are recorded in
   `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-3-security-review-design.md`
   and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-3-security-review.md`.
@@ -886,10 +887,11 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Cross-cutting hardening Task 2 verification: `./.venv/bin/pytest tests/unit/test_sbom.py -q` passes `2 tests`; `make sbom` exits `0` with `security-sbom-v1`, 581 deterministic components and digest `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`. The Make/CI quality gates now run the exporter; no external scanner result is fabricated.
 - Cross-cutting hardening Task 3 verification: `./.venv/bin/pytest tests/contract/test_cross_cutting_documents.py -q` passes `3 tests`; `data-handling-v1`, `privacy-provider-terms-v1` and ADR 0001/0002 preserve non-destructive retention, minimization, compliant-source rules, provider independence and protected paper-first execution. Legal, provider-contract and production retention approval remain `BLOCKED_EXTERNAL`.
 - Cross-cutting hardening Task 4 verification: `./.venv/bin/pytest tests/property/test_invariants.py -q` passes `3 tests`; fixed-seed property-style cases exercise 128 score evaluations, lifecycle random walks and 64 unresolved-gap/resume cases without weakening existing unit/contract suites.
+- Cross-cutting hardening Task 5 verification: `./.venv/bin/pytest tests/unit/test_provider_routing.py -q` passes `6 tests`; `ProviderHealthRouter` deterministically selects only fresh healthy candidates, preserves degraded/unknown/unavailable alternatives, fails closed on conflict and has no score or execution authority.
 
 ## Next task
 
-Continue cross-cutting hardening Task 5 (provider health comparison/routing seam)
+Run cross-cutting hardening Task 6 (final quality gate and checkpoint)
 and the remaining independent keyless backlog. Phase 12 is intentionally locked
 by default. Do not implement or enable manual-live execution without the
 explicit operator decision and P9-P11 acceptance evidence required by
