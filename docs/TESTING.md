@@ -157,6 +157,28 @@ production SLO; configured live access must be separately verified and remains
 [`docs/RUNBOOKS/RELIABILITY.md`](RUNBOOKS/RELIABILITY.md) for outage,
 retention and isolated backup/restore procedures.
 
+## Phase 11.2 observability and operations
+
+The keyless operations suite covers normalized provider operational records,
+healthy/degraded/down/unknown precedence, low/exhausted quota, cost-budget
+pressure, synthetic-versus-runtime SLO evidence, stream/queue/outbox alerts,
+stable redacted serialization and protected modes. API contracts verify the
+injected `GET /v1/operations/overview` route is bounded and read-only. Web
+tests cover the `/operations` dashboard, empty/unavailable states, provider
+degradation, quota/cost visibility and alert presentation.
+
+Focused commands:
+
+```text
+./.venv/bin/pytest tests/unit/test_observability.py tests/contract/test_phase11_sprint11_2.py -q
+cd apps/web && npm test -- --run src/app/components/operations.test.tsx src/app/lib/read-api.test.ts
+```
+
+The operations dashboard does not convert synthetic/keyless evidence into a
+production SLO or provider PASS. Use
+[`docs/RUNBOOKS/OPERATIONS.md`](RUNBOOKS/OPERATIONS.md) for provider outage,
+database pressure, queue lag, alert failure and quota/cost response.
+
 ## Phase 10.1 replay harness
 
 The keyless replay suite covers normalized dataset round trips, deterministic

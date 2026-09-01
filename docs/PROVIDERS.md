@@ -263,6 +263,17 @@ retry/dead-letter and processing latency. All labels are allow-listed and
 redaction-safe. `make reliability-doctor` validates only local contracts and
 returns `BLOCKED_EXTERNAL` when no live provider check is performed.
 
+Phase 11.2 projects these records through the provider-independent
+`OperationsProjector` and `GET /v1/operations/overview`. The versioned
+provider SLO policy requires a minimum number of non-synthetic provider-network
+samples before reporting `MEASURED`; fixture/keyless timing remains
+`UNVERIFIED`. Current provider state, freshness, quota and cost-budget
+pressure produce explicit `UNKNOWN`/`DEGRADED`/`DOWN` alerts and are visible in
+the server-rendered `/operations` dashboard. They are operational evidence
+only and cannot increase AlphaScore or authorize `ENTRY_READY`. See
+[`docs/RUNBOOKS/OPERATIONS.md`](RUNBOOKS/OPERATIONS.md) for bounded outage,
+quota and alert-failure response.
+
 ## Correlation / launch micro-feature seam
 
 Research extension E6.0 consumes only application-facing normalized

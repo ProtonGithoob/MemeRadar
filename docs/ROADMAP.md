@@ -633,10 +633,23 @@ synthetic measurements.
 
 ### Sprint 11.2 — Observability / Operations
 
-- [ ] Metrics dashboards and alerts.
-- [ ] Provider SLOs and degradation policy.
-- [ ] Runbooks for provider outage, DB pressure, queue lag and alert failure.
-- [ ] Cost/quota dashboard.
+- [x] Metrics dashboards and alerts.
+- [x] Provider SLOs and degradation policy.
+- [x] Runbooks for provider outage, DB pressure, queue lag and alert failure.
+- [x] Cost/quota dashboard.
+
+Sprint 11.2 keyless state: complete. The provider-independent
+`OperationsProjector` consumes normalized provider-health inputs and the
+bounded Phase 11.1 reliability snapshot, producing a versioned read-only
+operations overview with explicit overall/provider degradation, active
+stream/queue/outbox/provider alerts, quota and cost-budget visibility and
+protected modes. The provider SLO policy reports `UNVERIFIED` for synthetic or
+insufficient evidence and only evaluates non-synthetic provider-network
+samples; no production SLO is claimed from the keyless checkout. The API and
+server-rendered `/operations` dashboard are GET-only and preserve UNKNOWN,
+UNVERIFIED and BLOCKED_EXTERNAL states. Runbooks cover provider outage, DB
+pressure, queue lag, alert delivery failure and quota/cost response. No
+AlphaScore, ENTRY_READY, signing or execution path consumes operational health.
 
 ### Sprint 11.3 — Security Review
 

@@ -16,6 +16,10 @@ from memeradar_application.control import (
     InMemoryControlPlane,
 )
 from memeradar_application.manual_submission import ManualMintSubmissionService
+from memeradar_application.observability import (
+    InMemoryOperationsQueryService,
+    OperationsReadPort,
+)
 from memeradar_application.read_api import ReadQueryPort
 from memeradar_persistence import (
     SqlAlchemyControlPlane,
@@ -36,6 +40,7 @@ from .auth import RoleTokenAuthenticator
 from .control import build_control_router
 from .health import build_health_router
 from .manual import build_manual_router
+from .operations import build_operations_router
 from .read import build_read_router
 
 LOGGER = logging.getLogger(__name__)
@@ -46,6 +51,7 @@ def create_app(
     manual_service: ManualMintSubmissionService | None = None,
     read_service: ReadQueryPort | None = None,
     control_plane: ControlPlanePort | None = None,
+    operations_service: OperationsReadPort | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings.from_env()
     configure_logging(runtime_settings.log_level)
@@ -81,8 +87,11 @@ def create_app(
             runtime_settings.alert_rate_limit_window_seconds
         )
         control_plane = InMemoryControlPlane(initial_config=initial_config)
+    if operations_service is None:
+        operations_service = InMemoryOperationsQueryService()
     app.state.read_service = read_service
     app.state.control_plane = control_plane
+    app.state.operations_service = operations_service
 
     @app.middleware("http")
     async def correlation_middleware(
@@ -128,6 +137,9 @@ def create_app(
         )
     )
     app.include_router(build_read_router(read_service, authenticator=role_authenticator))
+    app.include_router(
+        build_operations_router(operations_service, authenticator=role_authenticator)
+    )
     if owned_read_service is not None:
         app.add_event_handler("shutdown", owned_read_service.aclose)
     elif owned_engine is not None:

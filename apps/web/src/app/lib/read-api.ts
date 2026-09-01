@@ -137,6 +137,60 @@ export interface ProviderHealthRecord {
   consecutiveFailures: number;
 }
 
+export type OperationalState = "HEALTHY" | "DEGRADED" | "DOWN" | "UNKNOWN";
+export type OperationalSloState = "UNVERIFIED" | "MEASURED" | "VIOLATED";
+export type OperationalAlertSeverity = "INFO" | "WARNING" | "CRITICAL";
+
+export interface OperationalProviderRecord {
+  provider: string;
+  capability: string;
+  state: OperationalState;
+  sloState: OperationalSloState;
+  checkedAt: string;
+  latencyMs: number | null;
+  freshnessState: TimelineQuality | null;
+  quotaLimit: number | null;
+  quotaRemaining: number | null;
+  quotaResetAt: string | null;
+  costTodayUsd: number | null;
+  costBudgetUsd: number | null;
+  errorClass: string | null;
+  consecutiveFailures: number;
+  reasonCodes: string[];
+}
+
+export interface OperationalAlertRecord {
+  code: string;
+  severity: OperationalAlertSeverity;
+  dedupeKey: string;
+  provider: string | null;
+  capability: string | null;
+  message: string;
+  observedAt: string;
+  reasonCodes: string[];
+}
+
+export interface OperationsModesRecord {
+  analysisOnly: true;
+  paperTrading: true;
+  manualExecution: false;
+  autoExecution: false;
+}
+
+export interface OperationsRecord {
+  schemaVersion: "operations-overview-v1";
+  asOf: string;
+  overallState: OperationalState;
+  sloState: OperationalSloState;
+  policyVersion: string;
+  measurementMethod: string;
+  providers: OperationalProviderRecord[];
+  alerts: OperationalAlertRecord[];
+  metrics: Record<string, unknown>;
+  modes: OperationsModesRecord;
+  executionEligible: false;
+}
+
 export interface AuditEventRecord {
   id: string;
   actor: string;
@@ -346,6 +400,13 @@ const PROVIDER_HEALTH_STATES = new Set<ProviderHealthState>([
   "DEGRADED",
   "DOWN",
   "UNKNOWN"
+]);
+const OPERATIONAL_STATES = new Set<OperationalState>(["HEALTHY", "DEGRADED", "DOWN", "UNKNOWN"]);
+const OPERATIONAL_SLO_STATES = new Set<OperationalSloState>(["UNVERIFIED", "MEASURED", "VIOLATED"]);
+const OPERATIONAL_ALERT_SEVERITIES = new Set<OperationalAlertSeverity>([
+  "INFO",
+  "WARNING",
+  "CRITICAL"
 ]);
 const POSITION_MODES = new Set<PositionMode>(["PAPER", "LIVE"]);
 const POSITION_STATES = new Set<PositionState>([
@@ -633,6 +694,12 @@ function integer(value: unknown, minimum: number, maximum: number): number | nul
   return parsed !== null && Number.isInteger(parsed) ? parsed : null;
 }
 
+function optionalInteger(value: unknown, minimum: number, maximum: number): number | null | undefined {
+  if (value === null || value === undefined) return null;
+  const parsed = integer(value, minimum, maximum);
+  return parsed === null ? undefined : parsed;
+}
+
 function optionalQuality(value: unknown): TimelineQuality | null | undefined {
   if (value === null || value === undefined) return null;
   const parsed = boundedString(value, 16);
@@ -720,6 +787,139 @@ function parseProviderHealth(value: unknown): ProviderHealthRecord | null {
     freshnessState,
     errorClass,
     consecutiveFailures
+  };
+}
+
+function parseOperationalProvider(value: unknown): OperationalProviderRecord | null {
+  if (!isRecord(value)) return null;
+  const provider = boundedString(value.provider, 128);
+  const capability = boundedString(value.capability, 128);
+  const state = boundedString(value.state, 16);
+  const sloState = boundedString(value.slo_state, 16);
+  const checkedAt = timestamp(value.checked_at);
+  const latencyMs = optionalFiniteNumber(value.latency_ms, 0, 300_000);
+  const freshnessState = optionalQuality(value.freshness_state);
+  const quotaLimit = optionalInteger(value.quota_limit, 0, 1_000_000_000);
+  const quotaRemaining = optionalInteger(value.quota_remaining, 0, 1_000_000_000);
+  const quotaResetAt = optionalTimestamp(value.quota_reset_at);
+  const costTodayUsd = optionalFiniteNumber(value.cost_today_usd, 0, 1_000_000_000);
+  const costBudgetUsd = optionalFiniteNumber(value.cost_budget_usd, 0, 1_000_000_000);
+  const errorClass = optionalBoundedString(value.error_class, 128);
+  const consecutiveFailures = integer(value.consecutive_failures, 0, 1_000_000);
+  const reasonCodes = stringArray(value.reason_codes, 128);
+  if (
+    provider === null || capability === null || state === null ||
+    !OPERATIONAL_STATES.has(state as OperationalState) || sloState === null ||
+    !OPERATIONAL_SLO_STATES.has(sloState as OperationalSloState) || checkedAt === null ||
+    latencyMs === undefined || freshnessState === undefined || quotaLimit === undefined ||
+    quotaRemaining === undefined || quotaResetAt === undefined || costTodayUsd === undefined ||
+    costBudgetUsd === undefined || errorClass === undefined ||
+    consecutiveFailures === null || reasonCodes === null
+  ) {
+    return null;
+  }
+  if (
+    quotaLimit !== null && quotaRemaining !== null && quotaRemaining > quotaLimit
+  ) {
+    return null;
+  }
+  return {
+    provider,
+    capability,
+    state: state as OperationalState,
+    sloState: sloState as OperationalSloState,
+    checkedAt,
+    latencyMs,
+    freshnessState,
+    quotaLimit,
+    quotaRemaining,
+    quotaResetAt,
+    costTodayUsd,
+    costBudgetUsd,
+    errorClass,
+    consecutiveFailures,
+    reasonCodes
+  };
+}
+
+function parseOperationalAlert(value: unknown): OperationalAlertRecord | null {
+  if (!isRecord(value)) return null;
+  const code = boundedString(value.code, 64);
+  const severity = boundedString(value.severity, 16);
+  const dedupeKey = boundedString(value.dedupe_key, 256);
+  const provider = nullableString(value.provider, 128);
+  const capability = nullableString(value.capability, 128);
+  const message = boundedString(value.message, 256);
+  const observedAt = timestamp(value.observed_at);
+  const reasonCodes = stringArray(value.reason_codes, 128);
+  if (
+    code === null || severity === null || !OPERATIONAL_ALERT_SEVERITIES.has(severity as OperationalAlertSeverity) ||
+    dedupeKey === null || provider === undefined || capability === undefined || message === null ||
+    observedAt === null || reasonCodes === null
+  ) {
+    return null;
+  }
+  return {
+    code,
+    severity: severity as OperationalAlertSeverity,
+    dedupeKey,
+    provider,
+    capability,
+    message,
+    observedAt,
+    reasonCodes
+  };
+}
+
+function parseOperations(value: unknown): OperationsRecord | null {
+  if (!isRecord(value)) return null;
+  const schemaVersion = boundedString(value.schema_version, 64);
+  const asOf = timestamp(value.as_of);
+  const overallState = boundedString(value.overall_state, 16);
+  const sloState = boundedString(value.slo_state, 16);
+  const policyVersion = boundedString(value.policy_version, 64);
+  const measurementMethod = boundedString(value.measurement_method, 64);
+  const rawProviders = value.providers;
+  const rawAlerts = value.alerts;
+  const providers = Array.isArray(rawProviders) && rawProviders.length <= MAX_ARRAY_LENGTH
+    ? rawProviders.map(parseOperationalProvider)
+    : null;
+  const alerts = Array.isArray(rawAlerts) && rawAlerts.length <= MAX_ARRAY_LENGTH
+    ? rawAlerts.map(parseOperationalAlert)
+    : null;
+  const metrics = safePayload(value.metrics ?? {});
+  const modes = value.modes;
+  if (!isRecord(modes)) return null;
+  const normalizedModes = {
+    analysisOnly: modes.analysis_only,
+    paperTrading: modes.paper_trading,
+    manualExecution: modes.manual_execution,
+    autoExecution: modes.auto_execution
+  };
+  if (
+    schemaVersion !== "operations-overview-v1" || asOf === null || overallState === null ||
+    !OPERATIONAL_STATES.has(overallState as OperationalState) || sloState === null ||
+    !OPERATIONAL_SLO_STATES.has(sloState as OperationalSloState) || policyVersion === null ||
+    measurementMethod === null || providers === null || providers.some((item) => item === null) ||
+    alerts === null || alerts.some((item) => item === null) || metrics === null ||
+    normalizedModes.analysisOnly !== true || normalizedModes.paperTrading !== true ||
+    normalizedModes.manualExecution !== false || normalizedModes.autoExecution !== false ||
+    value.execution_eligible !== false
+  ) {
+    return null;
+  }
+  return {
+    schemaVersion,
+    asOf,
+    overallState: overallState as OperationalState,
+    sloState: sloState as OperationalSloState,
+    policyVersion,
+    measurementMethod,
+    providers: providers as OperationalProviderRecord[],
+    alerts: alerts as OperationalAlertRecord[],
+    metrics,
+    modes: normalizedModes as OperationsModesRecord,
+    executionEligible: false
   };
 }
 
@@ -1263,6 +1463,11 @@ export async function fetchProviderHealth(
   return url === null
     ? configuredFailure()
     : request(url, (value) => parsePage(value, parseProviderHealth));
+}
+
+export async function fetchOperations(): Promise<ReadResult<OperationsRecord>> {
+  const url = endpoint("/v1/operations/overview");
+  return url === null ? configuredFailure() : request(url, parseOperations);
 }
 
 export async function fetchAuditEvents(

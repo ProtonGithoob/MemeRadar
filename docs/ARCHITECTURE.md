@@ -527,6 +527,18 @@ Rust/Yellowstone authorization. The operational retention/index review and
 isolated backup/restore procedure are in
 [`docs/RUNBOOKS/RELIABILITY.md`](RUNBOOKS/RELIABILITY.md).
 
+Phase 11.2 adds the provider-independent `OperationsProjector` and
+`OperationsReadPort`. It combines normalized provider-health records with the
+bounded reliability snapshot into a deterministic, read-only overview of
+provider state, versioned SLO evidence, stream/queue/outbox alerts and
+quota/cost pressure. Synthetic or insufficient provider-network samples stay
+`UNVERIFIED`; missing/stale/conflicted evidence stays `UNKNOWN`/`DEGRADED`.
+The API route and server-rendered `/operations` page are projections only.
+Operational health is never passed to AlphaScore, decision transitions or
+execution authority. Incident procedures are in
+[`docs/RUNBOOKS/OPERATIONS.md`](RUNBOOKS/OPERATIONS.md) and the lower-level
+[`docs/RUNBOOKS/RELIABILITY.md`](RUNBOOKS/RELIABILITY.md).
+
 ## Scaling strategy
 
 Do not split services until measurements justify it. Likely future extraction candidates:

@@ -857,6 +857,22 @@ these cursors are pagination positions, not authorization tokens.
 - latency/rate-limit/quota/freshness metadata
 - error_class redacted
 
+### operations_overview (read projection; no migration)
+Phase 11.2 does not add a physical table. `OperationsProjector` combines
+normalized provider-health inputs with the bounded reliability snapshot at a
+known `as_of` time. The versioned `operations-overview-v1` response contains:
+
+- overall and per-provider operational state;
+- versioned SLO policy and explicit `UNVERIFIED`/`MEASURED`/`VIOLATED` status;
+- bounded quota and cost-today/budget values;
+- allow-listed counters, gauges and latency summaries;
+- deduplicable stream, queue, recovery, outbox and provider alerts;
+- protected modes and `execution_eligible=false`.
+
+It is an in-memory/read-only projection until a durable metrics backend is
+justified by measurement. Missing values remain unknown; operational health is
+not stored as AlphaScore or decision evidence.
+
 ### audit_events
 Immutable operator/system-sensitive audit log.
 - id

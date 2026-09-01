@@ -6,6 +6,7 @@ import {
   fetchConfigVersions,
   fetchControlConfig,
   fetchControlState,
+  fetchOperations,
   fetchProviderHealth,
   fetchPositions,
   fetchPosition,
@@ -148,6 +149,66 @@ describe("server-side read gateway", () => {
     const malformed = await fetchCandidates({});
     expect(malformed).toEqual({ ok: false, reason: "INVALID_RESPONSE" });
     expect(JSON.stringify(malformed)).not.toContain("database-password");
+  });
+
+  it("fetches operations observability as a bounded read-only projection", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      schema_version: "operations-overview-v1",
+      as_of: "2026-09-01T06:00:00.000Z",
+      overall_state: "UNKNOWN",
+      slo_state: "UNVERIFIED",
+      policy_version: "provider-slo-v1",
+      measurement_method: "synthetic_local",
+      providers: [],
+      alerts: [],
+      metrics: { counters: { queue_saturations: 0 } },
+      modes: {
+        analysis_only: true,
+        paper_trading: true,
+        manual_execution: false,
+        auto_execution: false
+      },
+      execution_eligible: false
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchOperations();
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.internal:8000/v1/operations/overview",
+      expect.objectContaining({ cache: "no-store" })
+    );
+    if (result.ok) {
+      expect(result.data.overallState).toBe("UNKNOWN");
+      expect(result.data.sloState).toBe("UNVERIFIED");
+      expect(result.data.executionEligible).toBe(false);
+    }
+  });
+
+  it("rejects operations responses that attempt to enable execution or modes", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({
+      schema_version: "operations-overview-v1",
+      as_of: "2026-09-01T06:00:00.000Z",
+      overall_state: "HEALTHY",
+      slo_state: "MEASURED",
+      policy_version: "provider-slo-v1",
+      measurement_method: "runtime",
+      providers: [],
+      alerts: [],
+      metrics: {},
+      modes: {
+        analysis_only: true,
+        paper_trading: true,
+        manual_execution: false,
+        auto_execution: false
+      },
+      execution_eligible: true
+    })));
+
+    expect(await fetchOperations()).toEqual({ ok: false, reason: "INVALID_RESPONSE" });
   });
 
   it("rejects malformed records instead of partially rendering them", async () => {

@@ -331,6 +331,15 @@ requires migration/integration verification. Reliability telemetry is
 allow-listed and does not retain provider payloads, credentials or exception
 text.
 
+Phase 11.2 operations telemetry remains a read-only evidence-quality
+projection. Provider SLO status requires non-synthetic runtime samples;
+`UNVERIFIED`, `UNKNOWN`, `DEGRADED` and `DOWN` states remain explicit. Quota,
+cost-budget, queue, recovery and outbox alerts are bounded and deduplicable,
+but cannot affect AlphaScore, authorize `ENTRY_READY`, clear controls, sign or
+submit transactions. The operator response procedures are documented in
+[`docs/RUNBOOKS/OPERATIONS.md`](RUNBOOKS/OPERATIONS.md); they prohibit secret
+logging and destructive data cleanup during incidents.
+
 ## Threats to test
 
 - malicious token metadata;

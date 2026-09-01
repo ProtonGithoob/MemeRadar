@@ -20,6 +20,7 @@ export function OperatorHeader() {
         <Link href="/positions">Positions</Link>
         <Link href="/wallets">Wallets</Link>
         <Link href="/providers">Providers</Link>
+        <Link href="/operations">Operations</Link>
         <Link href="/settings">Settings</Link>
         <Link href="/audit">Audit</Link>
       </nav>
