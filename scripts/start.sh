@@ -3,10 +3,12 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/infra/compose/docker-compose.yml"
-API_URL="${MEMERADAR_API_URL:-http://localhost:8000}"
-WEB_URL="${MEMERADAR_WEB_URL:-http://localhost:3000}"
 export POSTGRES_HOST_PORT="${POSTGRES_HOST_PORT:-55432}"
 export REDIS_HOST_PORT="${REDIS_HOST_PORT:-56379}"
+export API_HOST_PORT="${API_HOST_PORT:-18000}"
+export WEB_HOST_PORT="${WEB_HOST_PORT:-13000}"
+API_URL="${MEMERADAR_API_URL:-http://localhost:${API_HOST_PORT}}"
+WEB_URL="${MEMERADAR_WEB_URL:-http://localhost:${WEB_HOST_PORT}}"
 
 log() {
   printf '[MemeRadar] %s\n' "$*"
@@ -25,8 +27,10 @@ cd "${ROOT_DIR}"
 
 log "Starting MemeRadar in protected analysis/paper mode..."
 log "ANALYSIS_ONLY=true | PAPER_TRADING=true | MANUAL_EXECUTION=false | AUTO_EXECUTION=false"
-log "PostgreSQL host port: ${POSTGRES_HOST_PORT} (container port remains 5432)"
-log "Redis host port: ${REDIS_HOST_PORT} (container port remains 6379)"
+log "PostgreSQL host port: ${POSTGRES_HOST_PORT} (container: 5432)"
+log "Redis host port: ${REDIS_HOST_PORT} (container: 6379)"
+log "API host port: ${API_HOST_PORT} (container: 8000)"
+log "Web host port: ${WEB_HOST_PORT} (container: 3000)"
 
 docker compose -f "${COMPOSE_FILE}" up -d --build
 
