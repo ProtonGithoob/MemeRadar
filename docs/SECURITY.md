@@ -340,6 +340,27 @@ submit transactions. The operator response procedures are documented in
 [`docs/RUNBOOKS/OPERATIONS.md`](RUNBOOKS/OPERATIONS.md); they prohibit secret
 logging and destructive data cleanup during incidents.
 
+Phase 11.3 adds the key-safe `security-review-v1` repository diagnostic and
+the reviewed threat model at [`docs/THREAT_MODEL.md`](THREAT_MODEL.md). The
+local gate verifies exact Python/npm lock metadata, versioned container bases,
+non-root runtime users, tracked-file secret absence, constant-time bearer
+authentication, explicit RBAC permission checks, protected modes and the
+strict advisory narrative/prompt boundary. It records only bounded statuses;
+raw scanner output and secret-shaped values are not persisted. The optional
+external command attempts pip-audit, npm audit and Trivy with fixed arguments;
+missing tools, registries or advisory databases remain `BLOCKED_EXTERNAL`.
+The 2026-09-01 npm review fixed a high-severity Playwright `<1.55.1` issue by
+pinning `@playwright/test`/Playwright to `1.62.1`, after which npm reported
+zero vulnerabilities. Pip-audit and Trivy remain unavailable locally, so this
+checkout does not claim a complete production vulnerability scan.
+
+The API has no ambient browser session-cookie authority: operator access uses
+server-side bearer reads and role-scoped bearer authorization, compared in
+constant time and mapped to non-secret principals. GET-only browser reads do
+not introduce CSRF mutation authority; control mutations remain explicit,
+authenticated, RBAC-checked and audit-backed. Deployment TLS, token rotation,
+rate limiting and secret-manager policy remain operational responsibilities.
+
 ## Threats to test
 
 - malicious token metadata;
@@ -355,6 +376,10 @@ logging and destructive data cleanup during incidents.
 - Telegram command spoofing if command controls are later added;
 - provider outage during an open position;
 - partial transaction submission/unknown finality.
+
+The versioned threat model, residual risks and review evidence are maintained
+in [`docs/THREAT_MODEL.md`](THREAT_MODEL.md). Safe response procedures are in
+[`docs/RUNBOOKS/SECURITY_REVIEW.md`](RUNBOOKS/SECURITY_REVIEW.md).
 
 ## Kill switch behavior
 

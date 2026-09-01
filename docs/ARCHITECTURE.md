@@ -539,6 +539,16 @@ execution authority. Incident procedures are in
 [`docs/RUNBOOKS/OPERATIONS.md`](RUNBOOKS/OPERATIONS.md) and the lower-level
 [`docs/RUNBOOKS/RELIABILITY.md`](RUNBOOKS/RELIABILITY.md).
 
+Phase 11.3 keeps security review outside the application/domain path. The
+repository-owned `security-review-v1` diagnostic verifies exact lock metadata,
+versioned/non-root image construction, tracked-file secret absence, bearer
+RBAC/session contracts, strict advisory narrative boundaries and protected
+modes. Optional pip-audit/npm-audit/container vulnerability checks use fixed
+commands and classify missing tools or registries as `BLOCKED_EXTERNAL`; raw
+scanner output is never persisted. The reviewed threat model and procedures
+are in [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) and
+[`docs/RUNBOOKS/SECURITY_REVIEW.md`](RUNBOOKS/SECURITY_REVIEW.md).
+
 ## Scaling strategy
 
 Do not split services until measurements justify it. Likely future extraction candidates:

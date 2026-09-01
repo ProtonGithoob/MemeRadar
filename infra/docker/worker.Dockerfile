@@ -16,4 +16,7 @@ COPY packages/persistence/src ./packages/persistence/src
 COPY packages/providers/src ./packages/providers/src
 COPY packages/telemetry/src ./packages/telemetry/src
 
+RUN addgroup --system memeradar && adduser --system --ingroup memeradar memeradar
+USER memeradar
+
 CMD ["python", "-m", "memeradar_worker"]

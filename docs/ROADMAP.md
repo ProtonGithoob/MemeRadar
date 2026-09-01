@@ -653,13 +653,28 @@ AlphaScore, ENTRY_READY, signing or execution path consumes operational health.
 
 ### Sprint 11.3 — Security Review
 
-- [ ] Dependency/container scanning.
-- [ ] Secret-scan verification.
-- [ ] RBAC/auth/session review.
-- [ ] LLM prompt-injection/data handling review.
-- [ ] Threat model update.
+- [x] Dependency/container scanning.
+- [x] Secret-scan verification.
+- [x] RBAC/auth/session review.
+- [x] LLM prompt-injection/data handling review.
+- [x] Threat model update.
 
-**Gate P11:** `READY_FOR_PRODUCTION_ANALYSIS_ONLY` documented with evidence.
+Sprint 11.3 keyless state: complete. The versioned `security-review-v1`
+diagnostic verifies exact Python/npm lock metadata, versioned Docker bases,
+non-root image users, tracked-file secret absence, bearer/RBAC/session
+boundaries, advisory narrative prompt/output boundaries and all protected
+modes. The npm advisory scan found and remediated a high-severity Playwright
+dependency issue by pinning `@playwright/test`/Playwright to `1.62.1`; the
+follow-up audit reports zero vulnerabilities. Local pip-audit and Trivy access
+are unavailable and remain `BLOCKED_EXTERNAL`, so no vulnerability-free
+production claim is made. The threat model and response runbook are recorded
+in `docs/THREAT_MODEL.md` and `docs/RUNBOOKS/SECURITY_REVIEW.md`.
+
+**Gate P11:** `READY_FOR_PRODUCTION_ANALYSIS_ONLY` is documented for the
+keyless implementation with the local evidence below. Live provider,
+Telegram, external vulnerability-scan and live-money acceptance remains
+`BLOCKED_EXTERNAL`; Phase 12 remains locked pending explicit operator decision
+and P9-P11 acceptance evidence.
 
 ---
 

@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current verdict
 
-`PHASE_11_SPRINT_11_2_COMPLETE_KEYLESS_GATE_P10_COMPLETE_GATE_P9_BLOCKED_EXTERNAL`
+`PHASE_11_SPRINT_11_3_COMPLETE_KEYLESS_GATE_P11_READY_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
@@ -89,6 +89,19 @@ is `UNVERIFIED`, operational health is neutral to AlphaScore and execution,
 and no production SLO is claimed without live evidence. Live provider,
 Telegram and execution acceptance remains `BLOCKED_EXTERNAL`.
 
+Phase 11 / Sprint 11.3 is now complete for its keyless security review. The
+versioned `security-review-v1` diagnostic verifies exact Python/npm lock
+metadata, versioned Docker bases, non-root image users, tracked-file secret
+absence, RBAC/bearer/session boundaries, strict advisory narrative prompt and
+output handling, and protected modes. The npm advisory finding for Playwright
+below `1.55.1` was remediated by pinning `@playwright/test` and its Playwright
+packages to `1.62.1`; the follow-up npm audit reports zero vulnerabilities.
+Pip-audit and Trivy are unavailable locally, so external vulnerability-scan
+acceptance remains `BLOCKED_EXTERNAL` and no complete production scan is
+claimed. The threat model and security-review runbook are recorded, and Gate
+P11 is ready for the keyless analysis-only deployment; live provider,
+Telegram and live-money acceptance remains externally blocked.
+
 ## Current phase and sprint
 
 - Completed: `Phase 2 / Gate P2 — Read-only discovery and independent enrichment acceptance` (keyless portion)
@@ -129,10 +142,14 @@ Telegram and execution acceptance remains `BLOCKED_EXTERNAL`.
 - Completed: `Phase 11 / Sprint 11.1 — Reliability` (keyless implementation and gate)
 - Completed: `Research extension E11.1 — Latency SLO and Stream Benchmarking` (keyless measurement seam; no production SLO declared)
 - Completed: `Phase 11 / Sprint 11.2 — Observability / Operations` (keyless implementation and gate)
-- Next checkpoint: `Phase 11 / Sprint 11.3 — Security Review`; preserve
+- Completed: `Phase 11 / Sprint 11.3 — Security Review` (keyless implementation and gate P11)
+- Completed: `Gate P11 — READY_FOR_PRODUCTION_ANALYSIS_ONLY` (keyless evidence; external acceptance remains blocked)
+- Next checkpoint: `Phase 12 — Manual Live Execution (locked by default)`; preserve
   Gate P9 live read-only market-data and Telegram acceptance
-  `BLOCKED_EXTERNAL`, and preserve all protected modes. E11.2 Rust/Yellowstone
-  extraction remains conditional on real measured need and is not started.
+  `BLOCKED_EXTERNAL`, and preserve all protected modes. Phase 12 cannot start
+  without explicit operator decision plus P9-P11 acceptance evidence. E11.2
+  Rust/Yellowstone extraction remains conditional on real measured need and is
+  not started.
 
 ## Current operating policy
 
@@ -145,22 +162,22 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: begin Phase 11 / Sprint 11.3 Security Review after the keyless
-  Sprint 11.2 observability checkpoint.
-- Sprint 11.2 design and plan are recorded in
-  `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-2-operations-design.md`
-  and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-2-operations.md`.
-- Current state: `OperationsProjector` and the injected
-  `OperationsReadPort` expose bounded provider/SLO/degradation/quota/cost and
-  reliability projections. `GET /v1/operations/overview` and the
-  server-rendered `/operations` page preserve explicit UNKNOWN, UNVERIFIED,
-  unavailable and protected-mode states. The full Sprint 11.2 quality gate
-  and frontend build are recorded below; no production SLO is declared from
-  synthetic/keyless evidence.
+- Task: maintain the keyless analysis-only boundary; Phase 12 manual-live work
+  is locked pending explicit operator decision plus P9-P11 acceptance evidence.
+- Sprint 11.3 design and plan are recorded in
+  `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-3-security-review-design.md`
+  and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-3-security-review.md`.
+- Current state: `security-review-v1` passes all deterministic local checks;
+  exact dependency metadata, non-root image construction, secret scan, RBAC/
+  bearer/session contracts, narrative prompt/data handling and protected
+  modes are verified. The npm audit is clean after the Playwright remediation.
+  Pip-audit and Trivy remain external blockers, and the review does not claim
+  vulnerability-free production images or deployed configuration.
 - External blockers: live quote/market, stream/RPC, Telegram and all live
-  execution acceptance are `BLOCKED_EXTERNAL`; keyless fixtures/fakes are
-  sufficient for Sprint 11.2. Gate P11 is not claimed until Sprint 11.3 is
-  complete and live-provider evidence remains external.
+  execution acceptance are `BLOCKED_EXTERNAL`; pip-audit/Trivy and local
+  advisory-database access are also `BLOCKED_EXTERNAL`. Gate P11 is ready for
+  the keyless analysis-only deployment, but Phase 12 remains locked until an
+  explicit operator decision and P9-P11 acceptance evidence.
 - Protected modes: `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
   `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
 
@@ -284,6 +301,16 @@ The configuration loader rejects attempts to override these protected values.
 - [x] Phase 11.2 operations runbook for provider outage, DB pressure, queue
   lag, alert delivery failure and quota/cost response; synthetic/keyless SLO
   evidence remains explicitly unverified.
+- [x] Phase 11.3 `security-review-v1` keyless diagnostic for exact dependency
+  locks, versioned/non-root Docker images, tracked-file secrets, RBAC/bearer
+  and advisory LLM boundaries, external scan classification and protected
+  modes.
+- [x] Phase 11.3 Playwright advisory remediation: `@playwright/test` and its
+  Playwright packages are pinned to `1.62.1`; npm audit subsequently reports
+  zero vulnerabilities.
+- [x] Phase 11.3 threat model and security-review runbook at
+  `docs/THREAT_MODEL.md` and `docs/RUNBOOKS/SECURITY_REVIEW.md`; no signing,
+  wallet, provider or live-money authority was introduced.
 - [x] Roadmap checkboxes reconciled for Sprint 1.1.
 - [x] SQLAlchemy 2 async persistence models for the core Phase 1 entities, with domain-independent repositories and explicit unit-of-work transactions.
 - [x] Initial Alembic revision `0001_initial` for 13 core tables, including provenance, explainability, event and outbox fields.
@@ -842,14 +869,19 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 11.2 static verification: Ruff passes for `apps packages tests scripts`; strict mypy passes for `81 source files`; the operations application module remains provider SDK, persistence, HTTP, AlphaScore and execution free. Frontend lint/typecheck pass and Vitest passes `14 files / 41 tests`.
 - Sprint 11.2 build/gate verification: `make verify` exits `0`; the full repository suite passes `617 tests, 11 skipped` with branch-aware coverage `78%`, frontend lint/typecheck/Vitest `14 files / 41 tests`, Compose config, secret scan and migration parity. Migration parity reports `{"heads": ["0006_paper_execution"], "table_count": 22}`. `make frontend-build` exits `0` and includes the static `/operations` route.
 - Sprint 11.2 safety acceptance: `PASS` for explicit UNKNOWN/UNVERIFIED/DEGRADED/DOWN states, provider-network-only SLO evaluation, quota/cost and reliability alerts, neutral operational health, read-only API/dashboard boundaries and unchanged protected modes. Live provider/Telegram acceptance remains `BLOCKED_EXTERNAL`; no production SLO, signing or execution authority was introduced. `docs/RUNBOOKS/OPERATIONS.md` records safe response procedures without secret logging.
+- Sprint 11.3 focused verification: `./.venv/bin/pytest tests/unit/test_security_review.py tests/contract/test_phase11_sprint11_3.py -q` passes `8 tests`; exact lock rejection, versioned/non-root image contracts, external-tool blocking, protected-mode fail-closed behavior, bearer/RBAC permission scoping and narrative prompt/output boundary checks pass.
+- Sprint 11.3 security review verification: `make security-review` exits `0` with all six deterministic local checks `PASS`, schema `security-review-v1`, exact protected modes and `external_acceptance: BLOCKED_EXTERNAL`. `make security-review-external` exits `2` as expected because pip-audit and Trivy are unavailable and local npm registry access is blocked; no missing scan is reported as clean.
+- Sprint 11.3 dependency verification: after npm identified the high-severity Playwright `<1.55.1` advisory, `@playwright/test`, `playwright` and `playwright-core` were pinned to `1.62.1`; escalated read-only `npm audit --json --audit-level=high` reports zero vulnerabilities. No `npm audit fix --force` or unreviewed installer was used.
+- Sprint 11.3 container verification: `docker compose -f infra/compose/docker-compose.yml build api worker web` exits `0`; API/worker run as `memeradar` and web runs as non-root `node`, while existing commands and protected modes remain unchanged.
+- Sprint 11.3 full repository quality gate: `make verify` exits `0`; Ruff, strict mypy (`81 source files`), `625 passed, 11 skipped`, branch-aware coverage `78%`, frontend lint/typecheck/Vitest (`14 files / 41 tests`), Compose config, secret scan, migration parity and keyless security review complete successfully. `make frontend-build` remains green after the dependency remediation.
+- Sprint 11.3 safety acceptance: `PASS` for no secret exposure, exact dependency declarations, non-root image runtime, constant-time role authentication, explicit RBAC/session boundaries, sanitized untrusted LLM data, advisory-only narrative output, versioned threat model and unchanged protected modes. Gate P11 is `READY_FOR_PRODUCTION_ANALYSIS_ONLY` for keyless evidence; live provider, Telegram, pip-audit/Trivy and live-money acceptance remain `BLOCKED_EXTERNAL`. Phase 12 remains locked by explicit operator decision and safety policy.
 
 ## Next task
 
-Begin `Phase 11 / Sprint 11.3 — Security Review` from `docs/ROADMAP.md`.
-Complete dependency/container and secret-scan review, RBAC/auth/session and
-LLM prompt-injection/data-handling review, and update the threat model before
-claiming Gate P11. Keep Gate P9 live read-only market-data and Telegram
-acceptance `BLOCKED_EXTERNAL`, preserve append-only/auditable evidence and all
-four protected operating modes, and do not introduce signing, live-money
-submission or execution authority. E11.2 Rust/Yellowstone remains conditional
-on real measured need and is not started.
+Phase 12 is intentionally locked by default. Do not implement or enable
+manual-live execution without the explicit operator decision and P9-P11
+acceptance evidence required by `docs/ROADMAP.md`; preserve
+`ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, and
+`AUTO_EXECUTION=false`. Continue only independent keyless cross-cutting work
+or approved research extensions. E11.2 Rust/Yellowstone remains conditional on
+measured need and is not started.

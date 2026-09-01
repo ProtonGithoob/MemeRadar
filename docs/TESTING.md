@@ -179,6 +179,39 @@ production SLO or provider PASS. Use
 [`docs/RUNBOOKS/OPERATIONS.md`](RUNBOOKS/OPERATIONS.md) for provider outage,
 database pressure, queue lag, alert failure and quota/cost response.
 
+## Phase 11.3 security review
+
+The keyless security suite verifies exact Python/npm lock metadata, rejection
+of unpinned dependencies, versioned container bases, non-root image runtime
+users, tracked-file secret scanning, protected modes, constant-time bearer
+RBAC, explicit permission denial, and the strict advisory narrative/prompt
+boundary. The review emits separate external scanner states and never treats
+missing pip-audit, npm advisory access or Trivy/registry access as a clean
+result.
+
+Focused command:
+
+```text
+./.venv/bin/pytest tests/unit/test_security_review.py tests/contract/test_phase11_sprint11_3.py -q
+```
+
+Quality/review commands:
+
+```text
+make security-review
+make security-review-external
+make verify
+make frontend-build
+docker compose -f infra/compose/docker-compose.yml build api worker web
+```
+
+`make security-review` is the deterministic gate and returns `PASS` only for
+local contracts. `make security-review-external` returns `BLOCKED_EXTERNAL`
+when a scanner or vulnerability database is unavailable, and returns failure
+for a concrete external finding. See
+[`docs/RUNBOOKS/SECURITY_REVIEW.md`](RUNBOOKS/SECURITY_REVIEW.md) and
+[`docs/THREAT_MODEL.md`](THREAT_MODEL.md).
+
 ## Phase 10.1 replay harness
 
 The keyless replay suite covers normalized dataset round trips, deterministic

@@ -6,6 +6,8 @@ COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --ignore-scripts
 
 COPY apps/web ./
+RUN chown -R node:node /app
+USER node
 
 EXPOSE 3000
 

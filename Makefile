@@ -24,7 +24,9 @@ RELIABILITY_OUTPUT ?=
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-	backtest-replay calibrate-score reliability-benchmark reliability-doctor
+	backtest-replay calibrate-score reliability-benchmark reliability-doctor \
+	security-review security-review-external
+
 
 bootstrap:
 	python3 -m venv .venv
@@ -84,6 +86,12 @@ compose-config:
 secret-scan:
 	$(PYTHON) scripts/secret_scan.py
 
+security-review:
+	$(PYTHON) scripts/security_review.py
+
+security-review-external:
+	$(PYTHON) scripts/security_review.py --external
+
 migration-check:
 	$(PYTHON) scripts/check_migrations.py
 
@@ -94,7 +102,7 @@ integration-test:
 		echo "MEMERADAR_TEST_DATABASE_URL not configured; integration tests skipped."; \
 	fi
 
-verify: lint typecheck test frontend-lint frontend-typecheck frontend-test compose-config secret-scan migration-check
+verify: lint typecheck test frontend-lint frontend-typecheck frontend-test compose-config secret-scan migration-check security-review
 
 up:
 	$(COMPOSE) up -d
