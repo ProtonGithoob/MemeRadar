@@ -55,7 +55,15 @@ contributes no score and lowers confidence; hard-risk BLOCK/UNKNOWN evidence
 remains non-overridable and cannot produce an execution-eligible result.
 Focused evidence: 20 EarlyScore/AlphaScore tests pass, Ruff and full mypy are
 clean; the full test command uses the repository `.venv` because the system
-Python lacks FastAPI. Tasks 6-13 remain in progress.
+Python lacks FastAPI. Task 6 is now complete for its keyless early decision
+seam: explicit `REJECT/LOW`, `WATCH`, `EARLY_WATCH`, `STRONG_SETUP` and
+`HIGH_CONFLUENCE` bands are separate from the existing candidate lifecycle,
+and the `ENTRY_READY` projection requires threshold, confidence, fresh PASS
+risk, a fresh positive paper quote, sellability, liquidity, bounded impact
+and protected modes. Its result is permanently execution-ineligible and can
+only feed the later shadow/paper path. Focused evidence: 35 early-decision,
+decision-engine and invariant tests pass; `make lint` and `make typecheck` are
+clean. Tasks 7-13 remain in progress.
 
 ## Current verdict
 

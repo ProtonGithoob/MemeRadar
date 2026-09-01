@@ -17,6 +17,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 from memeradar_domain import (
     Candidate,
     CandidateState,
+    EarlyLatencySnapshot,
     EventEnvelope,
     FeatureSnapshot,
     IdempotencyConflict,
@@ -38,6 +39,7 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .early_decision import EarlyDecisionEngine, EarlyDecisionPolicy, EarlyDecisionResult
 from .signal_hardening import (
     DeployerActivitySnapshot,
     LaunchFootprintSnapshot,
@@ -708,6 +710,42 @@ class DecisionEngine:
         if not isinstance(self.policy, DecisionPolicy):
             raise TypeError("policy must be a DecisionPolicy")
 
+    def decide_early(
+        self,
+        score_snapshot: object,
+        risk_assessment: object,
+        *,
+        now: datetime,
+        quote: object | None = None,
+        sellability: bool | None = None,
+        liquidity_ok: bool | None = None,
+        paper_size_quote: object | None = None,
+        price_impact_bps: object | None = None,
+        timing: EarlyLatencySnapshot | None = None,
+        candidate_id: object | None = None,
+        policy: EarlyDecisionPolicy | None = None,
+    ) -> EarlyDecisionResult:
+        """Project EarlyScore without mutating the established lifecycle.
+
+        The early projection deliberately remains separate from ``Candidate``
+        lifecycle transitions.  Its only positive terminal state is a
+        fail-closed paper/shadow handoff with live execution permanently
+        locked.
+        """
+
+        return EarlyDecisionEngine(policy).evaluate(
+            score_snapshot,
+            risk_assessment,
+            as_of=now,
+            quote=quote,
+            sellability=sellability,
+            liquidity_ok=liquidity_ok,
+            paper_size_quote=paper_size_quote,
+            price_impact_bps=price_impact_bps,
+            timing=timing,
+            candidate_id=candidate_id,
+        )
+
     def decide(
         self,
         candidate: Candidate,
@@ -1352,6 +1390,9 @@ __all__ = [
     "DecisionPolicy",
     "DecisionResult",
     "DecisionStateMachine",
+    "EarlyDecisionEngine",
+    "EarlyDecisionPolicy",
+    "EarlyDecisionResult",
     "EvidenceTimeline",
     "EvidenceTimelineEntry",
     "EvidenceTimelineProjector",
