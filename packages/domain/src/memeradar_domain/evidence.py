@@ -19,6 +19,21 @@ class QualityState(str, Enum):
     INVALID = "INVALID"
 
 
+class PriceSemantics(str, Enum):
+    """The economic meaning of a normalized price observation.
+
+    Execution/effective prices are used for fills, cost basis and PnL.  Market
+    references are independent marks used for analytical price series and
+    market-cap movement.  A quote is intentionally distinct from both: it is
+    an execution input, not proof of the market mark.
+    """
+
+    EXECUTION_EFFECTIVE = "EXECUTION_EFFECTIVE"
+    EXECUTION_QUOTE = "EXECUTION_QUOTE"
+    MARKET_REFERENCE = "MARKET_REFERENCE"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True, slots=True)
 class Freshness:
     """Validity window for evidence or a derived snapshot."""

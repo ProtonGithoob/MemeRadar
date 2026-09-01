@@ -11,6 +11,7 @@ from memeradar_application.alpha_strategy import AlphaScoreV1Strategy, Reference
 from memeradar_application.replay_harness import (
     DEFAULT_OUTCOME_HORIZONS,
     OutcomeLabelPolicy,
+    OutcomeLabeler,
     ReplayCheckpoint,
     ReplayDataset,
     ReplayEventRecord,
@@ -245,6 +246,30 @@ def test_outcome_labels_use_future_prices_without_leaking_them_into_features() -
     assert five_minute.paper_exit_action == "CLOSE"
     assert result.correlation.window("1m").event_count == 1
     assert records[1].event_id in result.excluded_future_event_ids
+
+
+def test_outcome_labeler_never_uses_execution_only_trade_price_as_market_baseline() -> None:
+    records = (
+        event(
+            token(),
+            source_id="execution-baseline",
+            kind="market.trade",
+            at=NOW - timedelta(seconds=1),
+            payload={"side": "buy", "price": "1", "quote_amount": "10"},
+        ),
+        event(
+            token(),
+            source_id="execution-future",
+            kind="market.trade",
+            at=NOW + timedelta(seconds=1),
+            payload={"side": "sell", "price": "2", "quote_amount": "20"},
+        ),
+    )
+
+    result = OutcomeLabeler().label(records, checkpoint())
+
+    assert result.baseline_price is None
+    assert result.quality_state is QualityState.UNKNOWN
 
 
 def test_manifest_version_mismatch_and_conflicting_source_fail_closed() -> None:

@@ -891,13 +891,15 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Cross-cutting hardening Task 5 verification: `./.venv/bin/pytest tests/unit/test_provider_routing.py -q` passes `6 tests`; `ProviderHealthRouter` deterministically selects only fresh healthy candidates, preserves degraded/unknown/unavailable alternatives, fails closed on conflict and has no score or execution authority.
 - Cross-cutting hardening final gate: `make verify` exits `0`; Ruff, strict mypy (`82 source files`), `642 passed, 11 skipped`, branch-aware coverage `78%`, frontend lint/typecheck/Vitest (`14 files / 41 tests`), Compose config, secret scan, migration parity, `security-review-v1` and `security-sbom-v1` all pass. `make frontend-build` exits `0` with the expected operator routes.
 - Cross-cutting hardening external review: `make security-review-external` exits `2` with `container_scan`, `npm_audit` and `pip_audit` all `BLOCKED_EXTERNAL`; direct read-only npm audit evidence remains clean after the Playwright remediation, but no complete production vulnerability scan is claimed.
+- Approved E11.9 signal-hardening checkpoint: `tests/unit/test_price_semantics.py`, paper-domain/paper-execution regressions and replay contracts pass (`26` focused tests; `42` combined correlation/feature/replay/paper/price tests). The provider-neutral price resolver distinguishes `EXECUTION_EFFECTIVE`, `EXECUTION_QUOTE`, `MARKET_REFERENCE` and `UNKNOWN`, preserves provenance/freshness, rejects non-positive values, treats future data as `INVALID`, and never uses a generic execution-only trade price as a replay market baseline. `PaperFillModel` remains deterministic and paper-only; fill accounting/PnL continues to use the effective execution amount, while paper fills and wallet activities expose explicit execution/effective aliases and optional independent market marks. `make typecheck` passes. Protected modes remain `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`; no provider adapter, signing or live-money capability was added.
+- Current approved extension task: continue E11.4 sustained surge/revival validation, then E11.5 economic tape funding, E11.6 deployer transfer-delta evidence, E11.7 launch sniper/bundle footprint and E11.8 token lock/vesting evidence. E11.2 remains conditional, and Phase 12 remains locked.
 
 ## Next task
 
-Phase 12 is intentionally locked by default. Do not implement or enable
-manual-live execution without the explicit operator decision and P9-P11
-acceptance evidence required by `docs/ROADMAP.md`; preserve
-`ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, and
-`AUTO_EXECUTION=false`. Continue only independent keyless cross-cutting work
-or approved research extensions. E11.2 Rust/Yellowstone remains conditional on
-measured need and is not started.
+Implement E11.4 sustained surge/revival validation from
+`docs/MADEONSOL_SIGNAL_HARDENING.md`. Do not implement or enable manual-live
+execution without the explicit operator decision and P9-P11 acceptance
+evidence required by `docs/ROADMAP.md`; preserve `ANALYSIS_ONLY=true`,
+`PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, and `AUTO_EXECUTION=false`.
+E11.2 Rust/Yellowstone remains conditional on measured need and is not started;
+Phase 12 remains locked.

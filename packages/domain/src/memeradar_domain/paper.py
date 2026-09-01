@@ -8,6 +8,7 @@ from enum import Enum
 from uuid import UUID, uuid4
 
 from .common import ensure_utc, freeze_mapping, require_text, to_decimal
+from .evidence import PriceSemantics
 from .events import ReasonCode, normalize_reason_codes
 from .operations import PositionMode
 
@@ -175,6 +176,9 @@ class PaperFill:
     cash_delta: Decimal
     source: str
     id: UUID = field(default_factory=uuid4)
+    price_semantics: PriceSemantics | str = PriceSemantics.EXECUTION_EFFECTIVE
+    market_price: Decimal | None = None
+    price_source: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.order_id, UUID):
@@ -184,6 +188,12 @@ class PaperFill:
         object.__setattr__(self, "quantity", _positive(self.quantity, "quantity"))
         object.__setattr__(self, "price", _positive(self.price, "price"))
         object.__setattr__(self, "quoted_price", _positive(self.quoted_price, "quoted_price"))
+        semantics = PriceSemantics(self.price_semantics)
+        if semantics is not PriceSemantics.EXECUTION_EFFECTIVE:
+            raise ValueError("paper fills require EXECUTION_EFFECTIVE price semantics")
+        object.__setattr__(self, "price_semantics", semantics)
+        if self.market_price is not None:
+            object.__setattr__(self, "market_price", _positive(self.market_price, "market_price"))
         object.__setattr__(
             self,
             "gross_cash_amount",
@@ -212,6 +222,30 @@ class PaperFill:
             raise ValueError("cash_delta must not be zero")
         object.__setattr__(self, "cash_delta", delta)
         object.__setattr__(self, "source", require_text(self.source, "source", max_length=128))
+        if self.price_source is not None:
+            object.__setattr__(
+                self,
+                "price_source",
+                require_text(self.price_source, "price_source", max_length=128),
+            )
+
+    @property
+    def execution_price(self) -> Decimal:
+        """The simulated execution/effective price used by the fill model."""
+
+        return self.price
+
+    @property
+    def effective_price(self) -> Decimal:
+        """Compatibility alias for the execution price."""
+
+        return self.price
+
+    @property
+    def market_reference_price(self) -> Decimal | None:
+        """An optional independent mark; it never replaces the fill price."""
+
+        return self.market_price
 
 
 @dataclass(slots=True)

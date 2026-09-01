@@ -38,6 +38,7 @@ from memeradar_domain.events import normalize_reason_codes
 from .alpha_strategy import AlphaStrategy, StrategySnapshot
 from .correlation import CorrelationSnapshot, CorrelationWindowBuilder
 from .feature_windows import FeatureWindowAggregator
+from .price_semantics import market_reference_price
 
 REPLAY_HARNESS_VERSION = "research-replay-v1"
 REPLAY_DATASET_SCHEMA_VERSION = 1
@@ -1673,11 +1674,9 @@ class OutcomeLabeler:
 
     @staticmethod
     def _price(record: ReplayEventRecord) -> Decimal | None:
-        payload = record.observation.normalized_payload
-        raw = _payload_value(payload, "price_usd", "price", "token_price", "last_price", "close")
-        if record.observation.kind not in _PRICE_KINDS and raw is _MISSING:
+        if record.observation.kind not in _PRICE_KINDS:
             return None
-        return _decimal_value(raw, "price", positive=True)
+        return market_reference_price(record.observation)
 
     @staticmethod
     def _liquidity(record: ReplayEventRecord) -> Decimal | None:

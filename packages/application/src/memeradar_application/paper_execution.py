@@ -24,6 +24,7 @@ from memeradar_domain import (
     Position,
     PositionMode,
     PositionState,
+    PriceSemantics,
     ReasonCode,
 )
 from memeradar_domain.common import (
@@ -617,6 +618,8 @@ def _quote_payload(quote: QuoteSnapshot) -> Mapping[str, object]:
         "output_mint": quote.output_mint,
         "input_amount": str(quote.input_amount),
         "output_amount": str(quote.output_amount),
+        "execution_quote_price": str(quote.execution_quote_price),
+        "price_semantics": quote.price_semantics.value,
         "price_impact_bps": str(quote.price_impact_bps),
         "route": tuple(quote.route),
         "freshness": {
@@ -699,6 +702,8 @@ class PaperFillModel:
             cash_delta=cash_delta,
             source=self.version,
             id=fill_id or uuid4(),
+            price_semantics=PriceSemantics.EXECUTION_EFFECTIVE,
+            price_source=self.version,
         )
 
 
@@ -865,7 +870,7 @@ class PaperExecutionEngine:
                     "sell quantity exceeds position quantity",
                     reason_code="POSITION_QUANTITY_EXCEEDED",
                 )
-            position.mark_price(fill.price)
+            position.mark_price(fill.execution_price)
             position.apply_exit_fill(
                 quantity=fill.quantity,
                 net_proceeds=fill.cash_delta,

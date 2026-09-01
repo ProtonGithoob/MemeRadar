@@ -16,6 +16,7 @@ from memeradar_domain import (
     Position,
     PositionMode,
     PositionState,
+    PriceSemantics,
 )
 
 NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
@@ -84,6 +85,10 @@ def test_paper_order_records_fill_and_preserves_idempotency_identity() -> None:
     assert order.filled_quantity == Decimal("99")
     assert order.average_fill_price == Decimal("0.101")
     assert order.idempotency_key == "paper-order-1"
+    assert fill.execution_price == Decimal("0.101")
+    assert fill.effective_price == Decimal("0.101")
+    assert fill.market_reference_price is None
+    assert fill.price_semantics is PriceSemantics.EXECUTION_EFFECTIVE
 
     with pytest.raises(ValueError, match="PAPER"):
         PaperOrder(

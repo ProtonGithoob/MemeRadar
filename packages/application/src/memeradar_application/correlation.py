@@ -18,6 +18,7 @@ from memeradar_domain import (
     Freshness,
     Observation,
     Provenance,
+    PriceSemantics,
     QualityState,
     ReasonCode,
     RiskAssessment,
@@ -847,6 +848,10 @@ class CorrelationWindowBuilder:
                 "quantity": value.quantity,
                 "quote_amount": value.quote_amount,
                 "price": value.price,
+                "execution_price": value.execution_price,
+                "market_price": value.market_reference_price,
+                "price_semantics": PriceSemantics(value.price_semantics).value,
+                "price_source": value.price_source,
                 "wallet_activity": True,
             }
             add_record(

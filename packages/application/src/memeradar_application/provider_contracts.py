@@ -14,6 +14,7 @@ from memeradar_domain import (
     Freshness,
     Observation,
     PoolIdentity,
+    PriceSemantics,
     Provenance,
     QualityState,
     ReasonCode,
@@ -671,6 +672,19 @@ class QuoteSnapshot:
         object.__setattr__(self, "input_mint", input_mint)
         object.__setattr__(self, "output_mint", output_mint)
         object.__setattr__(self, "route", normalize_texts(self.route, "route", max_item_length=128))
+
+    @property
+    def execution_quote_price(self) -> Decimal:
+        """Quote-implied execution price, never an independent market mark."""
+
+        return to_decimal(self.input_amount, "input_amount") / to_decimal(
+            self.output_amount,
+            "output_amount",
+        )
+
+    @property
+    def price_semantics(self) -> PriceSemantics:
+        return PriceSemantics.EXECUTION_QUOTE
 
 
 @dataclass(frozen=True, slots=True)

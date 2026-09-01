@@ -13,6 +13,7 @@ from memeradar_domain import (
     Freshness,
     Observation,
     Provenance,
+    PriceSemantics,
     QualityState,
     ReasonCode,
     TokenIdentity,
@@ -266,6 +267,9 @@ class WalletActivity:
     price: Decimal | None = None
     quality_state: QualityState = QualityState.FRESH
     evidence_refs: tuple[str, ...] = ()
+    price_semantics: PriceSemantics | str = PriceSemantics.EXECUTION_EFFECTIVE
+    market_price: Decimal | None = None
+    price_source: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.token, TokenIdentity):
@@ -286,6 +290,15 @@ class WalletActivity:
             _optional_decimal(self.quote_amount, "quote_amount"),
         )
         object.__setattr__(self, "price", _optional_decimal(self.price, "price", positive=True))
+        semantics = PriceSemantics(self.price_semantics)
+        if semantics is PriceSemantics.MARKET_REFERENCE:
+            raise ValueError("wallet activity price must be execution evidence")
+        object.__setattr__(self, "price_semantics", semantics)
+        object.__setattr__(
+            self,
+            "market_price",
+            _optional_decimal(self.market_price, "market_price", positive=True),
+        )
         occurred, observed, ingested = ensure_ordered_timestamps(
             self.occurred_at,
             self.observed_at,
@@ -306,6 +319,12 @@ class WalletActivity:
             "evidence_refs",
             normalize_texts(self.evidence_refs, "evidence_refs"),
         )
+        if self.price_source is not None:
+            object.__setattr__(
+                self,
+                "price_source",
+                require_text(self.price_source, "price_source", max_length=128),
+            )
 
     @property
     def source_id(self) -> str:
@@ -322,6 +341,18 @@ class WalletActivity:
         if self.quote_amount is None:
             return None
         return self.quote_amount / self.quantity
+
+    @property
+    def execution_price(self) -> Decimal | None:
+        """Explicit alias for the price used by wallet cost/PnL evidence."""
+
+        return self.effective_price
+
+    @property
+    def market_reference_price(self) -> Decimal | None:
+        """Optional independent mark; it is not inferred from the trade."""
+
+        return self.market_price
 
 
 @dataclass(frozen=True, slots=True)

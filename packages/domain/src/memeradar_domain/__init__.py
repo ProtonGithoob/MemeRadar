@@ -13,7 +13,7 @@ from .chain import (
     StreamVerificationStatus,
 )
 from .events import EventEnvelope, ReasonCode, normalize_reason_codes
-from .evidence import Freshness, Observation, Provenance, QualityState
+from .evidence import Freshness, Observation, PriceSemantics, Provenance, QualityState
 from .identities import Chain, PoolIdentity, TokenIdentity, require_solana_address
 from .lifecycle import (
     Candidate,
@@ -78,6 +78,7 @@ __all__ = [
     "PaperOrderSide",
     "PaperOrderState",
     "PaperPortfolio",
+    "PriceSemantics",
     "Position",
     "PositionMode",
     "PositionState",
