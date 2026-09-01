@@ -613,10 +613,23 @@ asserted by the keyless fixture.
 
 ### Sprint 11.1 — Reliability
 
-- [ ] Soak tests, disconnect/reconnect tests, provider rate-limit tests.
-- [ ] Queue/outbox recovery and DB restart tests.
-- [ ] Retention/partition/index review.
-- [ ] Backup/restore runbook.
+- [x] Soak tests, disconnect/reconnect tests, provider rate-limit tests.
+- [x] Queue/outbox recovery and DB restart tests.
+- [x] Retention/partition/index review.
+- [x] Backup/restore runbook.
+
+Sprint 11.1 keyless state: complete. The bounded `ReliabilityMetrics` seam
+records provider-labelled reconnect/fallback/duplicate/conflict/malformed,
+rate-limit, timeout, retry, queue and outbox counters plus percentile
+histograms. Existing stream, provider transport and outbox paths can report
+into it without changing canonical decoding or delivery semantics. Synthetic
+disconnect, fallback, rate-limit, backpressure, outbox retry/dead-letter and
+connection-pool restart tests pass; the isolated Postgres restart contract also
+passes when the local database is available. The retention/index review and
+safe isolated backup/restore procedure are documented in
+`docs/RUNBOOKS/RELIABILITY.md`. Live provider acceptance remains
+`BLOCKED_EXTERNAL` and no SLO or Rust/Yellowstone extraction is claimed from
+synthetic measurements.
 
 ### Sprint 11.2 — Observability / Operations
 
@@ -693,9 +706,9 @@ Execute where relevant, not as an isolated final cleanup:
 - [ ] Data retention/partition policies.
 - [ ] Privacy and provider ToS compliance.
 - [ ] Property/fuzz tests for scoring/state transitions.
-- [ ] Benchmark hot-path processing.
+- [x] Benchmark hot-path processing.
 - [ ] ADRs for material architecture decisions.
 - [ ] SBOM/dependency audit.
-- [ ] Disaster-recovery documentation.
+- [x] Disaster-recovery documentation.
 - [ ] Multi-provider comparison/health routing.
 - [ ] Optional future multi-chain abstraction only after Solana product fit is validated.

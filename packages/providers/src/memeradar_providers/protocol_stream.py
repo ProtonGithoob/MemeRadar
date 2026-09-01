@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from memeradar_application.provider_contracts import ProviderRequestContext
+from memeradar_application.reliability import ReliabilityTelemetry, emit_counter
 
 from .launchpad_dex import LaunchpadDexAdapter, ParsedProtocolEvent
 from .transport import ProviderSchemaError, ProviderTimeoutError, ProviderUnavailableError
@@ -112,6 +113,7 @@ class ProtocolEventStreamFallback:
         *,
         policy: ProtocolStreamPolicy | None = None,
         sleeper: Sleeper = asyncio.sleep,
+        telemetry: ReliabilityTelemetry | None = None,
     ) -> None:
         if not isinstance(adapter, LaunchpadDexAdapter):
             raise TypeError("adapter must be a LaunchpadDexAdapter")
@@ -126,6 +128,11 @@ class ProtocolEventStreamFallback:
         self._poller = poller
         self._policy = policy or ProtocolStreamPolicy()
         self._sleeper = sleeper
+        self._telemetry = telemetry
+
+    @property
+    def _provider_name(self) -> str:
+        return self._adapter.provider_name
 
     @staticmethod
     async def _resolve_source(factory: SourceFactory) -> MessageSource:
@@ -156,6 +163,7 @@ class ProtocolEventStreamFallback:
         events: list[ParsedProtocolEvent],
         counters: list[int],
         stop_event: asyncio.Event | None,
+        seen_ids: set[str],
     ) -> ProtocolStreamResult:
         if stop_event is not None and stop_event.is_set():
             return ProtocolStreamResult(
@@ -171,6 +179,7 @@ class ProtocolEventStreamFallback:
             raw_result = await raw_result
         if not isinstance(raw_result, Sequence) or isinstance(raw_result, str | bytes | bytearray):
             raise ProviderSchemaError("protocol poll result was invalid")
+        emit_counter(self._telemetry, "provider_fallbacks", provider=self._provider_name)
         for message in raw_result:
             if counters[0] >= self._policy.max_messages:
                 raise ProviderSchemaError("protocol stream exceeded configured message bound")
@@ -178,9 +187,22 @@ class ProtocolEventStreamFallback:
                 break
             counters[0] += 1
             try:
-                events.append(self._adapter.parse(message, context))
+                event = self._adapter.parse(message, context)
+                if event.source_id in seen_ids:
+                    emit_counter(
+                        self._telemetry,
+                        "duplicate_events",
+                        provider=self._provider_name,
+                    )
+                seen_ids.add(event.source_id)
+                events.append(event)
             except ProviderSchemaError:
                 counters[1] += 1
+                emit_counter(
+                    self._telemetry,
+                    "dropped_malformed",
+                    provider=self._provider_name,
+                )
         return ProtocolStreamResult(
             self._ordered(events),
             True,
@@ -202,6 +224,7 @@ class ProtocolEventStreamFallback:
             raise TypeError("context must be a ProviderRequestContext")
         events: list[ParsedProtocolEvent] = []
         counters = [0, 0, 0]  # received, malformed, reconnects
+        seen_ids: set[str] = set()
         while True:
             if stop_event is not None and stop_event.is_set():
                 return ProtocolStreamResult(
@@ -230,9 +253,22 @@ class ProtocolEventStreamFallback:
                         )
                     counters[0] += 1
                     try:
-                        events.append(self._adapter.parse(message, context))
+                        event = self._adapter.parse(message, context)
+                        if event.source_id in seen_ids:
+                            emit_counter(
+                                self._telemetry,
+                                "duplicate_events",
+                                provider=self._provider_name,
+                            )
+                        seen_ids.add(event.source_id)
+                        events.append(event)
                     except ProviderSchemaError:
                         counters[1] += 1
+                        emit_counter(
+                            self._telemetry,
+                            "dropped_malformed",
+                            provider=self._provider_name,
+                        )
                 return ProtocolStreamResult(
                     self._ordered(events),
                     False,
@@ -246,9 +282,14 @@ class ProtocolEventStreamFallback:
             except (ProviderTimeoutError, ProviderUnavailableError, ConnectionError, TimeoutError):
                 if counters[2] < self._policy.max_reconnects:
                     counters[2] += 1
+                    emit_counter(
+                        self._telemetry,
+                        "stream_reconnects",
+                        provider=self._provider_name,
+                    )
                     await self._sleeper(self._policy.delay_for(counters[2]))
                     continue
-                return await self._poll(context, events, counters, stop_event)
+                return await self._poll(context, events, counters, stop_event, seen_ids)
 
 
 __all__ = [

@@ -22,6 +22,7 @@ from memeradar_application.event_processing import (
     RetryPolicy,
     UnhandledEvent,
 )
+from memeradar_application.reliability import ReliabilityMetrics
 from memeradar_domain import Candidate, CandidateState, EventEnvelope, ReasonCode, TokenIdentity
 
 NOW = datetime(2026, 8, 27, 1, 0, tzinfo=UTC)
@@ -373,3 +374,33 @@ def test_processor_honors_handler_requested_retry_time_without_exposing_error_te
     assert result.retried == 1
     assert store.rows[event.id]["available_at"] == NOW + timedelta(seconds=20)
     assert "token" not in str(store.rows[event.id]["error_metadata"])
+
+
+def test_processor_reports_outbox_delivery_retry_and_processing_latency() -> None:
+    event = make_event("reliability-outbox-event")
+    store = FakeOutboxStore((event,))
+    metrics = ReliabilityMetrics()
+    calls = 0
+
+    async def handler(_event: EventEnvelope) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("telemetry test failure")
+
+    processor = OutboxProcessor(
+        store,
+        EventDispatcher({"CandidateDiscovered": handler}),
+        retry_policy=RetryPolicy(max_attempts=2, base_delay_seconds=1, max_delay_seconds=1),
+        reliability_telemetry=metrics,
+    )
+
+    first = asyncio.run(processor.process_once(now=NOW))
+    second = asyncio.run(processor.process_once(now=NOW + timedelta(seconds=1)))
+    snapshot = metrics.snapshot()
+
+    assert first.retried == 1
+    assert second.delivered == 1
+    assert snapshot.counters["outbox_retries"] == 1
+    assert snapshot.counters["outbox_delivered"] == 1
+    assert snapshot.latencies["outbox_processing_ms"]["internal"]["count"] == 2

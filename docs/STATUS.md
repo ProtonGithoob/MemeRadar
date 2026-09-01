@@ -4,7 +4,7 @@ Last updated: 2026-09-01
 
 ## Current verdict
 
-`PHASE_10_SPRINT_10_3_COMPLETE_KEYLESS_GATE_P9_BLOCKED_EXTERNAL`
+`PHASE_11_SPRINT_11_1_COMPLETE_KEYLESS_GATE_P10_COMPLETE_GATE_P9_BLOCKED_EXTERNAL`
 
 Phase 0 and Phase 1 / Sprints 1.1, 1.2 and 1.3 are implemented and locally verified. Phase 2 / Sprints 2.1 through 2.4 and the keyless Gate P2 composition acceptance are complete and locally verified with fixtures and contracts. Phase 3 / Sprints 3.1, 3.2 and 3.3, Phase 4 / Sprints 4.1 through 4.3, Phase 5 / Sprints 5.1, 5.2 and 5.3, Gate P5, research extensions E5.4, E2.5, E6.0, E6.1 and E6.2, and core Phase 6 / Sprints 6.1, 6.2 and 6.3 are complete for their keyless implementation and replay gates. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. The repository has a keyless API, worker, web shell, local Compose topology, protected operating-mode defaults, developer commands, quality gates, structured request and event-processing telemetry, application-facing provider ports, resilient transport policies, provider health/freshness/quota models, redacted fixtures and deterministic fakes. No live provider integration, LLM integration or live-money execution has been enabled.
 Phase 7 / Sprint 7.1 is now also complete for its keyless implementation and replay gate: decision/risk/provider-health events project to durable, explainable alerts; Telegram delivery is bounded, deduplicated, rate-limited and retryable through the leased outbox; and provider/system degradation is explicit. Live provider acceptance remains externally blocked because provider endpoints/credentials are unavailable. No live provider integration, LLM integration or live-money execution has been enabled.
@@ -67,6 +67,16 @@ explicit future-outcome samples. Insufficient fixture evidence blocks
 promotion; no production config was changed or automatically frozen, and no
 execution, signing, provider or live-money authority was added. Live
 market-data and Telegram acceptance remains `BLOCKED_EXTERNAL`.
+Phase 11 / Sprint 11.1 and research extension E11.1 are now complete for
+their keyless reliability and measurement seams: bounded percentile
+histograms, provider-labelled reconnect/fallback/duplicate/conflict/malformed
+counters, classified transport and outbox telemetry, deterministic
+disconnect/rate-limit/backpressure contracts, persistence connection-pool
+restart recovery, retention/index review and an isolated backup/restore
+runbook are implemented. The synthetic local benchmark reports p50/p95/p99
+for all six required stages and identifies provider-network versus internal
+attribution, but it does not establish production SLOs or justify Rust/
+Yellowstone extraction. Live provider acceptance remains `BLOCKED_EXTERNAL`.
 
 ## Current phase and sprint
 
@@ -105,10 +115,12 @@ market-data and Telegram acceptance remains `BLOCKED_EXTERNAL`.
 - Completed: `Phase 10 / Sprint 10.2 — Backtesting` (keyless implementation and gate)
 - Completed: `Phase 10 / Sprint 10.3 — Score Calibration` (keyless implementation and gate)
 - Completed: `Research extension E10.2 — Author and Wallet Calibration` (keyless measurement and safety seam)
-- Next checkpoint: begin `Phase 11 / Sprint 11.1 — Reliability`; preserve Gate P9
-  live read-only market-data acceptance and Telegram acceptance
-  `BLOCKED_EXTERNAL`, and preserve all protected modes. E11.1 latency
-  measurement remains required before any optional Rust/Yellowstone extraction.
+- Completed: `Phase 11 / Sprint 11.1 — Reliability` (keyless implementation and gate)
+- Completed: `Research extension E11.1 — Latency SLO and Stream Benchmarking` (keyless measurement seam; no production SLO declared)
+- Next checkpoint: `Phase 11 / Sprint 11.2 — Observability / Operations`; preserve
+  Gate P9 live read-only market-data and Telegram acceptance
+  `BLOCKED_EXTERNAL`, and preserve all protected modes. E11.2 Rust/Yellowstone
+  extraction remains conditional on real measured need and is not started.
 
 ## Current operating policy
 
@@ -121,20 +133,22 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: begin Phase 11 / Sprint 11.1 Reliability after the Phase 10.3 keyless
-  calibration checkpoint.
-- Design and plan for Sprint 10.3 are recorded in
-  `docs/superpowers/specs/2026-09-01-phase-10-sprint-10-3-score-calibration-design.md`
-  and `docs/superpowers/plans/2026-09-01-phase-10-sprint-10-3-score-calibration.md`.
-- Current state: Sprint 10.3 calibration and E10.2 attribution measurement
-  reuse the normalized replay and backtest contracts, preserve unknown and
-  insufficient evidence, keep candidate strategies shadow-only, and expose no
-  production promotion or execution path. The keyless Phase 10 gate passes;
-  Gate P9 real read-only market-data and Telegram acceptance remains
-  externally blocked.
-- External blockers: live quote/market, Telegram and all live execution
-  acceptance are `BLOCKED_EXTERNAL`; keyless fixtures/fakes are required and
-  sufficient for the completed Phase 10 work and the next reliability tasks.
+- Task: begin Phase 11 / Sprint 11.2 Observability / Operations after the
+  keyless Sprint 11.1 reliability checkpoint.
+- Sprint 11.1 design and plan are recorded in
+  `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-1-reliability-design.md`
+  and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-1-reliability.md`.
+- Current state: the optional `ReliabilityMetrics` sink now spans the existing
+  transport, stream, canonical chain and outbox seams. `make
+  reliability-benchmark` emits bounded p50/p95/p99 evidence for the six E11.1
+  stages with source attribution; its synthetic-local method is explicitly not
+  live provider evidence and no production SLO has been declared. The keyless
+  Sprint 11.1 suite and full quality gate remain the next checkpoint evidence
+  to record after this implementation commit.
+- External blockers: live quote/market, stream/RPC, Telegram and all live
+  execution acceptance are `BLOCKED_EXTERNAL`; keyless fixtures/fakes are
+  sufficient for Sprint 11.1. Gate P11 is not claimed because Sprints 11.2
+  and 11.3 remain.
 - Protected modes: `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
   `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
 
@@ -233,6 +247,22 @@ The configuration loader rejects attempts to override these protected values.
 - [x] E10.2 author/wallet attribution seam for forward-outcome lift,
   shrinkage/sample thresholds, external-label incremental value and
   bundle/side-wallet false-confluence measurement.
+- [x] Phase 11.1 `ReliabilityMetrics` collector with bounded nearest-rank
+  histograms, explicit sample-eviction counts, safe provider labels, source
+  attribution and protected-mode serialization.
+- [x] Phase 11.1 optional telemetry instrumentation for provider transport,
+  Helius/Birdeye/protocol stream fallback, canonical chain ingest and outbox
+  delivery/retry/dead-letter paths; telemetry errors cannot change business
+  outcomes.
+- [x] Phase 11.1 deterministic reliability tests for reconnect/fallback,
+  malformed/duplicate/rate-limit behavior, bounded backpressure, outbox
+  recovery and the opt-in Postgres connection-pool restart.
+- [x] Phase 11.1 retention/index review and safe isolated backup/restore
+  runbook at `docs/RUNBOOKS/RELIABILITY.md`; no destructive retention job or
+  physical partitioning was introduced.
+- [x] E11.1 keyless `reliability-benchmark-v1` report/doctor with p50/p95/p99
+  for all six required stages, provider-network/internal attribution and an
+  explicit decision to defer Rust/Yellowstone until real measurement.
 - [x] Roadmap checkboxes reconciled for Sprint 1.1.
 - [x] SQLAlchemy 2 async persistence models for the core Phase 1 entities, with domain-independent repositories and explicit unit-of-work transactions.
 - [x] Initial Alembic revision `0001_initial` for 13 core tables, including provenance, explainability, event and outbox fields.
@@ -782,14 +812,20 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 10.3 fixture verification: `make calibrate-score CALIBRATION_OUTPUT=/tmp/memeradar-calibration-report.json` exits `0` with schema `score-calibration-v1`, artifact digest `sha256:929d4516c2a1cd8ede17934179bbabc96d5b7e2db422a3234d7396f1f1947d0b`, selected shadow candidate `author-ablation`, explicit `BLOCKED_INSUFFICIENT_EVIDENCE`, empty train/validation/test checkpoint counts for the intentionally bounded fixture, and exact protected modes.
 - Sprint 10.3 full repository quality gate: `make verify` exits `0`; Ruff, mypy (`78 source files`), `594 passed, 10 skipped`, branch-aware coverage (`78%`), frontend lint/typecheck/Vitest (`13 files / 37 tests`), Compose config, secret scan and migration parity all complete successfully. Migration parity reports `{"heads": ["0006_paper_execution"], "table_count": 22}`.
 - Sprint 10.3 safety acceptance: `PASS` for provider-free time-split calibration, same replay/backtest evidence boundary, train-only candidate selection, redacted deterministic artifacts, explicit unknown/insufficient evidence, attribution-as-evidence-only and permanent absence of promotion, signing or execution authority. No production score config was changed or frozen; Gate P9 live market-data and Telegram acceptance remains `BLOCKED_EXTERNAL`.
+- Sprint 11.1 focused verification: `./.venv/bin/pytest tests/contract/test_phase11_sprint11_1.py tests/unit/test_reliability.py tests/unit/test_provider_transport.py tests/unit/test_helius_stream.py tests/unit/test_birdeye_stream.py tests/unit/test_protocol_stream.py tests/unit/test_event_processing.py tests/unit/test_stream_integrity.py -q` passes `60 tests`; bounded histogram/percentile semantics, provider-labelled reconnect/fallback/duplicate/malformed/rate-limit/retry counters, outbox telemetry, stream backpressure and protected-mode contracts pass.
+- Sprint 11.1 persistence verification: the opt-in `tests/integration/test_phase11_reliability_postgres.py` passes `1 test` against the local Postgres service; a pending outbox row survives disposal/reopening of the connection pool and is delivered once, then isolated fixture cleanup succeeds. The integration test is skipped when `MEMERADAR_TEST_DATABASE_URL` is absent.
+- Sprint 11.1 static verification: Ruff passes for `apps packages tests scripts`; strict mypy passes for `79 source files`; reliability code remains provider/persistence/frontend-free and optional telemetry is best-effort at adapter boundaries.
+- E11.1 benchmark verification: `./.venv/bin/python scripts/reliability_benchmark.py --iterations 16 --output /tmp/memeradar-reliability.json` exits `0` and emits `reliability-benchmark-v1` with all six required p50/p95/p99 histograms, provider-network/internal attribution, a bounded counter snapshot and `external_provider_acceptance: BLOCKED_EXTERNAL`; runtime timing is synthetic/keyless evidence and no production SLO is declared.
+- Sprint 11.1 doctor/safety verification: `./.venv/bin/python scripts/reliability_doctor.py` reports `BLOCKED_EXTERNAL` with `keyless_contracts: PASS`, `external_network: not_run` and exact protected modes. `docs/RUNBOOKS/RELIABILITY.md` documents provider/queue/DB incidents, current no-partition/index posture and a non-destructive isolated `pg_dump`/`pg_restore` drill. No live provider, signing or execution path was added.
 
 ## Next task
 
-Begin `Phase 11 / Sprint 11.1 — Reliability` from `docs/ROADMAP.md`.
-Start with the keyless soak/disconnect/rate-limit and queue/outbox/DB restart
-contracts; keep E11.1 latency measurement ahead of any optional
-Rust/Yellowstone extraction. Keep Gate P9 live read-only market-data and
+Begin `Phase 11 / Sprint 11.2 — Observability / Operations` from
+`docs/ROADMAP.md`. Build dashboards/alerts and provider degradation policy on
+the measured reliability seam; do not declare production SLOs beyond the
+evidence already recorded. Keep Gate P9 live read-only market-data and
 Telegram acceptance `BLOCKED_EXTERNAL`, preserve append-only/auditable
 evidence and all four protected operating modes, and do not introduce
 signing, live-money submission or execution authority outside the approved
-paper boundary.
+paper boundary. E11.2 Rust/Yellowstone remains conditional on real measured
+need and is not started.

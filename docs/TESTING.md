@@ -132,6 +132,31 @@ configuration presence. Migration parity, full repository quality gates and
 the opt-in Postgres stream-state round trip are required before E8.4 is
 marked complete.
 
+## Phase 11.1 reliability and E11.1 measurement
+
+The keyless reliability suite covers bounded percentile histograms and
+provider-labelled counters, stream disconnect/reconnect and fallback behavior,
+malformed and duplicate visibility, provider rate-limit/retry behavior,
+bounded backpressure, outbox retry/dead-letter telemetry and persistence
+connection-pool restart recovery. The opt-in
+`tests/integration/test_phase11_reliability_postgres.py` verifies that a
+pending outbox row survives disposal and reopening of the database connection
+pool before it is delivered exactly once.
+
+Focused command:
+
+```text
+./.venv/bin/pytest tests/unit/test_reliability.py tests/unit/test_provider_transport.py tests/unit/test_helius_stream.py tests/unit/test_birdeye_stream.py tests/unit/test_protocol_stream.py tests/unit/test_event_processing.py tests/unit/test_stream_integrity.py tests/contract/test_phase11_sprint11_1.py -q
+```
+
+Run `make reliability-benchmark RELIABILITY_ITERATIONS=1000` for the six
+latency histograms and `make reliability-doctor` for the keyless readiness
+check. The benchmark does not contact a provider and does not establish a
+production SLO; configured live access must be separately verified and remains
+`BLOCKED_EXTERNAL` when unavailable. See
+[`docs/RUNBOOKS/RELIABILITY.md`](RUNBOOKS/RELIABILITY.md) for outage,
+retention and isolated backup/restore procedures.
+
 ## Phase 10.1 replay harness
 
 The keyless replay suite covers normalized dataset round trips, deterministic
@@ -347,6 +372,12 @@ Measure:
 - DB query p95 for Radar/timeline;
 - replay throughput;
 - queue/outbox backlog recovery.
+
+Phase 11.1 adds bounded p50/p95/p99 reports for chain/social ingest, feature,
+decision and candidate-alert stages, with explicit provider-network versus
+internal attribution and no silent sample eviction. The report includes a
+synthetic-local method marker and defers SLO/Rust decisions until real
+analysis-only provider measurements are available.
 
 Sprint 6.1 adds credential-free feature-window replay and persistence checks:
 the fixture must reproduce identical `1m`/`5m`/`15m` snapshot IDs, values,

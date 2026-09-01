@@ -171,6 +171,11 @@ Token metadata explicitly distinguishes SPL Token and Token-2022 programs. Mint 
 
 `HeliusObservationNormalizer` and `HeliusStreamConsumer` in `helius_stream.py` form the webhook/WebSocket seam. They accept only injected async sources, redact credential-shaped fields, map event types to an allow-list, validate event timestamps, and create deterministic observation IDs from `helius` plus the provider source ID. Duplicate deliveries are forwarded so downstream persistence can apply its idempotency policy. Reconnects are bounded and cancellation propagates; untrusted messages cannot invoke execution or mutate configuration.
 
+The stream consumer accepts an optional provider-independent reliability sink.
+It reports only bounded Helius reconnect, duplicate and malformed-drop
+counters plus chain-event-to-ingest timing; raw messages, credentials and
+exception text never enter telemetry.
+
 The explicit `make provider-doctor` command runs one bounded, read-only `getHealth` call when both `HELIUS_RPC_URL` and `HELIUS_API_KEY` are configured. Its JSON report includes only configuration presence, network/auth/schema status, rounded latency, safe rate-limit metadata and the protected operating modes. It returns `PASS`, `FAIL` or `BLOCKED_EXTERNAL`; the current keyless checkout reports `BLOCKED_EXTERNAL` with `CONFIGURATION_MISSING`.
 
 ## E8.4 Solana stream integrity and protocol verification
@@ -212,6 +217,10 @@ The adapter sends the configured API key only as the `x-api-key` header, identif
 
 `BirdeyeListingNormalizer` and `BirdeyeDiscoveryFallback` in `birdeye_stream.py` form a stream-first, bounded polling-fallback seam for untrusted new-listing messages. Malformed messages are counted and skipped, duplicates are retained for downstream idempotency, reconnects are bounded and cancellation propagates. `BirdeyeObservationResolver` marks expired fresh evidence `STALE`, preserves `UNKNOWN`/`INVALID`/`CONFLICTED`, retains source IDs and values and emits explainable `CONFLICTED` evidence for material numeric disagreement.
 
+When wired to the optional reliability sink, the fallback reports provider-
+labelled reconnect, fallback, duplicate and malformed-drop counters without
+changing its existing bounded poll behavior.
+
 The explicit `make birdeye-doctor` command performs one bounded, read-only supported-networks call when `BIRDEYE_API_URL` and `BIRDEYE_API_KEY` are configured. It reports only configuration presence, network/auth/schema status, rounded latency, safe rate-limit metadata and protected modes. Synthetic fixtures and keyless contract tests are committed under `fixtures/providers/birdeye/`; live acceptance remains `BLOCKED_EXTERNAL` when the endpoint/key configuration is absent. Reference endpoint documentation: [new listing](https://docs.birdeye.so/reference/get-defi-v2-tokens-new_listing), [market data](https://docs.birdeye.so/reference/get-defi-v3-token-market-data), [trade data](https://docs.birdeye.so/reference/get-defi-v3-token-trade-data-single), [holder data](https://docs.birdeye.so/reference/get-defi-v3-token-holder) and [supported networks](https://docs.birdeye.so/reference/get-defi-networks).
 
 ## Launchpad / DEX coverage
@@ -240,6 +249,19 @@ retry budget. It has no network client, persistence, signer or execution
 authority. Synthetic Pump.fun/PumpSwap replay data and malformed/duplicate
 contracts live in `fixtures/providers/launchpad_dex/`; live protocol access
 remains a separate `BLOCKED_EXTERNAL` acceptance.
+
+An optional reliability sink records protocol-venue reconnect, fallback,
+duplicate and malformed-drop counters. These counters are diagnostics only and
+cannot raise score, change stream-quality state or authorize a decision.
+
+## Phase 11 reliability measurement
+
+`ProviderTransport` optionally reports bounded provider request latency and
+classified timeout, failure, rate-limit, retry, schema-drop and circuit-open
+counters. Application outbox processing optionally reports delivery,
+retry/dead-letter and processing latency. All labels are allow-listed and
+redaction-safe. `make reliability-doctor` validates only local contracts and
+returns `BLOCKED_EXTERNAL` when no live provider check is performed.
 
 ## Correlation / launch micro-feature seam
 

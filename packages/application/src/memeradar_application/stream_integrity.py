@@ -39,6 +39,8 @@ from memeradar_domain.common import (
 from memeradar_domain.events import ReasonCode
 from memeradar_domain.identities import require_solana_address
 
+from .reliability import emit_latency
+
 
 def _chain(value: Chain | str) -> Chain:
     if isinstance(value, Chain):
@@ -1026,6 +1028,16 @@ class StreamIntegrityCoordinator:
         self,
         event: NormalizedChainEvent,
     ) -> EventAppendResult:
+        emit_latency(
+            self.telemetry,
+            "chain_event_to_ingest_ms",
+            max(
+                0.0,
+                (event.ingested_at - event.occurred_at).total_seconds() * 1000,
+            ),
+            source="provider_network",
+            provider=self.transport,
+        )
         result = await self.state_store.append_event(event)
         if (
             result.status is EventAppendStatus.CONFLICTED

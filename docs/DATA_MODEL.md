@@ -105,6 +105,16 @@ Migration `0005_stream_integrity` adds these tables and the nullable chain
 observation columns. It is reversible; raw provider payloads remain bounded
 and are not added to the public read surface.
 
+## Reliability retention and index posture
+
+The Phase 11.1 review found no physical table partitions and no automatic
+destructive retention job. Existing event-time, chain-slot, stream-progress,
+gap-range, verification-time, aggregate-time and outbox availability/lease
+indexes are the current query posture. Evidence tables remain append-oriented
+for replay and audit. A future retention or partitioning change requires
+measured volume thresholds, an archived export, an isolated restore drill and
+explicit privacy/legal review; this sprint adds no destructive cleanup path.
+
 ### feature_snapshots
 - id
 - candidate_id

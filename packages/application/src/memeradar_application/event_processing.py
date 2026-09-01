@@ -15,6 +15,8 @@ from uuid import UUID
 from memeradar_domain import EventEnvelope
 from memeradar_domain.common import ensure_utc, require_text
 
+from .reliability import ReliabilityTelemetry, emit_counter, emit_latency
+
 
 class UnhandledEvent(ValueError):
     """Raised when no application handler is registered for an event kind."""
@@ -261,6 +263,7 @@ class OutboxProcessor:
         lease_seconds: int = 60,
         side_effect_kind: str | None = None,
         clock: Clock | None = None,
+        reliability_telemetry: ReliabilityTelemetry | None = None,
     ) -> None:
         if not 1 <= batch_size <= 1000:
             raise ValueError("batch_size must be between 1 and 1000")
@@ -278,6 +281,7 @@ class OutboxProcessor:
             else require_text(side_effect_kind, "side_effect_kind", max_length=64)
         )
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._reliability_telemetry = reliability_telemetry
 
     async def process_once(self, *, now: datetime | None = None) -> ProcessingResult:
         effective_now = ensure_utc(now or self._clock(), "now")
@@ -341,11 +345,24 @@ class OutboxProcessor:
                     )
                     retried += 1
                     outcome = EventProcessingOutcome.RETRY_SCHEDULED
+                duration_ms = round((perf_counter() - started) * 1000, 3)
                 self._telemetry.record(
                     outcome=outcome,
                     message=message,
-                    duration_ms=round((perf_counter() - started) * 1000, 3),
+                    duration_ms=duration_ms,
                     error_class=error_metadata["error_class"],
+                )
+                emit_counter(
+                    self._reliability_telemetry,
+                    "outbox_dead_letters"
+                    if outcome is EventProcessingOutcome.DEAD_LETTERED
+                    else "outbox_retries",
+                )
+                emit_latency(
+                    self._reliability_telemetry,
+                    "outbox_processing_ms",
+                    duration_ms,
+                    source="internal",
                 )
             else:
                 await self._store.mark_delivered(
@@ -354,10 +371,18 @@ class OutboxProcessor:
                     delivered_at=effective_now,
                 )
                 delivered += 1
+                duration_ms = round((perf_counter() - started) * 1000, 3)
                 self._telemetry.record(
                     outcome=EventProcessingOutcome.DELIVERED,
                     message=message,
-                    duration_ms=round((perf_counter() - started) * 1000, 3),
+                    duration_ms=duration_ms,
+                )
+                emit_counter(self._reliability_telemetry, "outbox_delivered")
+                emit_latency(
+                    self._reliability_telemetry,
+                    "outbox_processing_ms",
+                    duration_ms,
+                    source="internal",
                 )
         return ProcessingResult(
             claimed=len(messages),

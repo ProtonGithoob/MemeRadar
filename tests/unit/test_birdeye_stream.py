@@ -11,6 +11,7 @@ from memeradar_application.provider_contracts import (
     DiscoveryRequest,
     ProviderRequestContext,
 )
+from memeradar_application.reliability import ReliabilityMetrics
 from memeradar_providers.birdeye_stream import BirdeyeDiscoveryFallback, BirdeyeListingNormalizer
 from memeradar_providers.transport import ProviderSchemaError, ProviderUnavailableError
 
@@ -148,3 +149,42 @@ def test_stream_duplicates_are_forwarded_and_cancellation_propagates() -> None:
 
 async def _empty_poll() -> Sequence[DiscoveryCandidate]:
     return ()
+
+
+def test_fallback_reports_provider_reconnect_fallback_duplicate_and_malformed() -> None:
+    async def failed_source() -> AsyncIterator[object]:
+        yield message()
+        yield {"type": "invalid"}
+        yield message()
+        raise ProviderUnavailableError("synthetic outage")
+
+    async def sleeper(_delay: float) -> None:
+        return None
+
+    async def run() -> tuple[ReliabilityMetrics, object]:
+        metrics = ReliabilityMetrics()
+        normalizer = BirdeyeListingNormalizer(clock=lambda: NOW + timedelta(seconds=1))
+
+        async def poller(_request: DiscoveryRequest) -> Sequence[DiscoveryCandidate]:
+            return (normalizer.normalize(message()),)
+
+        consumer = BirdeyeDiscoveryFallback(
+            lambda: failed_source(),
+            poller,
+            normalizer=normalizer,
+            sleeper=sleeper,
+            telemetry=metrics,
+        )
+        result = await consumer.collect(DiscoveryRequest(context=context(), limit=1))
+        return metrics, result
+
+    metrics, result = asyncio.run(run())
+    counters = metrics.snapshot().provider_counters["birdeye"]
+
+    assert result.used_fallback is True
+    assert counters == {
+        "dropped_malformed": 1,
+        "duplicate_events": 2,
+        "provider_fallbacks": 1,
+        "stream_reconnects": 1,
+    }

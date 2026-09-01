@@ -513,6 +513,20 @@ Record latency separately for provider/network and internal processing. At minim
 
 Use histograms/percentiles where appropriate. Latency optimization is not accepted if it bypasses normalization, risk or idempotency.
 
+Phase 11.1 adds the provider-independent `ReliabilityMetrics` collector in
+`packages/application/src/memeradar_application/reliability.py`. It keeps
+fixed-memory nearest-rank p50/p95/p99 histograms with explicit eviction
+counts, safe provider-labelled counters and provider-network versus internal
+source attribution. `ProviderTransport`, the Helius/Birdeye/protocol stream
+fallback seams, the canonical stream coordinator and the durable outbox may
+report classified outcomes through the optional sink; telemetry failures never
+change business outcomes. `make reliability-benchmark` is a synthetic,
+keyless measurement of the six stages and reports live provider acceptance as
+`BLOCKED_EXTERNAL`; it is evidence for measurement only, not an SLO or a
+Rust/Yellowstone authorization. The operational retention/index review and
+isolated backup/restore procedure are in
+[`docs/RUNBOOKS/RELIABILITY.md`](RUNBOOKS/RELIABILITY.md).
+
 ## Scaling strategy
 
 Do not split services until measurements justify it. Likely future extraction candidates:

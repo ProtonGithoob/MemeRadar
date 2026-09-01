@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from memeradar_application.reliability import ReliabilityMetrics
 from memeradar_providers.transport import (
     CircuitBreaker,
     CircuitOpen,
@@ -140,3 +141,35 @@ def test_circuit_breaker_opens_and_allows_one_recovery_probe() -> None:
         breaker.before_call()
     breaker.record_success()
     assert breaker.state is CircuitState.CLOSED
+
+
+def test_transport_reports_bounded_rate_limit_retry_and_request_latency() -> None:
+    metrics = ReliabilityMetrics()
+    attempts = 0
+
+    async def operation() -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ProviderRateLimitedError()
+        return "ok"
+
+    async def sleeper(_delay: float) -> None:
+        return None
+
+    transport = ProviderTransport(
+        retry_policy=RetryPolicy(max_attempts=2, base_delay_seconds=0.1, max_delay_seconds=0.1),
+        sleeper=sleeper,
+        random_source=lambda: 0.5,
+        telemetry=metrics,
+        provider_name="helius",
+    )
+
+    assert asyncio.run(transport.execute(operation)) == "ok"
+    snapshot = metrics.snapshot()
+
+    assert snapshot.provider_counters["helius"] == {
+        "provider_retries": 1,
+        "rate_limit_events": 1,
+    }
+    assert snapshot.latencies["provider_request_ms"]["provider_network"]["count"] == 2

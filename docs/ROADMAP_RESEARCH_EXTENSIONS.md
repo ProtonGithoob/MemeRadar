@@ -325,17 +325,27 @@ collection/provider acceptance remains `BLOCKED_EXTERNAL`.
 
 ### Tasks
 
-- [ ] Add histograms/metrics for:
+- [x] Add histograms/metrics for:
   - `chain_event_to_ingest_ms`;
   - `social_event_to_ingest_ms`;
   - `ingest_to_feature_ms`;
   - `feature_to_decision_ms`;
   - `chain_event_to_decision_ms`;
   - `candidate_to_alert_ms`.
-- [ ] Add per-provider reconnect, fallback, duplicate, conflict and dropped-malformed counters.
-- [ ] Establish baseline p50/p95/p99 in analysis-only environment.
-- [ ] Define explicit latency SLOs only after measurement.
-- [ ] Identify whether network/provider latency or internal processing is dominant.
+- [x] Add per-provider reconnect, fallback, duplicate, conflict and dropped-malformed counters.
+- [x] Establish baseline p50/p95/p99 in analysis-only environment.
+- [x] Define explicit latency SLOs only after measurement.
+- [x] Identify whether network/provider latency or internal processing is dominant.
+
+**Keyless status (2026-09-01):** `DONE` for the provider-independent
+measurement seam. `ReliabilityMetrics` uses bounded nearest-rank p50/p95/p99
+histograms with explicit sample eviction, provider-labelled counters and
+provider-network/internal attribution. `make reliability-benchmark` emits a
+redacted `reliability-benchmark-v1` report for all six stages and explicitly
+labels its synthetic local method; live provider acceptance remains
+`BLOCKED_EXTERNAL`. No production SLO is declared and the report defers any
+Rust/Yellowstone extraction until real provider/network measurements establish
+a material bottleneck.
 
 **Acceptance:** optimization decisions cite measured bottlenecks rather than assumptions.
 

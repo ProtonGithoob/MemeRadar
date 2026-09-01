@@ -17,11 +17,14 @@ BACKTEST_SLIPPAGE_BPS ?= 25
 CALIBRATION_INPUT ?= $(BACKTEST_INPUT)
 CALIBRATION_OUTPUT ?=
 PROFILE_ITERATIONS ?= 10
+RELIABILITY_ITERATIONS ?= 1000
+RELIABILITY_OUTPUT ?=
 
 .PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
-	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor backtest-replay calibrate-score
+	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
+	backtest-replay calibrate-score reliability-benchmark reliability-doctor
 
 bootstrap:
 	python3 -m venv .venv
@@ -55,6 +58,10 @@ backtest-replay:
 calibrate-score:
 	$(PYTHON) scripts/calibrate_score.py --input $(CALIBRATION_INPUT) \
 		$(if $(CALIBRATION_OUTPUT),--output $(CALIBRATION_OUTPUT),)
+
+reliability-benchmark:
+	$(PYTHON) scripts/reliability_benchmark.py --iterations $(RELIABILITY_ITERATIONS) \
+		$(if $(RELIABILITY_OUTPUT),--output $(RELIABILITY_OUTPUT),)
 
 frontend-lint:
 	cd $(WEB_DIR) && npm run lint
@@ -135,3 +142,6 @@ stream-integrity-doctor:
 
 paper-trading-doctor:
 	$(PYTHON) scripts/paper_trading_doctor.py
+
+reliability-doctor:
+	$(PYTHON) scripts/reliability_doctor.py

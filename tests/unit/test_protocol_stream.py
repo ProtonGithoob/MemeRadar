@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from memeradar_application.provider_contracts import ProviderRequestContext
+from memeradar_application.reliability import ReliabilityMetrics
 from memeradar_providers.launchpad_dex import PumpFunAdapter
 from memeradar_providers.protocol_stream import (
     ProtocolEventStreamFallback,
@@ -171,3 +172,39 @@ def test_stream_cancellation_propagates_without_polling() -> None:
 def test_protocol_stream_policy_rejects_unbounded_message_settings() -> None:
     with pytest.raises(ValueError, match="max_messages"):
         ProtocolStreamPolicy(max_messages=0)
+
+
+def test_protocol_fallback_reports_provider_counters_without_deduplicating_events() -> None:
+    async def failed_source() -> AsyncIterator[object]:
+        yield message("same", "trade")
+        raise ProviderUnavailableError("synthetic outage")
+
+    async def sleeper(_delay: float) -> None:
+        return None
+
+    async def run() -> tuple[ReliabilityMetrics, object]:
+        metrics = ReliabilityMetrics()
+
+        async def poller(_context: ProviderRequestContext) -> Sequence[object]:
+            return (message("same", "trade"), message("bad", "unknown"))
+
+        consumer = ProtocolEventStreamFallback(
+            PumpFunAdapter(),
+            lambda: failed_source(),
+            poller,
+            policy=ProtocolStreamPolicy(max_reconnects=0),
+            sleeper=sleeper,
+            telemetry=metrics,
+        )
+        return metrics, await consumer.collect(context())
+
+    metrics, result = asyncio.run(run())
+    provider = PumpFunAdapter().provider_name
+    counters = metrics.snapshot().provider_counters[provider]
+
+    assert result.used_fallback is True
+    assert counters == {
+        "dropped_malformed": 1,
+        "duplicate_events": 1,
+        "provider_fallbacks": 1,
+    }

@@ -324,6 +324,13 @@ Never curl-and-execute arbitrary installer scripts in CI without review/pinning.
 - audit tables append-oriented and protected from ordinary operator mutation;
 - raw payload retention must avoid secrets/private user data not required for analysis.
 
+The Phase 11.1 backup/restore procedure is documented in
+[`docs/RUNBOOKS/RELIABILITY.md`](RUNBOOKS/RELIABILITY.md). It restores only to
+an isolated target, keeps connection strings in the operator environment and
+requires migration/integration verification. Reliability telemetry is
+allow-listed and does not retain provider payloads, credentials or exception
+text.
+
 ## Threats to test
 
 - malicious token metadata;

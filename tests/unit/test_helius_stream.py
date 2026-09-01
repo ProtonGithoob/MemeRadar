@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from memeradar_application.reliability import ReliabilityMetrics
 from memeradar_domain import Observation, QualityState
 from memeradar_providers.helius_stream import HeliusObservationNormalizer, HeliusStreamConsumer
 from memeradar_providers.transport import ProviderSchemaError, ProviderUnavailableError
@@ -147,3 +148,43 @@ def test_consumer_cancellation_propagates_without_reconnect_or_sink_side_effect(
             await task
 
     asyncio.run(run())
+
+
+def test_consumer_reports_provider_reconnect_malformed_and_duplicate_counters() -> None:
+    async def first_source() -> AsyncIterator[object]:
+        yield webhook("telemetry-event")
+        yield {"type": "transaction"}
+        yield webhook("telemetry-event")
+        raise ProviderUnavailableError("synthetic outage")
+
+    async def second_source() -> AsyncIterator[object]:
+        if False:
+            yield webhook("unreachable")
+
+    async def _noop() -> None:
+        return None
+
+    async def run() -> tuple[ReliabilityMetrics, object]:
+        sources = iter((first_source(), second_source()))
+        metrics = ReliabilityMetrics()
+        consumer = HeliusStreamConsumer(
+            normalizer=HeliusObservationNormalizer(clock=lambda: NOW + timedelta(seconds=2)),
+            max_reconnects=1,
+            sleeper=lambda _delay: _noop(),
+            telemetry=metrics,
+        )
+        stats = await consumer.consume(lambda: next(sources), lambda _observation: None)
+        return metrics, stats
+
+    metrics, stats = asyncio.run(run())
+    counters = metrics.snapshot().provider_counters["helius"]
+
+    assert stats.reconnects == 1
+    assert counters == {
+        "dropped_malformed": 1,
+        "duplicate_events": 1,
+        "stream_reconnects": 1,
+    }
+    assert metrics.snapshot().latencies["chain_event_to_ingest_ms"]["provider_network"][
+        "count"
+    ] == 2

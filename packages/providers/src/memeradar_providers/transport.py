@@ -9,8 +9,14 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
+from time import perf_counter
 from typing import TypeVar
 
+from memeradar_application.reliability import (
+    ReliabilityTelemetry,
+    emit_counter,
+    emit_latency,
+)
 from memeradar_domain.common import ensure_utc
 
 T = TypeVar("T")
@@ -340,6 +346,8 @@ class ProviderTransport:
         circuit_breaker: CircuitBreaker | None = None,
         sleeper: Sleeper = asyncio.sleep,
         random_source: Callable[[], float] = random.random,
+        telemetry: ReliabilityTelemetry | None = None,
+        provider_name: str = "unknown",
     ) -> None:
         self.timeouts = timeouts or TransportTimeouts()
         self.retry_policy = retry_policy or RetryPolicy()
@@ -347,6 +355,10 @@ class ProviderTransport:
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
         self._sleeper = sleeper
         self._random_source = random_source
+        if not isinstance(provider_name, str) or not provider_name.strip():
+            raise ValueError("provider_name must be non-empty")
+        self._provider_name = provider_name.strip().lower()[:64]
+        self._telemetry = telemetry
 
     async def execute(
         self,
@@ -365,22 +377,57 @@ class ProviderTransport:
             else _bounded_duration(timeout_seconds, "timeout_seconds")
         )
         for attempt in range(1, self.retry_policy.max_attempts + 1):
-            await self.rate_limiter.acquire()
-            self.circuit_breaker.before_call()
+            started = perf_counter()
             try:
+                await self.rate_limiter.acquire()
+                self.circuit_breaker.before_call()
                 result = await asyncio.wait_for(operation(), timeout=timeout)
             except asyncio.CancelledError:
                 raise
             except Exception as error:
                 if isinstance(error, ProviderRateLimitedError):
+                    emit_counter(
+                        self._telemetry,
+                        "rate_limit_events",
+                        provider=self._provider_name,
+                    )
                     self.rate_limiter.update(
                         RateLimitSnapshot(retry_after_seconds=error.retry_after_seconds)
+                    )
+                if isinstance(error, ProviderTimeoutError | asyncio.TimeoutError | TimeoutError):
+                    emit_counter(
+                        self._telemetry,
+                        "provider_timeouts",
+                        provider=self._provider_name,
+                    )
+                elif isinstance(error, ProviderUnavailableError | ConnectionError):
+                    emit_counter(
+                        self._telemetry,
+                        "provider_failures",
+                        provider=self._provider_name,
+                    )
+                elif isinstance(error, ProviderSchemaError):
+                    emit_counter(
+                        self._telemetry,
+                        "dropped_malformed",
+                        provider=self._provider_name,
+                    )
+                elif isinstance(error, CircuitOpen):
+                    emit_counter(
+                        self._telemetry,
+                        "provider_circuit_open",
+                        provider=self._provider_name,
                     )
                 retryable = self.retry_policy.is_retryable(error)
                 if retryable:
                     self.circuit_breaker.record_failure()
                 if not self.retry_policy.should_retry(attempt, error):
                     raise
+                emit_counter(
+                    self._telemetry,
+                    "provider_retries",
+                    provider=self._provider_name,
+                )
                 await self._sleeper(
                     self.retry_policy.delay_for(
                         attempt,
@@ -390,6 +437,14 @@ class ProviderTransport:
             else:
                 self.circuit_breaker.record_success()
                 return result
+            finally:
+                emit_latency(
+                    self._telemetry,
+                    "provider_request_ms",
+                    (perf_counter() - started) * 1000,
+                    source="provider_network",
+                    provider=self._provider_name,
+                )
         raise AssertionError("retry loop exhausted without a result or exception")
 
     async def execute_websocket_read(self, operation: Callable[[], Awaitable[T]]) -> T:

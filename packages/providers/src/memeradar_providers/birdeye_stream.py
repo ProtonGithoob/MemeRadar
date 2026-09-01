@@ -14,6 +14,7 @@ from memeradar_application.provider_contracts import (
     DiscoveryCandidate,
     DiscoveryRequest,
 )
+from memeradar_application.reliability import ReliabilityTelemetry, emit_counter
 from memeradar_domain import Provenance, TokenIdentity
 from memeradar_domain.common import ensure_ordered_timestamps, ensure_utc, require_text
 from memeradar_domain.identities import require_solana_address
@@ -171,6 +172,7 @@ class BirdeyeDiscoveryFallback:
         reconnect_delay_seconds: float = 1.0,
         max_reconnect_delay_seconds: float = 30.0,
         sleeper: Sleeper = asyncio.sleep,
+        telemetry: ReliabilityTelemetry | None = None,
     ) -> None:
         if (
             not isinstance(max_reconnects, int)
@@ -200,6 +202,7 @@ class BirdeyeDiscoveryFallback:
         self._reconnect_delay_seconds = float(reconnect_delay_seconds)
         self._max_reconnect_delay_seconds = float(max_reconnect_delay_seconds)
         self._sleeper = sleeper
+        self._telemetry = telemetry
 
     @staticmethod
     async def _resolve_source(factory: SourceFactory) -> MessageSource:
@@ -210,7 +213,11 @@ class BirdeyeDiscoveryFallback:
             raise TypeError("stream factory must return an async iterable")
         return source
 
-    async def _poll(self, request: DiscoveryRequest) -> tuple[DiscoveryCandidate, ...]:
+    async def _poll(
+        self,
+        request: DiscoveryRequest,
+        seen_ids: set[str],
+    ) -> tuple[DiscoveryCandidate, ...]:
         result = self._poller(request)
         if inspect.isawaitable(result):
             result = await result
@@ -219,6 +226,14 @@ class BirdeyeDiscoveryFallback:
         candidates = tuple(result)
         if any(not isinstance(candidate, DiscoveryCandidate) for candidate in candidates):
             raise ProviderSchemaError("Birdeye poll result contained an invalid candidate")
+        for candidate in candidates:
+            if candidate.source_id in seen_ids:
+                emit_counter(
+                    self._telemetry,
+                    "duplicate_events",
+                    provider=BIRDEYE_PROVIDER,
+                )
+            seen_ids.add(candidate.source_id)
         return candidates
 
     def _delay_for(self, reconnect_number: int) -> float:
@@ -239,15 +254,29 @@ class BirdeyeDiscoveryFallback:
             raise TypeError("request must be a DiscoveryRequest")
         candidates: list[DiscoveryCandidate] = []
         malformed = 0
+        seen_ids: set[str] = set()
         try:
             source = await self._resolve_source(self._stream_factory)
             async for message in source:
                 if stop_event is not None and stop_event.is_set():
                     return FallbackResult(tuple(candidates), False, malformed, 0)
                 try:
-                    candidates.append(self._normalizer.normalize(message))
+                    candidate = self._normalizer.normalize(message)
+                    if candidate.source_id in seen_ids:
+                        emit_counter(
+                            self._telemetry,
+                            "duplicate_events",
+                            provider=BIRDEYE_PROVIDER,
+                        )
+                    seen_ids.add(candidate.source_id)
+                    candidates.append(candidate)
                 except ProviderSchemaError:
                     malformed += 1
+                    emit_counter(
+                        self._telemetry,
+                        "dropped_malformed",
+                        provider=BIRDEYE_PROVIDER,
+                    )
                     continue
             if stop_event is not None and stop_event.is_set():
                 return FallbackResult(tuple(candidates), False, malformed, 0)
@@ -260,7 +289,9 @@ class BirdeyeDiscoveryFallback:
         if stop_event is not None and stop_event.is_set():
             return FallbackResult(tuple(candidates), False, malformed, 0)
         await self._sleeper(self._delay_for(1))
-        candidates.extend(await self._poll(request))
+        emit_counter(self._telemetry, "stream_reconnects", provider=BIRDEYE_PROVIDER)
+        emit_counter(self._telemetry, "provider_fallbacks", provider=BIRDEYE_PROVIDER)
+        candidates.extend(await self._poll(request, seen_ids))
         return FallbackResult(tuple(candidates), True, malformed, 1)
 
 

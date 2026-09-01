@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from memeradar_application.reliability import ReliabilityTelemetry, emit_counter, emit_latency
 from memeradar_domain import Observation, Provenance, QualityState
 from memeradar_domain.common import ensure_ordered_timestamps, ensure_utc, require_text
 
@@ -182,6 +183,7 @@ class HeliusStreamConsumer:
         reconnect_delay_seconds: float = 1.0,
         max_reconnect_delay_seconds: float = 30.0,
         sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        telemetry: ReliabilityTelemetry | None = None,
     ) -> None:
         if (
             not isinstance(max_reconnects, int)
@@ -209,6 +211,7 @@ class HeliusStreamConsumer:
         self._reconnect_delay_seconds = float(reconnect_delay_seconds)
         self._max_reconnect_delay_seconds = float(max_reconnect_delay_seconds)
         self._sleeper = sleeper
+        self._telemetry = telemetry
 
     @staticmethod
     async def _resolve_source(factory: SourceFactory) -> MessageSource:
@@ -238,6 +241,7 @@ class HeliusStreamConsumer:
         emitted = 0
         malformed = 0
         reconnects = 0
+        seen_ids: set[UUID] = set()
         while True:
             if stop_event is not None and stop_event.is_set():
                 return StreamStats(received, emitted, malformed, reconnects)
@@ -251,7 +255,31 @@ class HeliusStreamConsumer:
                         observation = self._normalizer.normalize(message)
                     except ProviderSchemaError:
                         malformed += 1
+                        emit_counter(
+                            self._telemetry,
+                            "dropped_malformed",
+                            provider=HELIUS_PROVIDER,
+                        )
                         continue
+                    if observation.id in seen_ids:
+                        emit_counter(
+                            self._telemetry,
+                            "duplicate_events",
+                            provider=HELIUS_PROVIDER,
+                        )
+                    seen_ids.add(observation.id)
+                    if observation.occurred_at is not None:
+                        emit_latency(
+                            self._telemetry,
+                            "chain_event_to_ingest_ms",
+                            max(
+                                0.0,
+                                (observation.ingested_at - observation.occurred_at).total_seconds()
+                                * 1000,
+                            ),
+                            source="provider_network",
+                            provider=HELIUS_PROVIDER,
+                        )
                     result = sink(observation)
                     if inspect.isawaitable(result):
                         await result
@@ -267,6 +295,11 @@ class HeliusStreamConsumer:
                 if reconnects >= self._max_reconnects:
                     return StreamStats(received, emitted, malformed, reconnects)
             reconnects += 1
+            emit_counter(
+                self._telemetry,
+                "stream_reconnects",
+                provider=HELIUS_PROVIDER,
+            )
             await self._sleeper(self._delay_for(reconnects))
 
 
