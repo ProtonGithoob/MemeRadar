@@ -35,6 +35,9 @@ from memeradar_domain.events import normalize_reason_codes
 
 ALPHA_SCORE_V1_VERSION = "alpha-score-v1"
 ALPHA_SCORE_V1_STRATEGY_NAME = "alpha-score"
+# EarlyScore is a separate launch-stage strategy. AlphaScore remains the
+# downstream primary strategy after the configured early-stage handoff.
+EARLY_SCORE_V1_VERSION = "early-score-v1"
 
 ALPHA_SCORE_V1_WEIGHTS: Mapping[str, Decimal] = MappingProxyType(
     {
@@ -814,6 +817,7 @@ __all__ = [
     "ALPHA_SCORE_V1_STRATEGY_NAME",
     "ALPHA_SCORE_V1_VERSION",
     "ALPHA_SCORE_V1_WEIGHTS",
+    "EARLY_SCORE_V1_VERSION",
     "AlphaScoreV1Strategy",
     "AlphaStrategy",
     "AlphaStrategyInput",

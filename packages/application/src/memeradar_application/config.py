@@ -71,6 +71,7 @@ class Settings:
     paper_trading: bool
     manual_execution: bool
     auto_execution: bool
+    early_score_handoff_seconds: int = 300
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -106,6 +107,12 @@ class Settings:
             values.get("READINESS_TIMEOUT_SECONDS", "0.25"),
             0.01,
             10.0,
+        )
+        early_score_handoff_seconds = _parse_int(
+            "EARLY_SCORE_HANDOFF_SECONDS",
+            values.get("EARLY_SCORE_HANDOFF_SECONDS", "300"),
+            1,
+            86_400,
         )
         role_tokens = {
             "VIEWER_API_TOKEN": _optional_value(values, "VIEWER_API_TOKEN"),
@@ -158,4 +165,5 @@ class Settings:
             paper_trading=parsed_modes["PAPER_TRADING"],
             manual_execution=parsed_modes["MANUAL_EXECUTION"],
             auto_execution=parsed_modes["AUTO_EXECUTION"],
+            early_score_handoff_seconds=early_score_handoff_seconds,
         )

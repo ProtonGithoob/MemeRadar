@@ -48,6 +48,15 @@ clean-launch PASS. Focused evidence: 55 launch-risk, decision, holder, wallet
 and signal-hardening tests pass; Ruff and full mypy are clean. Tasks 5-13
 remain in progress.
 
+Task 5 is complete for EarlyScore v1: the seven specified weighted components,
+post-base penalties, version/config hash, launch-age AlphaScore handoff and
+confidence-separated projection are implemented. Missing social corroboration
+contributes no score and lowers confidence; hard-risk BLOCK/UNKNOWN evidence
+remains non-overridable and cannot produce an execution-eligible result.
+Focused evidence: 20 EarlyScore/AlphaScore tests pass, Ruff and full mypy are
+clean; the full test command uses the repository `.venv` because the system
+Python lacks FastAPI. Tasks 6-13 remain in progress.
+
 ## Current verdict
 
 `PHASE_11_SPRINT_11_3_COMPLETE_CROSS_CUTTING_HARDENING_COMPLETE_KEYLESS_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`
