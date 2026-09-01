@@ -31,7 +31,13 @@ preferred over Birdeye fallback listings, duplicate delivery is idempotent,
 and unverified/recovered/reverted evidence degrades to UNKNOWN/CONFLICTED.
 Canonical decoder output now carries its full-key verification marker for the
 provider-neutral detector. Focused evidence: 45 stream/detector tests pass and
-the full application mypy check is clean. Tasks 3-13 remain in progress.
+the full application mypy check is clean. Task 3 is complete for the keyless
+micro-feature engine: it reuses the canonical correlation window set, computes
+exact event-time-bounded 1s/5s/15s/30s/60s/3m/5m metrics, excludes future
+observations, keeps missing trade-side/liquidity evidence nullable and labels
+adjacent-window acceleration only when both windows are valid. Focused
+evidence: 13 feature/correlation tests pass and the full application mypy
+check is clean. Tasks 4-13 remain in progress.
 
 ## Current verdict
 
