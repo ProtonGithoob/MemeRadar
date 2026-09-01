@@ -329,6 +329,7 @@ class ExternalCallBenchmark:
     evidence_refs: tuple[str, ...] = ()
     provenance: tuple[Provenance, ...] = ()
     metadata: Mapping[str, object] = field(default_factory=dict)
+    reason_codes: tuple[ReasonCode | str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.candidate_id, UUID):
@@ -352,6 +353,7 @@ class ExternalCallBenchmark:
             "evidence_refs",
             normalize_texts(self.evidence_refs, "evidence_refs"),
         )
+        object.__setattr__(self, "reason_codes", normalize_reason_codes(self.reason_codes))
         provenance = tuple(self.provenance)
         if any(not isinstance(value, Provenance) for value in provenance):
             raise TypeError("provenance must contain Provenance values")
@@ -367,12 +369,81 @@ class ExternalCallBenchmark:
         )
 
     @property
+    def lead_time_from_first_watch_ms(self) -> Decimal | None:
+        return _duration_ms(
+            self.memeradar_first_watch_at,
+            self.external_call_at,
+            "lead_time_from_first_watch_ms",
+        )
+
+    @property
+    def lead_time_from_entry_ready_ms(self) -> Decimal | None:
+        return _duration_ms(
+            self.memeradar_entry_ready_at,
+            self.external_call_at,
+            "lead_time_from_entry_ready_ms",
+        )
+
+    @property
+    def reason_code_values(self) -> tuple[str, ...]:
+        return tuple(
+            reason.code if isinstance(reason, ReasonCode) else str(reason).upper()
+            for reason in self.reason_codes
+        )
+
+    @property
     def measurement_only(self) -> bool:
         return True
 
     @property
     def can_authorize_execution(self) -> bool:
         return False
+
+    def to_mapping(self) -> Mapping[str, object]:
+        """Return a serializable measurement projection with no authority fields."""
+
+        return freeze_mapping(
+            {
+                "candidate_id": str(self.candidate_id),
+                "memeradar_first_seen_at": self.memeradar_first_seen_at.isoformat(),
+                "memeradar_first_watch_at": (
+                    None
+                    if self.memeradar_first_watch_at is None
+                    else self.memeradar_first_watch_at.isoformat()
+                ),
+                "memeradar_entry_ready_at": (
+                    None
+                    if self.memeradar_entry_ready_at is None
+                    else self.memeradar_entry_ready_at.isoformat()
+                ),
+                "external_call_at": (
+                    None if self.external_call_at is None else self.external_call_at.isoformat()
+                ),
+                "lead_time_to_external_call_ms": self.lead_time_to_external_call_ms,
+                "lead_time_from_first_watch_ms": self.lead_time_from_first_watch_ms,
+                "lead_time_from_entry_ready_ms": self.lead_time_from_entry_ready_ms,
+                "source_id": self.source_id,
+                "quality_state": self.quality_state.value,
+                "reason_codes": self.reason_code_values,
+                "evidence_refs": self.evidence_refs,
+                "provenance": tuple(
+                    {
+                        "provider": item.provider,
+                        "source_id": item.source_id,
+                        "observed_at": item.observed_at.isoformat(),
+                        "parser_version": item.parser_version,
+                        "raw_payload_hash": item.raw_payload_hash,
+                        "raw_payload_ref": item.raw_payload_ref,
+                    }
+                    for item in self.provenance
+                ),
+                "metadata": self.metadata,
+                "measurement_only": True,
+                "can_authorize_execution": False,
+                "execution_eligible": False,
+            },
+            "external_call_benchmark",
+        )
 
 
 __all__ = [

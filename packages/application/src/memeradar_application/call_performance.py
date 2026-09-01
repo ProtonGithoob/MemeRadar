@@ -11,6 +11,7 @@ from types import MappingProxyType
 from uuid import UUID
 
 from memeradar_domain import (
+    ExternalCallBenchmark,
     Freshness,
     Observation,
     Provenance,
@@ -775,6 +776,45 @@ class CallPerformanceAnalyzer:
 
     def __init__(self, *, policy: CallPerformancePolicy | None = None) -> None:
         self.policy = policy or CallPerformancePolicy()
+
+    def benchmark_external_call(
+        self,
+        candidate_id: UUID,
+        memeradar_first_seen_at: datetime,
+        *,
+        external_call_at: datetime | None = None,
+        source_id: str = "external-call-reference",
+        memeradar_first_watch_at: datetime | None = None,
+        memeradar_entry_ready_at: datetime | None = None,
+        as_of: datetime | None = None,
+        quality_state: QualityState | str = QualityState.FRESH,
+        evidence_refs: Sequence[str] = (),
+        provenance: Sequence[Provenance] | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> ExternalCallBenchmark:
+        """Expose the measurement seam beside historical call-performance APIs.
+
+        The returned record is measurement-only; it is deliberately not fed
+        into ``analyze`` or any decision/risk authority.
+        """
+
+        from .early_benchmark import EarlyCallBenchmark
+
+        return EarlyCallBenchmark().measure(
+            candidate_id,
+            memeradar_first_seen_at,
+            external_call_at=external_call_at,
+            source_id=source_id,
+            memeradar_first_watch_at=memeradar_first_watch_at,
+            memeradar_entry_ready_at=memeradar_entry_ready_at,
+            as_of=as_of,
+            quality_state=quality_state,
+            evidence_refs=evidence_refs,
+            provenance=provenance,
+            metadata=metadata,
+        )
+
+    benchmark_early_call = benchmark_external_call
 
     def reconstruct_outcomes(
         self,

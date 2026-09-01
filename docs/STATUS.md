@@ -85,7 +85,16 @@ EarlyScore band and launch-age segment, but insufficient samples remain
 `INSUFFICIENT_SAMPLES` and no calibration result can auto-promote production
 thresholds. Focused evidence: 34 replay/backtest/calibration contract tests
 pass, two repeated replay CLI artifacts are byte-identical, and Ruff/full
-mypy are clean. Tasks 9-13 remain in progress.
+mypy are clean. Task 9 is now complete for its keyless benchmark seam:
+`EarlyCallBenchmark` records first-seen, first-watch, `ENTRY_READY` and
+external-call timestamps with deterministic lead-time metrics, provenance,
+source identity and JSON-safe serialization. Missing, pre-first-seen and
+future-dated references remain UNKNOWN/INVALID and cannot provide score,
+confidence, risk or execution authority; the existing call-performance
+analyzer exposes the same measurement-only seam. Focused evidence: 15
+benchmark/call-performance tests pass, including duplicate determinism,
+missing/after/future reference handling and authority-boundary assertions;
+Ruff and touched-module mypy are clean. Tasks 10-13 remain in progress.
 
 ## Current verdict
 
