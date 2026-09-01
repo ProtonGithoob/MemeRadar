@@ -25,7 +25,13 @@ implemented with UTC/order validation, nullable unknown launch time, frozen
 evidence and measurement-only execution semantics. Event dispatch now exposes
 optional provider-neutral stage timing hooks. Focused evidence: 15 tests pass
 in `tests/unit/test_early_domain.py` and `tests/unit/test_event_processing.py`;
-ruff and mypy pass for the touched modules. Tasks 2-13 remain in progress.
+ruff and mypy pass for the touched modules. Task 2 is complete for the
+keyless detector: canonical direct-chain/launchpad lifecycle evidence is
+preferred over Birdeye fallback listings, duplicate delivery is idempotent,
+and unverified/recovered/reverted evidence degrades to UNKNOWN/CONFLICTED.
+Canonical decoder output now carries its full-key verification marker for the
+provider-neutral detector. Focused evidence: 45 stream/detector tests pass and
+the full application mypy check is clean. Tasks 3-13 remain in progress.
 
 ## Current verdict
 

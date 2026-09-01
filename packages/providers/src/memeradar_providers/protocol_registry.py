@@ -522,6 +522,12 @@ class CanonicalProtocolDecoder:
         entry = self.registry.route(transaction.program_id, transaction.discriminator_or_tag)
         self.decode_invocations += 1
         payload = dict(transaction.payload)
+        # ``route`` only returns full-key, authoritatively verified identities.
+        # Preserve that fact beside the normalized event so downstream early
+        # detection can distinguish canonical chain evidence from an untrusted
+        # protocol-shaped payload without importing this provider package.
+        payload["protocol_identity_verified"] = True
+        payload["protocol_registry_version"] = entry.registry_version
         adapter = self._adapters.get(entry.protocol)
         normalized_event_type = entry.instruction_name
         if adapter is not None:
