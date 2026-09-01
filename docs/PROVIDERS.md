@@ -285,6 +285,28 @@ only and cannot increase AlphaScore or authorize `ENTRY_READY`. See
 [`docs/RUNBOOKS/OPERATIONS.md`](RUNBOOKS/OPERATIONS.md) for bounded outage,
 quota and alert-failure response.
 
+## Ultra-Early Option A read-only acceptance
+
+The approved ultra-early path reuses the canonical Helius protocol/stream
+normalization, the Birdeye new-listing fallback and the existing stream
+integrity contracts. `make early-live-doctor` performs only bounded read-only
+Helius `getHealth` and Birdeye supported-networks checks when the Helius RPC,
+Helius stream, Helius key, Birdeye URL and Birdeye key are already configured.
+It reports configuration presence and safe status metadata only; keys,
+endpoints and raw provider payloads are never printed. The local stream
+contract is checked, while merely configuring a WebSocket does not become
+`LIVE_VERIFIED` evidence. Missing configuration returns `BLOCKED_EXTERNAL`,
+authentication/schema failures return `FAIL`, and successful fixture or
+provider checks return `PASS` with the stream transport limitation explicit.
+
+Live detection can be called verified only after a bounded real stream run
+demonstrates continuity, gap detection and recovery, commitment/revert
+handling, fresh canonical launch events, and observed first-seen/decision
+latency samples. Those samples must be classified `LIVE_VERIFIED` by the
+early observability projection; synthetic benchmark output never establishes a
+production SLO. The doctor has no quote, signer, transaction or live-money
+execution dependency.
+
 ## Correlation / launch micro-feature seam
 
 Research extension E6.0 consumes only application-facing normalized

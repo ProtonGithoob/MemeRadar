@@ -197,6 +197,16 @@ frontend operations tests pass, full Python lint/typecheck pass, all 44 web
 tests pass, and repeated benchmark artifacts are byte-identical. Tasks 12-13
 remain in progress.
 
+Ultra-Early Option A Task 12 is now complete for keyless tooling: the
+`early-live-doctor` reuses the existing Helius and Birdeye read-only health
+adapters, validates the provider-independent stream contracts, redacts all
+configuration values and maps missing access to `BLOCKED_EXTERNAL`, provider
+authentication/schema failures to `FAIL` and healthy injected read-only
+fixtures to `PASS`. The local command returns `BLOCKED_EXTERNAL` because no
+provider endpoints or credentials are configured; no live-provider success is
+claimed. Focused evidence: 5 doctor tests, Ruff, mypy and secret scan pass.
+Task 13 remains in progress.
+
 Phase 11 / Sprint 11.3 is now complete for its keyless security review. The
 versioned `security-review-v1` diagnostic verifies exact Python/npm lock
 metadata, versioned Docker bases, non-root image users, tracked-file secret

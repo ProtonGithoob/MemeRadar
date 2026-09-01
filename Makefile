@@ -27,7 +27,7 @@ SBOM_OUTPUT ?=
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-	backtest-replay calibrate-score reliability-benchmark early-detection-benchmark reliability-doctor \
+	backtest-replay calibrate-score reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
 	security-review security-review-external sbom
 
 
@@ -160,6 +160,9 @@ stream-integrity-doctor:
 
 paper-trading-doctor:
 	$(PYTHON) scripts/paper_trading_doctor.py
+
+early-live-doctor:
+	$(PYTHON) scripts/early_live_doctor.py
 
 reliability-doctor:
 	$(PYTHON) scripts/reliability_doctor.py
