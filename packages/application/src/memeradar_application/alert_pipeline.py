@@ -216,6 +216,36 @@ def _safe_lines(value: object, *, max_items: int) -> tuple[str, ...]:
     )
 
 
+def _safe_metric_summary(value: object, *, max_items: int = 4) -> str:
+    if not isinstance(value, Mapping):
+        return _safe_display(value, max_length=256)
+    values: list[str] = []
+    for key, item in list(value.items())[:max_items]:
+        safe_key = _safe_display(key, max_length=32)
+        safe_item = _safe_display(item, max_length=64)
+        if safe_key and safe_item:
+            values.append(f"{safe_key}={safe_item}")
+    return ", ".join(values)
+
+
+def _ultra_early_payload(payload: Mapping[str, object]) -> Mapping[str, object] | None:
+    nested = payload.get("ultra_early")
+    if isinstance(nested, Mapping):
+        return nested
+    if any(
+        key in payload
+        for key in (
+            "early_score",
+            "early_state",
+            "buy_velocity",
+            "shadow_entry_status",
+            "external_call_lead_time_ms",
+        )
+    ):
+        return payload
+    return None
+
+
 class AlertRenderer:
     """Render typed alerts as bounded plain text safe for Telegram."""
 
@@ -249,6 +279,31 @@ class AlertRenderer:
             if delta:
                 score_line += f" ({delta if delta.startswith(('+', '-')) else '+' + delta})"
             lines.append(score_line)
+        early_payload = _ultra_early_payload(payload)
+        if early_payload is not None:
+            lines.append("ULTRA EARLY SIGNAL")
+            for key, label in (
+                ("launch_age_seconds", "Age (seconds)"),
+                ("early_score", "EarlyScore"),
+                ("early_score_confidence", "Confidence"),
+                ("early_state", "Early state"),
+                ("buy_velocity", "Buy velocity"),
+                ("buy_acceleration", "Buy acceleration"),
+                ("unique_buyers", "Unique buyers"),
+                ("quote_inflow", "Quote inflow"),
+                ("creator_risk", "Creator risk"),
+                ("bundle_risk", "Bundle risk"),
+                ("holder_risk", "Holder risk"),
+                ("sellability", "Sellability"),
+                ("shadow_entry_status", "Shadow entry"),
+                ("external_call_lead_time_ms", "Lead time (ms)"),
+            ):
+                value = _safe_metric_summary(early_payload.get(key))
+                if value:
+                    lines.append(f"{label}: {value}")
+            block_reasons = _safe_lines(early_payload.get("hard_block_reasons"), max_items=4)
+            if block_reasons:
+                lines.append("Hard blocks: " + "; ".join(block_reasons))
         if alert.type in {AlertType.EXIT_RISK, AlertType.PAPER_EXIT}:
             action = _safe_display(payload.get("action"))
             fraction = _safe_display(payload.get("exit_fraction"))
@@ -299,6 +354,7 @@ class AlertRenderer:
         dashboard_url = _safe_display(payload.get("dashboard_url"), max_length=512)
         if dashboard_url and _URL_PATTERN.fullmatch(dashboard_url):
             lines.append(f"Dashboard: {dashboard_url}")
+        lines.append("Auto execution: LOCKED")
         rendered = "\n".join(_safe_display(line, max_length=self.max_length) for line in lines)
         if len(rendered) <= self.max_length:
             return rendered

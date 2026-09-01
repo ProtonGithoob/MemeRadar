@@ -2,7 +2,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { RadarDashboard } from "./radar";
-import type { CandidateRecord, ReadPage, ReadResult } from "../lib/read-api";
+import type {
+  CandidateRecord,
+  EarlyRadarRecord,
+  ReadPage,
+  ReadResult
+} from "../lib/read-api";
 
 const first: CandidateRecord = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -38,6 +43,10 @@ const second: CandidateRecord = {
 };
 
 function result(items: CandidateRecord[]): ReadResult<ReadPage<CandidateRecord>> {
+  return { ok: true, data: { items, limit: 50, hasMore: false, nextCursor: null } };
+}
+
+function earlyResult(items: EarlyRadarRecord[]): ReadResult<ReadPage<EarlyRadarRecord>> {
   return { ok: true, data: { items, limit: 50, hasMore: false, nextCursor: null } };
 }
 
@@ -80,5 +89,18 @@ describe("RadarDashboard", () => {
 
     rerender(<RadarDashboard filters={{}} result={{ ok: false, reason: "NOT_CONFIGURED" }} />);
     expect(screen.getByText("READ API NOT CONFIGURED")).toBeInTheDocument();
+  });
+
+  it("mounts the optional ultra-early projection beside the ranked radar", () => {
+    render(
+      <RadarDashboard
+        filters={{}}
+        result={result([first])}
+        earlyResult={earlyResult([])}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Ultra-Early Detection" })).toBeInTheDocument();
+    expect(screen.getByText("NO ULTRA-EARLY CANDIDATES")).toBeInTheDocument();
   });
 });

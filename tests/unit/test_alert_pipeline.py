@@ -96,6 +96,42 @@ def test_renderer_is_bounded_explainable_and_redacts_secret_shaped_text() -> Non
     assert len(rendered) <= 4096
 
 
+def test_renderer_projects_ultra_early_fields_and_keeps_auto_execution_locked() -> None:
+    alert = Alert(
+        type=AlertType.ENTRY_READY,
+        severity=AlertSeverity.INFO,
+        payload={
+            "symbol": "MEME",
+            "ultra_early": {
+                "launch_age_seconds": "34",
+                "early_score": "91",
+                "early_score_confidence": "0.84",
+                "early_state": "ENTRY_READY",
+                "buy_velocity": {"1s": "4"},
+                "unique_buyers": {"1s": 4},
+                "sellability": "PASS",
+                "shadow_entry_status": "SHADOW_FILLED",
+                "external_call_lead_time_ms": "15000",
+                "hard_block_reasons": ["RISK_UNKNOWN"],
+            },
+        },
+        dedupe_key="alert:early:1",
+        requested_at=NOW,
+        candidate_id=CANDIDATE_ID,
+    )
+
+    rendered = AlertRenderer().render(alert)
+
+    assert "ULTRA EARLY SIGNAL" in rendered
+    assert "EarlyScore: 91" in rendered
+    assert "Buy velocity: 1s=4" in rendered
+    assert "Shadow entry: SHADOW_FILLED" in rendered
+    assert "Hard blocks: RISK_UNKNOWN" in rendered
+    assert "Auto execution: LOCKED" in rendered
+    assert "submit" not in rendered.lower()
+    assert "signer" not in rendered.lower()
+
+
 def test_event_projector_only_projects_meaningful_decision_and_degradation_events() -> None:
     projector = AlertEventProjector()
     transition = event(

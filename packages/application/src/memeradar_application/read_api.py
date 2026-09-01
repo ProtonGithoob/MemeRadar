@@ -17,6 +17,7 @@ from uuid import UUID
 
 from memeradar_domain import (
     CandidateState,
+    EarlyDecisionState,
     Position,
     PositionMode,
     PositionState,
@@ -77,6 +78,18 @@ def _optional_decimal(value: Decimal | int | float | str | None, field_name: str
     if value is None:
         return None
     return bounded_decimal(value, field_name, Decimal("0"), Decimal("100"))
+
+
+def _optional_nonnegative_decimal(
+    value: Decimal | int | float | str | None,
+    field_name: str,
+) -> Decimal | None:
+    if value is None:
+        return None
+    normalized = to_decimal(value, field_name)
+    if normalized < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+    return normalized
 
 
 def _optional_text(value: str | None, field_name: str, *, max_length: int = 128) -> str | None:
@@ -251,6 +264,43 @@ class CandidateQuery:
             raise ValueError("risk_disposition is invalid")
         object.__setattr__(
             self, "risk_disposition", None if disposition is None else disposition.upper()
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EarlyRadarQuery:
+    """Bounded filters for the launch-stage, read-only radar projection."""
+
+    cursor: str | None = None
+    limit: int = DEFAULT_PAGE_LIMIT
+    state: EarlyDecisionState | str | None = None
+    min_score: Decimal | None = None
+    risk_quality_state: QualityState | str | None = None
+    risk_disposition: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "cursor", _optional_cursor(self.cursor))
+        object.__setattr__(self, "limit", _bounded_limit(self.limit))
+        if self.state is not None:
+            object.__setattr__(self, "state", EarlyDecisionState(self.state))
+        object.__setattr__(self, "min_score", _optional_decimal(self.min_score, "min_score"))
+        object.__setattr__(
+            self,
+            "risk_quality_state",
+            _optional_quality(self.risk_quality_state),
+        )
+        disposition = _optional_text(self.risk_disposition, "risk_disposition", max_length=16)
+        if disposition is not None and disposition.upper() not in {
+            "PASS",
+            "WARN",
+            "BLOCK",
+            "UNKNOWN",
+        }:
+            raise ValueError("risk_disposition is invalid")
+        object.__setattr__(
+            self,
+            "risk_disposition",
+            None if disposition is None else disposition.upper(),
         )
 
 
@@ -448,6 +498,197 @@ class CandidateView:
             raise TypeError("execution_eligible must be a boolean")
         if self.execution_eligible:
             raise ValueError("read views cannot authorize execution")
+
+
+@dataclass(frozen=True, slots=True)
+class EarlyRadarView:
+    """Bounded launch-stage projection for radar, token detail and alerts."""
+
+    candidate_id: UUID
+    token_id: UUID
+    mint_address: str
+    symbol: str | None
+    name: str | None
+    launch_age_seconds: Decimal | int | float | str | None
+    first_seen_at: datetime
+    first_seen_source: str
+    first_seen_latency_ms: Decimal | int | float | str | None
+    first_seen_quality: QualityState | str
+    early_score: Decimal | int | float | str | None
+    early_score_confidence: Decimal | int | float | str | None
+    early_state: EarlyDecisionState | str
+    risk_disposition: str = "UNKNOWN"
+    buy_velocity: Mapping[str, object] = field(default_factory=dict)
+    buy_acceleration: Mapping[str, object] = field(default_factory=dict)
+    unique_buyers: Mapping[str, object] = field(default_factory=dict)
+    quote_inflow: Mapping[str, object] = field(default_factory=dict)
+    liquidity_usd: Decimal | int | float | str | None = None
+    price_impact_bps: Decimal | int | float | str | None = None
+    creator_risk: str = "UNKNOWN"
+    bundle_risk: str = "UNKNOWN"
+    holder_risk: str = "UNKNOWN"
+    smart_money_confluence: Decimal | int | float | str | None = None
+    sellability: str = "UNKNOWN"
+    shadow_entry_status: str = "NOT_ATTEMPTED"
+    external_call_lead_time_ms: Decimal | int | float | str | None = None
+    hard_block_reasons: tuple[str, ...] = ()
+    latency_ms: Mapping[str, object] = field(default_factory=dict)
+    evidence_refs: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+    execution_eligible: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.candidate_id, UUID) or not isinstance(self.token_id, UUID):
+            raise TypeError("candidate_id and token_id must be UUIDs")
+        object.__setattr__(
+            self,
+            "mint_address",
+            require_solana_address(self.mint_address, "mint_address"),
+        )
+        for field_name, max_length in (("symbol", 64), ("name", 256)):
+            value = getattr(self, field_name)
+            object.__setattr__(
+                self,
+                field_name,
+                None if value is None else require_text(value, field_name, max_length=max_length),
+            )
+        object.__setattr__(self, "first_seen_at", ensure_utc(self.first_seen_at, "first_seen_at"))
+        object.__setattr__(
+            self,
+            "first_seen_source",
+            require_text(self.first_seen_source, "first_seen_source", max_length=256),
+        )
+        object.__setattr__(
+            self,
+            "first_seen_quality",
+            QualityState(self.first_seen_quality),
+        )
+        object.__setattr__(self, "early_state", EarlyDecisionState(self.early_state))
+        for field_name in (
+            "launch_age_seconds",
+            "first_seen_latency_ms",
+            "liquidity_usd",
+            "price_impact_bps",
+            "external_call_lead_time_ms",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                _optional_nonnegative_decimal(getattr(self, field_name), field_name),
+            )
+        if self.early_score is not None:
+            object.__setattr__(
+                self,
+                "early_score",
+                bounded_decimal(self.early_score, "early_score", Decimal("0"), Decimal("100")),
+            )
+        if self.early_score_confidence is not None:
+            object.__setattr__(
+                self,
+                "early_score_confidence",
+                bounded_decimal(
+                    self.early_score_confidence,
+                    "early_score_confidence",
+                    Decimal("0"),
+                    Decimal("1"),
+                ),
+            )
+        if self.smart_money_confluence is not None:
+            object.__setattr__(
+                self,
+                "smart_money_confluence",
+                bounded_decimal(
+                    self.smart_money_confluence,
+                    "smart_money_confluence",
+                    Decimal("0"),
+                    Decimal("100"),
+                ),
+            )
+        for field_name in (
+            "risk_disposition",
+            "creator_risk",
+            "bundle_risk",
+            "holder_risk",
+            "sellability",
+            "shadow_entry_status",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                require_text(getattr(self, field_name), field_name, max_length=32).upper(),
+            )
+        for field_name in (
+            "buy_velocity",
+            "buy_acceleration",
+            "unique_buyers",
+            "quote_inflow",
+            "latency_ms",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, Mapping):
+                raise TypeError(f"{field_name} must be a mapping")
+            object.__setattr__(self, field_name, safe_read_payload(value))
+        object.__setattr__(
+            self,
+            "hard_block_reasons",
+            normalize_texts(self.hard_block_reasons, "hard_block_reasons"),
+        )
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(self.evidence_refs, "evidence_refs"),
+        )
+        object.__setattr__(self, "reason_codes", normalize_texts(self.reason_codes, "reason_codes"))
+        if not isinstance(self.execution_eligible, bool):
+            raise TypeError("execution_eligible must be a boolean")
+        if self.execution_eligible:
+            raise ValueError("early radar views cannot authorize execution")
+
+    @property
+    def risk_quality_state(self) -> QualityState:
+        """Expose first-seen quality under the read-filter compatibility name."""
+
+        return QualityState(self.first_seen_quality)
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return freeze_mapping(
+            {
+                "candidate_id": self.candidate_id,
+                "token_id": self.token_id,
+                "mint_address": self.mint_address,
+                "symbol": self.symbol,
+                "name": self.name,
+                "launch_age_seconds": self.launch_age_seconds,
+                "first_seen_at": self.first_seen_at,
+                "first_seen_source": self.first_seen_source,
+                "first_seen_latency_ms": self.first_seen_latency_ms,
+                "first_seen_quality": QualityState(self.first_seen_quality).value,
+                "early_score": self.early_score,
+                "early_score_confidence": self.early_score_confidence,
+                "early_state": EarlyDecisionState(self.early_state).value,
+                "risk_disposition": self.risk_disposition,
+                "buy_velocity": self.buy_velocity,
+                "buy_acceleration": self.buy_acceleration,
+                "unique_buyers": self.unique_buyers,
+                "quote_inflow": self.quote_inflow,
+                "liquidity_usd": self.liquidity_usd,
+                "price_impact_bps": self.price_impact_bps,
+                "creator_risk": self.creator_risk,
+                "bundle_risk": self.bundle_risk,
+                "holder_risk": self.holder_risk,
+                "smart_money_confluence": self.smart_money_confluence,
+                "sellability": self.sellability,
+                "shadow_entry_status": self.shadow_entry_status,
+                "external_call_lead_time_ms": self.external_call_lead_time_ms,
+                "hard_block_reasons": self.hard_block_reasons,
+                "latency_ms": self.latency_ms,
+                "evidence_refs": self.evidence_refs,
+                "reason_codes": self.reason_codes,
+                "execution_eligible": False,
+                "auto_execution": "LOCKED",
+            },
+            "early_radar",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1255,6 +1496,8 @@ class ReadQueryPort(Protocol):
 
     async def list_candidates(self, query: CandidateQuery) -> Page[CandidateView]: ...
 
+    async def list_early_radar(self, query: EarlyRadarQuery) -> Page[EarlyRadarView]: ...
+
     async def get_candidate(self, candidate_id: UUID) -> CandidateView | None: ...
 
     async def get_token(self, token_id: UUID) -> TokenView | None: ...
@@ -1314,6 +1557,14 @@ def _candidate_cursor(value: CandidateView) -> tuple[str, ...]:
     )
 
 
+def _early_radar_cursor(value: EarlyRadarView) -> tuple[str, ...]:
+    return (
+        "" if value.early_score is None else str(value.early_score),
+        value.first_seen_at.isoformat(),
+        str(value.candidate_id),
+    )
+
+
 def _timeline_cursor(value: TimelineEntryView) -> tuple[str, ...]:
     return (value.occurred_at.isoformat(), str(value.id))
 
@@ -1349,6 +1600,7 @@ class InMemoryReadQueryService:
         self,
         *,
         candidates: Sequence[CandidateView] = (),
+        early_radar: Sequence[EarlyRadarView] = (),
         tokens: Sequence[TokenView] = (),
         timelines: Mapping[UUID, Sequence[TimelineEntryView]] | None = None,
         wallets: Sequence[WalletView] = (),
@@ -1358,6 +1610,7 @@ class InMemoryReadQueryService:
         positions: Sequence[PositionView] = (),
     ) -> None:
         self.candidates = tuple(candidates)
+        self.early_radar = tuple(early_radar)
         self.tokens = tuple(tokens)
         self._timelines = {
             token_id: tuple(entries)
@@ -1370,6 +1623,8 @@ class InMemoryReadQueryService:
         self.positions = tuple(positions)
         if any(not isinstance(value, CandidateView) for value in self.candidates):
             raise TypeError("candidates must contain CandidateView values")
+        if any(not isinstance(value, EarlyRadarView) for value in self.early_radar):
+            raise TypeError("early_radar must contain EarlyRadarView values")
         if any(not isinstance(value, TokenView) for value in self.tokens):
             raise TypeError("tokens must contain TokenView values")
         if any(not isinstance(value, PositionView) for value in self.positions):
@@ -1412,6 +1667,48 @@ class InMemoryReadQueryService:
             limit=query.limit,
             cursor=query.cursor,
             cursor_values=_candidate_cursor,
+        )
+
+    async def list_early_radar(self, query: EarlyRadarQuery) -> Page[EarlyRadarView]:
+        if not isinstance(query, EarlyRadarQuery):
+            raise TypeError("query must be an EarlyRadarQuery")
+        values = [
+            value
+            for value in self.early_radar
+            if (query.state is None or value.early_state is query.state)
+            and (
+                query.min_score is None
+                or value.early_score is not None
+                and to_decimal(value.early_score, "early_score") >= query.min_score
+            )
+            and (
+                query.risk_quality_state is None
+                or value.first_seen_quality is query.risk_quality_state
+            )
+            and (
+                query.risk_disposition is None
+                or value.risk_disposition == query.risk_disposition
+                or value.bundle_risk == query.risk_disposition
+                or value.holder_risk == query.risk_disposition
+            )
+        ]
+        values.sort(
+            key=lambda value: (
+                -(
+                    to_decimal(value.early_score, "early_score")
+                    if value.early_score is not None
+                    else Decimal("-1")
+                ),
+                -value.first_seen_at.timestamp(),
+                str(value.candidate_id),
+            )
+        )
+        return _page(
+            "early-radar",
+            values,
+            limit=query.limit,
+            cursor=query.cursor,
+            cursor_values=_early_radar_cursor,
         )
 
     async def get_candidate(self, candidate_id: UUID) -> CandidateView | None:
@@ -1599,6 +1896,8 @@ __all__ = [
     "CursorCodec",
     "CursorError",
     "DEFAULT_PAGE_LIMIT",
+    "EarlyRadarQuery",
+    "EarlyRadarView",
     "InMemoryReadQueryService",
     "MAX_PAGE_LIMIT",
     "Page",

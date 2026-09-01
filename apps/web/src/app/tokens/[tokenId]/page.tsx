@@ -3,7 +3,8 @@ import Link from "next/link";
 import { OperatorHeader } from "../../components/operator-header";
 import { ProtectedShell } from "../../components/radar";
 import { TokenDetailView } from "../../components/token-detail";
-import { fetchTimeline, fetchToken, isValidTokenId } from "../../lib/read-api";
+import { UltraEarlyPanel } from "../../components/ultra-early";
+import { fetchEarlyRadar, fetchTimeline, fetchToken, isValidTokenId } from "../../lib/read-api";
 
 export default async function TokenPage({
   params
@@ -25,10 +26,20 @@ export default async function TokenPage({
     );
   }
 
-  const [tokenResult, timelineResult] = await Promise.all([
+  const [tokenResult, timelineResult, earlyRadarResult] = await Promise.all([
     fetchToken(tokenId),
-    fetchTimeline(tokenId)
+    fetchTimeline(tokenId),
+    fetchEarlyRadar()
   ]);
+  const earlyResultForToken = earlyRadarResult.ok
+    ? {
+        ok: true as const,
+        data: {
+          ...earlyRadarResult.data,
+          items: earlyRadarResult.data.items.filter((item) => item.tokenId === tokenId)
+        }
+      }
+    : earlyRadarResult;
 
   return (
     <main className="shell">
@@ -38,6 +49,7 @@ export default async function TokenPage({
       <section className="section-block detail-section" aria-label="Token detail">
         <TokenDetailView tokenResult={tokenResult} timelineResult={timelineResult} />
       </section>
+      <UltraEarlyPanel result={earlyResultForToken} />
       <section className="queue-card detail-boundary" aria-label="Execution boundary">
         <div className="queue-card__icon" aria-hidden="true">◎</div>
         <div>

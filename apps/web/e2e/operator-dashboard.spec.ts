@@ -20,6 +20,8 @@ test("operator shell exposes the read-only sections and protected modes", async 
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "MemeRadar" })).toBeVisible();
   await expectProtectedShell(page);
+  await expect(page.getByRole("heading", { name: "Ultra-Early Detection" })).toBeVisible();
+  await expect(page.getByText("Auto execution: LOCKED", { exact: true })).toBeVisible();
 
   const navigation = page.getByRole("navigation", { name: "Operator sections" });
   for (const label of ["Radar", "Wallets", "Providers", "Settings", "Audit"]) {

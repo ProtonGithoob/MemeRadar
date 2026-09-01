@@ -19,6 +19,8 @@ from memeradar_application.read_api import (
     CandidateView,
     ConfigQuery,
     ConfigVersionView,
+    EarlyRadarQuery,
+    EarlyRadarView,
     InMemoryReadQueryService,
     Page,
     PoolView,
@@ -407,6 +409,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         self,
         engine: AsyncEngine,
         *,
+        early_radar: Sequence[EarlyRadarView] = (),
         wallets: Sequence[WalletView] = (),
         provider_health: Sequence[ProviderHealthView] = (),
         audit_events: Sequence[AuditEventView] = (),
@@ -419,6 +422,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         )
         self._engine = engine
         self._catalog = InMemoryReadQueryService(
+            early_radar=early_radar,
             wallets=wallets,
             provider_health=provider_health,
             audit_events=audit_events,
@@ -464,6 +468,11 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             rows = await self._candidate_rows(session)
             values = tuple([await self._candidate_view_for_row(session, row) for row in rows])
         return await InMemoryReadQueryService(candidates=values).list_candidates(query)
+
+    async def list_early_radar(self, query: EarlyRadarQuery) -> Page[EarlyRadarView]:
+        """Return the optional bounded early-radar catalog without mutating storage."""
+
+        return await self._catalog.list_early_radar(query)
 
     async def get_candidate(self, candidate_id: UUID) -> CandidateView | None:
         if not isinstance(candidate_id, UUID):

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Generic, Literal, TypeVar
+from typing import Annotated, Generic, Literal, TypeVar, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, status
@@ -24,6 +24,8 @@ from memeradar_application.read_api import (
     ConfigQuery,
     ConfigVersionView,
     CursorError,
+    EarlyRadarQuery,
+    EarlyRadarView,
     Page,
     PoolView,
     PositionExitRiskView,
@@ -42,7 +44,13 @@ from memeradar_application.read_api import (
     WalletQuery,
     WalletView,
 )
-from memeradar_domain import CandidateState, PositionMode, PositionState, QualityState
+from memeradar_domain import (
+    CandidateState,
+    EarlyDecisionState,
+    PositionMode,
+    PositionState,
+    QualityState,
+)
 
 from .auth import RoleTokenAuthenticator
 
@@ -66,6 +74,15 @@ class CandidateQueryParams(_StrictModel):
     min_score: Decimal | None = Field(default=None, ge=0, le=100)
     max_score: Decimal | None = Field(default=None, ge=0, le=100)
     min_confidence: Decimal | None = Field(default=None, ge=0, le=1)
+    risk_disposition: _RISK_DISPOSITIONS | None = None
+
+
+class EarlyRadarQueryParams(_StrictModel):
+    cursor: str | None = Field(default=None, max_length=MAX_CURSOR_LENGTH)
+    limit: int = Field(default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT)
+    state: EarlyDecisionState | None = None
+    min_score: Decimal | None = Field(default=None, ge=0, le=100)
+    risk_quality_state: QualityState | None = None
     risk_disposition: _RISK_DISPOSITIONS | None = None
 
 
@@ -154,6 +171,42 @@ class CandidateResponse(_StrictModel):
     risk_reason_codes: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     execution_eligible: bool = False
+
+
+class EarlyRadarResponse(_StrictModel):
+    candidate_id: UUID
+    token_id: UUID
+    mint_address: str
+    symbol: str | None
+    name: str | None
+    launch_age_seconds: Decimal | None
+    first_seen_at: datetime
+    first_seen_source: str
+    first_seen_latency_ms: Decimal | None
+    first_seen_quality: QualityState
+    early_score: Decimal | None
+    early_score_confidence: Decimal | None
+    early_state: EarlyDecisionState
+    risk_disposition: str
+    buy_velocity: dict[str, object] = Field(default_factory=dict)
+    buy_acceleration: dict[str, object] = Field(default_factory=dict)
+    unique_buyers: dict[str, object] = Field(default_factory=dict)
+    quote_inflow: dict[str, object] = Field(default_factory=dict)
+    liquidity_usd: Decimal | None = None
+    price_impact_bps: Decimal | None = None
+    creator_risk: str
+    bundle_risk: str
+    holder_risk: str
+    smart_money_confluence: Decimal | None = None
+    sellability: str
+    shadow_entry_status: str
+    external_call_lead_time_ms: Decimal | None = None
+    hard_block_reasons: list[str] = Field(default_factory=list)
+    latency_ms: dict[str, object] = Field(default_factory=dict)
+    evidence_refs: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+    execution_eligible: bool = False
+    auto_execution: str = "LOCKED"
 
 
 class ProvenanceResponse(_StrictModel):
@@ -365,6 +418,44 @@ def _candidate_response(value: CandidateView) -> CandidateResponse:
         risk_reason_codes=list(value.risk_reason_codes),
         evidence_refs=list(value.evidence_refs),
         execution_eligible=False,
+    )
+
+
+def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
+    return EarlyRadarResponse(
+        candidate_id=value.candidate_id,
+        token_id=value.token_id,
+        mint_address=value.mint_address,
+        symbol=value.symbol,
+        name=value.name,
+        launch_age_seconds=cast(Decimal | None, value.launch_age_seconds),
+        first_seen_at=value.first_seen_at,
+        first_seen_source=value.first_seen_source,
+        first_seen_latency_ms=cast(Decimal | None, value.first_seen_latency_ms),
+        first_seen_quality=QualityState(value.first_seen_quality),
+        early_score=cast(Decimal | None, value.early_score),
+        early_score_confidence=cast(Decimal | None, value.early_score_confidence),
+        early_state=EarlyDecisionState(value.early_state),
+        risk_disposition=value.risk_disposition,
+        buy_velocity=_mapping(value.buy_velocity),
+        buy_acceleration=_mapping(value.buy_acceleration),
+        unique_buyers=_mapping(value.unique_buyers),
+        quote_inflow=_mapping(value.quote_inflow),
+        liquidity_usd=cast(Decimal | None, value.liquidity_usd),
+        price_impact_bps=cast(Decimal | None, value.price_impact_bps),
+        creator_risk=value.creator_risk,
+        bundle_risk=value.bundle_risk,
+        holder_risk=value.holder_risk,
+        smart_money_confluence=cast(Decimal | None, value.smart_money_confluence),
+        sellability=value.sellability,
+        shadow_entry_status=value.shadow_entry_status,
+        external_call_lead_time_ms=cast(Decimal | None, value.external_call_lead_time_ms),
+        hard_block_reasons=list(value.hard_block_reasons),
+        latency_ms=_mapping(value.latency_ms),
+        evidence_refs=list(value.evidence_refs),
+        reason_codes=list(value.reason_codes),
+        execution_eligible=False,
+        auto_execution="LOCKED",
     )
 
 
@@ -650,6 +741,14 @@ def build_read_router(
         page = await _call(_require_service(service).list_candidates(query))
         return _page_response(page, _candidate_response)
 
+    @router.get("/early-radar", response_model=PageResponse[EarlyRadarResponse])
+    async def list_early_radar(
+        params: Annotated[EarlyRadarQueryParams, Query()],
+    ) -> PageResponse[EarlyRadarResponse]:
+        query = _build(lambda: EarlyRadarQuery(**params.model_dump()))
+        page = await _call(_require_service(service).list_early_radar(query))
+        return _page_response(page, _early_radar_response)
+
     @router.get("/candidates/{candidate_id}", response_model=CandidateResponse)
     async def get_candidate(candidate_id: UUID) -> CandidateResponse:
         value = await _call(_require_service(service).get_candidate(candidate_id))
@@ -740,6 +839,8 @@ __all__ = [
     "ClosedTradeExplanationResponse",
     "ConfigQueryParams",
     "ConfigVersionResponse",
+    "EarlyRadarQueryParams",
+    "EarlyRadarResponse",
     "PageResponse",
     "PoolResponse",
     "PositionExitRiskResponse",

@@ -58,6 +58,48 @@ export interface CandidateRecord {
   evidenceRefs: string[];
 }
 
+export type EarlyRadarState =
+  | "REJECT/LOW"
+  | "WATCH"
+  | "EARLY_WATCH"
+  | "STRONG_SETUP"
+  | "HIGH_CONFLUENCE"
+  | "ENTRY_READY";
+
+export interface EarlyRadarRecord {
+  candidateId: string;
+  tokenId: string;
+  mintAddress: string;
+  symbol: string | null;
+  name: string | null;
+  launchAgeSeconds: number | null;
+  firstSeenAt: string;
+  firstSeenSource: string;
+  firstSeenLatencyMs: number | null;
+  firstSeenQuality: CandidateQuality;
+  earlyScore: number | null;
+  earlyScoreConfidence: number | null;
+  earlyState: EarlyRadarState;
+  riskDisposition: RiskDisposition;
+  buyVelocity: Record<string, unknown>;
+  buyAcceleration: Record<string, unknown>;
+  uniqueBuyers: Record<string, unknown>;
+  quoteInflow: Record<string, unknown>;
+  liquidityUsd: number | null;
+  priceImpactBps: number | null;
+  creatorRisk: string;
+  bundleRisk: string;
+  holderRisk: string;
+  smartMoneyConfluence: number | null;
+  sellability: string;
+  shadowEntryStatus: string;
+  externalCallLeadTimeMs: number | null;
+  hardBlockReasons: string[];
+  latencyMs: Record<string, unknown>;
+  evidenceRefs: string[];
+  reasonCodes: string[];
+}
+
 export interface PoolRecord {
   id: string;
   venue: string;
@@ -554,6 +596,100 @@ function parseCandidate(value: unknown): CandidateRecord | null {
     riskQualityState: riskQualityState as CandidateQuality,
     riskReasonCodes,
     evidenceRefs
+  };
+}
+
+const EARLY_RADAR_STATES = new Set<EarlyRadarState>([
+  "REJECT/LOW",
+  "WATCH",
+  "EARLY_WATCH",
+  "STRONG_SETUP",
+  "HIGH_CONFLUENCE",
+  "ENTRY_READY"
+]);
+
+function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
+  if (!isRecord(value)) return null;
+  const candidateId = uuid(value.candidate_id);
+  const tokenId = uuid(value.token_id);
+  const mintAddress = boundedString(value.mint_address, 128);
+  const symbol = nullableString(value.symbol, 64);
+  const name = nullableString(value.name, 256);
+  const launchAgeSeconds = optionalFiniteNumber(value.launch_age_seconds, 0, 1e12);
+  const firstSeenAt = timestamp(value.first_seen_at);
+  const firstSeenSource = boundedString(value.first_seen_source, 256);
+  const firstSeenLatencyMs = optionalFiniteNumber(value.first_seen_latency_ms, 0, 1e12);
+  const firstSeenQuality = optionalQuality(value.first_seen_quality);
+  const earlyScore = optionalFiniteNumber(value.early_score, 0, 100);
+  const earlyScoreConfidence = optionalFiniteNumber(value.early_score_confidence, 0, 1);
+  const earlyState = boundedString(value.early_state, 32);
+  const riskDisposition = boundedString(value.risk_disposition, 16);
+  const buyVelocity = safePayload(value.buy_velocity ?? {});
+  const buyAcceleration = safePayload(value.buy_acceleration ?? {});
+  const uniqueBuyers = safePayload(value.unique_buyers ?? {});
+  const quoteInflow = safePayload(value.quote_inflow ?? {});
+  const liquidityUsd = optionalFiniteNumber(value.liquidity_usd, 0, 1e24);
+  const priceImpactBps = optionalFiniteNumber(value.price_impact_bps, 0, 1e12);
+  const creatorRisk = boundedString(value.creator_risk, 32);
+  const bundleRisk = boundedString(value.bundle_risk, 32);
+  const holderRisk = boundedString(value.holder_risk, 32);
+  const smartMoneyConfluence = optionalFiniteNumber(value.smart_money_confluence, 0, 100);
+  const sellability = boundedString(value.sellability, 32);
+  const shadowEntryStatus = boundedString(value.shadow_entry_status, 64);
+  const externalCallLeadTimeMs = optionalFiniteNumber(value.external_call_lead_time_ms, 0, 1e12);
+  const hardBlockReasons = stringArray(value.hard_block_reasons, 128);
+  const latencyMs = safePayload(value.latency_ms ?? {});
+  const evidenceRefs = stringArray(value.evidence_refs, 256);
+  const reasonCodes = stringArray(value.reason_codes, 128);
+
+  if (
+    candidateId === null || tokenId === null || mintAddress === null || firstSeenAt === null ||
+    launchAgeSeconds === undefined || firstSeenLatencyMs === undefined ||
+    firstSeenSource === null || firstSeenQuality === null || firstSeenQuality === undefined ||
+    earlyScore === undefined || earlyScoreConfidence === undefined || earlyState === null ||
+    !EARLY_RADAR_STATES.has(earlyState as EarlyRadarState) || riskDisposition === null ||
+    !RISK_DISPOSITIONS.has(riskDisposition as RiskDisposition) || buyVelocity === null ||
+    buyAcceleration === null || uniqueBuyers === null || quoteInflow === null ||
+    liquidityUsd === undefined || priceImpactBps === undefined || creatorRisk === null ||
+    bundleRisk === null || holderRisk === null || smartMoneyConfluence === undefined ||
+    sellability === null || shadowEntryStatus === null || externalCallLeadTimeMs === undefined ||
+    hardBlockReasons === null || latencyMs === null || evidenceRefs === null || reasonCodes === null ||
+    value.execution_eligible === true || value.auto_execution !== "LOCKED"
+  ) {
+    return null;
+  }
+  return {
+    candidateId,
+    tokenId,
+    mintAddress,
+    symbol,
+    name,
+    launchAgeSeconds,
+    firstSeenAt,
+    firstSeenSource,
+    firstSeenLatencyMs,
+    firstSeenQuality,
+    earlyScore,
+    earlyScoreConfidence,
+    earlyState: earlyState as EarlyRadarState,
+    riskDisposition: riskDisposition as RiskDisposition,
+    buyVelocity,
+    buyAcceleration,
+    uniqueBuyers,
+    quoteInflow,
+    liquidityUsd,
+    priceImpactBps,
+    creatorRisk,
+    bundleRisk,
+    holderRisk,
+    smartMoneyConfluence,
+    sellability,
+    shadowEntryStatus,
+    externalCallLeadTimeMs,
+    hardBlockReasons,
+    latencyMs,
+    evidenceRefs,
+    reasonCodes
   };
 }
 
@@ -1361,6 +1497,11 @@ export async function fetchCandidates(
   }
   const url = endpoint("/v1/candidates", query);
   return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parseCandidate));
+}
+
+export async function fetchEarlyRadar(): Promise<ReadResult<ReadPage<EarlyRadarRecord>>> {
+  const url = endpoint("/v1/early-radar", singleQuery());
+  return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parseEarlyRadar));
 }
 
 export function isValidTokenId(tokenId: string): boolean {

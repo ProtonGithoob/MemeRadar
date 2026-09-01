@@ -1,0 +1,69 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { UltraEarlyPanel } from "./ultra-early";
+import type { EarlyRadarRecord, ReadPage, ReadResult } from "../lib/read-api";
+
+const entry: EarlyRadarRecord = {
+  candidateId: "11111111-1111-4111-8111-111111111111",
+  tokenId: "22222222-2222-4222-8222-222222222222",
+  mintAddress: "So11111111111111111111111111111111111111112",
+  symbol: "MEME",
+  name: "Early Meme",
+  launchAgeSeconds: 34,
+  firstSeenAt: "2026-09-01T12:00:00.000Z",
+  firstSeenSource: "direct-chain:fixture",
+  firstSeenLatencyMs: 125,
+  firstSeenQuality: "FRESH",
+  earlyScore: 91,
+  earlyScoreConfidence: 0.84,
+  earlyState: "ENTRY_READY",
+  riskDisposition: "PASS",
+  buyVelocity: { "1s": 4 },
+  buyAcceleration: { "1s": 1.5 },
+  uniqueBuyers: { "1s": 4 },
+  quoteInflow: { "1s": 1.2 },
+  liquidityUsd: 12000,
+  priceImpactBps: 120,
+  creatorRisk: "LOW",
+  bundleRisk: "MEDIUM",
+  holderRisk: "UNKNOWN",
+  smartMoneyConfluence: 72,
+  sellability: "PASS",
+  shadowEntryStatus: "SHADOW_FILLED",
+  externalCallLeadTimeMs: 15000,
+  hardBlockReasons: [],
+  latencyMs: { first_seen_to_entry_ready: 300 },
+  evidenceRefs: ["chain:fixture"],
+  reasonCodes: ["EARLY_SCORE_V1"]
+};
+
+function result(items: EarlyRadarRecord[]): ReadResult<ReadPage<EarlyRadarRecord>> {
+  return { ok: true, data: { items, limit: 50, hasMore: false, nextCursor: null } };
+}
+
+describe("UltraEarlyPanel", () => {
+  afterEach(() => cleanup());
+
+  it("renders bounded launch evidence and the locked execution boundary", () => {
+    render(<UltraEarlyPanel result={result([entry])} />);
+
+    expect(screen.getByRole("heading", { name: "Ultra-Early Detection" })).toBeInTheDocument();
+    expect(screen.getByText("EarlyScore 91 / 100")).toBeInTheDocument();
+    expect(screen.getByText(/direct-chain:fixture/)).toBeInTheDocument();
+    expect(screen.getByText(/Auto execution: LOCKED/)).toBeInTheDocument();
+    expect(screen.getByText(/Shadow entry: SHADOW_FILLED/)).toBeInTheDocument();
+  });
+
+  it("keeps unknown and blocked evidence explicit", () => {
+    render(
+      <UltraEarlyPanel
+        result={result([{ ...entry, earlyScore: null, earlyScoreConfidence: null, earlyState: "REJECT/LOW", firstSeenQuality: "UNKNOWN", holderRisk: "UNKNOWN", hardBlockReasons: ["RISK_UNKNOWN"] }])}
+      />
+    );
+
+    expect(screen.getByText("EarlyScore UNKNOWN")).toBeInTheDocument();
+    expect(screen.getByText(/RISK_UNKNOWN/)).toBeInTheDocument();
+    expect(screen.getByText(/Auto execution: LOCKED/)).toBeInTheDocument();
+  });
+});

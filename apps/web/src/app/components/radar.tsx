@@ -7,8 +7,10 @@ import {
   ScoreBadge
 } from "./status-badges";
 import { OperatorHeader } from "./operator-header";
+import { UltraEarlyPanel } from "./ultra-early";
 import type {
   CandidateRecord,
+  EarlyRadarRecord,
   RadarFilters,
   ReadPage,
   ReadResult
@@ -229,10 +231,12 @@ function RadarContent({ result }: { result: ReadResult<ReadPage<CandidateRecord>
 
 export function RadarDashboard({
   filters,
-  result
+  result,
+  earlyResult
 }: {
   filters: RadarFilters;
   result: ReadResult<ReadPage<CandidateRecord>>;
+  earlyResult?: ReadResult<ReadPage<EarlyRadarRecord>>;
 }) {
   return (
     <main className="shell">
@@ -249,6 +253,7 @@ export function RadarDashboard({
         <Filters filters={filters} />
         <RadarContent result={result} />
       </section>
+      {earlyResult ? <UltraEarlyPanel result={earlyResult} /> : null}
       <section className="queue-card" aria-labelledby="queue-title">
         <div className="queue-card__icon" aria-hidden="true">◎</div>
         <div>
