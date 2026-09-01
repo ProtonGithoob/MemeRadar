@@ -2,6 +2,21 @@
 
 Last updated: 2026-09-01
 
+## Latest port reconciliation
+
+On 2026-09-01, local `main` was fast-forwarded to `origin/main` at
+`2216058f453b9981826dd83168ebe3d96cb55f61`, which contains the committed
+non-default host-port changes in `infra/compose/docker-compose.yml` and
+`scripts/start.sh`. Compose validation, shell syntax, whitespace checks and
+the full `make verify` gate pass. The exact `bash scripts/start.sh` runtime
+attempt is currently `BLOCKED_EXTERNAL`: an unrelated unlabeled
+`onemillionseconds-postgres-test` container owns host port `55432` on IPv4 and
+IPv6. Its state and volume were not changed. Stale MemeRadar Compose
+containers were stopped/removed with `docker compose down` without
+`--volumes`; the requested PostgreSQL/Redis volumes remain present. Releasing
+that unrelated port is required before the complete stack can run on the
+requested host ports. Protected modes remain unchanged.
+
 ## Current verdict
 
 `PHASE_11_SPRINT_11_3_COMPLETE_CROSS_CUTTING_HARDENING_COMPLETE_KEYLESS_ANALYSIS_ONLY_GATE_P9_BLOCKED_EXTERNAL`
