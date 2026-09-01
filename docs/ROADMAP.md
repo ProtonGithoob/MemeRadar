@@ -736,7 +736,9 @@ Execute where relevant, not as an isolated final cleanup:
 - [ ] Property/fuzz tests for scoring/state transitions.
 - [x] Benchmark hot-path processing.
 - [ ] ADRs for material architecture decisions.
-- [ ] SBOM/dependency audit.
+- [x] SBOM/dependency audit — `security-sbom-v1` is generated deterministically
+  from the pinned Python/npm locks and versioned container bases; unavailable
+  external vulnerability scanners remain `BLOCKED_EXTERNAL`.
 - [x] Disaster-recovery documentation.
 - [ ] Multi-provider comparison/health routing.
 - [ ] Optional future multi-chain abstraction only after Solana product fit is validated.

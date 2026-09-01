@@ -200,6 +200,7 @@ Quality/review commands:
 ```text
 make security-review
 make security-review-external
+make sbom
 make verify
 make frontend-build
 docker compose -f infra/compose/docker-compose.yml build api worker web

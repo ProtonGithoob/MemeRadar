@@ -310,7 +310,8 @@ CI should include:
 - secret scanning;
 - pinned/locked dependencies;
 - container scan when images exist;
-- SBOM later in hardening phase;
+- deterministic CycloneDX SBOM generation from locked dependencies and image
+  bases;
 - license review for externally reused repositories/code.
 
 Never curl-and-execute arbitrary installer scripts in CI without review/pinning.

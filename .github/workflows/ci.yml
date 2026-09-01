@@ -33,6 +33,8 @@ jobs:
         run: make migration-check PYTHON=python3
       - name: Keyless security review
         run: make security-review PYTHON=python3
+      - name: Deterministic SBOM
+        run: make sbom PYTHON=python3
 
   frontend:
     name: Frontend quality

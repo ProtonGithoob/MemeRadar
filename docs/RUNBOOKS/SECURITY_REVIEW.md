@@ -10,6 +10,7 @@ Run the repository-owned deterministic review from the repository root:
 
 ```text
 make security-review
+make sbom
 ```
 
 Expected keyless result: exit `0`, JSON schema `security-review-v1`, local
@@ -49,6 +50,13 @@ review commit. The 2026-09-01 review upgraded `@playwright/test` from 1.51.1
 to 1.62.1 after npm reported a high-severity Playwright advisory; the next
 advisory scan reported zero vulnerabilities. Local pip-audit and Trivy were
 unavailable, so their acceptance remains blocked.
+
+`make sbom` builds `security-sbom-v1`, a deterministic CycloneDX document from
+`requirements.lock`, `apps/web/package-lock.json` and the versioned Docker
+base images. Use `make sbom SBOM_OUTPUT=/secure/operator/path/memeradar.json`
+when an artifact is needed. The default check prints only a component count
+and digest, and never includes credentials, raw provider data or scanner
+output.
 
 ## Credential or authorization incident
 

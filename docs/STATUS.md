@@ -145,8 +145,9 @@ Telegram and live-money acceptance remains externally blocked.
 - Completed: `Phase 11 / Sprint 11.3 — Security Review` (keyless implementation and gate P11)
 - Completed: `Gate P11 — READY_FOR_PRODUCTION_ANALYSIS_ONLY` (keyless evidence; external acceptance remains blocked)
 - Completed: `Cross-cutting hardening / Task 1 — API version and OpenAPI contract` (keyless contract)
-- Next checkpoint: `Cross-cutting hardening Task 2 — deterministic SBOM and
-  dependency evidence`; after the independent backlog, preserve Gate P9 live
+- Completed: `Cross-cutting hardening / Task 2 — deterministic SBOM and dependency evidence` (keyless contract)
+- Next checkpoint: `Cross-cutting hardening Task 3 — data handling and
+  architecture records`; after the independent backlog, preserve Gate P9 live
   read-only market-data and Telegram acceptance `BLOCKED_EXTERNAL`, and
   preserve all protected modes. Phase 12 cannot start without explicit
   operator decision plus P9-P11 acceptance evidence. E11.2 Rust/Yellowstone
@@ -163,12 +164,15 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: cross-cutting hardening Task 2 — deterministic SBOM and dependency
-  evidence; Phase 12 manual-live work remains locked pending explicit operator
+- Task: cross-cutting hardening Task 3 — data handling and architecture
+  records; Phase 12 manual-live work remains locked pending explicit operator
   decision plus P9-P11 acceptance evidence.
 - Sprint 11.3 design and plan are recorded in
   `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-3-security-review-design.md`
   and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-3-security-review.md`.
+- Cross-cutting hardening design and plan are recorded in
+  `docs/superpowers/specs/2026-09-01-cross-cutting-hardening-design.md` and
+  `docs/superpowers/plans/2026-09-01-cross-cutting-hardening.md`.
 - Current state: `security-review-v1` passes all deterministic local checks;
   exact dependency metadata, non-root image construction, secret scan, RBAC/
   bearer/session contracts, narrative prompt/data handling and protected
@@ -878,10 +882,11 @@ The worker container initially exited because `__main__.py` was missing. The fai
 - Sprint 11.3 full repository quality gate: `make verify` exits `0`; Ruff, strict mypy (`81 source files`), `625 passed, 11 skipped`, branch-aware coverage `78%`, frontend lint/typecheck/Vitest (`14 files / 41 tests`), Compose config, secret scan, migration parity and keyless security review complete successfully. `make frontend-build` remains green after the dependency remediation.
 - Sprint 11.3 safety acceptance: `PASS` for no secret exposure, exact dependency declarations, non-root image runtime, constant-time role authentication, explicit RBAC/session boundaries, sanitized untrusted LLM data, advisory-only narrative output, versioned threat model and unchanged protected modes. Gate P11 is `READY_FOR_PRODUCTION_ANALYSIS_ONLY` for keyless evidence; live provider, Telegram, pip-audit/Trivy and live-money acceptance remain `BLOCKED_EXTERNAL`. Phase 12 remains locked by explicit operator decision and safety policy.
 - Cross-cutting hardening Task 1 verification: `./.venv/bin/pytest tests/contract/test_api_schema.py -q` passes `3 tests`; generated OpenAPI is reproducible, business routes are versioned under `/v1`, health probes remain operational endpoints, and mutation methods are explicitly allow-listed. `docs/API.md` records compatibility, authentication and safe-data rules.
+- Cross-cutting hardening Task 2 verification: `./.venv/bin/pytest tests/unit/test_sbom.py -q` passes `2 tests`; `make sbom` exits `0` with `security-sbom-v1`, 581 deterministic components and digest `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`. The Make/CI quality gates now run the exporter; no external scanner result is fabricated.
 
 ## Next task
 
-Continue cross-cutting hardening Task 2 (deterministic SBOM/dependency evidence)
+Continue cross-cutting hardening Task 3 (data handling and architecture records)
 and the remaining independent keyless backlog. Phase 12 is intentionally locked
 by default. Do not implement or enable manual-live execution without the
 explicit operator decision and P9-P11 acceptance evidence required by

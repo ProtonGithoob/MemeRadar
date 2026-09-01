@@ -19,13 +19,14 @@ CALIBRATION_OUTPUT ?=
 PROFILE_ITERATIONS ?= 10
 RELIABILITY_ITERATIONS ?= 1000
 RELIABILITY_OUTPUT ?=
+SBOM_OUTPUT ?=
 
 .PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
 	backtest-replay calibrate-score reliability-benchmark reliability-doctor \
-	security-review security-review-external
+	security-review security-review-external sbom
 
 
 bootstrap:
@@ -92,6 +93,9 @@ security-review:
 security-review-external:
 	$(PYTHON) scripts/security_review.py --external
 
+sbom:
+	$(PYTHON) scripts/sbom.py --check $(if $(SBOM_OUTPUT),--output $(SBOM_OUTPUT),)
+
 migration-check:
 	$(PYTHON) scripts/check_migrations.py
 
@@ -102,7 +106,7 @@ integration-test:
 		echo "MEMERADAR_TEST_DATABASE_URL not configured; integration tests skipped."; \
 	fi
 
-verify: lint typecheck test frontend-lint frontend-typecheck frontend-test compose-config secret-scan migration-check security-review
+verify: lint typecheck test frontend-lint frontend-typecheck frontend-test compose-config secret-scan migration-check security-review sbom
 
 up:
 	$(COMPOSE) up -d
