@@ -17,6 +17,15 @@ containers were stopped/removed with `docker compose down` without
 that unrelated port is required before the complete stack can run on the
 requested host ports. Protected modes remain unchanged.
 
+During the current live-read-only readiness check, the preserved diagnostic
+stack on PostgreSQL host port `55433` initially had an empty persistent
+database (`0` public tables and no `alembic_version`), which made the general
+candidate read return HTTP `500`. The existing `make migrate` path was run
+against that local database without deleting volumes; it now reports migration
+`0006_paper_execution` and 22 public tables, and both `/v1/candidates` and
+`/v1/early-radar` return HTTP `200` with an honest empty catalog. The unrelated
+`55432` PostgreSQL container remains untouched.
+
 ## Ultra-Early Option A progress
 
 Task 1 is complete for the keyless domain contract: immutable candidate timing,
@@ -300,11 +309,12 @@ Telegram and live-money acceptance remains externally blocked.
 - Completed: `Cross-cutting hardening / Task 5 — provider health comparison/routing seam` (keyless normalized evidence contract; live acceptance remains external)
 - Completed: `Cross-cutting hardening / Task 6 — final quality gate and checkpoint` (keyless gate)
 - Completed: `Ultra-Early Option A Tasks 1-13 — detection, micro-features, EarlyScore, shadow/paper path, forward outcomes, benchmarking, projections, latency observability and locked final gate` (keyless implementation and replay/runtime evidence)
-- Next checkpoint: `Phase 12 — Manual Live Execution (locked by default)` only
-  after an explicit operator decision and the separate P9–P11 acceptance
-  evidence. No Phase 12 work is started here; preserve Gate P9 live
-  read-only market-data and Telegram acceptance `BLOCKED_EXTERNAL`, all
-  protected modes, and the conditional E11.2 Rust/Yellowstone rule.
+- Next checkpoint: live read-only provider acceptance and shadow validation,
+  pending the required external provider configuration. Phase 12 — Manual
+  Live Execution remains locked by default and is not started here; preserve
+  Gate P9 live read-only market-data and Telegram acceptance
+  `BLOCKED_EXTERNAL`, all protected modes, and the conditional E11.2
+  Rust/Yellowstone rule.
 
 ## Current operating policy
 
@@ -317,9 +327,10 @@ The configuration loader rejects attempts to override these protected values.
 
 ## Active implementation checkpoint
 
-- Task: maintain the completed Ultra-Early Option A keyless detection and
-  shadow/paper checkpoint; Phase 12 manual-live work remains locked pending
-  explicit operator decision plus P9-P11 acceptance evidence.
+- Task: perform live read-only provider acceptance and collect shadow/paper
+  evidence for the completed Ultra-Early Option A checkpoint; Phase 12
+  manual-live work remains locked pending explicit operator decision plus
+  P9-P11 acceptance evidence.
 - Sprint 11.3 design and plan are recorded in
   `docs/superpowers/specs/2026-09-01-phase-11-sprint-11-3-security-review-design.md`
   and `docs/superpowers/plans/2026-09-01-phase-11-sprint-11-3-security-review.md`.
@@ -335,11 +346,14 @@ The configuration loader rejects attempts to override these protected values.
   vulnerability-free production images or deployed configuration. The
   early-live-doctor is intentionally `BLOCKED_EXTERNAL` without provider
   access.
-- External blockers: live quote/market, stream/RPC, Telegram and all live
-  execution acceptance are `BLOCKED_EXTERNAL`; pip-audit/Trivy and local
-  advisory-database access are also `BLOCKED_EXTERNAL`. Gate P11 is ready for
-  the keyless analysis-only deployment, but Phase 12 remains locked until an
-  explicit operator decision and P9-P11 acceptance evidence.
+- External blockers: `HELIUS_RPC_URL`, `HELIUS_API_KEY`, one supported stream
+  variable (`MEMERADAR_SOLANA_STREAM_URL`, `SOLANA_STREAM_URL` or
+  `HELIUS_WEBSOCKET_URL`), `BIRDEYE_API_URL` and `BIRDEYE_API_KEY` are absent
+  from the process environment, so live quote/market, stream/RPC, Telegram
+  and all live execution acceptance remain `BLOCKED_EXTERNAL`; pip-audit/
+  Trivy and local advisory-database access are also `BLOCKED_EXTERNAL`. Gate
+  P11 is ready for the keyless analysis-only deployment, but Phase 12 remains
+  locked until an explicit operator decision and P9-P11 acceptance evidence.
 - Protected modes: `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
   `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
 
