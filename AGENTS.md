@@ -50,12 +50,13 @@ Before changing code, read in order:
 5. `docs/ROADMAP_RESEARCH_EXTENSIONS.md`
 6. `docs/RESEARCH_REUSE_REGISTRY.md`
 7. `docs/STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md`
-8. `docs/DATA_MODEL.md`
-9. `docs/SCORING_AND_RISK.md`
-10. `docs/PROVIDERS.md`
-11. `docs/SECURITY.md`
-12. `docs/TESTING.md`
-13. `docs/STATUS.md`
+8. `docs/MADEONSOL_SIGNAL_HARDENING.md`
+9. `docs/DATA_MODEL.md`
+10. `docs/SCORING_AND_RISK.md`
+11. `docs/PROVIDERS.md`
+12. `docs/SECURITY.md`
+13. `docs/TESTING.md`
+14. `docs/STATUS.md`
 
 Then inspect the actual repository and environment. Repository truth overrides assumptions.
 
@@ -64,6 +65,7 @@ Then inspect the actual repository and environment. Repository truth overrides a
 - `docs/ROADMAP.md` remains the core product roadmap.
 - `docs/ROADMAP_RESEARCH_EXTENSIONS.md` is an accepted supplementary executable backlog derived from later repository/protocol research.
 - `docs/STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md` is an accepted Phase-8-post-gate reliability extension derived from Solana stream/indexer research. It must not interrupt active Phase 8 UI work; execute it after Gate P8 and before Phase 9 unless actual repository state has already advanced, in which case insert it at the next safe backend checkpoint before relying on real-time paper-trading evidence.
+- `docs/MADEONSOL_SIGNAL_HARDENING.md` is an accepted post-Gate-P11 analysis-only hardening extension. It must be implemented before any Phase 12 manual-live work. It adds deterministic sustained surge/revival validation, economic move/tape corroboration, deployer transfer-delta evidence, launch sniper/bundle footprint, token lock/unlock evidence, and explicit executed-price-vs-market-price semantics where those capabilities are not already present. Audit existing code first and implement only missing parts.
 - Completed core tasks must not be restarted or rewritten merely to fit a new idea.
 - Finish the exact current task from `docs/STATUS.md` first, then execute research extensions at the insertion points documented in the accepted extension specifications.
 - `docs/RESEARCH_REUSE_REGISTRY.md` explains the upstream pattern and licensing constraints; it is a reference registry, not permission to copy restricted code.
@@ -91,6 +93,9 @@ Then inspect the actual repository and environment. Repository truth overrides a
 - Solana protocol routing must use verified `(program_id, discriminator/tag)` identity, never discriminator-only matching.
 - Live, replay and backfill chain data must converge through the same canonical decoder/normalizer path.
 - An unresolved stream gap or unverified decoder identity must reduce data quality/freshness fail-closed; it must never increase AlphaScore.
+- A price/market-cap move without sufficient real tape/liquidity corroboration must not be treated as strong momentum merely because the mark moved.
+- Missing wallet/tape/lock/deployer evidence is UNKNOWN, not zero/false-safe.
+- Executed/effective trade price and market/reference price are distinct semantics and must never be silently substituted for one another.
 
 ## Implementation discipline
 
@@ -125,6 +130,9 @@ For each task:
 - Chain backfill/recovery must use the same decoder registry and normalized event contracts as live ingestion.
 - Durable chain progress must not advance past an unresolved gap as if data were contiguous.
 - Pre-confirmation/processed chain evidence must retain commitment/finality state and may not silently become finalized truth.
+- Sustained surge/revival classification is deterministic evidence only and cannot bypass risk/freshness/independence gates.
+- Deployer transfer-delta, sniper/bundle footprint and lock/unlock evidence are diagnostics/corroboration until the versioned scoring/risk policy explicitly incorporates them.
+- Provider risk/reputation scores never replace MemeRadar's deterministic internal evidence.
 
 ## Definition of Done
 
@@ -147,7 +155,8 @@ For research-extension tasks, Definition of Done also requires:
 - third-party disagreement/UNKNOWN behavior tested;
 - feature/strategy/parser version and config hash persisted where specified;
 - for stream-integrity work, synthetic gap detection, recovery, same-decoder replay equivalence and verification tests pass;
-- protocol identity entries used for authoritative routing are independently verified or explicitly remain `TODO_VERIFY`.
+- protocol identity entries used for authoritative routing are independently verified or explicitly remain `TODO_VERIFY`;
+- for MadeOnSol-derived hardening, thresholds remain configuration-driven hypotheses until MemeRadar replay/calibration evidence justifies promotion, and price/tape/deployer/lock UNKNOWN semantics are tested fail-closed.
 
 ## Blockers
 
