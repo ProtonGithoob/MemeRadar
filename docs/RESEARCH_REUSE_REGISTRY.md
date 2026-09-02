@@ -108,6 +108,62 @@ MemeRadar adaptation:
 - WebSocket/stream is preferred, bounded polling is fallback;
 - use caller outcome history to improve `AuthorTrustScore`, but never infer trust from follower count alone.
 
+### yegor104/pumpfun-tracker
+Useful patterns:
+- wallet-attributed Pump.fun trade decoding;
+- per-wallet realized PnL accounting;
+- continuity of the same mint across bonding-curve graduation into PumpSwap;
+- preserving acquisition history across the migration boundary.
+
+MemeRadar adaptation:
+- do not add a second tracker or second wallet ledger;
+- extend the canonical wallet/accounting path with a cross-venue continuity invariant keyed by mint and verified migration evidence;
+- preserve pre-migration quantity and execution-price cost basis when the same mint moves to PumpSwap;
+- reject/downgrade conflicting successor pools, duplicate migration evidence and missing pre-migration state;
+- feed continuous history into existing SmartWalletScore/outcome evidence only after policy-appropriate finality;
+- implement through `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md` E11.10.
+
+### petershepherd/j33t-intel
+Useful patterns:
+- historical reconstruction of successful launches and known rugs;
+- search for scanner/filter settings that would have detected winners earlier;
+- simultaneous evaluation of upside capture and rug rejection;
+- explicit early-launch behavioral features such as holder, dev, bundle, authority, liquidity and flow evidence.
+
+MemeRadar adaptation:
+- do not create a parallel Potential Score or Rug Risk Score;
+- use the existing replay/backtest/calibration stack to evaluate current EarlyScore/AlphaScore/risk policy candidates;
+- create time-split winner-vs-rug cohorts and optimize only on TRAIN while reporting VALIDATION/TEST unchanged;
+- compare early detection age/market cap against false-positive/rug-acceptance costs;
+- never auto-promote the winning configuration;
+- implement through `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md` E10.3.
+
+### VitalikCholan/solana-dynamic-indexer
+Useful patterns:
+- Anchor IDL parsing and validation;
+- automatic discovery of instructions/events/accounts;
+- IDL-assisted decoder/schema scaffolding;
+- real-time plus backfill operational model.
+
+MemeRadar adaptation:
+- do not replace typed canonical persistence with dynamic runtime DDL;
+- E8.4 remains the authority for verified `(program_id, discriminator/tag)` routing, gaps, backfill and replay;
+- optionally add an offline developer tool that parses an Anchor IDL and emits a reviewable protocol-registry/decoder scaffold plus fixture skeletons;
+- unreviewed IDLs must never auto-register into production runtime;
+- implement through `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md` E8.5 only after higher-priority validation work.
+
+### Abdullateef1x/whale-sentinel
+Useful patterns:
+- realtime whale activity presentation;
+- wallet reputation/classification;
+- accumulation/distribution and buy/sell-pressure interpretation;
+- DEX swap-centric smart-money monitoring.
+
+MemeRadar adaptation:
+- no second whale/smart-money engine is warranted because SmartWalletScore, actor-cluster dedupe, micro-flow, confluence and ExitRisk already cover the core capability;
+- use this repository only as a regression/reference source when reviewing wallet reputation and accumulation/distribution features;
+- Jupiter/DFlow execution ideas are explicitly out of scope for this research integration and must not unlock execution.
+
 ### Yellowstone gRPC / Solana-Sniper-Rust-Bot pattern
 Useful patterns:
 - sub-second account/transaction streaming;
