@@ -611,6 +611,7 @@ class InMemoryPaperLedgerStore:
 
 
 def _quote_payload(quote: QuoteSnapshot) -> Mapping[str, object]:
+    market_context = quote.market_context
     return {
         "input_mint": quote.input_mint,
         "output_mint": quote.output_mint,
@@ -620,6 +621,22 @@ def _quote_payload(quote: QuoteSnapshot) -> Mapping[str, object]:
         "price_semantics": quote.price_semantics.value,
         "price_impact_bps": str(quote.price_impact_bps),
         "route": tuple(quote.route),
+        "market_context": (
+            None
+            if market_context is None
+            else {
+                "chain": market_context.chain,
+                "pair_address": market_context.pair_address,
+                "base_mint": market_context.base_mint,
+                "quote_mint": market_context.quote_mint,
+                "liquidity_usd": str(market_context.liquidity_usd),
+                "pair_created_at": (
+                    None
+                    if market_context.pair_created_at is None
+                    else market_context.pair_created_at.isoformat()
+                ),
+            }
+        ),
         "freshness": {
             "as_of": quote.freshness.as_of.isoformat(),
             "expires_at": quote.freshness.expires_at.isoformat(),

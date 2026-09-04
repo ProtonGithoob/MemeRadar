@@ -36,6 +36,18 @@ from memeradar_domain.identities import require_solana_address
 class ProviderCapability(str, Enum):
     """Capabilities exposed by replaceable provider adapters."""
 
+    CHAIN_RPC = "chain_rpc"
+    ENHANCED_ASSET_METADATA = "enhanced_asset_metadata"
+    TRANSACTION_HISTORY = "transaction_history"
+    REALTIME_STREAM = "realtime_stream"
+    MARKET_SNAPSHOT = "market_snapshot"
+    MARKET_QUOTE = "market_quote"
+    PAIR_DISCOVERY = "pair_discovery"
+    SOCIAL_METADATA = "social_metadata"
+    SOCIAL_ANALYTICS = "social_analytics"
+    RISK_SUMMARY = "risk_summary"
+    WALLET_ENRICHMENT = "wallet_enrichment"
+    ALERT_DELIVERY = "alert_delivery"
     CANDIDATE_DISCOVERY = "candidate_discovery"
     MARKET_DATA = "market_data"
     ON_CHAIN = "on_chain"
@@ -512,6 +524,43 @@ class SocialMention:
 
 
 @dataclass(frozen=True, slots=True)
+class SocialMetadata:
+    """Declared project links, deliberately separate from social analytics."""
+
+    token: TokenIdentity
+    websites: tuple[str, ...]
+    socials: Mapping[str, str]
+    observed_at: datetime
+    ingested_at: datetime
+    quality_state: QualityState
+    provenance: Provenance
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.token, TokenIdentity):
+            raise TypeError("token must be a TokenIdentity")
+        websites = normalize_texts(self.websites, "websites", max_item_length=1024)
+        if not isinstance(self.socials, Mapping):
+            raise TypeError("socials must be a mapping")
+        socials: dict[str, str] = {}
+        for key, value in self.socials.items():
+            normalized_key = require_text(key, "social key", max_length=64).lower()
+            socials[normalized_key] = require_text(value, "social link", max_length=1024)
+        observed_at = ensure_utc(self.observed_at, "observed_at")
+        ingested_at = ensure_utc(self.ingested_at, "ingested_at")
+        if observed_at > ingested_at:
+            raise ValueError("observed_at must not be later than ingested_at")
+        if not isinstance(self.provenance, Provenance):
+            raise TypeError("provenance must be a Provenance")
+        if self.provenance.observed_at > observed_at:
+            raise ValueError("provenance observed_at must not be later than observed_at")
+        object.__setattr__(self, "websites", websites)
+        object.__setattr__(self, "socials", freeze_mapping(socials, "socials"))
+        object.__setattr__(self, "observed_at", observed_at)
+        object.__setattr__(self, "ingested_at", ingested_at)
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+
+
+@dataclass(frozen=True, slots=True)
 class NarrativeSnapshot:
     """Strict, advisory narrative output with evidence references."""
 
@@ -643,6 +692,36 @@ class NarrativeSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class QuoteMarketContext:
+    """Provider-neutral pair evidence attached to a market-derived quote."""
+
+    chain: str
+    pair_address: str
+    base_mint: str
+    quote_mint: str
+    liquidity_usd: Decimal | int | float | str
+    pair_created_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        chain = require_text(self.chain, "chain", max_length=32).lower()
+        if chain != "solana":
+            raise ValueError("quote market context must use the Solana chain")
+        object.__setattr__(self, "chain", chain)
+        for field_name in ("pair_address", "base_mint", "quote_mint"):
+            object.__setattr__(
+                self,
+                field_name,
+                require_solana_address(getattr(self, field_name), field_name),
+            )
+        liquidity = to_decimal(self.liquidity_usd, "liquidity_usd")
+        if liquidity <= 0:
+            raise ValueError("liquidity_usd must be positive")
+        object.__setattr__(self, "liquidity_usd", liquidity)
+        if self.pair_created_at is not None:
+            object.__setattr__(self, "pair_created_at", ensure_utc(self.pair_created_at, "pair_created_at"))
+
+
+@dataclass(frozen=True, slots=True)
 class QuoteSnapshot:
     """Read-only quote result with explicit freshness and provenance."""
 
@@ -654,6 +733,8 @@ class QuoteSnapshot:
     price_impact_bps: Decimal | int | float | str
     route: tuple[str, ...]
     freshness: Freshness
+    price_semantics: PriceSemantics = PriceSemantics.EXECUTION_QUOTE
+    market_context: QuoteMarketContext | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.provenance, Provenance):
@@ -669,6 +750,19 @@ class QuoteSnapshot:
             object.__setattr__(self, field_name, value)
         if not isinstance(self.freshness, Freshness):
             raise TypeError("freshness must be a Freshness")
+        object.__setattr__(self, "price_semantics", PriceSemantics(self.price_semantics))
+        if self.market_context is not None:
+            if not isinstance(self.market_context, QuoteMarketContext):
+                raise TypeError("market_context must be a QuoteMarketContext or None")
+            if {input_mint, output_mint} != {
+                self.market_context.base_mint,
+                self.market_context.quote_mint,
+            }:
+                raise ValueError("market context mints must match quote mints")
+            if self.market_context.pair_created_at is not None and (
+                self.market_context.pair_created_at > self.provenance.observed_at
+            ):
+                raise ValueError("pair_created_at must not be later than quote observation")
         object.__setattr__(self, "input_mint", input_mint)
         object.__setattr__(self, "output_mint", output_mint)
         object.__setattr__(self, "route", normalize_texts(self.route, "route", max_item_length=128))
@@ -681,11 +775,6 @@ class QuoteSnapshot:
             self.output_amount,
             "output_amount",
         )
-
-    @property
-    def price_semantics(self) -> PriceSemantics:
-        return PriceSemantics.EXECUTION_QUOTE
-
 
 @dataclass(frozen=True, slots=True)
 class ExecutionPlan:
@@ -793,6 +882,17 @@ class SocialDataPort(Protocol):
     async def search(self, request: SocialDataRequest) -> Sequence[SocialMention]: ...
 
 
+class SocialMetadataPort(Protocol):
+    provider_name: str
+
+    async def metadata(
+        self,
+        token: TokenIdentity,
+        *,
+        context: ProviderRequestContext,
+    ) -> SocialMetadata: ...
+
+
 class NarrativePort(Protocol):
     provider_name: str
 
@@ -844,6 +944,7 @@ __all__ = [
     "OnChainRequest",
     "ProviderCapability",
     "ProviderRequestContext",
+    "QuoteMarketContext",
     "QuotePort",
     "QuoteRequest",
     "QuoteSnapshot",
@@ -853,5 +954,7 @@ __all__ = [
     "RiskSeverity",
     "SocialDataPort",
     "SocialDataRequest",
+    "SocialMetadata",
+    "SocialMetadataPort",
     "SocialMention",
 ]

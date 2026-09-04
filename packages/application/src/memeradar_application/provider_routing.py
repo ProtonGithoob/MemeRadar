@@ -12,8 +12,10 @@ from memeradar_domain import QualityState
 from memeradar_domain.common import ensure_utc, normalize_texts, require_text
 
 from .observability import OperationalState, ProviderOperationalInput
+from .provider_contracts import ProviderCapability
 
 PROVIDER_ROUTING_VERSION = "provider-routing-v1"
+FREE_FIRST_ROUTING_VERSION = "free-first-routing-v1"
 
 
 class ProviderRouteState(str, Enum):
@@ -24,6 +26,149 @@ class ProviderRouteState(str, Enum):
     UNKNOWN = "UNKNOWN"
     CONFLICTED = "CONFLICTED"
     UNAVAILABLE = "UNAVAILABLE"
+
+
+@dataclass(frozen=True, slots=True)
+class CapabilityRoute:
+    """Ordered provider names for one capability, without provider imports."""
+
+    capability: ProviderCapability | str
+    providers: tuple[str, ...]
+    optional: bool = True
+
+    def __post_init__(self) -> None:
+        capability = (
+            self.capability.value
+            if isinstance(self.capability, ProviderCapability)
+            else require_text(self.capability, "capability", max_length=128)
+        )
+        object.__setattr__(self, "capability", capability)
+        object.__setattr__(
+            self,
+            "providers",
+            normalize_texts(self.providers, "providers", max_item_length=128),
+        )
+        if not isinstance(self.optional, bool):
+            raise TypeError("optional must be a boolean")
+
+
+@dataclass(frozen=True, slots=True)
+class FreeFirstRoutePlan:
+    """Provider-neutral route order for the free-first composition layer."""
+
+    chain: CapabilityRoute
+    enhanced_asset_metadata: CapabilityRoute
+    transaction_history: CapabilityRoute
+    realtime_stream: CapabilityRoute
+    market: CapabilityRoute
+    quote: CapabilityRoute
+    pair_discovery: CapabilityRoute
+    social_metadata: CapabilityRoute
+    social_analytics: CapabilityRoute
+    risk: CapabilityRoute
+    wallet: CapabilityRoute
+    narrative: CapabilityRoute
+    alerts: CapabilityRoute
+    version: str = FREE_FIRST_ROUTING_VERSION
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "chain",
+            "enhanced_asset_metadata",
+            "transaction_history",
+            "realtime_stream",
+            "market",
+            "quote",
+            "pair_discovery",
+            "social_metadata",
+            "social_analytics",
+            "risk",
+            "wallet",
+            "narrative",
+            "alerts",
+        ):
+            if not isinstance(getattr(self, field_name), CapabilityRoute):
+                raise TypeError(f"{field_name} must be a CapabilityRoute")
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+
+def build_free_first_route_plan(
+    *,
+    helius_configured: bool = False,
+    birdeye_configured: bool = False,
+    rugcheck_configured: bool = False,
+    external_social_configured: bool = False,
+    external_narrative_configured: bool = False,
+    telegram_configured: bool = False,
+) -> FreeFirstRoutePlan:
+    """Build deterministic capability routes from safe configuration presence."""
+
+    for name, value in (
+        ("helius_configured", helius_configured),
+        ("birdeye_configured", birdeye_configured),
+        ("rugcheck_configured", rugcheck_configured),
+        ("external_social_configured", external_social_configured),
+        ("external_narrative_configured", external_narrative_configured),
+        ("telegram_configured", telegram_configured),
+    ):
+        if not isinstance(value, bool):
+            raise TypeError(f"{name} must be a boolean")
+
+    chain_providers = ("helius", "solana-public-rpc") if helius_configured else (
+        "solana-public-rpc",
+    )
+    market_providers = ("dexscreener", "birdeye") if birdeye_configured else ("dexscreener",)
+    social_analytics = ("social",) if external_social_configured else ()
+    narrative_providers = ["ollama"]
+    if external_narrative_configured:
+        narrative_providers.append("narrative")
+    narrative_providers.append("disabled")
+
+    return FreeFirstRoutePlan(
+        chain=CapabilityRoute(ProviderCapability.CHAIN_RPC, chain_providers, optional=False),
+        enhanced_asset_metadata=CapabilityRoute(
+            ProviderCapability.ENHANCED_ASSET_METADATA,
+            ("helius",),
+        ),
+        transaction_history=CapabilityRoute(
+            ProviderCapability.TRANSACTION_HISTORY,
+            chain_providers,
+            optional=False,
+        ),
+        realtime_stream=CapabilityRoute(
+            ProviderCapability.REALTIME_STREAM,
+            ("helius-stream",) if helius_configured else (),
+        ),
+        market=CapabilityRoute(ProviderCapability.MARKET_SNAPSHOT, market_providers, optional=False),
+        quote=CapabilityRoute(ProviderCapability.MARKET_QUOTE, ("dexscreener",), optional=False),
+        pair_discovery=CapabilityRoute(
+            ProviderCapability.PAIR_DISCOVERY,
+            market_providers,
+            optional=False,
+        ),
+        social_metadata=CapabilityRoute(
+            ProviderCapability.SOCIAL_METADATA,
+            ("dexscreener",) if not external_social_configured else ("dexscreener", "social"),
+        ),
+        social_analytics=CapabilityRoute(
+            ProviderCapability.SOCIAL_ANALYTICS,
+            social_analytics,
+        ),
+        risk=CapabilityRoute(
+            ProviderCapability.RISK_SUMMARY,
+            ("local", "rugcheck") if rugcheck_configured else ("local",),
+            optional=False,
+        ),
+        wallet=CapabilityRoute(
+            ProviderCapability.WALLET_ENRICHMENT,
+            ("local", "external-wallet"),
+        ),
+        narrative=CapabilityRoute(ProviderCapability.NARRATIVE, tuple(narrative_providers)),
+        alerts=CapabilityRoute(
+            ProviderCapability.ALERT_DELIVERY,
+            ("telegram",) if telegram_configured else (),
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,7 +379,11 @@ class ProviderHealthRouter:
 
 
 __all__ = [
+    "FREE_FIRST_ROUTING_VERSION",
     "PROVIDER_ROUTING_VERSION",
+    "CapabilityRoute",
+    "FreeFirstRoutePlan",
+    "build_free_first_route_plan",
     "ProviderHealthRouter",
     "ProviderRouteCandidate",
     "ProviderRouteDecision",

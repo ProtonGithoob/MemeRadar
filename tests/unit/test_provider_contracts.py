@@ -23,16 +23,26 @@ from memeradar_application.provider_contracts import (
     OnChainRequest,
     ProviderCapability,
     ProviderRequestContext,
+    QuoteMarketContext,
     QuotePort,
     QuoteRequest,
+    QuoteSnapshot,
     RiskDataPort,
     RiskDataRequest,
     RiskFinding,
     RiskSeverity,
     SocialDataPort,
     SocialDataRequest,
+    SocialMetadataPort,
 )
-from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
+from memeradar_domain import (
+    Freshness,
+    Observation,
+    PriceSemantics,
+    Provenance,
+    QualityState,
+    TokenIdentity,
+)
 
 NOW = datetime(2026, 8, 27, 2, 0, tzinfo=UTC)
 MINT = "So11111111111111111111111111111111111111112"
@@ -71,11 +81,58 @@ def test_all_documented_provider_ports_expose_async_application_methods() -> Non
         "execution",
         "notification",
         "external_wallet_intelligence",
+        "chain_rpc",
+        "enhanced_asset_metadata",
+        "transaction_history",
+        "realtime_stream",
+        "market_snapshot",
+        "market_quote",
+        "pair_discovery",
+        "social_metadata",
+        "social_analytics",
+        "risk_summary",
+        "wallet_enrichment",
+        "alert_delivery",
     }
     for port, method_name in methods.items():
         method = getattr(port, method_name)
         assert inspect.iscoroutinefunction(method)
         assert get_type_hints(method)
+
+    assert inspect.iscoroutinefunction(SocialMetadataPort.metadata)
+    assert get_type_hints(SocialMetadataPort.metadata)
+
+
+def test_free_first_quote_context_preserves_market_reference_semantics() -> None:
+    market_context = QuoteMarketContext(
+        chain="solana",
+        pair_address="11111111111111111111111111111112",
+        base_mint=MINT,
+        quote_mint=QUOTE_MINT,
+        liquidity_usd=Decimal("25000"),
+        pair_created_at=NOW - timedelta(minutes=3),
+    )
+    quote = QuoteSnapshot(
+        provenance=Provenance(
+            provider="dexscreener",
+            source_id="pair-1",
+            observed_at=NOW,
+            parser_version="dexscreener-v1",
+        ),
+        input_mint=QUOTE_MINT,
+        output_mint=MINT,
+        input_amount=Decimal("10"),
+        output_amount=Decimal("100"),
+        price_impact_bps=Decimal("50"),
+        route=("dexscreener", "market_reference"),
+        freshness=Freshness(NOW, NOW + timedelta(minutes=1)),
+        price_semantics=PriceSemantics.MARKET_REFERENCE,
+        market_context=market_context,
+    )
+
+    assert quote.price_semantics is PriceSemantics.MARKET_REFERENCE
+    assert quote.market_context is market_context
+    assert quote.market_context.liquidity_usd == Decimal("25000")
 
 
 def test_request_context_requires_ordered_deadline_and_bounded_correlation() -> None:

@@ -44,6 +44,31 @@ def _optional_value(environ: Mapping[str, str], name: str) -> str | None:
     return value or None
 
 
+def _first_optional_value(environ: Mapping[str, str], names: tuple[str, ...]) -> str | None:
+    for name in names:
+        value = _optional_value(environ, name)
+        if value is not None:
+            return value
+    return None
+
+
+def _default_value(environ: Mapping[str, str], name: str, default: str) -> str:
+    return environ.get(name, "").strip() or default
+
+
+def _provider_choice(
+    environ: Mapping[str, str],
+    name: str,
+    default: str,
+    allowed: frozenset[str],
+) -> str:
+    value = _default_value(environ, name, default).lower()
+    if value not in allowed:
+        choices = ", ".join(sorted(allowed))
+        raise ValueError(f"{name} must be one of: {choices}")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Runtime settings that can be created without provider credentials."""
@@ -72,6 +97,31 @@ class Settings:
     manual_execution: bool
     auto_execution: bool
     early_score_handoff_seconds: int = 300
+    solana_rpc_url: str = "https://api.mainnet.solana.com"
+    helius_rpc_url: str | None = None
+    helius_api_key: str | None = None
+    helius_stream_url: str | None = None
+    solana_stream_url: str | None = None
+    dexscreener_api_url: str = "https://api.dexscreener.com"
+    dexscreener_api_key: str | None = None
+    market_data_provider: str = "dexscreener"
+    birdeye_api_url: str | None = None
+    birdeye_api_key: str | None = None
+    paper_quote_provider: str = "dexscreener"
+    paper_quote_url: str | None = None
+    paper_quote_api_key: str | None = None
+    rugcheck_api_url: str | None = None
+    rugcheck_api_key: str | None = None
+    wallet_intelligence_provider: str = "local"
+    external_wallet_api_url: str | None = None
+    external_wallet_api_key: str | None = None
+    social_metadata_provider: str = "dexscreener"
+    social_api_url: str | None = None
+    social_api_key: str | None = None
+    narrative_provider: str = "ollama"
+    narrative_api_url: str = "http://host.docker.internal:11434"
+    narrative_api_key: str | None = None
+    narrative_model: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -135,6 +185,26 @@ class Settings:
             1.0,
             86400.0,
         )
+        legacy_narrative_url = _optional_value(values, "NARRATIVE_API_URL")
+        legacy_narrative_key = _optional_value(values, "NARRATIVE_API_KEY")
+        configured_narrative_provider = _optional_value(values, "NARRATIVE_PROVIDER")
+        if configured_narrative_provider is None:
+            configured_narrative_provider = (
+                "external"
+                if legacy_narrative_url is not None and legacy_narrative_key is not None
+                else "ollama"
+            )
+        if configured_narrative_provider not in {"ollama", "external", "disabled"}:
+            raise ValueError("NARRATIVE_PROVIDER must be one of: disabled, external, ollama")
+        dexscreener_url = _default_value(
+            values,
+            "DEXSCREENER_API_URL",
+            _default_value(values, "DEXSCREENER_API_BASE_URL", "https://api.dexscreener.com"),
+        )
+        stream_url = _first_optional_value(
+            values,
+            ("MEMERADAR_SOLANA_STREAM_URL", "SOLANA_STREAM_URL", "HELIUS_WEBSOCKET_URL"),
+        )
         return cls(
             app_env=values.get("APP_ENV", "development").strip() or "development",
             log_level=values.get("LOG_LEVEL", "INFO").strip().upper() or "INFO",
@@ -156,7 +226,8 @@ class Settings:
             operator_api_token=role_tokens["OPERATOR_API_TOKEN"],
             admin_api_token=role_tokens["ADMIN_API_TOKEN"],
             execution_api_token=role_tokens["EXECUTION_API_TOKEN"],
-            telegram_api_url=_optional_value(values, "TELEGRAM_API_URL"),
+            telegram_api_url=_optional_value(values, "TELEGRAM_API_URL")
+            or "https://api.telegram.org",
             telegram_bot_token=_optional_value(values, "TELEGRAM_BOT_TOKEN"),
             telegram_chat_id=_optional_value(values, "TELEGRAM_CHAT_ID"),
             alert_max_messages_per_window=alert_max_messages,
@@ -166,4 +237,62 @@ class Settings:
             manual_execution=parsed_modes["MANUAL_EXECUTION"],
             auto_execution=parsed_modes["AUTO_EXECUTION"],
             early_score_handoff_seconds=early_score_handoff_seconds,
+            solana_rpc_url=_default_value(
+                values,
+                "SOLANA_RPC_URL",
+                "https://api.mainnet.solana.com",
+            ),
+            helius_rpc_url=_optional_value(values, "HELIUS_RPC_URL"),
+            helius_api_key=_optional_value(values, "HELIUS_API_KEY"),
+            helius_stream_url=_first_optional_value(
+                values,
+                ("HELIUS_WEBSOCKET_URL", "MEMERADAR_SOLANA_STREAM_URL", "SOLANA_STREAM_URL"),
+            ),
+            solana_stream_url=stream_url,
+            dexscreener_api_url=dexscreener_url,
+            dexscreener_api_key=_optional_value(values, "DEXSCREENER_API_KEY"),
+            market_data_provider=_provider_choice(
+                values,
+                "MARKET_DATA_PROVIDER",
+                "dexscreener",
+                frozenset({"birdeye", "dexscreener"}),
+            ),
+            birdeye_api_url=_optional_value(values, "BIRDEYE_API_URL"),
+            birdeye_api_key=_optional_value(values, "BIRDEYE_API_KEY"),
+            paper_quote_provider=_provider_choice(
+                values,
+                "PAPER_QUOTE_PROVIDER",
+                "dexscreener",
+                frozenset({"custom", "dexscreener", "birdeye"}),
+            ),
+            paper_quote_url=_first_optional_value(
+                values,
+                ("MEMERADAR_PAPER_QUOTE_URL", "JUPITER_QUOTE_URL"),
+            ),
+            paper_quote_api_key=_first_optional_value(
+                values,
+                ("MEMERADAR_PAPER_QUOTE_API_KEY", "JUPITER_API_KEY"),
+            ),
+            rugcheck_api_url=_optional_value(values, "RUGCHECK_API_URL"),
+            rugcheck_api_key=_optional_value(values, "RUGCHECK_API_KEY"),
+            wallet_intelligence_provider=_provider_choice(
+                values,
+                "WALLET_INTELLIGENCE_PROVIDER",
+                "local",
+                frozenset({"external", "local"}),
+            ),
+            external_wallet_api_url=_optional_value(values, "EXTERNAL_WALLET_API_URL"),
+            external_wallet_api_key=_optional_value(values, "EXTERNAL_WALLET_API_KEY"),
+            social_metadata_provider=_provider_choice(
+                values,
+                "SOCIAL_METADATA_PROVIDER",
+                "dexscreener",
+                frozenset({"dexscreener", "disabled"}),
+            ),
+            social_api_url=_optional_value(values, "SOCIAL_API_URL"),
+            social_api_key=_optional_value(values, "SOCIAL_API_KEY"),
+            narrative_provider=configured_narrative_provider,
+            narrative_api_url=legacy_narrative_url or "http://host.docker.internal:11434",
+            narrative_api_key=legacy_narrative_key,
+            narrative_model=_optional_value(values, "NARRATIVE_MODEL"),
         )

@@ -18,7 +18,15 @@ from memeradar_application.paper_execution import (
     PaperSizingPolicy,
 )
 from memeradar_application.provider_contracts import QuoteSnapshot
-from memeradar_domain import Freshness, PaperOrderSide, PaperOrderState, Provenance, QualityState
+from memeradar_domain import (
+    Freshness,
+    PaperOrderSide,
+    PaperOrderState,
+    PriceSemantics,
+    Provenance,
+    QualityState,
+)
+from memeradar_application.provider_contracts import QuoteMarketContext
 
 NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
 TOKEN_MINT = "So11111111111111111111111111111111111111112"
@@ -99,6 +107,65 @@ def test_risk_budget_sizing_is_conservative_and_bounded() -> None:
     assert result.eligible is True
     assert Decimal("0") < result.amount <= Decimal("100")
     assert result.policy_version == "paper-sizing-v1"
+
+
+def test_paper_request_fingerprint_retains_reference_quote_context() -> None:
+    base = request(uuid4())
+    reference_without_context = QuoteSnapshot(
+        provenance=base.quote.provenance,
+        input_mint=base.quote.input_mint,
+        output_mint=base.quote.output_mint,
+        input_amount=base.quote.input_amount,
+        output_amount=base.quote.output_amount,
+        price_impact_bps=base.quote.price_impact_bps,
+        route=("dexscreener", "market_reference"),
+        freshness=base.quote.freshness,
+        price_semantics=PriceSemantics.MARKET_REFERENCE,
+    )
+    contextual_quote = QuoteSnapshot(
+        provenance=base.quote.provenance,
+        input_mint=base.quote.input_mint,
+        output_mint=base.quote.output_mint,
+        input_amount=base.quote.input_amount,
+        output_amount=base.quote.output_amount,
+        price_impact_bps=base.quote.price_impact_bps,
+        route=reference_without_context.route,
+        freshness=base.quote.freshness,
+        price_semantics=PriceSemantics.MARKET_REFERENCE,
+        market_context=QuoteMarketContext(
+            chain="solana",
+            pair_address="11111111111111111111111111111112",
+            base_mint=TOKEN_MINT,
+            quote_mint=QUOTE_MINT,
+            liquidity_usd=Decimal("10000"),
+        ),
+    )
+    reference = base.__class__(
+        portfolio_id=base.portfolio_id,
+        token_id=base.token_id,
+        side=base.side,
+        amount=base.amount,
+        requested_at=base.requested_at,
+        idempotency_key=base.idempotency_key,
+        quote=reference_without_context,
+        decision_ref=base.decision_ref,
+        risk_snapshot=base.risk_snapshot,
+        candidate_id=base.candidate_id,
+    )
+    contextual = base.__class__(
+        portfolio_id=base.portfolio_id,
+        token_id=base.token_id,
+        side=base.side,
+        amount=base.amount,
+        requested_at=base.requested_at,
+        idempotency_key=base.idempotency_key,
+        quote=contextual_quote,
+        decision_ref=base.decision_ref,
+        risk_snapshot=base.risk_snapshot,
+        candidate_id=base.candidate_id,
+    )
+
+    assert contextual.fingerprint != reference.fingerprint
 
 
 def test_engine_simulates_fill_and_duplicate_retry_without_duplicate_cash() -> None:

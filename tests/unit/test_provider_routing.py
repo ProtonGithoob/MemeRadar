@@ -7,6 +7,7 @@ import pytest
 
 from memeradar_application.observability import OperationalState, ProviderOperationalInput
 from memeradar_application.provider_routing import (
+    build_free_first_route_plan,
     ProviderHealthRouter,
     ProviderRouteCandidate,
     ProviderRouteState,
@@ -161,3 +162,23 @@ def test_routing_module_is_provider_sdk_and_execution_free() -> None:
     assert "sign_transaction" not in lowered
     assert "submit_transaction" not in lowered
     assert "alpha_score" not in lowered
+
+
+def test_free_first_route_plan_orders_capabilities_without_provider_imports() -> None:
+    plan = build_free_first_route_plan(
+        helius_configured=False,
+        birdeye_configured=True,
+        rugcheck_configured=True,
+        external_social_configured=False,
+        external_narrative_configured=False,
+        telegram_configured=False,
+    )
+
+    assert plan.chain.providers == ("solana-public-rpc",)
+    assert plan.market.providers == ("dexscreener", "birdeye")
+    assert plan.enhanced_asset_metadata.providers == ("helius",)
+    assert plan.social_metadata.providers == ("dexscreener",)
+    assert plan.social_analytics.providers == ()
+    assert plan.risk.providers == ("local", "rugcheck")
+    assert plan.narrative.providers == ("ollama", "disabled")
+    assert plan.alerts.providers == ()
