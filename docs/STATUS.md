@@ -14,14 +14,14 @@ Last updated: 2026-09-04
 | Protected Operating Modes | `ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false, AUTO_EXECUTION=false` | `ENFORCED_INVARIANT` | Live order submission & wallet signing hard-locked |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | 100% pass rate (805+ Python tests incl 15 shadow tests, 45 Vitest tests) |
-
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | 100% pass rate (806+ Python tests incl 16 shadow tests, 45 Vitest tests) |
+ 
 ---
-
+ 
 ## Operational Tooling Correctness & Live-Shadow Audit Fixes
-
-On 2026-09-04, the 10 operational correctness fixes for live-shadow tooling were completed and verified:
-
+ 
+On 2026-09-04, the operational correctness fixes for live-shadow tooling were completed and verified:
+ 
 1. **Fixed Shadow Status Pagination Counts**:
    - Updated `scripts/shadow_status.py` with `fetch_all_paginated_items()` helper. Traverses API pages using `next_cursor` without assuming a `total` field on `PageResponse`.
 2. **Removed Fake Zero Telemetry (`UNKNOWN != ZERO`)**:
@@ -33,15 +33,15 @@ On 2026-09-04, the 10 operational correctness fixes for live-shadow tooling were
 5. **Fail-Closed Safety Environment Propagation**:
    - `scripts/start-shadow.sh` validates inherited env vars, fails immediately if unsafe (`MANUAL_EXECUTION=true` or `AUTO_EXECUTION=true` or `ANALYSIS_ONLY=false` or `PAPER_TRADING=false`), and explicitly `export`s the 4 protection invariants before calling child processes or Compose. Updated `docker-compose.yml` env var expansion.
 6. **Split Stack Readiness from Provider Readiness**:
-   - Separated status reporting into `STACK_READY` vs `PROVIDERS_READY` / `DEGRADED` / `BLOCKED_EXTERNAL`. Documented minimum primary provider set (Helius RPC/Stream + Birdeye REST).
+   - Separated status reporting into `STACK_READY` vs `PROVIDERS_READY` / `DEGRADED` / `BLOCKED_EXTERNAL`. Documented minimum primary provider set (Helius RPC/Stream + Birdeye REST). Both primary providers (Helius & Birdeye) must be active (`FRESH` or `DEGRADED`) for `LIVE_SHADOW_COLLECTION_ACTIVE`.
 7. **Rigorous Evidence Class Classification**:
    - Derived `evidence_class` from candidate/position item provenance (`source_type`, `provider`). `LIVE_SHADOW` is classified ONLY when observations originate from live providers during an active shadow run. Fixtures and unconfigured runs remain `SYNTHETIC_FIXTURE` or `INSUFFICIENT_SAMPLES`.
 8. **Real Business KPIs Reporting**:
-   - Exposed measured decision bands (`WATCH`, `EARLY_WATCH`, `STRONG_SETUP`, `HIGH_CONFLUENCE`, `ENTRY_READY`), paper trade position metrics, PnL, and provider health states.
+   - Exposed measured decision bands (`WATCH`, `EARLY_WATCH`, `STRONG_SETUP`, `HIGH_CONFLUENCE`, `ENTRY_READY`), paper trade position metrics, PnL (with explicit coverage tracking), and provider health states.
 9. **Comprehensive Automated Test Suite**:
-   - Added `tests/unit/test_shadow_tooling.py` covering all 15 operational test scenarios (all 15 tests passing).
+   - Added `tests/unit/test_shadow_tooling.py` covering all 16 operational test scenarios (all 16 tests passing).
 10. **Final Gate Verification**:
-    - Full quality gate `make verify` passes cleanly with zero lint, type, or test errors.
+    - Full quality gate `make verify` passes cleanly with zero lint, type, or test errors (806 Python tests, 45 Vitest web tests, clean Ruff linting, Mypy typechecking across 101 source files).
 
 ---
 

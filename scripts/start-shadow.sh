@@ -9,6 +9,7 @@ log() {
 
 fail() {
   printf '[MemeRadar-Shadow] ERROR: %s\n' "$*" >&2
+  python3 "${ROOT_DIR}/scripts/shadow_status.py" --update-run-state START_FAILED 2>/dev/null || true
   exit 1
 }
 
@@ -46,92 +47,19 @@ log "  PAPER_TRADING=${PAPER_TRADING}"
 log "  MANUAL_EXECUTION=${MANUAL_EXECUTION}"
 log "  AUTO_EXECUTION=${AUTO_EXECUTION}"
 
-# 3. Establish Durable Shadow Run Identity
+# 3. Initialize Shadow Run Identity in PENDING State
 SHADOW_ARTIFACT_DIR="${ROOT_DIR}/artifacts/research/live-shadow"
-RUNS_DIR="${SHADOW_ARTIFACT_DIR}/runs"
-CURRENT_RUN_FILE="${SHADOW_ARTIFACT_DIR}/current_run.json"
-mkdir -p "${SHADOW_ARTIFACT_DIR}" "${RUNS_DIR}"
+mkdir -p "${SHADOW_ARTIFACT_DIR}"
 
-NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-RUN_ID="shadow_run_$(date -u +"%Y%m%d_%H%M%S")_$$"
-
-# Preserve previous run history if existing run file is present
-if [[ -f "${CURRENT_RUN_FILE}" ]]; then
-  PREV_RUN_ID=$(python3 -c "import json; print(json.load(open('${CURRENT_RUN_FILE}')).get('run_id', 'unknown'))" 2>/dev/null || echo "prev_run")
-  log "Archiving previous shadow run identity: ${PREV_RUN_ID}"
-  cp "${CURRENT_RUN_FILE}" "${RUNS_DIR}/run_${PREV_RUN_ID}_$(date -u +"%Y%m%d_%H%M%S").json" 2>/dev/null || true
-fi
-
-CONFIG_HASH=$(python3 -c "import hashlib; print(hashlib.sha256(b'true:true:false:false').hexdigest()[:16])")
-GIT_SHA=$(git rev-parse HEAD 2>/dev/null || echo "UNKNOWN")
-
-cat <<EOF > "${CURRENT_RUN_FILE}"
-{
-  "run_id": "${RUN_ID}",
-  "run_started_at": "${NOW_UTC}",
-  "git_commit_sha": "${GIT_SHA}",
-  "config_hash": "${CONFIG_HASH}",
-  "operating_modes": {
-    "analysis_only": true,
-    "paper_trading": true,
-    "manual_execution": false,
-    "auto_execution": false
-  }
-}
-EOF
-
-log "Durable shadow run identity established:"
-log "  Run ID: ${RUN_ID}"
-log "  Started At: ${NOW_UTC}"
+log "Initializing shadow run identity in PENDING state..."
+python3 "${ROOT_DIR}/scripts/shadow_status.py" --init-run
 
 # 4. Launch MemeRadar Services via start.sh
 log "Launching MemeRadar services via scripts/start.sh..."
-bash "${ROOT_DIR}/scripts/start.sh"
-
-# 5. Evaluate Stack Readiness vs Provider Readiness
-API_HOST_PORT="${API_HOST_PORT:-18000}"
-API_URL="${MEMERADAR_API_URL:-http://localhost:${API_HOST_PORT}}"
-
-log "Checking stack & provider readiness..."
-
-STACK_STATUS="STACK_OFFLINE"
-if curl -fsS "${API_URL}/health/live" >/dev/null 2>&1; then
-  STACK_STATUS="STACK_READY"
+if ! bash "${ROOT_DIR}/scripts/start.sh"; then
+  fail "Stack startup via scripts/start.sh failed."
 fi
 
-PROVIDER_READINESS="BLOCKED_EXTERNAL"
-LIVE_SHADOW_COLLECTION="NOT_ACTIVE"
-
-if HEALTH_JSON=$(curl -fsS "${API_URL}/v1/providers/health" 2>/dev/null); then
-  # Evaluate registered primary providers (Helius and Birdeye)
-  HELIUS_STATE=$(echo "${HEALTH_JSON}" | python3 -c "import sys, json; items = json.load(sys.stdin).get('items', []); print(next((i.get('state') for i in items if i.get('provider') == 'helius'), 'UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
-  BIRDEYE_STATE=$(echo "${HEALTH_JSON}" | python3 -c "import sys, json; items = json.load(sys.stdin).get('items', []); print(next((i.get('state') for i in items if i.get('provider') == 'birdeye'), 'UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
-
-  if [[ "${HELIUS_STATE}" == "FRESH" ]] && [[ "${BIRDEYE_STATE}" == "FRESH" ]]; then
-    PROVIDER_READINESS="PROVIDERS_READY"
-    LIVE_SHADOW_COLLECTION="LIVE_SHADOW_COLLECTION_ACTIVE"
-  elif [[ "${HELIUS_STATE}" == "DEGRADED" ]] || [[ "${BIRDEYE_STATE}" == "DEGRADED" ]]; then
-    PROVIDER_READINESS="DEGRADED"
-    LIVE_SHADOW_COLLECTION="LIVE_SHADOW_COLLECTION_ACTIVE"
-  else
-    PROVIDER_READINESS="BLOCKED_EXTERNAL"
-    LIVE_SHADOW_COLLECTION="NOT_ACTIVE"
-  fi
-fi
-
-log "=========================================================="
-log "           MemeRadar Start Shadow Readiness               "
-log "=========================================================="
-log "Run ID:                   ${RUN_ID}"
-log "Stack Status:             ${STACK_STATUS}"
-log "Provider Readiness:       ${PROVIDER_READINESS}"
-log "Live Shadow Collection:   ${LIVE_SHADOW_COLLECTION}"
-log "Operating Modes:          ANALYSIS_ONLY=true, PAPER_TRADING=true"
-log "                          MANUAL_EXECUTION=false, AUTO_EXECUTION=false"
-log "=========================================================="
-
-if [[ "${STACK_STATUS}" == "STACK_READY" ]] && [[ "${LIVE_SHADOW_COLLECTION}" == "LIVE_SHADOW_COLLECTION_ACTIVE" ]]; then
-  log "STATUS: STACK_READY / LIVE_SHADOW_COLLECTION_ACTIVE"
-else
-  log "STATUS: STACK_READY / LIVE_DATA_BLOCKED_EXTERNAL (Awaiting external provider credentials)"
-fi
+# 5. Evaluate Readiness & Output Verdict via Shared Canonical Python Service
+log "Evaluating stack & provider readiness..."
+python3 "${ROOT_DIR}/scripts/shadow_status.py" --evaluate-readiness
