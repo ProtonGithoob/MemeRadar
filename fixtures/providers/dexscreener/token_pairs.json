@@ -1,0 +1,77 @@
+[
+  {
+    "chainId": "ethereum",
+    "dexId": "uniswap",
+    "pairAddress": "SysvarRent111111111111111111111111111111111",
+    "baseToken": {
+      "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "name": "Meme Radar",
+      "symbol": "MRDR"
+    },
+    "quoteToken": {
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "name": "USD Coin",
+      "symbol": "USDC"
+    },
+    "priceUsd": "0.001",
+    "liquidity": {"usd": "900000"},
+    "pairCreatedAt": 1787810000000
+  },
+  {
+    "chainId": "solana",
+    "dexId": "raydium",
+    "pairAddress": "11111111111111111111111111111111",
+    "baseToken": {
+      "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "name": "Meme Radar",
+      "symbol": "MRDR"
+    },
+    "quoteToken": {
+      "address": "So11111111111111111111111111111111111111112",
+      "name": "Wrapped SOL",
+      "symbol": "SOL"
+    },
+    "priceUsd": "0.001",
+    "priceNative": "0.00001",
+    "liquidity": {"usd": "100"},
+    "volume": {"h24": "100"},
+    "pairCreatedAt": 1787810200000
+  },
+  {
+    "chainId": "solana",
+    "dexId": "raydium",
+    "pairAddress": "Vote111111111111111111111111111111111111111",
+    "baseToken": {
+      "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "name": "Meme Radar",
+      "symbol": "MRDR"
+    },
+    "quoteToken": {
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "name": "USD Coin",
+      "symbol": "USDC"
+    },
+    "priceUsd": "0.0012",
+    "priceNative": "0.00001",
+    "fdv": "500000",
+    "marketCap": "400000",
+    "liquidity": {"usd": "10000"},
+    "volume": {"m5": "120", "h1": "1200", "h6": "6000", "h24": "25000"},
+    "txns": {
+      "m5": {"buys": 4, "sells": 1},
+      "h1": {"buys": 30, "sells": 12},
+      "h6": {"buys": 100, "sells": 42},
+      "h24": {"buys": 300, "sells": 180}
+    },
+    "priceChange": {"m5": "1.2", "h1": "5.5", "h6": "12.0", "h24": "25.0"},
+    "pairCreatedAt": 1787810300000,
+    "info": {
+      "imageUrl": "https://memeradar.example/image.png",
+      "websites": [{"label": "Website", "url": "https://memeradar.example"}],
+      "socials": [
+        {"type": "twitter", "url": "https://x.com/memeradar"},
+        {"type": "telegram", "url": "https://t.me/memeradar"}
+      ]
+    }
+  }
+]
