@@ -1,0 +1,154 @@
+{
+  "version": "insider-allocation-v1",
+  "config_hash": "sha256:insider-allocation-replay-fixture",
+  "scenarios": {
+    "legitimate_whale": {
+      "holders": [
+        {
+          "address": "11111111111111111111111111111112",
+          "amount": "1000000",
+          "percentage": "0.10",
+          "rank": 1
+        }
+      ],
+      "observations": [
+        {
+          "wallet_address": "11111111111111111111111111111112",
+          "native_sol": "50.0",
+          "acquisition_source": "buy",
+          "has_valid_buy_history": true,
+          "is_fresh_wallet": false
+        }
+      ],
+      "expected_state": "LOW_EVIDENCE"
+    },
+    "fresh_wallet_large_transfer": {
+      "holders": [
+        {
+          "address": "11111111111111111111111111111113",
+          "amount": "1000000",
+          "percentage": "0.10",
+          "rank": 1
+        }
+      ],
+      "observations": [
+        {
+          "wallet_address": "11111111111111111111111111111113",
+          "native_sol": "0.01",
+          "acquisition_source": "transfer",
+          "has_valid_buy_history": false,
+          "is_fresh_wallet": true
+        }
+      ],
+      "expected_state": "HIGH_SUSPICION",
+      "expected_reasons": ["LARGE_ALLOCATION_LOW_NATIVE_SOL", "FRESH_WALLET_LARGE_ALLOCATION", "TRANSFER_DOMINATED_ALLOCATION"]
+    },
+    "creator_pre_launch": {
+      "holders": [
+        {
+          "address": "11111111111111111111111111111114",
+          "amount": "1500000",
+          "percentage": "0.15",
+          "rank": 1
+        }
+      ],
+      "observations": [
+        {
+          "wallet_address": "11111111111111111111111111111114",
+          "native_sol": "2.0",
+          "is_creator_related": true,
+          "acquired_at": "2026-09-04T09:59:00Z"
+        }
+      ],
+      "launch_at": "2026-09-04T10:00:00Z",
+      "expected_state": "HIGH_SUSPICION",
+      "expected_reasons": ["CREATOR_RELATED_LARGE_ALLOCATION", "PRE_LAUNCH_ALLOCATION_EVIDENCE"]
+    },
+    "shared_funder_cluster": {
+      "holders": [
+        {
+          "address": "11111111111111111111111111111115",
+          "amount": "400000",
+          "percentage": "0.04",
+          "rank": 1
+        },
+        {
+          "address": "11111111111111111111111111111116",
+          "amount": "400000",
+          "percentage": "0.04",
+          "rank": 2
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_address": "11111111111111111111111111111117",
+          "to_address": "11111111111111111111111111111115",
+          "relation_type": "funded_by"
+        },
+        {
+          "from_address": "11111111111111111111111111111117",
+          "to_address": "11111111111111111111111111111116",
+          "relation_type": "funded_by"
+        }
+      ],
+      "expected_state": "SUSPICIOUS",
+      "expected_reasons": ["SHARED_FUNDER_CLUSTER_ALLOCATION"]
+    },
+    "excluded_lp_program": {
+      "holders": [
+        {
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "amount": "8000000",
+          "percentage": "0.80",
+          "rank": 1
+        }
+      ],
+      "expected_state": "LOW_EVIDENCE"
+    },
+    "post_purchase_spend_valid_buy": {
+      "holders": [
+        {
+          "address": "11111111111111111111111111111118",
+          "amount": "500000",
+          "percentage": "0.05",
+          "rank": 1
+        }
+      ],
+      "observations": [
+        {
+          "wallet_address": "11111111111111111111111111111118",
+          "native_sol": "0.02",
+          "has_valid_buy_history": true,
+          "acquisition_source": "buy"
+        }
+      ],
+      "expected_state": "LOW_EVIDENCE"
+    },
+    "missing_historical_sol": {
+      "holders": [
+        {
+          "address": "11111111111111111111111111111119",
+          "amount": "500000",
+          "percentage": "0.05",
+          "rank": 1
+        }
+      ],
+      "observations": [],
+      "expected_state": "UNKNOWN",
+      "expected_reasons": ["INSUFFICIENT_WALLET_HISTORY"]
+    },
+    "conflicting_evidence": {
+      "holders": [
+        {
+          "address": "1111111111111111111111111111111B",
+          "amount": "500000",
+          "percentage": "0.05",
+          "rank": 1
+        }
+      ],
+      "snapshot_quality": "CONFLICTED",
+      "expected_state": "CONFLICTED",
+      "expected_reasons": ["INSIDER_EVIDENCE_CONFLICTED"]
+    }
+  }
+}

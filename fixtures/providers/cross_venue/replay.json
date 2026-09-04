@@ -1,0 +1,275 @@
+{
+  "version": "cross-venue-continuity-v1",
+  "config_hash": "sha256:cross-venue-replay-fixture",
+  "scenarios": {
+    "normal_migration": {
+      "mint_address": "So11111111111111111111111111111111111111112",
+      "wallet_address": "11111111111111111111111111111112",
+      "activities": [
+        {
+          "source_id": "pump.fun:buy-1",
+          "action": "BUY",
+          "quantity": "10",
+          "quote_amount": "5",
+          "occurred_at": "2026-09-04T11:40:00Z",
+          "venue": "pump.fun",
+          "canonical_trade_id": "sig-buy-1"
+        },
+        {
+          "source_id": "pumpswap:sell-1",
+          "action": "SELL",
+          "quantity": "4",
+          "quote_amount": "6",
+          "occurred_at": "2026-09-04T11:56:00Z",
+          "venue": "pumpswap",
+          "canonical_trade_id": "sig-sell-1"
+        }
+      ],
+      "lifecycle_observations": [
+        {
+          "source_id": "pump.fun:migrate-1",
+          "kind": "protocol.lifecycle",
+          "event_type": "migration",
+          "occurred_at": "2026-09-04T11:50:00Z",
+          "venue": "pump.fun",
+          "source_venue": "pump.fun",
+          "successor_venue": "pumpswap",
+          "successor_pool": "11111111111111111111111111111115",
+          "quality_state": "FRESH"
+        }
+      ],
+      "expected": {
+        "quality": "VERIFIED",
+        "pre_migration_quantity": "10",
+        "pre_migration_cost_basis": "5",
+        "post_migration_quantity": "6",
+        "open_cost_basis": "3",
+        "realized_pnl": "4",
+        "buy_count": 1,
+        "sell_count": 1,
+        "feeds_smart_wallet_score": true
+      }
+    },
+    "duplicate_migration": {
+      "mint_address": "So11111111111111111111111111111111111111112",
+      "wallet_address": "11111111111111111111111111111112",
+      "activities": [
+        {
+          "source_id": "pump.fun:buy-1",
+          "action": "BUY",
+          "quantity": "10",
+          "quote_amount": "5",
+          "occurred_at": "2026-09-04T11:40:00Z",
+          "venue": "pump.fun",
+          "canonical_trade_id": "sig-buy-1"
+        },
+        {
+          "source_id": "pumpswap:buy-1-dup",
+          "action": "BUY",
+          "quantity": "10",
+          "quote_amount": "5",
+          "occurred_at": "2026-09-04T11:40:00Z",
+          "venue": "pumpswap",
+          "canonical_trade_id": "sig-buy-1"
+        },
+        {
+          "source_id": "pumpswap:sell-1",
+          "action": "SELL",
+          "quantity": "4",
+          "quote_amount": "6",
+          "occurred_at": "2026-09-04T11:56:00Z",
+          "venue": "pumpswap",
+          "canonical_trade_id": "sig-sell-1"
+        }
+      ],
+      "lifecycle_observations": [
+        {
+          "source_id": "pump.fun:migrate-1",
+          "kind": "protocol.lifecycle",
+          "event_type": "graduation",
+          "occurred_at": "2026-09-04T11:50:00Z",
+          "venue": "pump.fun",
+          "successor_venue": "pumpswap",
+          "successor_pool": "11111111111111111111111111111115",
+          "quality_state": "FRESH"
+        },
+        {
+          "source_id": "pump.fun:migrate-1-dup",
+          "kind": "protocol.lifecycle",
+          "event_type": "migration",
+          "occurred_at": "2026-09-04T11:50:00Z",
+          "venue": "pump.fun",
+          "successor_venue": "pumpswap",
+          "successor_pool": "11111111111111111111111111111115",
+          "quality_state": "FRESH"
+        }
+      ],
+      "expected": {
+        "quality": "VERIFIED",
+        "buy_count": 1,
+        "sell_count": 1,
+        "realized_pnl": "4"
+      }
+    },
+    "partial_sell_before_and_after": {
+      "mint_address": "So11111111111111111111111111111111111111112",
+      "wallet_address": "11111111111111111111111111111112",
+      "activities": [
+        {
+          "source_id": "pump.fun:buy-1",
+          "action": "BUY",
+          "quantity": "8",
+          "quote_amount": "4",
+          "occurred_at": "2026-09-04T11:40:00Z",
+          "venue": "pump.fun",
+          "canonical_trade_id": "sig-buy-1"
+        },
+        {
+          "source_id": "pump.fun:sell-before",
+          "action": "SELL",
+          "quantity": "3",
+          "quote_amount": "2",
+          "occurred_at": "2026-09-04T11:48:00Z",
+          "venue": "pump.fun",
+          "canonical_trade_id": "sig-sell-before"
+        },
+        {
+          "source_id": "pumpswap:sell-after",
+          "action": "SELL",
+          "quantity": "2",
+          "quote_amount": "3",
+          "occurred_at": "2026-09-04T11:56:00Z",
+          "venue": "pumpswap",
+          "canonical_trade_id": "sig-sell-after"
+        }
+      ],
+      "lifecycle_observations": [
+        {
+          "source_id": "pump.fun:migrate-1",
+          "kind": "protocol.lifecycle",
+          "event_type": "migration",
+          "occurred_at": "2026-09-04T11:50:00Z",
+          "venue": "pump.fun",
+          "successor_venue": "pumpswap",
+          "successor_pool": "11111111111111111111111111111115",
+          "quality_state": "FRESH"
+        }
+      ],
+      "expected": {
+        "quality": "VERIFIED",
+        "pre_migration_quantity": "5",
+        "post_migration_quantity": "3"
+      }
+    },
+    "conflicting_successor_pool": {
+      "mint_address": "So11111111111111111111111111111111111111112",
+      "wallet_address": "11111111111111111111111111111112",
+      "activities": [
+        {
+          "source_id": "pump.fun:buy-1",
+          "action": "BUY",
+          "quantity": "10",
+          "quote_amount": "5",
+          "occurred_at": "2026-09-04T11:40:00Z",
+          "venue": "pump.fun",
+          "canonical_trade_id": "sig-buy-1"
+        }
+      ],
+      "lifecycle_observations": [
+        {
+          "source_id": "pump.fun:migrate-a",
+          "kind": "protocol.lifecycle",
+          "event_type": "migration",
+          "occurred_at": "2026-09-04T11:50:00Z",
+          "venue": "pump.fun",
+          "successor_venue": "pumpswap",
+          "successor_pool": "11111111111111111111111111111115",
+          "quality_state": "FRESH"
+        },
+        {
+          "source_id": "pump.fun:migrate-b",
+          "kind": "protocol.lifecycle",
+          "event_type": "migration",
+          "occurred_at": "2026-09-04T11:50:01Z",
+          "venue": "pump.fun",
+          "successor_venue": "pumpswap",
+          "successor_pool": "11111111111111111111111111111116",
+          "quality_state": "FRESH"
+        }
+      ],
+      "expected": {
+        "quality": "CONFLICTED",
+        "feeds_smart_wallet_score": false,
+        "reason": "MIGRATION_SUCCESSOR_CONFLICTED"
+      }
+    },
+    "reverted_migration": {
+      "mint_address": "So11111111111111111111111111111111111111112",
+      "wallet_address": "11111111111111111111111111111112",
+      "activities": [
+        {
+          "source_id": "pump.fun:buy-1",
+          "action": "BUY",
+          "quantity": "10",
+          "quote_amount": "5",
+          "occurred_at": "2026-09-04T11:40:00Z",
+          "venue": "pump.fun",
+          "canonical_trade_id": "sig-buy-1"
+        }
+      ],
+      "lifecycle_observations": [
+        {
+          "source_id": "pump.fun:migrate-1",
+          "kind": "protocol.lifecycle",
+          "event_type": "migration",
+          "occurred_at": "2026-09-04T11:50:00Z",
+          "venue": "pump.fun",
+          "successor_venue": "pumpswap",
+          "successor_pool": "11111111111111111111111111111115",
+          "reverted": true,
+          "recovery_state": "reverted",
+          "quality_state": "INVALID"
+        }
+      ],
+      "expected": {
+        "quality": "UNKNOWN",
+        "migration_is_none": true,
+        "feeds_smart_wallet_score": false,
+        "reason": "MIGRATION_REVERTED"
+      }
+    },
+    "missing_pre_migration_state": {
+      "mint_address": "So11111111111111111111111111111111111111112",
+      "wallet_address": "11111111111111111111111111111112",
+      "activities": [
+        {
+          "source_id": "pumpswap:sell-1",
+          "action": "SELL",
+          "quantity": "4",
+          "quote_amount": "6",
+          "occurred_at": "2026-09-04T11:56:00Z",
+          "venue": "pumpswap",
+          "canonical_trade_id": "sig-sell-1"
+        }
+      ],
+      "lifecycle_observations": [
+        {
+          "source_id": "pump.fun:migrate-1",
+          "kind": "protocol.lifecycle",
+          "event_type": "migration",
+          "occurred_at": "2026-09-04T11:50:00Z",
+          "venue": "pump.fun",
+          "successor_venue": "pumpswap",
+          "successor_pool": "11111111111111111111111111111115",
+          "quality_state": "FRESH"
+        }
+      ],
+      "expected": {
+        "quality_in": ["PARTIAL", "UNKNOWN"],
+        "pre_migration_quantity_is_none": true,
+        "feeds_smart_wallet_score": false,
+        "reason": "PRE_MIGRATION_STATE_MISSING"
+      }
+    }
+  }
+}

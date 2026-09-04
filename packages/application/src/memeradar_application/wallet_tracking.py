@@ -270,6 +270,8 @@ class WalletActivity:
     price_semantics: PriceSemantics | str = PriceSemantics.EXECUTION_EFFECTIVE
     market_price: Decimal | None = None
     price_source: str | None = None
+    venue: str | None = None
+    canonical_trade_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.token, TokenIdentity):
@@ -324,6 +326,18 @@ class WalletActivity:
                 self,
                 "price_source",
                 require_text(self.price_source, "price_source", max_length=128),
+            )
+        if self.venue is not None:
+            object.__setattr__(
+                self,
+                "venue",
+                require_text(self.venue, "venue", max_length=64).lower(),
+            )
+        if self.canonical_trade_id is not None:
+            object.__setattr__(
+                self,
+                "canonical_trade_id",
+                require_text(self.canonical_trade_id, "canonical_trade_id", max_length=256),
             )
 
     @property
@@ -708,6 +722,24 @@ class WalletTrackingAnalyzer:
             "price",
             positive=True,
         )
+        venue_value = _field(payload, "venue", "protocol_venue", "protocol")
+        venue = (
+            require_text(venue_value, "venue", max_length=64).lower()
+            if isinstance(venue_value, str) and venue_value.strip()
+            else None
+        )
+        trade_id_value = _field(
+            payload,
+            "canonical_trade_id",
+            "signature",
+            "tx_signature",
+            "transaction_signature",
+        )
+        canonical_trade_id = (
+            require_text(trade_id_value, "canonical_trade_id", max_length=256)
+            if isinstance(trade_id_value, str) and trade_id_value.strip()
+            else None
+        )
         quality_state = _quality_at(observation, now, self.policy.evidence_ttl)
         return WalletActivity(
             token=token,
@@ -722,6 +754,8 @@ class WalletTrackingAnalyzer:
             provenance=observation.provenance,
             quality_state=quality_state,
             evidence_refs=(observation.provenance.source_id,),
+            venue=venue,
+            canonical_trade_id=canonical_trade_id,
         )
 
     def reconstruct_positions(

@@ -17,6 +17,8 @@ BACKTEST_SLIPPAGE_BPS ?= 25
 CALIBRATION_INPUT ?= $(BACKTEST_INPUT)
 CALIBRATION_OUTPUT ?=
 PROFILE_ITERATIONS ?= 10
+WINNER_VS_RUG_INPUT ?= fixtures/providers/winner_vs_rug/replay.json
+WINNER_VS_RUG_OUTPUT ?=
 RELIABILITY_ITERATIONS ?= 1000
 RELIABILITY_OUTPUT ?=
 EARLY_DETECTION_ITERATIONS ?= 100
@@ -27,9 +29,8 @@ SBOM_OUTPUT ?=
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-	backtest-replay calibrate-score reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
+	backtest-replay calibrate-score winner-vs-rug-optimizer reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
 	security-review security-review-external sbom
-
 
 bootstrap:
 	python3 -m venv .venv
@@ -63,6 +64,10 @@ backtest-replay:
 calibrate-score:
 	$(PYTHON) scripts/calibrate_score.py --input $(CALIBRATION_INPUT) \
 		$(if $(CALIBRATION_OUTPUT),--output $(CALIBRATION_OUTPUT),)
+
+winner-vs-rug-optimizer:
+	$(PYTHON) scripts/winner_vs_rug_optimizer.py --input $(WINNER_VS_RUG_INPUT) \
+		$(if $(WINNER_VS_RUG_OUTPUT),--output $(WINNER_VS_RUG_OUTPUT),)
 
 reliability-benchmark:
 	$(PYTHON) scripts/reliability_benchmark.py --iterations $(RELIABILITY_ITERATIONS) \

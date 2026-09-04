@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -1178,6 +1179,275 @@ class HolderGraphAnalyzer:
         )
 
 
+class InsiderAllocationSuspicionState(str, Enum):
+    """Advisory pre-mine / insider allocation suspicion state."""
+
+    LOW_EVIDENCE = "LOW_EVIDENCE"
+    SUSPICIOUS = "SUSPICIOUS"
+    HIGH_SUSPICION = "HIGH_SUSPICION"
+    UNKNOWN = "UNKNOWN"
+    CONFLICTED = "CONFLICTED"
+
+
+@dataclass(frozen=True, slots=True)
+class InsiderAllocationSuspicion:
+    """Provider-neutral pre-mine / insider allocation suspicion projection."""
+
+    token: TokenIdentity
+    as_of: datetime
+    expires_at: datetime
+    state: InsiderAllocationSuspicionState
+    suspicious_holder_count: int
+    suspicious_supply_pct: Decimal
+    top_suspicious_wallets: tuple[str, ...]
+    confidence: Decimal
+    penalties: Mapping[str, Decimal]
+    reason_codes: tuple[ReasonCode, ...]
+    evidence_refs: tuple[str, ...]
+    provenance: tuple[Provenance, ...]
+    quality_state: QualityState = QualityState.FRESH
+    config_hash: str = ""
+    version: str = "insider-suspicion-v1"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.token, TokenIdentity):
+            raise TypeError("token must be a TokenIdentity")
+        object.__setattr__(self, "as_of", ensure_utc(self.as_of, "as_of"))
+        object.__setattr__(self, "expires_at", ensure_utc(self.expires_at, "expires_at"))
+        object.__setattr__(self, "state", InsiderAllocationSuspicionState(self.state))
+        object.__setattr__(
+            self,
+            "suspicious_supply_pct",
+            bounded_decimal(
+                self.suspicious_supply_pct, "suspicious_supply_pct", Decimal("0"), Decimal("1")
+            ),
+        )
+        object.__setattr__(
+            self,
+            "confidence",
+            bounded_decimal(self.confidence, "confidence", Decimal("0"), Decimal("1")),
+        )
+        object.__setattr__(self, "reason_codes", normalize_reason_codes(self.reason_codes))
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+
+    def execution_eligible(self) -> bool:
+        return False
+
+
+class InsiderAllocationAnalyzer:
+    """Analyze holder concentration and wallet graph for insider allocation suspicion."""
+
+    def __init__(self, classifier: AddressClassifier | None = None) -> None:
+        self.classifier = classifier or AddressClassifier()
+
+    def evaluate(
+        self,
+        token: TokenIdentity,
+        snapshot: HolderConcentrationSnapshot,
+        graph: WalletGraphSnapshot | None = None,
+        observations: Sequence[Observation] = (),
+        *,
+        as_of: datetime,
+        launch_at: datetime | None = None,
+        config_hash: str = "insider-suspicion-v1",
+    ) -> InsiderAllocationSuspicion:
+        checked_at = ensure_utc(as_of, "as_of")
+        expires_at = checked_at + timedelta(minutes=5)
+        provenance = list(snapshot.provenance)
+        evidence_refs = list(snapshot.evidence_refs)
+
+        if snapshot.quality_state is QualityState.CONFLICTED:
+            return InsiderAllocationSuspicion(
+                token=token,
+                as_of=checked_at,
+                expires_at=expires_at,
+                state=InsiderAllocationSuspicionState.CONFLICTED,
+                suspicious_holder_count=0,
+                suspicious_supply_pct=Decimal("0"),
+                top_suspicious_wallets=(),
+                confidence=Decimal("0"),
+                penalties={},
+                reason_codes=(ReasonCode("INSIDER_EVIDENCE_CONFLICTED"),),
+                evidence_refs=tuple(evidence_refs),
+                provenance=tuple(provenance),
+                quality_state=QualityState.CONFLICTED,
+                config_hash=config_hash,
+            )
+
+        if snapshot.quality_state is not QualityState.FRESH:
+            return InsiderAllocationSuspicion(
+                token=token,
+                as_of=checked_at,
+                expires_at=expires_at,
+                state=InsiderAllocationSuspicionState.UNKNOWN,
+                suspicious_holder_count=0,
+                suspicious_supply_pct=Decimal("0"),
+                top_suspicious_wallets=(),
+                confidence=Decimal("0"),
+                penalties={},
+                reason_codes=(ReasonCode("INSUFFICIENT_WALLET_HISTORY"),),
+                evidence_refs=tuple(evidence_refs),
+                provenance=tuple(provenance),
+                quality_state=snapshot.quality_state,
+                config_hash=config_hash,
+            )
+
+        wallet_obs: dict[str, dict[str, object]] = {}
+        for obs in observations:
+            if not isinstance(obs, Observation):
+                continue
+            payload = obs.normalized_payload
+            addr = _field(payload, "wallet_address", "address", "holder")
+            if isinstance(addr, str) and addr.strip():
+                wallet_obs[addr.strip()] = dict(payload)
+
+        shared_funders: set[str] = set()
+        creator_wallets: set[str] = set()
+        holder_funders: dict[str, str] = {}
+        if graph is not None:
+            funder_counts: Counter[str] = Counter()
+            for edge in graph.edges:
+                if edge.relation_type == "funded_by":
+                    funder_counts[edge.from_address] += 1
+                    holder_funders[edge.to_address] = edge.from_address
+                if edge.relation_type == "creator" or "creator" in edge.relation_type:
+                    creator_wallets.add(edge.to_address)
+            for funder, count in funder_counts.items():
+                if count >= 2:
+                    shared_funders.add(funder)
+
+        suspicious_wallets: list[str] = []
+        suspicious_supply_pct = Decimal("0")
+        reason_codes: list[ReasonCode] = []
+        has_unknown = False
+
+        for holder in snapshot.holders:
+            cls = self.classifier.classify(holder.address)
+            if cls.kind in _EXCLUDED_KINDS:
+                continue
+
+            pct = holder.percentage or Decimal("0")
+            data = wallet_obs.get(holder.address, {})
+            sol_balance_raw = _field(data, "native_sol", "sol_balance", "balance")
+            sol_balance = (
+                to_decimal(sol_balance_raw, "sol_balance")
+                if sol_balance_raw is not _MISSING and sol_balance_raw is not None
+                else None
+            )
+
+            has_buy_history = _field(data, "has_valid_buy_history", "buy_history") is True
+            acq_source = _field(data, "acquisition_source", "source")
+            is_fresh = _field(data, "is_fresh_wallet", "fresh") is True
+            is_creator_related = (
+                _field(data, "is_creator_related", "creator_related") is True
+                or holder.address in creator_wallets
+            )
+            funder_raw = _field(data, "shared_funder", "funded_by")
+            holder_funder: str | None = (
+                funder_raw
+                if isinstance(funder_raw, str)
+                else holder_funders.get(holder.address)
+            )
+            is_shared_funder = (
+                isinstance(holder_funder, str) and holder_funder in shared_funders
+            )
+            acq_time_raw = _field(data, "acquired_at", "first_acquisition_at")
+            acquired_at = (
+                ensure_utc(
+                    datetime.fromisoformat(str(acq_time_raw).replace("Z", "+00:00")),
+                    "acquired_at",
+                )
+                if acq_time_raw is not _MISSING and acq_time_raw is not None
+                else None
+            )
+
+            if sol_balance is None and pct >= Decimal("0.02") and not data and graph is None:
+                has_unknown = True
+
+            wallet_suspicious = False
+            if (
+                pct >= Decimal("0.02")
+                and sol_balance is not None
+                and sol_balance <= Decimal("0.05")
+                and not has_buy_history
+            ):
+                reason_codes.append(ReasonCode("LARGE_ALLOCATION_LOW_NATIVE_SOL"))
+                wallet_suspicious = True
+
+            if pct >= Decimal("0.03") and is_fresh:
+                reason_codes.append(ReasonCode("FRESH_WALLET_LARGE_ALLOCATION"))
+                wallet_suspicious = True
+
+            if pct >= Decimal("0.02") and is_creator_related:
+                reason_codes.append(ReasonCode("CREATOR_RELATED_LARGE_ALLOCATION"))
+                wallet_suspicious = True
+
+            if pct >= Decimal("0.02") and is_shared_funder:
+                reason_codes.append(ReasonCode("SHARED_FUNDER_CLUSTER_ALLOCATION"))
+                wallet_suspicious = True
+
+            if pct >= Decimal("0.02") and acq_source == "transfer":
+                reason_codes.append(ReasonCode("TRANSFER_DOMINATED_ALLOCATION"))
+                wallet_suspicious = True
+
+            if acquired_at is not None and launch_at is not None and acquired_at < launch_at:
+                reason_codes.append(ReasonCode("PRE_LAUNCH_ALLOCATION_EVIDENCE"))
+                wallet_suspicious = True
+
+            if wallet_suspicious:
+                suspicious_wallets.append(holder.address)
+                suspicious_supply_pct += pct
+
+        unique_reasons = tuple(dict.fromkeys(reason_codes))
+
+        if has_unknown and not suspicious_wallets:
+            state = InsiderAllocationSuspicionState.UNKNOWN
+            unique_reasons = (ReasonCode("INSUFFICIENT_WALLET_HISTORY"),)
+        elif (
+            suspicious_supply_pct >= Decimal("0.15")
+            or len(suspicious_wallets) >= 3
+            or len(reason_codes) >= 3
+        ):
+            state = InsiderAllocationSuspicionState.HIGH_SUSPICION
+        elif suspicious_supply_pct >= Decimal("0.05") or len(suspicious_wallets) >= 1:
+            state = InsiderAllocationSuspicionState.SUSPICIOUS
+        else:
+            state = InsiderAllocationSuspicionState.LOW_EVIDENCE
+
+        penalties: dict[str, Decimal] = {}
+        if state is InsiderAllocationSuspicionState.HIGH_SUSPICION:
+            penalties["INSIDER_ALLOCATION_SUSPICION"] = Decimal("40")
+        elif state is InsiderAllocationSuspicionState.SUSPICIOUS:
+            penalties["INSIDER_ALLOCATION_SUSPICION"] = Decimal("15")
+
+        confidence = (
+            Decimal("0.85")
+            if state is not InsiderAllocationSuspicionState.UNKNOWN
+            else Decimal("0.30")
+        )
+
+        return InsiderAllocationSuspicion(
+            token=token,
+            as_of=checked_at,
+            expires_at=expires_at,
+            state=state,
+            suspicious_holder_count=len(suspicious_wallets),
+            suspicious_supply_pct=suspicious_supply_pct,
+            top_suspicious_wallets=tuple(suspicious_wallets),
+            confidence=confidence,
+            penalties=penalties,
+            reason_codes=unique_reasons,
+            evidence_refs=tuple(evidence_refs),
+            provenance=tuple(provenance),
+            quality_state=(
+                QualityState.FRESH
+                if state is not InsiderAllocationSuspicionState.UNKNOWN
+                else QualityState.UNKNOWN
+            ),
+            config_hash=config_hash,
+        )
+
+
 __all__ = [
     "AddressClassification",
     "AddressClassifier",
@@ -1188,6 +1458,9 @@ __all__ = [
     "HolderConcentrationSnapshot",
     "HolderGraphAnalyzer",
     "HolderGraphPolicy",
+    "InsiderAllocationAnalyzer",
+    "InsiderAllocationSuspicion",
+    "InsiderAllocationSuspicionState",
     "WalletGraphEdge",
     "WalletGraphSnapshot",
 ]

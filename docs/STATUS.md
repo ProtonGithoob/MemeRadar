@@ -1,6 +1,25 @@
 # MemeRadar Status
 
-Last updated: 2026-09-01
+Last updated: 2026-09-04
+
+## Latest Research Extension Implementation
+
+On 2026-09-04, the following accepted research extensions were implemented, tested, and verified:
+- **E11.10 Cross-Venue Wallet Position Continuity**:
+  - Implemented `CrossVenuePositionContinuityState`, `CrossVenueContinuityConfig`, `CrossVenuePositionTracker`, and `CrossVenueContinuityAnalyzer` in `packages/application/src/memeradar_application/cross_venue_continuity.py`.
+  - Extended `WalletActivity` in `wallet_tracking.py` to support `venue` and `canonical_trade_id`.
+  - Replay fixture in `fixtures/providers/cross_venue/replay.json` covering standard transfer, cross-DEX migration, bridge transfer, duplicate trade ID idempotency, and unknown venue handling.
+  - 9 tests passing across `tests/unit/test_cross_venue_continuity.py` and `tests/contract/test_extension_e11_10_cross_venue_continuity.py`.
+- **E10.3 Winner-vs-Rug Early Filter Optimization**:
+  - Implemented `WinnerVsRugOptimizer`, `WinnerVsRugGrid`, `OptimizationResult`, and CLI runner in `packages/application/src/memeradar_application/winner_vs_rug.py` and `scripts/winner_vs_rug_optimizer.py`.
+  - Added Makefile target `make winner-vs-rug-optimizer`.
+  - Replay fixture in `fixtures/providers/winner_vs_rug/replay.json` covering early micro-feature evaluation, threshold grid search, and precision/recall optimization.
+  - 5 tests passing across `tests/unit/test_winner_vs_rug.py` and `tests/contract/test_extension_e10_3_winner_vs_rug.py`.
+- **E6.4 Pre-Mine / Insider Allocation Suspicion**:
+  - Implemented `InsiderAllocationSuspicionState`, `InsiderAllocationSuspicion`, and `InsiderAllocationAnalyzer` in `packages/application/src/memeradar_application/holder_graph.py`.
+  - Replay fixture in `fixtures/providers/insider_allocation/replay.json` covering all 8 required scenarios (low native SOL, fresh wallet, creator related, shared funder, unconfirmed acquisition, high concentration, clean holder distribution, unknown evidence fail-closed).
+  - 4 tests passing across `tests/unit/test_insider_allocation.py` and `tests/contract/test_extension_e6_4_insider_allocation.py`.
+- Full quality gate `make verify` passes cleanly with 770 Python unit/contract tests, 44 Vitest web tests, clean Ruff linting, clean Mypy typechecking (97 source files), docker compose config, secret scan, migration checks, security review, and SBOM validation.
 
 ## Latest port reconciliation
 
