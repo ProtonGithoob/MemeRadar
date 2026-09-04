@@ -434,9 +434,17 @@ export function Drawer({
 /*  GLOBAL TOP BAR & SEARCH NAVIGATION                                         */
 /* -------------------------------------------------------------------------- */
 
+function useSafeRouter() {
+  try {
+    return useRouter();
+  } catch {
+    return null;
+  }
+}
+
 export function WorkstationTopBar() {
   const [searchQuery, setSearchQuery] = useState("");
-  const router = useRouter();
+  const router = useSafeRouter();
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -446,9 +454,17 @@ export function WorkstationTopBar() {
     // Direct routing based on search string pattern
     if (query.length >= 32) {
       // Address / Mint search
-      router.push(`/tokens/${encodeURIComponent(query)}`);
+      if (router) {
+        router.push(`/tokens/${encodeURIComponent(query)}`);
+      } else {
+        window.location.href = `/tokens/${encodeURIComponent(query)}`;
+      }
     } else {
-      router.push(`/?search=${encodeURIComponent(query)}`);
+      if (router) {
+        router.push(`/?search=${encodeURIComponent(query)}`);
+      } else {
+        window.location.href = `/?search=${encodeURIComponent(query)}`;
+      }
     }
   };
 
