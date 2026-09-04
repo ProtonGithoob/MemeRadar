@@ -321,7 +321,7 @@ function ExplainabilityPanel({
       <SectionHeader
         title="OPERATOR EXPLAINABILITY"
         subtitle="WHY INTERESTING / WHY RISKY / WHAT IS UNKNOWN"
-        actionLabel="DETERMINISTIC EVIDENCE"
+        action={<span className="text-[10px] text-gray-400 font-mono bg-gray-800 px-2 py-0.5 rounded">DETERMINISTIC EVIDENCE</span>}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">

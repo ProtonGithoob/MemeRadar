@@ -51,8 +51,8 @@ export function StatusPill({
   );
 }
 
-export function RiskChip({ disposition }: { disposition: string }) {
-  const disp = disposition.toUpperCase();
+export function RiskChip({ disposition }: { disposition?: string | null }) {
+  const disp = (disposition || "UNKNOWN").toUpperCase();
   let variant: StatusVariant = "muted";
   if (disp === "PASS") variant = "safe";
   else if (disp === "WARN") variant = "warning";
