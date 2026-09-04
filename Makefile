@@ -30,7 +30,8 @@ SBOM_OUTPUT ?=
 	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
 	backtest-replay calibrate-score winner-vs-rug-optimizer reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
-	security-review security-review-external sbom
+	security-review security-review-external sbom shadow-start shadow-status
+
 
 bootstrap:
 	python3 -m venv .venv
@@ -171,3 +172,9 @@ early-live-doctor:
 
 reliability-doctor:
 	$(PYTHON) scripts/reliability_doctor.py
+
+shadow-start:
+	bash scripts/start-shadow.sh
+
+shadow-status:
+	$(PYTHON) scripts/shadow_status.py

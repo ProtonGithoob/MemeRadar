@@ -45,7 +45,7 @@ Before initiating live read-only shadow ingestion:
 ### Daily Procedures (Days 1–7)
 
 - **Day 1: Stream & Credential Verification**
-  - Check Helius and Birdeye provider health: `curl -fsS http://localhost:18000/v1/provider-health`
+  - Check Helius and Birdeye provider health: `curl -fsS http://localhost:18000/v1/providers/health`
   - Verify `QualityState.FRESH` vs `DEGRADED` transitions.
   - Confirm `StreamIntegrityTracker` detects block gaps and fails closed (`AlphaScore` never inflated on gaps).
 
@@ -70,33 +70,42 @@ Before initiating live read-only shadow ingestion:
 
 **Objective**: Accumulate live shadow trade signals across a 30-day rolling window to conduct out-of-sample feature separability and convex exit policy calibration.
 
+> [!NOTE]
+> Research Candidate Status: `balanced-convex-v1`, `aggressive-runner-v1`, and `conservative-protection-v1` are unvalidated research candidates derived from synthetic replay. `balanced-convex-v1` is `BEST_SYNTHETIC_CANDIDATE` only (not production optimal or automatically selected for live execution). Live shadow data collection may reject all three candidates.
+
 ### Calibration Sequence (Day 30)
 
 1. **Export Shadow Trade Cohort**:
    ```bash
-   python3 scripts/replay_dataset.py --output fixtures/research/live_shadow_dataset.json
+   python3 scripts/replay_dataset.py --output artifacts/research/live-shadow/dataset.json
    ```
 
 2. **Run Separability Study on Live Shadow Data**:
    ```bash
-   python3 scripts/separability_study.py --dataset fixtures/research/live_shadow_dataset.json --output fixtures/research/live_shadow_separability.json
+   python3 scripts/separability_study.py --dataset artifacts/research/live-shadow/dataset.json --output artifacts/research/live-shadow/separability.json
    ```
    - Verify sample adequacy (`sample_count >= 30`).
    - Check out-of-sample precision and rug rejection rate.
 
 3. **Run Convex Exit Policy Replay**:
    ```bash
-   python3 scripts/convex_exit_research.py --dataset fixtures/research/live_shadow_trade_dataset.json --output fixtures/research/live_shadow_exit_results.json
+   python3 scripts/convex_exit_research.py --dataset artifacts/research/live-shadow/dataset.json --output artifacts/research/live-shadow/convex_exit_results.json
    ```
    - Evaluate `balanced-convex-v1`, `aggressive-runner-v1`, `conservative-protection-v1`.
-   - Identify `BEST_SYNTHETIC_CANDIDATE` or live candidate version with highest risk-adjusted paper expectancy.
+   - Identify candidate policy with highest risk-adjusted paper expectancy on real shadow trade history.
 
 4. **Strategy Promotion Gate Evaluation**:
    ```bash
    python3 scripts/winner_vs_rug_optimizer.py
    ```
-   - Evaluate promotion criteria: TRAIN/VAL/TEST split, out-of-sample expectancy lift >= +0.5x, fail-closed security invariants intact.
-   - Require explicit human operator sign-off before strategy promotion.
+   - Evaluate 7-point promotion criteria:
+     1. Baseline Expectancy Lift: Statistically significant positive lift over default baseline strategy.
+     2. Out-of-Sample Sample Adequacy: `sample_count >= 30` independent live shadow trade outcomes.
+     3. Drawdown & Rug Bounds: Max paper drawdown within defined risk parameters; zero unhandled severe rugs.
+     4. Execution Feasibility: Realized paper impact <= 100 bps; slippage-adjusted paper execution validated.
+     5. Time-Cohort Stability: Consistent positive expectancy across distinct 7-day time sub-cohorts.
+     6. Safety Invariants Intact: `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
+     7. Human Review: Required explicit operator sign-off and signed approval record prior to promotion.
 
 ---
 

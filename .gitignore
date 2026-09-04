@@ -20,3 +20,5 @@ out/
 apps/web/test-results/
 *.log
 .DS_Store
+artifacts/
+
