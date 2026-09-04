@@ -2,24 +2,64 @@
 
 Providers are replaceable adapters. Domain code must never depend directly on provider response types.
 
-## Capability map
+## Free-first capability map
 
-| Capability | Primary planned source | Secondary/fallback | Notes |
-|---|---|---|---|
-| Solana RPC/on-chain enrichment | Helius | standard Solana RPC / another provider | normalize before domain use |
-| Streaming/webhook observations | Helius | polling/WSS fallback | exact product chosen by measured latency/cost |
-| New token/pool + market data | Birdeye | DEX Screener / direct protocol parsing | independent corroboration preferred |
-| Token security | on-chain checks + Birdeye/RugCheck | independent internal checks | third-party result never sole authority |
-| Social/X | compliant X data provider/API | manually configured alternative | preserve ToS; no brittle scraping dependency |
-| Narrative LLM | configurable provider | disabled/fallback provider | optional, structured output only |
-| Quote/routing | Jupiter | disabled if unavailable | execution phase only |
-| Telegram | Telegram Bot API | notification abstraction later | outbox/retry required |
+The default path is keyless and read-only. Optional providers enrich or provide
+bounded fallback data; they do not change the domain contracts or protected
+execution modes.
+
+| Capability | Free/default | Optional enhancement | Boundary / limitation |
+| --- | --- | --- | --- |
+| `CHAIN_RPC` | standard Solana JSON-RPC | Helius standard/enhanced RPC | public RPC is rate-limited and non-guaranteed |
+| `ENHANCED_ASSET_METADATA` | unavailable/degraded | Helius DAS/enhanced API | never emulated through public RPC |
+| `TRANSACTION_HISTORY` | standard Solana RPC reads | Helius enrichment | bounded reads only |
+| `REALTIME_STREAM` | explicit stream/backfill seam | Helius stream | REST market data is not a chain stream |
+| `MARKET_SNAPSHOT` | DexScreener | Birdeye fallback/enrichment | only normalized market/pair data |
+| `MARKET_QUOTE` | DexScreener reference quote | reviewed custom adapter | not a live swap quote or execution authority |
+| `PAIR_DISCOVERY` | DexScreener | Birdeye | Solana chain and token identity are required |
+| `SOCIAL_METADATA` | DexScreener declared links | existing compliant provider | metadata only; no X scraping |
+| `SOCIAL_ANALYTICS` | unavailable | existing external social provider | no fabricated counts, sentiment or velocity |
+| `RISK_SUMMARY` | local deterministic checks | public/authenticated RugCheck evidence | third-party scores never replace local gates |
+| `WALLET_ENRICHMENT` | local tracking/scoring/graphs/flows | external wallet enrichment | labels remain corroborating evidence |
+| `NARRATIVE` | local Ollama or disabled | explicitly configured external LLM | advisory output only |
+| `ALERT_DELIVERY` | Telegram when configured | — | notification is downstream of analysis |
+
+The standard Solana adapter implements ordinary JSON-RPC operations only. The
+official [Solana JSON-RPC method documentation](https://solana.com/docs/rpc)
+defines these reads; Helius-only DAS/enhanced methods remain in the Helius
+adapter. DexScreener's public [API reference](https://docs.dexscreener.com/api/reference)
+is used for pair/market metadata and declared project links, not transaction
+history, holder graphs, wallet history, security audits, realtime blockchain
+streams or social search/firehose.
+
+### Composition and provenance
+
+`build_provider_bundle` is the small infrastructure composition root. It builds
+the provider-neutral `FreeFirstRoutePlan` and bounded fallback wrappers without
+putting provider imports in application routing:
+
+```text
+standard chain reads: Helius (when URL + key are configured) -> Solana RPC
+Helius enhanced capability: Helius only -> explicit unavailable/degraded
+market/pair: DexScreener -> Birdeye only when configured
+paper reference quote: DexScreener -> injected normalized custom port
+risk: local deterministic checks + optional RugCheck evidence
+wallet: local intelligence -> injected external enrichment
+social metadata: DexScreener -> optional social analytics (separate capability)
+narrative: Ollama -> configured external -> disabled
+alerts: configured Telegram -> optional/unconfigured
+```
+
+Fallback is ordered, bounded and observable. It advances only after a concrete
+provider error; an unsupported capability is not silently converted into an
+unrelated provider result. Normalized observations and quotes retain provider,
+chain, token/pair identity, timestamps, freshness and provenance.
 
 ## Live Read-Only Acceptance & Readiness
 
-See `LIVE_READONLY_CHECKLIST.md` for full environment setup, doctor commands, and degraded mode behavior.
+See `LIVE_READONLY_CHECKLIST.md` for full environment setup, doctor commands, and degraded mode behavior. A successful free core is reported as `READY_FOR_FREE_READ_ONLY_SHADOW`; it is never full-provider or live-money readiness.
 All provider ports operate under strict fail-closed boundaries:
-- Missing API keys or network endpoints report `BLOCKED_EXTERNAL` and default to keyless fixtures or `QualityState.UNKNOWN` without crashing.
+- Missing optional API keys or endpoints report `UNCONFIGURED_OPTIONAL`; configured network failures report `BLOCKED_EXTERNAL`/`DEGRADED`. The free core uses keyless adapters or explicit `QualityState.UNKNOWN` without crashing.
 - Stream gaps or unverified protocol routing reduce quality to `DEGRADED` or `UNKNOWN` and cannot authorize `ENTRY_READY` or inflate `AlphaScore`.
 - Third-party risk scores are corroborating evidence only and never override MemeRadar's deterministic risk hard gates.
 - `AUTO_EXECUTION=false` and `MANUAL_EXECUTION=false` remain permanently locked.
@@ -27,13 +67,16 @@ All provider ports operate under strict fail-closed boundaries:
 ## Paper execution boundary
 
 The Phase 9.1 paper engine is not a provider adapter. It consumes the existing
-application `QuoteSnapshot` contract, including freshness and provenance, and
-simulates fills with a versioned fee/slippage model. It does not call a quote
-endpoint, import a provider SDK, hold a signer or submit a transaction. The
-`PaperLedgerStore` protocol has in-memory and SQLAlchemy implementations behind
-the application boundary. Live quote and execution acceptance remains
-`BLOCKED_EXTERNAL`; `make paper-trading-doctor` checks local paper contracts and
-reports configuration presence without probing or echoing endpoint values.
+application `QuoteSnapshot` contract, including freshness, market context and
+provenance, and simulates fills with a versioned fee/slippage model. It does
+not call a quote endpoint, import a provider SDK, hold a signer or submit a
+transaction. The `PaperLedgerStore` protocol has in-memory and SQLAlchemy
+implementations behind the application boundary. DexScreener supplies a
+normalized market-reference quote by default; a custom quote URL/key remains
+only a compatibility configuration until a reviewed `QuotePort` is injected.
+`make paper-trading-doctor` checks local paper contracts and reports quote
+provider status without probing or echoing endpoint values. Live-money quote
+and execution acceptance remains blocked.
 
 The Sprint 9.2 exit engine is likewise not a provider adapter. It consumes
 normalized evidence snapshots with freshness and provenance, and the
@@ -196,7 +239,13 @@ It reports only bounded Helius reconnect, duplicate and malformed-drop
 counters plus chain-event-to-ingest timing; raw messages, credentials and
 exception text never enter telemetry.
 
-The explicit `make provider-doctor` command runs one bounded, read-only `getHealth` call when both `HELIUS_RPC_URL` and `HELIUS_API_KEY` are configured. Its JSON report includes only configuration presence, network/auth/schema status, rounded latency, safe rate-limit metadata and the protected operating modes. It returns `PASS`, `FAIL` or `BLOCKED_EXTERNAL`; the current keyless checkout reports `BLOCKED_EXTERNAL` with `CONFIGURATION_MISSING`.
+The explicit `make helius-doctor` command runs one bounded, read-only
+`getHealth` call when both `HELIUS_RPC_URL` and `HELIUS_API_KEY` are configured.
+Its JSON report includes only configuration presence, network/auth/schema
+status, rounded latency, safe rate-limit metadata and the protected operating
+modes. Missing optional Helius configuration is not a core failure. The
+`make solana-rpc-doctor` command checks the generic standard-RPC path, while
+`make free-provider-doctor` reports both paths and their readiness tiers.
 
 ## E8.4 Solana stream integrity and protocol verification
 
@@ -241,7 +290,14 @@ When wired to the optional reliability sink, the fallback reports provider-
 labelled reconnect, fallback, duplicate and malformed-drop counters without
 changing its existing bounded poll behavior.
 
-The explicit `make birdeye-doctor` command performs one bounded, read-only supported-networks call when `BIRDEYE_API_URL` and `BIRDEYE_API_KEY` are configured. It reports only configuration presence, network/auth/schema status, rounded latency, safe rate-limit metadata and protected modes. Synthetic fixtures and keyless contract tests are committed under `fixtures/providers/birdeye/`; live acceptance remains `BLOCKED_EXTERNAL` when the endpoint/key configuration is absent. Reference endpoint documentation: [new listing](https://docs.birdeye.so/reference/get-defi-v2-tokens-new_listing), [market data](https://docs.birdeye.so/reference/get-defi-v3-token-market-data), [trade data](https://docs.birdeye.so/reference/get-defi-v3-token-trade-data-single), [holder data](https://docs.birdeye.so/reference/get-defi-v3-token-holder) and [supported networks](https://docs.birdeye.so/reference/get-defi-networks).
+The explicit `make birdeye-doctor` command performs one bounded, read-only
+supported-networks call when `BIRDEYE_API_URL` and `BIRDEYE_API_KEY` are
+configured. It reports only configuration presence, network/auth/schema
+status, rounded latency, safe rate-limit metadata and protected modes. Missing
+Birdeye is `UNCONFIGURED_OPTIONAL` in the aggregate doctor; it does not prevent
+DexScreener-backed market analysis. Synthetic fixtures and keyless contract
+tests are committed under `fixtures/providers/birdeye/`. Reference endpoint
+documentation: [new listing](https://docs.birdeye.so/reference/get-defi-v2-tokens-new_listing), [market data](https://docs.birdeye.so/reference/get-defi-v3-token-market-data), [trade data](https://docs.birdeye.so/reference/get-defi-v3-token-trade-data-single), [holder data](https://docs.birdeye.so/reference/get-defi-v3-token-holder) and [supported networks](https://docs.birdeye.so/reference/get-defi-networks).
 
 ## Launchpad / DEX coverage
 
@@ -296,17 +352,19 @@ quota and alert-failure response.
 
 ## Ultra-Early Option A read-only acceptance
 
-The approved ultra-early path reuses the canonical Helius protocol/stream
-normalization, the Birdeye new-listing fallback and the existing stream
-integrity contracts. `make early-live-doctor` performs only bounded read-only
-Helius `getHealth` and Birdeye supported-networks checks when the Helius RPC,
-Helius stream, Helius key, Birdeye URL and Birdeye key are already configured.
-It reports configuration presence and safe status metadata only; keys,
-endpoints and raw provider payloads are never printed. The local stream
-contract is checked, while merely configuring a WebSocket does not become
-`LIVE_VERIFIED` evidence. Missing configuration returns `BLOCKED_EXTERNAL`,
-authentication/schema failures return `FAIL`, and successful fixture or
-provider checks return `PASS` with the stream transport limitation explicit.
+The approved ultra-early path reuses canonical chain/protocol normalization,
+the free DexScreener market path, optional Helius/Birdeye enrichment and the
+existing stream-integrity contracts. `make early-live-doctor` always checks
+the free standard Solana RPC and DexScreener paths when external probing is
+requested; Helius and Birdeye are probed only when configured. It reports
+three separate tiers: `CORE_FREE_READINESS`,
+`OPTIONAL_ENRICHMENT_READINESS` and `FULL_PROVIDER_READINESS`. A healthy free
+core may be `READY_FOR_FREE_READ_ONLY_SHADOW`, but no tier is live-money
+readiness. Keys, endpoints and raw provider payloads are never printed. The
+local stream contract is checked, while merely configuring a WebSocket does
+not become `LIVE_VERIFIED` evidence. Network/rate-limit failures remain
+`BLOCKED_EXTERNAL` and authentication/schema/configuration failures remain
+explicit failures or degradation in the optional tier.
 
 Live detection can be called verified only after a bounded real stream run
 demonstrates continuity, gap detection and recovery, commitment/revert
@@ -427,9 +485,10 @@ network-free replay adapter. Its redacted fixture lives under
 CabalSpy or other live adapter is enabled: this checkout has no documented and
 legally approved operator endpoint contract, so adding a brittle scraper would
 violate the provider and security boundaries. `make external-wallet-doctor`
-reports configuration presence and returns `BLOCKED_EXTERNAL` for missing or
-unsupported live configuration without probing arbitrary URLs or emitting
-secrets. Live acceptance is separate from the keyless fixture PASS.
+reports configuration presence and returns an explicit unsupported/degraded
+state for configured live configuration without probing arbitrary URLs or
+emitting secrets. Live acceptance is separate from the keyless fixture PASS;
+the local wallet pipeline remains the default.
 
 ## RugCheck / token-security risk layer
 
@@ -439,7 +498,14 @@ The official `danger`, `critical` and `block` levels remain `RiskSeverity.BLOCK`
 
 The evaluator consumes Helius-normalized `onchain.token_metadata` observations. Active mint or freeze authority is a hard block under the current policy. Missing, unknown, invalid, conflicted or stale critical authority evidence produces `UNKNOWN` and is not execution-eligible. Token-2022 program identity and extension names are retained in normalized Helius payloads; security-relevant extensions are surfaced as explicit warnings and do not silently become safe evidence. The default authority-evidence TTL is five minutes, and every resulting risk assessment carries a version, configuration hash, reason codes and all evidence references.
 
-`make rugcheck-doctor` performs one bounded read-only `GET /ping` call when `RUGCHECK_API_URL` is configured. The official ping response must contain `message: pong`; the optional `RUGCHECK_API_KEY` is reported only as present/missing and is sent as a bearer header when set. Missing URL, unavailable network access or rate limiting is `BLOCKED_EXTERNAL`; authentication/schema failures are `FAIL`. The current checkout has no RugCheck endpoint configured, so no live provider success is claimed. Keyless fixtures and contracts are stored under `fixtures/providers/rugcheck/`.
+`make rugcheck-doctor` performs one bounded read-only `GET /ping` call when
+`RUGCHECK_API_URL` is configured. The official ping response must contain
+`message: pong`; the optional `RUGCHECK_API_KEY` is reported only as
+present/missing and is sent as a bearer header when set. Missing URL is
+`UNCONFIGURED_OPTIONAL`; unavailable network access or rate limiting is
+`BLOCKED_EXTERNAL`; authentication/schema failures are `FAIL`. RugCheck is
+never required for the local deterministic risk engine. Keyless fixtures and
+contracts are stored under `fixtures/providers/rugcheck/`.
 
 Reference contract: [RugCheck API Swagger](https://api.rugcheck.xyz/swagger/index.html) and its [raw API specification](https://api.rugcheck.xyz/swagger/doc.json).
 
@@ -615,8 +681,10 @@ rate-limit metadata and the four protected operating modes. Missing
 configuration, unavailable network access and rate limiting are
 `BLOCKED_EXTERNAL`; authentication or schema failures are `FAIL`. Synthetic
 search/health fixtures and keyless contracts live under
-`fixtures/providers/social/`. The current checkout has no social endpoint or
-credential configured, so no live provider success is claimed.
+`fixtures/providers/social/`. DexScreener declared links provide the separate
+free social-metadata path; the external social endpoint is optional and is not
+configured in the current checkout, so no live social-analytics success is
+claimed.
 
 Sprint 5.2 adds provider-independent `SocialAuthorRegistry`,
 `AuthorTrustScorer` and `SocialVelocityScorer` in

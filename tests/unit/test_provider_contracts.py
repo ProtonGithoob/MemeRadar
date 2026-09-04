@@ -135,6 +135,17 @@ def test_free_first_quote_context_preserves_market_reference_semantics() -> None
     assert quote.market_context.liquidity_usd == Decimal("25000")
 
 
+def test_quote_market_context_rejects_a_self_pair() -> None:
+    with pytest.raises(ValueError, match="must differ"):
+        QuoteMarketContext(
+            chain="solana",
+            pair_address="11111111111111111111111111111112",
+            base_mint=MINT,
+            quote_mint=MINT,
+            liquidity_usd=Decimal("25000"),
+        )
+
+
 def test_request_context_requires_ordered_deadline_and_bounded_correlation() -> None:
     assert context().deadline_at == NOW + timedelta(seconds=5)
 

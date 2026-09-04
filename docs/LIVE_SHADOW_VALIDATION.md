@@ -5,6 +5,27 @@
 **Operating Modes**: `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`  
 **Phase 12 Live Execution**: **HARD-LOCKED**
 
+## Free-first shadow readiness
+
+The read-only shadow path is intentionally usable with approximately $0 in
+mandatory external API spend. Core readiness uses the generic Solana RPC
+adapter, DexScreener market/reference data and MemeRadar's local deterministic
+wallet/risk engines. Helius, Birdeye, RugCheck authentication, social
+analytics, external wallet enrichment, Ollama and Telegram remain optional.
+
+The doctor and shadow status surfaces keep these tiers separate:
+
+| Tier | Meaning |
+| --- | --- |
+| `CORE_FREE_READINESS` | Solana RPC, DexScreener, local engines, protected modes and local stack checks satisfy the free read-only contract |
+| `OPTIONAL_ENRICHMENT_READINESS` | Configured optional providers are healthy, degraded, rate-limited or unavailable |
+| `FULL_PROVIDER_READINESS` | Helius and Birdeye enhancement paths are both configured and healthy |
+
+`READY_FOR_FREE_READ_ONLY_SHADOW` permits observation and paper analysis only.
+It never means production-live or live-money readiness. A public RPC/API
+failure is reported as `BLOCKED_EXTERNAL` or `DEGRADED`; absent optional
+credentials are `OPTIONAL_UNCONFIGURED`.
+
 ---
 
 ## 1. Pre-Flight Verification Checklist
@@ -25,6 +46,9 @@ Before initiating live read-only shadow ingestion:
 
 3. **Run All Diagnostic Doctors**:
    ```bash
+   make free-provider-doctor
+   make solana-rpc-doctor
+   make dexscreener-doctor
    python3 scripts/provider_doctor.py
    python3 scripts/early_live_doctor.py
    python3 scripts/birdeye_doctor.py
@@ -37,20 +61,26 @@ Before initiating live read-only shadow ingestion:
    - Provider health: `curl -fsS http://localhost:18000/v1/providers/health`
    - Shadow status report: `python3 scripts/shadow_status.py` (`make shadow-status`)
 
-### Primary Provider Set & Operational States
+### Provider Set & Operational States
 
-- **Minimum Primary Provider Set**:
-  - **Helius RPC / Stream Adapter** (`HeliusRpcAdapter`): Primary Solana transaction/block event stream and launch candidate discovery.
-  - **Birdeye REST Adapter** (`BirdeyeRestAdapter`): Primary token market pricing, pool liquidity, and mark verification.
-  - *Optional Corroboration*: DexScreener, Raydium, Jupiter, Pump.fun adapters.
+- **Free core provider set**:
+  - **Standard Solana RPC Adapter** (`SolanaRpcAdapter`): bounded standard JSON-RPC reads and transaction-history primitives where the endpoint supports them.
+  - **DexScreener Adapter** (`DexScreenerAdapter`): normalized Solana market snapshots, deterministic pair discovery, paper reference quotes and declared project links.
+  - **Local MemeRadar analysis**: wallet tracking/scoring/graphs/flows and deterministic token-risk checks.
+- **Optional enhancement set**:
+  - **Helius RPC / Stream Adapter** (`HeliusRpcAdapter`): configured standard/enhanced chain reads and optional stream; Helius-only DAS is never emulated by public RPC.
+  - **Birdeye REST Adapter** (`BirdeyeRestAdapter`): optional market/discovery fallback or enrichment; its stream remains a separate capability.
+  - RugCheck public/authenticated evidence, existing compliant social analytics, injected external wallet enrichment, Ollama/external narrative and Telegram alerts.
 
 - **Explicit Readiness & Collection Classifications**:
   - `STACK_READY`: Local containers (PostgreSQL, Redis, API, Web) are healthy and responding.
-  - `PROVIDERS_READY`: Minimum primary provider paths (Helius and Birdeye) are active and `FRESH`.
+  - `CORE_FREE_READINESS`: Standard Solana RPC and DexScreener are available, with local engines and protected modes intact.
+  - `OPTIONAL_ENRICHMENT_READINESS`: Optional providers are reported separately and never required for the core.
+  - `FULL_PROVIDER_READINESS`: Helius and Birdeye are both active and `FRESH` when the full enhancement tier is explicitly needed.
   - `DEGRADED`: Partial provider degradation; candidate scoring degrades fail-closed.
   - `BLOCKED_EXTERNAL`: Provider keys missing or provider endpoints returning error codes.
-  - `LIVE_SHADOW_COLLECTION_ACTIVE`: Stack is ready AND minimum primary providers are active (`FRESH` or `DEGRADED`). Real provider-originated observations are flowing.
-  - `NOT_ACTIVE`: Providers are `BLOCKED_EXTERNAL` or stack is offline.
+  - `LIVE_SHADOW_COLLECTION_ACTIVE`: Stack is ready, free core readiness is satisfied and real provider-originated observations are flowing.
+  - `NOT_ACTIVE`: Free core is `BLOCKED_EXTERNAL` or the stack is offline.
 
 - **Durable Shadow Run Identity & Invariants**:
   - Initiating `make shadow-start` creates a durable run identity (`run_id`, `run_started_at`) stored in `artifacts/research/live-shadow/current_run.json`. Existing run files are preserved in `artifacts/research/live-shadow/runs/`.
@@ -64,8 +94,8 @@ Before initiating live read-only shadow ingestion:
 
 ### Daily Procedures (Days 1–7)
 
-- **Day 1: Stream & Credential Verification**
-  - Check Helius and Birdeye provider health: `curl -fsS http://localhost:18000/v1/providers/health`
+- **Day 1: Core, Stream & Credential Verification**
+  - Check free core and optional provider health: `curl -fsS http://localhost:18000/v1/providers/health`
   - Verify `QualityState.FRESH` vs `DEGRADED` transitions.
   - Confirm `StreamIntegrityTracker` detects block gaps and fails closed (`AlphaScore` never inflated on gaps).
 

@@ -8,14 +8,15 @@ Future 20x/50x/100x outcomes are research labels and historical cohorts — neve
 
 ## Current project status
 
-As of 2026-09-04:
+As of 2026-09-05:
 
 | Dimension | Status |
 |---|---|
 | Keyless engineering roadmap | `KEYLESS_ENGINEERING_COMPLETE` |
 | API/Web/Postgres/Redis stack | `STACK_READY` when local stack is healthy |
-| Primary live providers | Helius + Birdeye required; otherwise `BLOCKED_EXTERNAL` |
-| Live-shadow collection | `ACTIVE` only when provider/readiness/run-state gates pass |
+| Core read-only providers | Solana public RPC + DexScreener + local deterministic engines |
+| Optional enrichment | Helius, Birdeye, RugCheck, social analytics, external wallet, Ollama, Telegram |
+| Live-shadow collection | `READY_FOR_FREE_READ_ONLY_SHADOW` when free core/readiness/run-state gates pass |
 | Real-world alpha | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` |
 | Analysis mode | `ANALYSIS_ONLY=true` |
 | Paper trading | `PAPER_TRADING=true` |
@@ -25,6 +26,43 @@ As of 2026-09-04:
 | Full quality gate | `make verify` passing at the latest verified checkpoint |
 
 The engineering system is intentionally feature-frozen around the alpha core while real live-shadow evidence is collected. Frontend parity/UX modernization is an approved product-surface sprint and does not unlock live execution.
+
+## Free-first provider architecture
+
+MemeRadar is provider-independent and capability-based. The core application can
+initialize with no paid API credentials: standard chain reads use the configured
+Solana JSON-RPC endpoint (defaulting to the rate-limited public endpoint), market
+snapshots and paper reference quotes use the keyless DexScreener public API, and
+wallet/risk analysis remains local and deterministic. Helius and Birdeye are
+optional enhancements or bounded fallbacks, not core boot requirements.
+
+| Capability | Free/default | Optional enhancement |
+| --- | --- | --- |
+| Solana RPC | Solana public RPC | Helius standard/enhanced RPC |
+| Enhanced Solana metadata | unavailable/degraded | Helius |
+| Transaction history | Standard Solana RPC where supported | Helius enrichment |
+| Realtime stream | Explicit stream/backfill seam only | Helius stream |
+| Market data and pair discovery | DexScreener | Birdeye |
+| Paper quote | DexScreener market reference | Reviewed custom/Birdeye adapter |
+| Risk | Local deterministic checks + public RugCheck where available | Authenticated RugCheck enrichment |
+| Wallet intelligence | MemeRadar local tracking/scoring/graphs/flows | External wallet enrichment |
+| Social metadata | DexScreener declared websites/social links | Existing compliant social provider |
+| Social analytics | Unavailable without a configured provider | Existing social analytics provider |
+| Narrative | Ollama when locally configured, otherwise disabled | Explicit external narrative provider |
+| Alerts | Telegram when configured | — |
+
+Provider-specific JSON is normalized at the adapter boundary. DexScreener is not
+used as a substitute for transaction history, holder graphs, wallet history,
+blockchain streaming, Helius DAS, security auditing or social search/firehose.
+Missing analytics are `UNKNOWN`/unavailable rather than fabricated as zero.
+
+The core/optional/full readiness tiers and the key-safe aggregate doctor are
+documented in [`docs/PROVIDERS.md`](docs/PROVIDERS.md) and can be checked with:
+
+```bash
+make free-provider-doctor
+python3 scripts/free_provider_doctor.py --no-network
+```
 
 ## What has been implemented
 
@@ -183,7 +221,8 @@ make shadow-status
 - establishes durable run identity;
 - tracks `PENDING`, `ACTIVE`, `BLOCKED_EXTERNAL`, `START_FAILED`, and `CLOSED` lifecycle states;
 - separates stack readiness from provider readiness;
-- requires both primary providers (Helius and Birdeye) to satisfy readiness rules.
+- permits the free Solana RPC + DexScreener core to enter read-only shadow readiness;
+- keeps optional Helius/Birdeye/full-provider acceptance separately visible.
 
 `scripts/shadow_status.py`:
 
@@ -209,9 +248,13 @@ Real-world alpha remains `NOT YET PROVEN` until sufficient live-shadow observati
 
 ### 13. Provider architecture and health
 
-Provider integrations are isolated behind adapters rather than domain dependencies. The project has contracts/doctors/readiness semantics covering the Solana/provider ecosystem, including Helius, Birdeye, DexScreener, Jupiter, Pump.fun and audited/conditional paths for other providers such as Yellowstone, Shyft and Raydium.
+Provider integrations are isolated behind adapters rather than domain dependencies. The small composition layer builds bounded capability routes: configured Helius standard RPC falls back to generic Solana RPC, DexScreener is the default market/quote/metadata path with configured Birdeye as an optional fallback, local wallet/risk engines remain primary, and Ollama is advisory narrative enrichment with a disabled fallback. Existing Jupiter, Pump.fun and conditional Yellowstone/Shyft/Raydium seams remain separate.
 
-Provider availability is never fabricated. Missing credentials/network access are reported as `BLOCKED_EXTERNAL` while keyless tests, fixtures and independent engineering continue.
+Provider availability is never fabricated. Missing optional credentials are
+`UNCONFIGURED_OPTIONAL`; network failures are `BLOCKED_EXTERNAL` or
+`DEGRADED`; unsupported capabilities are explicit. Keyless tests, fixtures and
+local analysis continue independently. No provider or narrative can authorize
+execution, and the protected modes remain locked.
 
 ### 14. API and operator web application
 

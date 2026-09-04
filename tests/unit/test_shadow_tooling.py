@@ -73,6 +73,39 @@ def test_evaluate_primary_provider_readiness_missing_birdeye() -> None:
     assert active == "NOT_ACTIVE"
 
 
+def test_free_stack_readiness_ignores_absent_optional_helius_and_birdeye() -> None:
+    health = {"solana-public-rpc": "FRESH", "dexscreener": "FRESH"}
+    readiness, active = shadow_status.evaluate_primary_provider_readiness(health)
+    tiers = shadow_status.evaluate_readiness_tiers(health)
+
+    assert readiness == "PROVIDERS_READY"
+    assert active == "LIVE_SHADOW_COLLECTION_ACTIVE"
+    assert tiers == {
+        "CORE_FREE_READINESS": "READY_FOR_FREE_READ_ONLY_SHADOW",
+        "OPTIONAL_ENRICHMENT_READINESS": "OPTIONAL_UNCONFIGURED",
+        "FULL_PROVIDER_READINESS": "OPTIONAL_UNCONFIGURED",
+    }
+
+
+def test_free_stack_degrades_without_claiming_full_provider_readiness() -> None:
+    health = {"solana-public-rpc": "DEGRADED", "dexscreener": "FRESH"}
+    readiness, active = shadow_status.evaluate_primary_provider_readiness(health)
+    tiers = shadow_status.evaluate_readiness_tiers(health)
+
+    assert readiness == "DEGRADED"
+    assert active == "LIVE_SHADOW_COLLECTION_ACTIVE"
+    assert tiers["CORE_FREE_READINESS"] == "READY_FOR_FREE_READ_ONLY_SHADOW"
+    assert tiers["FULL_PROVIDER_READINESS"] == "OPTIONAL_UNCONFIGURED"
+
+
+def test_free_stack_unknown_core_provider_blocks_shadow_readiness() -> None:
+    tiers = shadow_status.evaluate_readiness_tiers(
+        {"solana-public-rpc": "FRESH", "dexscreener": "UNKNOWN"}
+    )
+
+    assert tiers["CORE_FREE_READINESS"] == "BLOCKED_EXTERNAL"
+
+
 # 2. Final Status Output Classifications (Task 2)
 def test_shadow_status_final_verdicts() -> None:
     # Stack Offline
@@ -354,4 +387,3 @@ def test_shadow_status_json_output() -> None:
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
-

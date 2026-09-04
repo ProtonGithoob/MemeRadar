@@ -19,6 +19,54 @@ apps/api + apps/worker + apps/web
 
 The domain has no framework/provider dependencies.
 
+## Free-first provider composition
+
+MemeRadar uses a small infrastructure composition layer rather than a broad
+provider-registry rewrite. `build_provider_bundle` constructs the concrete
+adapters and an application-owned `FreeFirstRoutePlan`; the application routing
+module contains capability names and ordered provider labels only. Provider
+HTTP models, authentication and retry details remain in provider adapters.
+
+```text
+application/domain ports and normalized evidence
+                    ↑
+        capability route plan + ports
+                    ↑
+       bounded provider composition layer
+                    ↑
+       adapter-specific HTTP transports
+```
+
+The keyless core is standard Solana JSON-RPC, DexScreener market/pair data and
+local deterministic wallet/risk analysis. A configured Helius adapter is an
+optional enhanced/standard-RPC preference with public RPC fallback; Helius DAS
+and enhanced methods are never emulated by the generic adapter. DexScreener is
+limited to market snapshots, reference quotes, deterministic pair discovery
+and declared websites/social metadata. It is not a transaction, holder,
+wallet-history, security-audit, realtime-stream or social-analytics provider.
+
+The route plan is deterministic and capability-specific:
+
+```text
+CHAIN_RPC: Helius (configured) -> Solana public RPC
+ENHANCED_ASSET_METADATA: Helius only -> unavailable/degraded
+MARKET_SNAPSHOT / PAIR_DISCOVERY: DexScreener -> configured Birdeye
+MARKET_QUOTE: DexScreener -> injected normalized custom quote port
+RISK_SUMMARY: local deterministic engine + optional RugCheck evidence
+WALLET_ENRICHMENT: local MemeRadar intelligence -> injected external enrichment
+SOCIAL_METADATA: DexScreener -> optional analytics provider (separate capability)
+NARRATIVE: Ollama -> explicitly configured external provider -> disabled
+ALERT_DELIVERY: configured Telegram -> optional/unconfigured
+```
+
+Fallback wrappers attempt each route at most once and only on a normalized
+provider error. Unsupported capabilities do not silently turn into unrelated
+data. Every external observation/quote retains provider provenance, token/pair
+identity, timestamps and freshness. The public Solana endpoint and public
+market endpoint are rate-limited, non-guaranteed inputs; readiness reports
+external blockers honestly and never treats the free stack as live-money
+execution readiness.
+
 ## Runtime components
 
 ### API

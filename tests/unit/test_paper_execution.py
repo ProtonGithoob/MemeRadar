@@ -17,7 +17,7 @@ from memeradar_application.paper_execution import (
     PaperSizingInput,
     PaperSizingPolicy,
 )
-from memeradar_application.provider_contracts import QuoteSnapshot
+from memeradar_application.provider_contracts import QuoteMarketContext, QuoteSnapshot
 from memeradar_domain import (
     Freshness,
     PaperOrderSide,
@@ -26,7 +26,6 @@ from memeradar_domain import (
     Provenance,
     QualityState,
 )
-from memeradar_application.provider_contracts import QuoteMarketContext
 
 NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
 TOKEN_MINT = "So11111111111111111111111111111111111111112"

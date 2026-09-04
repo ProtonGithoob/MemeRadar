@@ -4,6 +4,48 @@
 
 MemeRadar must be testable without external credentials and verifiable against real providers when credentials/network are available. External outages must never be disguised as application success.
 
+## Free-first provider acceptance
+
+The keyless acceptance contract covers the standard `SolanaRpcAdapter`,
+`DexScreenerAdapter`, `OllamaNarrativeAdapter`/disabled narrative seam, the
+provider-neutral composition layer and the three readiness tiers. Optional
+Helius, Birdeye, RugCheck authentication, social analytics, external wallet,
+Telegram and external narrative credentials are empty in the core scenario.
+
+Focused commands:
+
+```bash
+./.venv/bin/python -m pytest -q \
+  tests/unit/test_solana_rpc.py tests/contract/test_solana_rpc_provider.py \
+  tests/unit/test_dexscreener.py tests/contract/test_dexscreener_provider.py \
+  tests/unit/test_ollama_narrative.py tests/contract/test_ollama_narrative_provider.py \
+  tests/unit/test_provider_composition.py tests/contract/test_contract_provider_composition.py \
+  tests/contract/test_provider_capability_boundaries.py
+./.venv/bin/python -m pytest -q \
+  tests/unit/test_config.py tests/unit/test_provider_routing.py \
+  tests/unit/test_early_live_doctor.py tests/unit/test_shadow_tooling.py \
+  tests/unit/test_paper_trading_doctor.py tests/unit/test_free_provider_doctors.py \
+  tests/unit/test_ollama_doctor.py
+python3 scripts/free_provider_doctor.py --no-network
+```
+
+Deterministic fixtures cover malformed/null prices, wrong chains, zero or
+missing liquidity, multiple and duplicate pairs, stale/freshness boundaries,
+invalid JSON, 404/5xx, timeout, 429/`Retry-After`, declared social links and
+provider provenance. Pair selection is independent of API order: Solana and
+token identity are filtered first, valid positive price and liquidity are
+required for quotes, preferred USDC/USDT/wSOL quote assets rank before other
+pairs, then liquidity descends, pair creation time descends, and pair address
+plus DEX ID provide stable tie-breaks. Duplicate pair addresses retain the
+best deterministic record.
+
+The no-network aggregate must report the free core as
+`READY_FOR_FREE_READ_ONLY_SHADOW`, optional providers as unconfigured or
+disabled, and the protected modes exactly as
+`ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`,
+`AUTO_EXECUTION=false`. Network doctor failures are recorded as
+`BLOCKED_EXTERNAL`, `RATE_LIMITED` or `DEGRADED`, never as a fabricated PASS.
+
 ## Test layers
 
 ### Unit

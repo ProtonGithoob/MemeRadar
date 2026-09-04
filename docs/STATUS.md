@@ -1,21 +1,67 @@
 # MemeRadar Status
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## Current Status Classification Table
 
 | Metric / Dimension | Status / Classification | Evidence Class | Notes |
 |---|---|---|---|
-| System Stage | `KEYLESS_ENGINEERING_COMPLETE` | `VERIFIED_CONTRACTS` | Keyless feature roadmap frozen & verified |
+| System Stage | `FREE_FIRST_PROVIDER_ARCHITECTURE_IMPLEMENTED` | `VERIFIED_FULL_GATE` | Capability-based free-first composition is implemented and verified; external acceptance remains separately classified. |
 | Stack Readiness | `STACK_READY` | `CONTAINER_HEALTHY` | API, Web, Postgres & Redis stack healthy |
-| Provider Readiness | `BLOCKED_EXTERNAL` / `PROVIDERS_READY` | `PROVIDER_HEALTH` | Requires primary Solana keys (Helius & Birdeye) |
-| Shadow Collection State | `NOT_ACTIVE` / `LIVE_SHADOW_COLLECTION_ACTIVE` | `PROVENANCE_AUDITED` | Active only when real provider observation streams flow |
+| Provider Readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` / optional `UNCONFIGURED_OPTIONAL` | `FREE_PROVIDER_CONTRACTS` | Core no longer requires Helius or Birdeye; full-provider readiness remains separate. |
+| Shadow Collection State | `NOT_ACTIVE` / `LIVE_SHADOW_COLLECTION_ACTIVE` | `PROVENANCE_AUDITED` | Active only when real provider observation streams flow and free-core gates pass |
 | Real-World Alpha Evidence | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` | `INSUFFICIENT_SAMPLES` | Awaits live read-only shadow data collection |
 | Protected Operating Modes | `ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false, AUTO_EXECUTION=false` | `ENFORCED_INVARIANT` | Live order submission & wallet signing hard-locked |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | 100% pass rate (806+ Python tests incl 16 shadow tests, 45 Vitest tests) |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 879 Python tests (11 skipped), 45 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
+---
+
+## Free-First Provider Architecture Checkpoint
+
+On 2026-09-05, the provider migration introduced a small provider-neutral
+composition layer while preserving the existing adapters and protected modes:
+
+1. **Standard chain capability**: `SolanaRpcAdapter` implements standard
+   Solana JSON-RPC reads only. Helius enhanced/DAS and realtime capabilities
+   remain explicit Helius-only capabilities and are unavailable when Helius is
+   not configured.
+2. **Free market and quote path**: `DexScreenerAdapter` is the default
+   normalized market/reference-quote/social-metadata adapter. Pair selection
+   filters for Solana/token identity/valid price and ranks positive liquidity,
+   preferred quote assets, liquidity, pair age, address and DEX deterministically.
+3. **Bounded composition**: Chain, market, quote, social metadata and narrative
+   routes use at-most-once ordered fallback. URL/key strings alone do not create
+   unreviewed legacy quote or wallet HTTP adapters.
+4. **Local-first analysis**: local wallet/risk intelligence remains primary;
+   RugCheck, Birdeye, external wallet/social analytics, Helius, Ollama and
+   Telegram are optional and report explicit unavailable/degraded states.
+5. **Readiness tiers**: `CORE_FREE_READINESS`,
+   `OPTIONAL_ENRICHMENT_READINESS` and `FULL_PROVIDER_READINESS` are surfaced
+   independently. A free core can reach
+   `READY_FOR_FREE_READ_ONLY_SHADOW`, never live-money readiness.
+6. **Keyless acceptance**: the deterministic test/doctor path must initialize
+   with all optional credentials empty; live public endpoints are recorded as
+   `PASS`, `RATE_LIMITED`, `BLOCKED_EXTERNAL` or `DEGRADED` only when actually
+   checked.
+
+Final evidence:
+
+- `make verify` exited 0: 879 Python tests passed, 11 skipped, one warning;
+  45 frontend Vitest tests passed; Ruff, mypy, Compose validation, secret scan,
+  migrations, security review and SBOM passed. The security/SBOM external
+  acceptance item remains `BLOCKED_EXTERNAL`.
+- An isolated keyless environment with all optional credentials empty passed
+  `scripts/free_provider_doctor.py --no-network` with
+  `CORE_FREE_READINESS=READY_FOR_FREE_READ_ONLY_SHADOW`; optional and full
+  provider tiers were `OPTIONAL_UNCONFIGURED`, and protected modes were exact.
+- `make paper-trading-doctor`, `make doctor` and `make compose-config` passed.
+  `make ollama-doctor` honestly reported `OPTIONAL_UNAVAILABLE` because no
+  local model was configured.
+- A live aggregate provider probe was not claimed: the sandbox could not
+  complete its external network calls and the bounded probe was stopped.
+
 ---
  
 ## Operational Tooling Correctness & Live-Shadow Audit Fixes
@@ -1184,4 +1230,3 @@ The worker container initially exited because `__main__.py` was missing. The fai
 ## Next task
 
 Maintain the restored stable frontend and completed keyless backend checkpoint. Do not implement or enable manual-live execution without explicit operator decision and P9-P11 acceptance evidence required by `docs/ROADMAP.md`; preserve `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, and `AUTO_EXECUTION=false`. E11.2 Rust/Yellowstone remains conditional on measured need; Phase 12 remains locked.
-

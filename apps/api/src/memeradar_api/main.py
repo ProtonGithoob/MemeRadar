@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import FastAPI, Request
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -26,6 +27,7 @@ from memeradar_persistence import (
     SqlAlchemyReadQueryService,
     create_database_engine,
 )
+from memeradar_providers.composition import ProviderBundle, build_provider_bundle
 from memeradar_telemetry.logging import (
     CORRELATION_ID_HEADER,
     configure_logging,
@@ -57,6 +59,16 @@ def create_app(
     configure_logging(runtime_settings.log_level)
     app = FastAPI(title="MemeRadar API", version=__version__)
     app.state.settings = runtime_settings
+
+    def provider_bundle_factory(**kwargs: Any) -> ProviderBundle:
+        """Create the server-side provider graph on demand at the composition root."""
+
+        return build_provider_bundle(runtime_settings, **kwargs)
+
+    # Construction is deferred so liveness/readiness and import-time app
+    # creation never open provider connections. Consumers receive the same
+    # bounded free-first route plan through this server-only seam.
+    app.state.provider_bundle_factory = provider_bundle_factory
     role_authenticator = RoleTokenAuthenticator(runtime_settings)
     owned_engine: AsyncEngine | None = None
     owned_read_service: SqlAlchemyReadQueryService | None = None

@@ -456,6 +456,14 @@ class HeliusRpcAdapter(OnChainPort):
     """Read-only Helius JSON-RPC/DAS adapter with injected transport and client."""
 
     provider_name = HELIUS_PROVIDER
+    capabilities = frozenset(
+        {
+            "chain_rpc",
+            "enhanced_asset_metadata",
+            "transaction_history",
+            "on_chain",
+        }
+    )
 
     def __init__(
         self,

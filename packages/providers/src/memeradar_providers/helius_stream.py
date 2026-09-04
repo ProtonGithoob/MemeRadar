@@ -175,6 +175,9 @@ class HeliusObservationNormalizer:
 class HeliusStreamConsumer:
     """Consume injected async messages with bounded reconnects and cancellation."""
 
+    provider_name = HELIUS_PROVIDER
+    capabilities = frozenset({"realtime_stream"})
+
     def __init__(
         self,
         *,

@@ -3,8 +3,8 @@
 
 The doctor exercises only local paper contracts.  It never contacts a quote,
 wallet or execution provider, and it reports configuration presence without
-echoing endpoint or credential values.  Live execution remains disabled by
-policy, so a configured provider can never produce a fabricated PASS.
+echoing endpoint or credential values.  DexScreener is the default normalized
+reference-quote path; live execution remains disabled by policy.
 """
 
 from __future__ import annotations
@@ -40,12 +40,6 @@ _SAFE_MODES = {
     "manual_execution": False,
     "auto_execution": False,
 }
-_QUOTE_URL_KEYS = (
-    "MEMERADAR_PAPER_QUOTE_URL",
-    "JUPITER_QUOTE_URL",
-    "BIRDEYE_API_URL",
-    "HELIUS_RPC_URL",
-)
 _QUOTE_CREDENTIAL_KEYS = (
     "MEMERADAR_PAPER_QUOTE_API_KEY",
     "JUPITER_API_KEY",
@@ -58,12 +52,23 @@ def _configured(values: Mapping[str, str], keys: tuple[str, ...]) -> bool:
     return any(values.get(key, "").strip() for key in keys)
 
 
-def _configuration(values: Mapping[str, str]) -> dict[str, str]:
+def _configuration(values: Mapping[str, str], settings: Settings) -> dict[str, str]:
+    quote_url_present = _configured(
+        values,
+        ("MEMERADAR_PAPER_QUOTE_URL", "JUPITER_QUOTE_URL", "JUPITER_API_BASE_URL"),
+    )
+    if settings.paper_quote_provider == "dexscreener":
+        quote_url = "present" if values.get("DEXSCREENER_API_URL", "").strip() else "defaulted"
+        quote_credentials = (
+            "present" if values.get("DEXSCREENER_API_KEY", "").strip() else "not_required"
+        )
+    else:
+        quote_url = "present" if quote_url_present else "missing"
+        quote_credentials = "present" if _configured(values, _QUOTE_CREDENTIAL_KEYS) else "missing"
     return {
-        "quote_url": "present" if _configured(values, _QUOTE_URL_KEYS) else "missing",
-        "quote_credentials": (
-            "present" if _configured(values, _QUOTE_CREDENTIAL_KEYS) else "missing"
-        ),
+        "quote_provider": settings.paper_quote_provider,
+        "quote_url": quote_url,
+        "quote_credentials": quote_credentials,
         "live_execution": "disabled",
     }
 
@@ -107,23 +112,26 @@ def run_doctor(environ: Mapping[str, str] | None = None) -> DoctorReport:
     """Return a redacted paper readiness report with honest external status."""
 
     values = os.environ if environ is None else environ
-    configuration = _configuration(values)
     try:
         settings = Settings.from_env(values)
     except ValueError:
+        configuration = {
+            "quote_provider": "invalid",
+            "quote_url": "not_checked",
+            "quote_credentials": "not_checked",
+            "live_execution": "disabled",
+        }
         return _base_report(
             configuration,
             status="FAIL",
             reason="OPERATING_MODE_INVALID",
         )
 
-    has_quote_configuration = all(
-        configuration[key] == "present" for key in ("quote_url", "quote_credentials")
-    )
+    configuration = _configuration(values, settings)
     report = _base_report(
         configuration,
-        status="BLOCKED_EXTERNAL",
-        reason="LIVE_EXECUTION_DISABLED" if has_quote_configuration else "CONFIGURATION_MISSING",
+        status="PASS",
+        reason="PAPER_QUOTE_PROVIDER_READY",
     )
     try:
         report["paper_contracts"] = _keyless_contract_check()
@@ -131,6 +139,15 @@ def run_doctor(environ: Mapping[str, str] | None = None) -> DoctorReport:
         report["status"] = "FAIL"
         report["reason"] = "KEYLESS_CONTRACT_FAILURE"
         report["paper_contracts"] = "FAIL"
+    if report["paper_contracts"] == "PASS":
+        if settings.paper_quote_provider == "custom":
+            report["status"] = "BLOCKED_EXTERNAL"
+            report["reason"] = "CUSTOM_QUOTE_ADAPTER_NOT_CONFIGURED"
+            report["external_network"] = "not_checked"
+        elif settings.paper_quote_provider == "birdeye":
+            report["status"] = "DEGRADED"
+            report["reason"] = "BIRDEYE_QUOTE_ADAPTER_UNAVAILABLE"
+            report["external_network"] = "not_checked"
     report["modes"] = {
         "analysis_only": settings.analysis_only,
         "paper_trading": settings.paper_trading,

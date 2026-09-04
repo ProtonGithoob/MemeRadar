@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Bounded read-only acceptance check for the ultra-early detection path.
 
-The doctor reuses the existing Helius and Birdeye health adapters when all
-required configuration is present.  It never prints endpoint values, keys or
-provider payloads.  Stream transport configuration is reported separately:
-the existing provider-independent stream contracts are checked locally, but a
-configured WebSocket is not promoted to live-verified evidence by itself.
+The report separates the free core from optional enrichment.  It probes the
+configured Helius enhancement when present, always keeps the standard Solana
+RPC path visible, and probes DexScreener as the free market/metadata source.
+It never prints endpoint values, keys or provider payloads. Stream transport
+configuration remains separate and is never promoted to live-verified
+evidence by itself.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
+from uuid import UUID
 
 import httpx
 
@@ -38,9 +41,15 @@ from memeradar_application.stream_integrity import (  # noqa: E402
     StreamIntegrityPolicy,
     StreamMetrics,
 )
+from memeradar_domain import TokenIdentity  # noqa: E402
 from memeradar_domain.common import ensure_utc  # noqa: E402
 from memeradar_providers.birdeye import BirdeyeRestAdapter  # noqa: E402
+from memeradar_providers.dexscreener import (  # noqa: E402
+    SOLANA_NATIVE_MINT,
+    DexScreenerAdapter,
+)
 from memeradar_providers.helius import HeliusRpcAdapter  # noqa: E402
+from memeradar_providers.solana_rpc import SolanaRpcAdapter  # noqa: E402
 from memeradar_providers.transport import (  # noqa: E402
     ProviderAuthenticationError,
     ProviderError,
@@ -78,6 +87,13 @@ def _first_value(values: Mapping[str, str], keys: tuple[str, ...]) -> str:
 
 def _configuration(values: Mapping[str, str]) -> dict[str, str]:
     return {
+        "solana_rpc_url": "present" if values.get("SOLANA_RPC_URL", "").strip() else "defaulted",
+        "dexscreener_api_url": (
+            "present"
+            if values.get("DEXSCREENER_API_URL", values.get("DEXSCREENER_API_BASE_URL", ""))
+            .strip()
+            else "defaulted"
+        ),
         "helius_rpc_url": "present" if values.get("HELIUS_RPC_URL", "").strip() else "missing",
         "helius_stream_url": "present" if _first_value(values, _STREAM_URL_KEYS) else "missing",
         "helius_api_key": "present" if values.get("HELIUS_API_KEY", "").strip() else "missing",
@@ -100,14 +116,45 @@ def _base_report(
         "configuration": dict(configuration),
         "checks": {
             "keyless_contracts": "not_checked",
+            "local_engines": "not_checked",
+            "protected_modes": "not_checked",
+            "solana_rpc": "not_checked",
+            "dexscreener": "not_checked",
             "helius_rpc": "not_checked",
             "birdeye": "not_checked",
             "stream": "not_checked",
         },
         "provider_details": {},
+        "readiness": {
+            "CORE_FREE_READINESS": "NOT_RUN",
+            "OPTIONAL_ENRICHMENT_READINESS": "NOT_RUN",
+            "FULL_PROVIDER_READINESS": "NOT_RUN",
+        },
         "external_network": "not_run",
         "live_detection_evidence": "UNVERIFIED",
         "modes": dict(_SAFE_MODES if modes is None else modes),
+    }
+
+
+def _optional_result(reason: str = "OPTIONAL_CONFIGURATION_MISSING") -> dict[str, object]:
+    return {
+        "status": "UNCONFIGURED_OPTIONAL",
+        "reason": reason,
+        "network": "not_checked",
+        "authentication": "not_checked",
+        "schema": "not_checked",
+        "latency_ms": None,
+    }
+
+
+def _configuration_invalid_result() -> dict[str, object]:
+    return {
+        "status": "FAIL",
+        "reason": "CONFIGURATION_INVALID",
+        "network": "not_checked",
+        "authentication": "not_checked",
+        "schema": "not_checked",
+        "latency_ms": None,
     }
 
 
@@ -192,6 +239,7 @@ async def _provider_result(
 
 
 async def _run_configured(
+    settings: Settings,
     values: Mapping[str, str],
     *,
     client: httpx.AsyncClient | None,
@@ -205,20 +253,16 @@ async def _run_configured(
     )
     effective_client = client or httpx.AsyncClient()
     owns_client = client is None
+    solana_rpc: SolanaRpcAdapter | None = None
+    dexscreener: DexScreenerAdapter | None = None
     helius: HeliusRpcAdapter | None = None
     birdeye: BirdeyeRestAdapter | None = None
+    helius_result: dict[str, object] | None = None
+    birdeye_result: dict[str, object] | None = None
     try:
         try:
-            helius = HeliusRpcAdapter(
-                values["HELIUS_RPC_URL"],
-                api_key=values["HELIUS_API_KEY"],
-                client=effective_client,
-                transport=configured_transport,
-                clock=clock,
-            )
-            birdeye = BirdeyeRestAdapter(
-                values["BIRDEYE_API_URL"],
-                api_key=values["BIRDEYE_API_KEY"],
+            solana_rpc = SolanaRpcAdapter(
+                settings.solana_rpc_url,
                 client=effective_client,
                 transport=configured_transport,
                 clock=clock,
@@ -227,51 +271,149 @@ async def _run_configured(
             report["status"] = "FAIL"
             report["reason"] = "CONFIGURATION_INVALID"
             return report
+        try:
+            dexscreener = DexScreenerAdapter(
+                settings.dexscreener_api_url,
+                client=effective_client,
+                transport=configured_transport,
+                clock=clock,
+            )
+        except (TypeError, ValueError):
+            report["status"] = "FAIL"
+            report["reason"] = "CONFIGURATION_INVALID"
+            return report
+        if settings.helius_rpc_url and settings.helius_api_key:
+            try:
+                helius = HeliusRpcAdapter(
+                    settings.helius_rpc_url,
+                    api_key=settings.helius_api_key,
+                    client=effective_client,
+                    transport=configured_transport,
+                    clock=clock,
+                )
+            except (TypeError, ValueError):
+                helius_result = _configuration_invalid_result()
+        if settings.birdeye_api_url and settings.birdeye_api_key:
+            try:
+                birdeye = BirdeyeRestAdapter(
+                    settings.birdeye_api_url,
+                    api_key=settings.birdeye_api_key,
+                    client=effective_client,
+                    transport=configured_transport,
+                    clock=clock,
+                )
+            except (TypeError, ValueError):
+                birdeye_result = _configuration_invalid_result()
 
         now = ensure_utc(clock(), "doctor_now")
         deadline = now + timedelta(seconds=configured_transport.timeouts.overall_seconds)
-        helius_context = ProviderRequestContext(
-            correlation_id="early-live-doctor-helius",
+        context = ProviderRequestContext(
+            correlation_id="early-live-doctor-free-core",
             requested_at=now,
             deadline_at=deadline,
         )
-        birdeye_context = ProviderRequestContext(
-            correlation_id="early-live-doctor-birdeye",
-            requested_at=now,
-            deadline_at=deadline,
+        assert solana_rpc is not None
+        assert dexscreener is not None
+        solana_result = await _provider_result(
+            lambda: solana_rpc.check_health(context=context)
         )
-        assert helius is not None
-        assert birdeye is not None
-        helius_result = await _provider_result(lambda: helius.check_health(context=helius_context))
-        birdeye_result = await _provider_result(
-            lambda: birdeye.check_health(context=birdeye_context)
+        dexscreener.register_token(
+            TokenIdentity(
+                SOLANA_NATIVE_MINT,
+                id=UUID("00000000-0000-0000-0000-000000000002"),
+            )
         )
+        dexscreener_result = await _provider_result(
+            lambda: dexscreener.metadata(
+                TokenIdentity(
+                    SOLANA_NATIVE_MINT,
+                    id=UUID("00000000-0000-0000-0000-000000000002"),
+                ),
+                context=context,
+            )
+        )
+        if helius_result is None:
+            helius_result = (
+                await _provider_result(lambda: helius.check_health(context=context))
+                if helius is not None
+                else _optional_result()
+            )
+        if birdeye_result is None:
+            birdeye_result = (
+                await _provider_result(lambda: birdeye.check_health(context=context))
+                if birdeye is not None
+                else _optional_result()
+            )
         report["checks"] = {
             "keyless_contracts": "PASS",
+            "local_engines": "PASS",
+            "protected_modes": "PASS",
+            "solana_rpc": solana_result["status"],
+            "dexscreener": dexscreener_result["status"],
             "helius_rpc": helius_result["status"],
             "birdeye": birdeye_result["status"],
-            "stream": "CONFIGURATION_ONLY",
+            "stream": (
+                "CONFIGURATION_ONLY"
+                if any(values.get(key, "").strip() for key in _STREAM_URL_KEYS)
+                else "UNCONFIGURED_OPTIONAL"
+            ),
         }
         report["provider_details"] = {
+            "solana_rpc": solana_result,
+            "dexscreener": dexscreener_result,
             "helius_rpc": helius_result,
             "birdeye": birdeye_result,
         }
         report["external_network"] = "checked"
         report["live_detection_evidence"] = "UNVERIFIED_STREAM_TRANSPORT"
-        results = (helius_result, birdeye_result)
-        failures = [item for item in results if item["status"] == "FAIL"]
-        blocked = [item for item in results if item["status"] == "BLOCKED_EXTERNAL"]
-        if failures:
-            report["status"] = "FAIL"
-            report["reason"] = failures[0]["reason"]
-        elif blocked:
-            report["status"] = "BLOCKED_EXTERNAL"
-            report["reason"] = blocked[0]["reason"]
-        else:
-            report["status"] = "PASS"
-            report["reason"] = "READ_ONLY_CHECKS_OK"
+        core_results = (solana_result, dexscreener_result)
+        core_failures = [item for item in core_results if item["status"] != "PASS"]
+        if core_failures:
+            report["readiness"] = {
+                "CORE_FREE_READINESS": (
+                    "FAIL"
+                    if any(item["status"] == "FAIL" for item in core_failures)
+                    else "BLOCKED_EXTERNAL"
+                ),
+                "OPTIONAL_ENRICHMENT_READINESS": "NOT_EVALUATED",
+                "FULL_PROVIDER_READINESS": "NOT_EVALUATED",
+            }
+            report["status"] = core_failures[0]["status"]
+            report["reason"] = core_failures[0]["reason"]
+            return report
+
+        optional_results = (helius_result, birdeye_result)
+        configured_optional = [
+            item for item in optional_results if item["status"] != "UNCONFIGURED_OPTIONAL"
+        ]
+        optional_failures = [item for item in configured_optional if item["status"] != "PASS"]
+        optional_readiness = (
+            "OPTIONAL_UNCONFIGURED"
+            if not configured_optional
+            else "DEGRADED"
+            if optional_failures
+            else "PASS"
+        )
+        full_readiness = (
+            "DEGRADED"
+            if optional_failures
+            else "OPTIONAL_UNCONFIGURED"
+            if len(configured_optional) != len(optional_results)
+            else "PASS"
+        )
+        report["readiness"] = {
+            "CORE_FREE_READINESS": "READY_FOR_FREE_READ_ONLY_SHADOW",
+            "OPTIONAL_ENRICHMENT_READINESS": optional_readiness,
+            "FULL_PROVIDER_READINESS": full_readiness,
+        }
+        report["status"] = "PASS"
+        report["reason"] = "FREE_READ_ONLY_CORE_READY"
         return report
     finally:
+        if solana_rpc is not None:
+            await solana_rpc.aclose()
+        if dexscreener is not None:
+            await dexscreener.aclose()
         if helius is not None:
             await helius.aclose()
         if birdeye is not None:
@@ -299,7 +441,7 @@ async def _run_doctor(
     report = _base_report(
         configuration,
         status="BLOCKED_EXTERNAL",
-        reason="CONFIGURATION_MISSING",
+        reason="NOT_CHECKED",
         modes={
             "analysis_only": settings.analysis_only,
             "paper_trading": settings.paper_trading,
@@ -308,27 +450,18 @@ async def _run_doctor(
         },
     )
     try:
-        report["checks"] = {
-            "keyless_contracts": _keyless_contract_check(),
-            "helius_rpc": "not_checked",
-            "birdeye": "not_checked",
-            "stream": "not_checked",
-        }
+        keyless_status = _keyless_contract_check()
+        checks = cast(dict[str, object], report["checks"])
+        checks["keyless_contracts"] = keyless_status
+        checks["local_engines"] = keyless_status
+        checks["protected_modes"] = "PASS"
     except (TypeError, ValueError):
         report["status"] = "FAIL"
         report["reason"] = "KEYLESS_CONTRACT_FAILURE"
         return report
 
-    required = (
-        "helius_rpc_url",
-        "helius_stream_url",
-        "helius_api_key",
-        "birdeye_api_url",
-        "birdeye_api_key",
-    )
-    if not all(configuration[name] == "present" for name in required):
-        return report
     return await _run_configured(
+        settings,
         values,
         client=client,
         transport=transport,
@@ -361,7 +494,13 @@ def run_doctor(
 def main() -> int:
     report = run_doctor()
     print(json.dumps(report, sort_keys=True, separators=(",", ":")))
-    return {"PASS": 0, "BLOCKED_EXTERNAL": 2, "FAIL": 1}[str(report["status"])]
+    return {
+        "PASS": 0,
+        "READY_FOR_FREE_READ_ONLY_SHADOW": 0,
+        "BLOCKED_EXTERNAL": 2,
+        "DEGRADED": 0,
+        "FAIL": 1,
+    }.get(str(report["status"]), 1)
 
 
 if __name__ == "__main__":

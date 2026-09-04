@@ -337,14 +337,33 @@ def _parse_pair(value: object, *, observed_at: datetime) -> DexScreenerPair | No
 
 
 def _parse_pairs(value: object, *, observed_at: datetime) -> tuple[DexScreenerPair, ...]:
-    if not isinstance(value, Sequence) or isinstance(value, str | bytes | bytearray):
+    raw_pairs: object = (
+        value.get("pairs", _MISSING) if isinstance(value, Mapping) else value
+    )
+    if not isinstance(raw_pairs, Sequence) or isinstance(raw_pairs, str | bytes | bytearray):
         raise ProviderSchemaError("provider token-pairs response was invalid")
-    pairs: list[DexScreenerPair] = []
-    for item in value[:500]:
+    pairs_by_address: dict[str, DexScreenerPair] = {}
+    for item in raw_pairs[:500]:
         pair = _parse_pair(item, observed_at=observed_at)
         if pair is not None:
-            pairs.append(pair)
-    return tuple(pairs)
+            previous = pairs_by_address.get(pair.pair_address)
+            if previous is None or _duplicate_pair_rank(pair) < _duplicate_pair_rank(previous):
+                pairs_by_address[pair.pair_address] = pair
+    return tuple(pairs_by_address[address] for address in sorted(pairs_by_address))
+
+
+def _duplicate_pair_rank(pair: DexScreenerPair) -> tuple[object, ...]:
+    """Choose one deterministic record when an upstream response repeats a pair."""
+
+    liquidity = pair.liquidity_usd or Decimal("0")
+    created = pair.pair_created_at.timestamp() if pair.pair_created_at is not None else 0.0
+    return (
+        0 if liquidity > 0 else 1,
+        -liquidity,
+        -created,
+        pair.dex_id,
+        _payload_hash(pair.raw),
+    )
 
 
 def _quote_asset_rank(pair: DexScreenerPair, token_mint: str) -> int:
@@ -369,7 +388,7 @@ def _market_price_usd(pair: DexScreenerPair, token_mint: str) -> Decimal | None:
     if pair.base_mint == token_mint:
         return pair.price_usd if pair.price_usd is not None and pair.price_usd > 0 else None
     if (
-        pair.quote_mint == token_mint
+        pair.quote_mint == token_mint == SOLANA_NATIVE_MINT
         and pair.price_usd is not None
         and pair.price_usd > 0
         and pair.price_native is not None
@@ -383,13 +402,20 @@ def _quote_rate(pair: DexScreenerPair, input_mint: str, output_mint: str) -> Dec
     if pair.base_mint == input_mint and pair.quote_mint == output_mint:
         if pair.quote_mint in _STABLE_QUOTE_MINTS:
             return pair.price_usd if pair.price_usd is not None and pair.price_usd > 0 else None
-        return (
-            pair.price_native
-            if pair.price_native is not None and pair.price_native > 0
-            else None
-        )
+        if pair.quote_mint == SOLANA_NATIVE_MINT:
+            return (
+                pair.price_native
+                if pair.price_native is not None and pair.price_native > 0
+                else None
+            )
+        return None
     if pair.quote_mint == input_mint and pair.base_mint == output_mint:
-        rate = pair.price_usd if pair.quote_mint in _STABLE_QUOTE_MINTS else pair.price_native
+        if pair.quote_mint in _STABLE_QUOTE_MINTS:
+            rate = pair.price_usd
+        elif pair.quote_mint == SOLANA_NATIVE_MINT:
+            rate = pair.price_native
+        else:
+            return None
         if rate is None or rate <= 0:
             return None
         return Decimal("1") / rate

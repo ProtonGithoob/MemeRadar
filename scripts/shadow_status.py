@@ -199,11 +199,30 @@ def update_run_identity(state: str) -> dict[str, Any]:
 def evaluate_primary_provider_readiness(
     provider_health_summary: dict[str, str],
 ) -> tuple[str, str]:
-    """Canonical readiness function requiring BOTH primary providers to be acceptable."""
+    """Return legacy shadow activity plus the free-first provider state.
+
+    Older API payloads that contain only Helius/Birdeye retain their original
+    semantics. New payloads use standard Solana RPC and DexScreener as the
+    core pair; optional Helius/Birdeye records do not gate read-only shadow.
+    """
+
+    if "solana-public-rpc" in provider_health_summary or "dexscreener" in provider_health_summary:
+        chain_state = provider_health_summary.get("solana-public-rpc", "UNKNOWN")
+        market_state = provider_health_summary.get("dexscreener", "UNKNOWN")
+        free_acceptable_states = ("FRESH", "DEGRADED", "PASS", "HEALTHY")
+        if (
+            chain_state not in free_acceptable_states
+            or market_state not in free_acceptable_states
+        ):
+            return "BLOCKED_EXTERNAL", "NOT_ACTIVE"
+        if chain_state in ("DEGRADED",) or market_state in ("DEGRADED",):
+            return "DEGRADED", "LIVE_SHADOW_COLLECTION_ACTIVE"
+        return "PROVIDERS_READY", "LIVE_SHADOW_COLLECTION_ACTIVE"
+
     helius_state = provider_health_summary.get("helius", "UNKNOWN")
     birdeye_state = provider_health_summary.get("birdeye", "UNKNOWN")
 
-    acceptable_states = ("FRESH", "DEGRADED")
+    acceptable_states: tuple[str, ...] = ("FRESH", "DEGRADED")
 
     if helius_state not in acceptable_states or birdeye_state not in acceptable_states:
         return "BLOCKED_EXTERNAL", "NOT_ACTIVE"
@@ -212,6 +231,68 @@ def evaluate_primary_provider_readiness(
         return "PROVIDERS_READY", "LIVE_SHADOW_COLLECTION_ACTIVE"
 
     return "DEGRADED", "LIVE_SHADOW_COLLECTION_ACTIVE"
+
+
+def evaluate_readiness_tiers(provider_health_summary: dict[str, str]) -> dict[str, str]:
+    """Classify core-free, optional-enrichment and full-provider readiness."""
+
+    if "solana-public-rpc" in provider_health_summary or "dexscreener" in provider_health_summary:
+        core_states = (
+            provider_health_summary.get("solana-public-rpc", "UNKNOWN"),
+            provider_health_summary.get("dexscreener", "UNKNOWN"),
+        )
+        core_free = (
+            "READY_FOR_FREE_READ_ONLY_SHADOW"
+            if all(state in ("FRESH", "DEGRADED", "PASS", "HEALTHY") for state in core_states)
+            else "BLOCKED_EXTERNAL"
+        )
+    else:
+        core_free = "NOT_AVAILABLE"
+
+    optional_names = (
+        "helius",
+        "birdeye",
+        "rugcheck",
+        "social",
+        "external-wallet",
+        "ollama",
+        "telegram",
+    )
+    optional_states = [
+        provider_health_summary[name]
+        for name in optional_names
+        if name in provider_health_summary
+    ]
+    if not optional_states:
+        optional = "OPTIONAL_UNCONFIGURED"
+    elif any(state not in ("FRESH", "DEGRADED", "PASS", "HEALTHY") for state in optional_states):
+        optional = "BLOCKED_EXTERNAL"
+    elif any(state == "DEGRADED" for state in optional_states):
+        optional = "DEGRADED"
+    else:
+        optional = "PASS"
+
+    full_states = (
+        provider_health_summary.get("helius"),
+        provider_health_summary.get("birdeye"),
+    )
+    present_full_states = tuple(state for state in full_states if state is not None)
+    if any(
+        state not in ("FRESH", "DEGRADED", "PASS", "HEALTHY")
+        for state in present_full_states
+    ):
+        full = "BLOCKED_EXTERNAL"
+    elif any(state == "DEGRADED" for state in present_full_states):
+        full = "DEGRADED"
+    elif len(present_full_states) != len(full_states):
+        full = "OPTIONAL_UNCONFIGURED"
+    else:
+        full = "PASS"
+    return {
+        "CORE_FREE_READINESS": core_free,
+        "OPTIONAL_ENRICHMENT_READINESS": optional,
+        "FULL_PROVIDER_READINESS": full,
+    }
 
 
 def get_shadow_status(api_url: str) -> dict[str, Any]:
@@ -342,6 +423,7 @@ def get_shadow_status(api_url: str) -> dict[str, Any]:
         provider_readiness, live_shadow_collection = evaluate_primary_provider_readiness(
             provider_health_states := provider_states_summary
         )
+        readiness_tiers = evaluate_readiness_tiers(provider_states_summary)
 
         if provider_readiness == "BLOCKED_EXTERNAL":
             verdict = "STACK_READY / BLOCKED_EXTERNAL"
@@ -349,6 +431,13 @@ def get_shadow_status(api_url: str) -> dict[str, Any]:
             verdict = "STACK_READY / DEGRADED"
         else:
             verdict = "STACK_READY / LIVE_SHADOW_COLLECTION_ACTIVE"
+
+    if not api_available:
+        readiness_tiers = {
+            "CORE_FREE_READINESS": "NOT_AVAILABLE",
+            "OPTIONAL_ENRICHMENT_READINESS": "NOT_AVAILABLE",
+            "FULL_PROVIDER_READINESS": "NOT_AVAILABLE",
+        }
 
     # Evidence Class Classification
     evidence_class = "NOT_AVAILABLE"
@@ -413,6 +502,7 @@ def get_shadow_status(api_url: str) -> dict[str, Any]:
         "parser_version": parser_version,
         "provider_states": provider_states_summary or "NOT_AVAILABLE",
         "provider_versions": provider_versions_summary or "UNKNOWN",
+        "readiness": readiness_tiers,
     }
 
     pagination_completeness = {
@@ -439,6 +529,11 @@ def get_shadow_status(api_url: str) -> dict[str, Any]:
         "stack_status": stack_status,
         "provider_readiness": provider_readiness,
         "live_shadow_collection": live_shadow_collection,
+        "core_free_readiness": readiness_tiers["CORE_FREE_READINESS"],
+        "optional_enrichment_readiness": readiness_tiers[
+            "OPTIONAL_ENRICHMENT_READINESS"
+        ],
+        "full_provider_readiness": readiness_tiers["FULL_PROVIDER_READINESS"],
         "api_url": api_url,
         "candidates_observed": candidates_count,
         "early_radar_signals": early_radar_count,
@@ -459,6 +554,7 @@ def get_shadow_status(api_url: str) -> dict[str, Any]:
         "verdict": verdict,
         "real_world_alpha": "REAL_WORLD_ALPHA_NOT_YET_PROVEN",
         "provenance": provenance,
+        "readiness": readiness_tiers,
         "summary": summary,
     }
 

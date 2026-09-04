@@ -18,6 +18,7 @@ from uuid import UUID
 from memeradar_domain import (
     PaperOrderSide,
     PaperOrderState,
+    PriceSemantics,
     QualityState,
     ReasonCode,
 )
@@ -392,7 +393,13 @@ class ShadowEntryService:
             )
 
         quote_refs = (*base_refs, f"quote:{quote.provenance.source_id}")
-        validation_reason = self._validate_quote(quote, amount, now)
+        validation_reason = self._validate_quote(
+            quote,
+            amount,
+            now,
+            input_mint=input_mint,
+            output_mint=output_mint,
+        )
         if validation_reason is not None:
             return self._rejected(
                 idempotency_key=idempotency_key,
@@ -519,9 +526,29 @@ class ShadowEntryService:
         quote: QuoteSnapshot,
         requested_amount: Decimal,
         now: datetime,
+        *,
+        input_mint: str,
+        output_mint: str,
     ) -> str | None:
         if not quote.freshness.is_fresh(now):
             return "SHADOW_QUOTE_NOT_FRESH"
+        if quote.input_mint != input_mint or quote.output_mint != output_mint:
+            return "SHADOW_QUOTE_MINT_MISMATCH"
+        if quote.price_semantics is PriceSemantics.UNKNOWN:
+            return "SHADOW_QUOTE_PRICE_SEMANTICS_INVALID"
+        if quote.price_semantics is PriceSemantics.MARKET_REFERENCE:
+            market_context = quote.market_context
+            if market_context is None:
+                return "SHADOW_QUOTE_CONTEXT_MISSING"
+            try:
+                liquidity_usd = to_decimal(
+                    market_context.liquidity_usd,
+                    "quote.market_context.liquidity_usd",
+                )
+            except (TypeError, ValueError):
+                return "SHADOW_QUOTE_LIQUIDITY_INVALID"
+            if liquidity_usd <= 0:
+                return "SHADOW_QUOTE_LIQUIDITY_INVALID"
         input_amount = to_decimal(quote.input_amount, "quote.input_amount")
         output_amount = to_decimal(quote.output_amount, "quote.output_amount")
         price_impact = to_decimal(quote.price_impact_bps, "quote.price_impact_bps")

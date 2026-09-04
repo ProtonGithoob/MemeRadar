@@ -140,6 +140,7 @@ class TelegramNotificationAdapter(NotificationPort):
     """Bounded Telegram Bot API adapter implementing only notification methods."""
 
     provider_name = TELEGRAM_PROVIDER
+    capabilities = frozenset({"alert_delivery", "notification"})
 
     def __init__(
         self,

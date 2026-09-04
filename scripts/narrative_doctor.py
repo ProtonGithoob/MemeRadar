@@ -222,6 +222,19 @@ def run_doctor(
     """Run one bounded health check and return a report without credential values."""
 
     values = os.environ if environ is None else environ
+    selected_provider = values.get("NARRATIVE_PROVIDER", "").strip().lower()
+    if selected_provider in {"ollama", "disabled"}:
+        # Keep this legacy command name useful for the new default while
+        # preserving the historical external-provider behavior when the
+        # provider selector is omitted and legacy URL/key settings are used.
+        from scripts.ollama_doctor import run_doctor as run_ollama_doctor
+
+        return run_ollama_doctor(
+            values,
+            client=client,
+            transport=transport,
+            clock=clock,
+        )
     effective_clock = clock or (lambda: datetime.now(UTC))
     return asyncio.run(
         _run_doctor(

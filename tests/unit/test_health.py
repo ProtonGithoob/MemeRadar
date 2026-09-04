@@ -67,6 +67,22 @@ def test_readiness_is_ready_when_dependencies_are_optional():
     }
 
 
+def test_app_exposes_deferred_keyless_provider_composition() -> None:
+    app = create_app(Settings.from_env({}))
+
+    bundle = app.state.provider_bundle_factory()
+    try:
+        assert bundle.route_plan.chain.providers == ("solana-public-rpc",)
+        assert bundle.route_plan.market.providers == ("dexscreener",)
+        assert bundle.market_data.provider_name == "dexscreener"
+        assert bundle.quote.provider_name == "dexscreener"
+        assert bundle.provenance_defaults()["wallet_intelligence"] == "local"
+    finally:
+        import asyncio
+
+        asyncio.run(bundle.aclose())
+
+
 def test_readiness_fails_closed_for_required_unreachable_database():
     settings = Settings.from_env(
         {

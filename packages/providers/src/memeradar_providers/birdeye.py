@@ -463,6 +463,7 @@ class BirdeyeRestAdapter(CandidateDiscoveryPort, MarketDataPort):
     """Read-only Birdeye REST adapter with injected HTTP and policy dependencies."""
 
     provider_name = BIRDEYE_PROVIDER
+    capabilities = frozenset({"candidate_discovery", "market_snapshot", "market_data"})
 
     def __init__(
         self,

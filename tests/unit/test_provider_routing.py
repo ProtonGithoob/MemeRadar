@@ -7,10 +7,10 @@ import pytest
 
 from memeradar_application.observability import OperationalState, ProviderOperationalInput
 from memeradar_application.provider_routing import (
-    build_free_first_route_plan,
     ProviderHealthRouter,
     ProviderRouteCandidate,
     ProviderRouteState,
+    build_free_first_route_plan,
 )
 from memeradar_domain import QualityState
 
@@ -182,3 +182,45 @@ def test_free_first_route_plan_orders_capabilities_without_provider_imports() ->
     assert plan.risk.providers == ("local", "rugcheck")
     assert plan.narrative.providers == ("ollama", "disabled")
     assert plan.alerts.providers == ()
+
+
+def test_free_first_route_plan_keeps_optional_enrichment_out_of_core_routes() -> None:
+    plan = build_free_first_route_plan(
+        helius_configured=True,
+        helius_stream_configured=True,
+        birdeye_configured=True,
+        rugcheck_configured=True,
+        external_social_configured=True,
+        external_narrative_configured=True,
+        telegram_configured=True,
+        market_data_provider="birdeye",
+        paper_quote_provider="custom",
+        wallet_intelligence_provider="local",
+        social_metadata_provider="dexscreener",
+        narrative_provider="external",
+        custom_quote_configured=True,
+        external_wallet_configured=True,
+    )
+
+    assert plan.chain.providers == ("helius", "solana-public-rpc")
+    assert plan.enhanced_asset_metadata.providers == ("helius",)
+    assert plan.transaction_history.providers == ("helius", "solana-public-rpc")
+    assert plan.realtime_stream.providers == ("helius-stream",)
+    assert plan.market.providers == ("birdeye", "dexscreener")
+    assert plan.quote.providers == ("custom", "dexscreener")
+    assert plan.pair_discovery.providers == ("birdeye", "dexscreener")
+    assert plan.social_metadata.providers == ("dexscreener",)
+    assert plan.social_analytics.providers == ("social",)
+    assert plan.wallet.providers == ("local", "external-wallet")
+    assert plan.narrative.providers == ("narrative", "disabled")
+    assert plan.alerts.providers == ("telegram",)
+
+
+def test_free_first_route_plan_can_explicitly_disable_optional_narrative_and_metadata() -> None:
+    plan = build_free_first_route_plan(
+        social_metadata_provider="disabled",
+        narrative_provider="disabled",
+    )
+
+    assert plan.social_metadata.providers == ()
+    assert plan.narrative.providers == ("disabled",)

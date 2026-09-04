@@ -95,34 +95,105 @@ class FreeFirstRoutePlan:
 def build_free_first_route_plan(
     *,
     helius_configured: bool = False,
+    helius_stream_configured: bool = False,
     birdeye_configured: bool = False,
     rugcheck_configured: bool = False,
     external_social_configured: bool = False,
     external_narrative_configured: bool = False,
+    external_wallet_configured: bool = False,
+    custom_quote_configured: bool = False,
     telegram_configured: bool = False,
+    market_data_provider: str = "dexscreener",
+    paper_quote_provider: str = "dexscreener",
+    wallet_intelligence_provider: str = "local",
+    social_metadata_provider: str = "dexscreener",
+    narrative_provider: str = "ollama",
 ) -> FreeFirstRoutePlan:
     """Build deterministic capability routes from safe configuration presence."""
 
     for name, value in (
         ("helius_configured", helius_configured),
+        ("helius_stream_configured", helius_stream_configured),
         ("birdeye_configured", birdeye_configured),
         ("rugcheck_configured", rugcheck_configured),
         ("external_social_configured", external_social_configured),
         ("external_narrative_configured", external_narrative_configured),
+        ("external_wallet_configured", external_wallet_configured),
+        ("custom_quote_configured", custom_quote_configured),
         ("telegram_configured", telegram_configured),
     ):
         if not isinstance(value, bool):
             raise TypeError(f"{name} must be a boolean")
 
+    def choice(value: str, name: str, allowed: frozenset[str]) -> str:
+        if not isinstance(value, str):
+            raise TypeError(f"{name} must be a string")
+        normalized = value.strip().lower()
+        if normalized not in allowed:
+            choices = ", ".join(sorted(allowed))
+            raise ValueError(f"{name} must be one of: {choices}")
+        return normalized
+
+    selected_market = choice(
+        market_data_provider,
+        "market_data_provider",
+        frozenset({"birdeye", "dexscreener"}),
+    )
+    selected_quote = choice(
+        paper_quote_provider,
+        "paper_quote_provider",
+        frozenset({"custom", "dexscreener", "birdeye"}),
+    )
+    choice(
+        wallet_intelligence_provider,
+        "wallet_intelligence_provider",
+        frozenset({"external", "local"}),
+    )
+    selected_metadata = choice(
+        social_metadata_provider,
+        "social_metadata_provider",
+        frozenset({"dexscreener", "disabled"}),
+    )
+    selected_narrative = choice(
+        narrative_provider,
+        "narrative_provider",
+        frozenset({"disabled", "external", "ollama"}),
+    )
+
     chain_providers = ("helius", "solana-public-rpc") if helius_configured else (
         "solana-public-rpc",
     )
-    market_providers = ("dexscreener", "birdeye") if birdeye_configured else ("dexscreener",)
+    market_providers: tuple[str, ...] = (
+        ("birdeye", "dexscreener")
+        if selected_market == "birdeye" and birdeye_configured
+        else ("dexscreener", "birdeye")
+        if birdeye_configured
+        else ("dexscreener",)
+    )
     social_analytics = ("social",) if external_social_configured else ()
-    narrative_providers = ["ollama"]
-    if external_narrative_configured:
-        narrative_providers.append("narrative")
-    narrative_providers.append("disabled")
+    if selected_metadata == "disabled":
+        metadata_providers: tuple[str, ...] = ()
+    else:
+        metadata_providers = ("dexscreener",)
+    quote_providers: tuple[str, ...]
+    if selected_quote == "custom":
+        quote_providers = ("custom", "dexscreener") if custom_quote_configured else ("custom",)
+    elif selected_quote == "birdeye" and birdeye_configured:
+        # Birdeye's existing adapter is market-data only; it is not treated as
+        # a QuotePort until a dedicated normalized quote adapter exists.
+        quote_providers = ("dexscreener",)
+    else:
+        quote_providers = ("dexscreener",)
+    wallet_providers: tuple[str, ...] = ("local",)
+    if external_wallet_configured:
+        wallet_providers = ("local", "external-wallet")
+    narrative_providers: tuple[str, ...]
+    if selected_narrative == "disabled":
+        narrative_providers = ("disabled",)
+    elif selected_narrative == "external":
+        narrative_providers = ("narrative", "disabled")
+    else:
+        narrative_providers = ("ollama", "disabled")
 
     return FreeFirstRoutePlan(
         chain=CapabilityRoute(ProviderCapability.CHAIN_RPC, chain_providers, optional=False),
@@ -137,10 +208,14 @@ def build_free_first_route_plan(
         ),
         realtime_stream=CapabilityRoute(
             ProviderCapability.REALTIME_STREAM,
-            ("helius-stream",) if helius_configured else (),
+            ("helius-stream",) if helius_stream_configured else (),
         ),
-        market=CapabilityRoute(ProviderCapability.MARKET_SNAPSHOT, market_providers, optional=False),
-        quote=CapabilityRoute(ProviderCapability.MARKET_QUOTE, ("dexscreener",), optional=False),
+        market=CapabilityRoute(
+            ProviderCapability.MARKET_SNAPSHOT,
+            market_providers,
+            optional=False,
+        ),
+        quote=CapabilityRoute(ProviderCapability.MARKET_QUOTE, quote_providers, optional=False),
         pair_discovery=CapabilityRoute(
             ProviderCapability.PAIR_DISCOVERY,
             market_providers,
@@ -148,7 +223,7 @@ def build_free_first_route_plan(
         ),
         social_metadata=CapabilityRoute(
             ProviderCapability.SOCIAL_METADATA,
-            ("dexscreener",) if not external_social_configured else ("dexscreener", "social"),
+            metadata_providers,
         ),
         social_analytics=CapabilityRoute(
             ProviderCapability.SOCIAL_ANALYTICS,
@@ -161,9 +236,9 @@ def build_free_first_route_plan(
         ),
         wallet=CapabilityRoute(
             ProviderCapability.WALLET_ENRICHMENT,
-            ("local", "external-wallet"),
+            wallet_providers,
         ),
-        narrative=CapabilityRoute(ProviderCapability.NARRATIVE, tuple(narrative_providers)),
+        narrative=CapabilityRoute(ProviderCapability.NARRATIVE, narrative_providers),
         alerts=CapabilityRoute(
             ProviderCapability.ALERT_DELIVERY,
             ("telegram",) if telegram_configured else (),

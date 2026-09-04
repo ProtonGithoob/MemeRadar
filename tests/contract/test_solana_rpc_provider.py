@@ -7,10 +7,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
-import pytest
 
 from memeradar_application.provider_contracts import OnChainRequest, ProviderRequestContext
-from memeradar_domain import Observation, QualityState, TokenIdentity
+from memeradar_domain import Observation, QualityState
 from memeradar_providers.solana_rpc import SolanaRpcAdapter
 from memeradar_providers.transport import ProviderTransport, RetryPolicy, TransportTimeouts
 

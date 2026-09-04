@@ -14,6 +14,7 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from types import TracebackType
+from typing import cast
 from urllib.parse import parse_qsl, urlsplit
 
 import httpx
@@ -122,7 +123,9 @@ class SolanaRpcAdapter(OnChainPort):
         max_concurrency: int = 4,
     ) -> None:
         self._endpoint = self._validate_endpoint(endpoint)
-        self._api_key = None if api_key is None else require_text(api_key, "api_key", max_length=512)
+        self._api_key = (
+            None if api_key is None else require_text(api_key, "api_key", max_length=512)
+        )
         if not isinstance(max_concurrency, int) or isinstance(max_concurrency, bool):
             raise TypeError("max_concurrency must be an integer")
         if not 1 <= max_concurrency <= 32:
@@ -356,10 +359,14 @@ class SolanaRpcAdapter(OnChainPort):
             executable_value = value_mapping.get("executable", _MISSING)
             if executable_value is not _MISSING and not isinstance(executable_value, bool):
                 raise ProviderSchemaError("account executable flag was invalid")
-            executable = None if executable_value is _MISSING else executable_value
+            executable = None if executable_value is _MISSING else cast(bool, executable_value)
             rent_epoch = _nonnegative_int(value_mapping.get("rentEpoch", _MISSING), "rentEpoch")
             data = value_mapping.get("data")
-            quality = QualityState.FRESH if owner is not None and lamports is not None else QualityState.UNKNOWN
+            quality = (
+                QualityState.FRESH
+                if owner is not None and lamports is not None
+                else QualityState.UNKNOWN
+            )
         provenance = self._provenance(
             f"getAccountInfo:{normalized_address}",
             observed_at,

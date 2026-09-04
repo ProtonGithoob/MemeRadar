@@ -12,20 +12,40 @@ AUTO_EXECUTION=false
 > [!IMPORTANT]
 > Live transaction submission, wallet signing, and real-money execution are permanently locked. `auto_execution` is hard-coded to `"LOCKED"` and `execution_eligible` remains `False` across all read models and API endpoints.
 
+## Free-first readiness tiers
+
+The core read-only path does not require Helius, Birdeye or any paid/keyed
+provider. It uses the standard Solana JSON-RPC adapter, DexScreener market and
+reference-quote data, and MemeRadar's local deterministic wallet/risk engines.
+
+| Tier | Required for the tier | Honest success state |
+| --- | --- | --- |
+| `CORE_FREE_READINESS` | local stack as configured, protected modes, Solana RPC, DexScreener and local engines | `READY_FOR_FREE_READ_ONLY_SHADOW` |
+| `OPTIONAL_ENRICHMENT_READINESS` | any configured Helius/Birdeye/RugCheck/social/wallet/Ollama/Telegram enhancement | `PASS`, `DEGRADED`, `BLOCKED_EXTERNAL` or `OPTIONAL_UNCONFIGURED` |
+| `FULL_PROVIDER_READINESS` | configured and healthy Helius + Birdeye enhancement paths | `PASS`, `DEGRADED`, `BLOCKED_EXTERNAL` or `OPTIONAL_UNCONFIGURED` |
+
+`READY_FOR_FREE_READ_ONLY_SHADOW` is not production-live readiness and never
+authorizes live-money execution. Missing optional configuration is
+`UNCONFIGURED_OPTIONAL`; rate limits and network outages remain external
+blockers. Use `make free-provider-doctor` for the aggregate matrix and
+`python3 scripts/free_provider_doctor.py --no-network` for the deterministic
+keyless boot/configuration check.
+
 ---
 
-## Complete Provider Path Audit (8 External Provider Paths)
+## Complete Provider Path Audit (9 External Provider Paths)
 
 | Provider Path | Status | Env Vars | Doctor Command | Fail-Closed / Fallback Behavior |
 |---|---|---|---|---|
-| 1. Helius RPC / Stream | `IMPLEMENTED` | `HELIUS_API_KEY`, `HELIUS_RPC_URL` | `python3 scripts/early_live_doctor.py` | Falls back to synthetic fixtures (`BLOCKED_EXTERNAL`). |
-| 2. Yellowstone gRPC | `NOT_IMPLEMENTED / FIXTURE_ONLY` | `YELLOWSTONE_GRPC_URL`, `YELLOWSTONE_X_TOKEN` | `python3 scripts/stream_integrity_doctor.py` | Marks feed `UNKNOWN` / `FIXTURE_ONLY`; fails closed. |
-| 3. Shyft API | `NOT_IMPLEMENTED / FIXTURE_ONLY` | `SHYFT_API_KEY` | `python3 scripts/provider_doctor.py` | Marks feed `UNKNOWN` / `FIXTURE_ONLY`; fails closed. |
-| 4. Birdeye API | `IMPLEMENTED` | `BIRDEYE_API_KEY` | `python3 scripts/birdeye_doctor.py` | Returns `QualityState.UNKNOWN` on missing key or 429. |
-| 5. DexScreener API | `IMPLEMENTED` | `DEXSCREENER_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Keyless public read; degrades freshness on timeout. |
-| 6. Raydium API / SDK | `IMPLEMENTED` | `RAYDIUM_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Verified `(program_id, discriminator)` identity routing. |
-| 7. Jupiter API | `IMPLEMENTED` | `JUPITER_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Paper trade quote routing only; no live swap execution. |
-| 8. Pump.fun / Solana Indexer | `IMPLEMENTED` | `PUMPFUN_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Verified bonding curve state & graduation continuity. |
+| 1. Standard Solana RPC | `IMPLEMENTED / FREE CORE` | `SOLANA_RPC_URL` (defaults to public RPC) | `make solana-rpc-doctor` | Bounded standard JSON-RPC reads; explicit external/degraded status. |
+| 2. Helius RPC / Stream | `IMPLEMENTED / OPTIONAL` | `HELIUS_API_KEY`, `HELIUS_RPC_URL`, stream URL | `make helius-doctor` / `make early-live-doctor` | Preferred enhancement/fallback only when configured; DAS remains Helius-only. |
+| 3. Yellowstone gRPC | `NOT_IMPLEMENTED / FIXTURE_ONLY` | `YELLOWSTONE_GRPC_URL`, `YELLOWSTONE_X_TOKEN` | `python3 scripts/stream_integrity_doctor.py` | Marks feed `UNKNOWN` / `FIXTURE_ONLY`; fails closed. |
+| 4. Shyft API | `NOT_IMPLEMENTED / FIXTURE_ONLY` | `SHYFT_API_KEY` | `python3 scripts/provider_doctor.py` | Marks feed `UNKNOWN` / `FIXTURE_ONLY`; fails closed. |
+| 5. DexScreener API | `IMPLEMENTED / FREE DEFAULT` | `DEXSCREENER_API_URL` (key optional) | `make dexscreener-doctor` | Market/pair/reference quote/declared metadata only; bounded stale/degraded behavior. |
+| 6. Birdeye API | `IMPLEMENTED / OPTIONAL` | `BIRDEYE_API_URL`, `BIRDEYE_API_KEY` | `make birdeye-doctor` | Optional market/discovery fallback/enrichment; not required for core. |
+| 7. Raydium API / SDK | `IMPLEMENTED` | `RAYDIUM_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Verified `(program_id, discriminator)` identity routing. |
+| 8. Jupiter API | `IMPLEMENTED / LOCKED` | legacy quote variables | `make paper-trading-doctor` | No live swap execution; custom URL/key alone does not bypass normalized quote port. |
+| 9. Pump.fun / Solana Indexer | `IMPLEMENTED` | `PUMPFUN_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Verified bonding curve state & graduation continuity. |
 
 ---
 
@@ -39,9 +59,10 @@ AUTO_EXECUTION=false
 | `AUTO_EXECUTION` | Yes | `false` | Disables automated live trade execution |
 | `DATABASE_URL` | Optional | `sqlite:///:memory:` | Local PostgreSQL database URI |
 | `REDIS_URL` | Optional | `memory://` | Local Redis URI |
-| `HELIUS_API_KEY` | Optional | None (`BLOCKED_EXTERNAL`) | Helius RPC/WebSocket API key |
-| `BIRDEYE_API_KEY` | Optional | None (`BLOCKED_EXTERNAL`) | Birdeye Market API key |
-| `TELEGRAM_BOT_TOKEN` | Optional | None (`DISABLED`) | Telegram alert bot token |
+| `SOLANA_RPC_URL` | Optional | `https://api.mainnet.solana.com` | Standard Solana JSON-RPC endpoint; public endpoint is rate-limited/non-guaranteed |
+| `HELIUS_API_KEY` / `HELIUS_RPC_URL` | Optional | Unconfigured (`UNCONFIGURED_OPTIONAL`) | Helius standard/enhanced enhancement |
+| `BIRDEYE_API_KEY` / `BIRDEYE_API_URL` | Optional | Unconfigured (`UNCONFIGURED_OPTIONAL`) | Birdeye fallback/enrichment |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Optional | Unconfigured (`UNCONFIGURED_OPTIONAL`) | Telegram alert delivery only |
 
 ---
 
@@ -50,6 +71,12 @@ AUTO_EXECUTION=false
 Run these doctor commands to verify environment readiness before live read-only operation:
 
 ```bash
+# 0. Free-first aggregate and individual core doctors
+make free-provider-doctor
+python3 scripts/free_provider_doctor.py --no-network
+make solana-rpc-doctor
+make dexscreener-doctor
+
 # 1. General Environment and Provider Doctor
 python3 scripts/provider_doctor.py
 
@@ -77,8 +104,9 @@ python3 scripts/shadow_status.py  # or make shadow-status
 ## Degraded Mode & Fail-Closed Behavior
 
 1. **Missing Provider Credentials**:
-   - Status transitions to `BLOCKED_EXTERNAL`.
+   - Missing optional credentials are `UNCONFIGURED_OPTIONAL`, not a core application failure.
    - Data feeds cleanly return `QualityState.UNKNOWN` or empty pages without HTTP 500 crashes.
+   - Core Solana/DexScreener network failures are `BLOCKED_EXTERNAL`/`DEGRADED` and remain visible.
 2. **Stream Gaps & Connection Loss**:
    - `StreamIntegrityTracker` detects missing block numbers or sequence gaps.
    - Freshness degrades from `FRESH` to `DEGRADED` / `UNKNOWN`.

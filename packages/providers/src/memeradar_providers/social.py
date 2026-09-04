@@ -303,6 +303,7 @@ class SocialRestAdapter(SocialDataPort):
     """Read-only adapter for a compliant social search API."""
 
     provider_name = SOCIAL_PROVIDER
+    capabilities = frozenset({"social_analytics", "social_data"})
 
     def __init__(
         self,

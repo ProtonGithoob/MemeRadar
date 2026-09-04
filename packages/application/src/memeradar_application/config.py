@@ -102,6 +102,7 @@ class Settings:
     helius_api_key: str | None = None
     helius_stream_url: str | None = None
     solana_stream_url: str | None = None
+    solana_backfill_url: str | None = None
     dexscreener_api_url: str = "https://api.dexscreener.com"
     dexscreener_api_key: str | None = None
     market_data_provider: str = "dexscreener"
@@ -191,7 +192,7 @@ class Settings:
         if configured_narrative_provider is None:
             configured_narrative_provider = (
                 "external"
-                if legacy_narrative_url is not None and legacy_narrative_key is not None
+                if legacy_narrative_url is not None or legacy_narrative_key is not None
                 else "ollama"
             )
         if configured_narrative_provider not in {"ollama", "external", "disabled"}:
@@ -204,6 +205,10 @@ class Settings:
         stream_url = _first_optional_value(
             values,
             ("MEMERADAR_SOLANA_STREAM_URL", "SOLANA_STREAM_URL", "HELIUS_WEBSOCKET_URL"),
+        )
+        backfill_url = _first_optional_value(
+            values,
+            ("MEMERADAR_SOLANA_BACKFILL_URL", "SOLANA_RPC_BACKFILL_URL"),
         )
         return cls(
             app_env=values.get("APP_ENV", "development").strip() or "development",
@@ -249,6 +254,7 @@ class Settings:
                 ("HELIUS_WEBSOCKET_URL", "MEMERADAR_SOLANA_STREAM_URL", "SOLANA_STREAM_URL"),
             ),
             solana_stream_url=stream_url,
+            solana_backfill_url=backfill_url,
             dexscreener_api_url=dexscreener_url,
             dexscreener_api_key=_optional_value(values, "DEXSCREENER_API_KEY"),
             market_data_provider=_provider_choice(
@@ -267,7 +273,7 @@ class Settings:
             ),
             paper_quote_url=_first_optional_value(
                 values,
-                ("MEMERADAR_PAPER_QUOTE_URL", "JUPITER_QUOTE_URL"),
+                ("MEMERADAR_PAPER_QUOTE_URL", "JUPITER_QUOTE_URL", "JUPITER_API_BASE_URL"),
             ),
             paper_quote_api_key=_first_optional_value(
                 values,

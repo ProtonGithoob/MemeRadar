@@ -713,12 +713,18 @@ class QuoteMarketContext:
                 field_name,
                 require_solana_address(getattr(self, field_name), field_name),
             )
+        if self.base_mint == self.quote_mint:
+            raise ValueError("base_mint and quote_mint must differ")
         liquidity = to_decimal(self.liquidity_usd, "liquidity_usd")
         if liquidity <= 0:
             raise ValueError("liquidity_usd must be positive")
         object.__setattr__(self, "liquidity_usd", liquidity)
         if self.pair_created_at is not None:
-            object.__setattr__(self, "pair_created_at", ensure_utc(self.pair_created_at, "pair_created_at"))
+            object.__setattr__(
+                self,
+                "pair_created_at",
+                ensure_utc(self.pair_created_at, "pair_created_at"),
+            )
 
 
 @dataclass(frozen=True, slots=True)

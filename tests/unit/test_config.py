@@ -31,6 +31,8 @@ def test_provider_compatibility_aliases_and_explicit_choices_are_normalized() ->
         {
             "DEXSCREENER_API_BASE_URL": "https://legacy.dex.example",
             "SOLANA_STREAM_URL": "wss://legacy.solana.example/stream",
+            "SOLANA_RPC_BACKFILL_URL": "https://legacy.solana.example/backfill",
+            "JUPITER_API_BASE_URL": "https://legacy.jupiter.example",
             "NARRATIVE_PROVIDER": "disabled",
             "MARKET_DATA_PROVIDER": "DEXSCREENER",
             "PAPER_QUOTE_PROVIDER": "DEXSCREENER",
@@ -39,6 +41,21 @@ def test_provider_compatibility_aliases_and_explicit_choices_are_normalized() ->
 
     assert settings.dexscreener_api_url == "https://legacy.dex.example"
     assert settings.solana_stream_url == "wss://legacy.solana.example/stream"
+    assert settings.solana_backfill_url == "https://legacy.solana.example/backfill"
+    assert settings.paper_quote_url == "https://legacy.jupiter.example"
     assert settings.narrative_provider == "disabled"
     assert settings.market_data_provider == "dexscreener"
     assert settings.paper_quote_provider == "dexscreener"
+
+
+def test_legacy_narrative_configuration_selects_external_provider_without_selector() -> None:
+    settings = Settings.from_env(
+        {
+            "NARRATIVE_API_URL": "https://legacy.narrative.example",
+            "NARRATIVE_API_KEY": "",
+        }
+    )
+
+    assert settings.narrative_provider == "external"
+    assert settings.narrative_api_url == "https://legacy.narrative.example"
+    assert settings.narrative_api_key is None

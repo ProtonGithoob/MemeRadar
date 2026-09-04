@@ -12,7 +12,7 @@ from memeradar_application.paper_execution import (
     InMemoryPaperLedgerStore,
     PaperExecutionEngine,
 )
-from memeradar_application.provider_contracts import QuoteSnapshot
+from memeradar_application.provider_contracts import QuoteMarketContext, QuoteSnapshot
 from memeradar_application.shadow_entry import (
     ShadowEntryPolicy,
     ShadowEntryService,
@@ -47,11 +47,15 @@ class FakeQuotePort:
         impact: str = "25",
         stale: bool = False,
         drift: str | None = None,
+        market_reference: bool = False,
+        market_context: bool = True,
     ) -> None:
         self.calls = 0
         self.impact = Decimal(impact)
         self.stale = stale
         self.drift = drift
+        self.market_reference = market_reference
+        self.market_context = market_context
         self.signer = PoisonSigner()
         self.execution = PoisonExecution()
 
@@ -77,6 +81,20 @@ class FakeQuotePort:
                 as_of=quote_at,
                 expires_at=quote_at + timedelta(minutes=1),
                 quality_state=QualityState.FRESH,
+            ),
+            price_semantics=(
+                "MARKET_REFERENCE" if self.market_reference else "EXECUTION_QUOTE"
+            ),
+            market_context=(
+                QuoteMarketContext(
+                    chain="solana",
+                    pair_address="11111111111111111111111111111111",
+                    base_mint=TOKEN_MINT,
+                    quote_mint=QUOTE_MINT,
+                    liquidity_usd=Decimal("10000"),
+                )
+                if self.market_reference and self.market_context
+                else None
             ),
         )
 
@@ -192,6 +210,25 @@ def test_quote_drift_is_a_missed_fill_and_duplicate_is_idempotent() -> None:
         assert duplicate.status is ShadowEntryStatus.DUPLICATE
         assert duplicate.duplicate is True
         assert len(await store.list_fills(portfolio.id)) == 1
+
+    asyncio.run(scenario())
+
+
+def test_market_reference_quote_requires_pair_context_before_paper_fill() -> None:
+    async def scenario() -> None:
+        store = InMemoryPaperLedgerStore()
+        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        engine = PaperExecutionEngine(store)
+        service = ShadowEntryService(policy=ShadowEntryPolicy(), clock=lambda: NOW)
+        result = await service.on_entry_ready(
+            decision(portfolio_id=portfolio.id, token_id=uuid4()),
+            FakeQuotePort(market_reference=True, market_context=False),
+            engine,
+        )
+
+        assert result.status is ShadowEntryStatus.SHADOW_REJECTED
+        assert "SHADOW_QUOTE_CONTEXT_MISSING" in result.reason_code_values
+        assert await store.list_fills(portfolio.id) == ()
 
     asyncio.run(scenario())
 

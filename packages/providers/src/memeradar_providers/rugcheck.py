@@ -219,6 +219,7 @@ class RugCheckRestAdapter(RiskDataPort):
     """Read-only RugCheck adapter with injected transport and HTTP client."""
 
     provider_name = RUGCHECK_PROVIDER
+    capabilities = frozenset({"risk_summary", "risk_data"})
 
     def __init__(
         self,

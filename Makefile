@@ -27,7 +27,8 @@ SBOM_OUTPUT ?=
 
 .PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
-	provider-doctor birdeye-doctor rugcheck-doctor social-doctor narrative-doctor \
+	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
+	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
 	backtest-replay calibrate-score winner-vs-rug-optimizer reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
 	security-review security-review-external sbom shadow-start shadow-status
@@ -143,6 +144,18 @@ doctor:
 provider-doctor:
 	$(PYTHON) scripts/provider_doctor.py
 
+helius-doctor:
+	$(PYTHON) scripts/provider_doctor.py
+
+solana-rpc-doctor:
+	$(PYTHON) scripts/solana_rpc_doctor.py
+
+dexscreener-doctor:
+	$(PYTHON) scripts/dexscreener_doctor.py
+
+free-provider-doctor:
+	$(PYTHON) scripts/free_provider_doctor.py
+
 birdeye-doctor:
 	$(PYTHON) scripts/birdeye_doctor.py
 
@@ -154,6 +167,9 @@ social-doctor:
 
 narrative-doctor:
 	$(PYTHON) scripts/narrative_doctor.py
+
+ollama-doctor:
+	$(PYTHON) scripts/ollama_doctor.py
 
 external-wallet-doctor:
 	$(PYTHON) scripts/external_wallet_doctor.py

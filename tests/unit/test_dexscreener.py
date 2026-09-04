@@ -267,6 +267,76 @@ def test_quote_rejects_unsupported_or_unsafe_pair_data(pairs: list[object]) -> N
     asyncio.run(scenario())
 
 
+def test_quote_rejects_arbitrary_non_native_quote_direction() -> None:
+    other_token = PAIR_LOW
+    payload = [
+        {
+            "chainId": "solana",
+            "dexId": "raydium",
+            "pairAddress": PAIR_HIGH,
+            "baseToken": {"address": MINT},
+            "quoteToken": {"address": other_token},
+            "priceUsd": "4",
+            "priceNative": "2",
+            "liquidity": {"usd": "1000"},
+        }
+    ]
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    adapter, client = make_adapter(httpx.MockTransport(handler))
+
+    async def scenario() -> None:
+        try:
+            with pytest.raises(ProviderSchemaError):
+                await adapter.quote(
+                    QuoteRequest(
+                        context=context(),
+                        input_mint=MINT,
+                        output_mint=other_token,
+                        amount=1,
+                        slippage_bps=0,
+                    )
+                )
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_market_snapshot_does_not_infer_usd_for_non_native_quote_token() -> None:
+    other_token = PAIR_LOW
+    payload = [
+        {
+            "chainId": "solana",
+            "dexId": "raydium",
+            "pairAddress": PAIR_HIGH,
+            "baseToken": {"address": other_token},
+            "quoteToken": {"address": MINT},
+            "priceUsd": "4",
+            "priceNative": "2",
+            "liquidity": {"usd": "1000"},
+        }
+    ]
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    adapter, client = make_adapter(httpx.MockTransport(handler))
+
+    async def scenario() -> None:
+        try:
+            with pytest.raises(ProviderSchemaError):
+                await adapter.snapshot(
+                    MarketDataRequest(context=context(), token_ids=(TOKEN_ID,))
+                )
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())
+
+
 def test_pair_selection_has_a_stable_address_tiebreak_independent_of_api_order() -> None:
     pair_a = {
         "chainId": "solana",
@@ -302,6 +372,51 @@ def test_pair_selection_has_a_stable_address_tiebreak_independent_of_api_order()
     quote = asyncio.run(scenario())
     assert quote.market_context is not None
     assert quote.market_context.pair_address == PAIR_LOW
+
+
+def test_duplicate_pair_records_are_deduplicated_deterministically() -> None:
+    low_liquidity = {
+        "chainId": "solana",
+        "dexId": "raydium",
+        "pairAddress": PAIR_HIGH,
+        "baseToken": {"address": MINT},
+        "quoteToken": {"address": USDC},
+        "priceUsd": "0.1",
+        "liquidity": {"usd": "100"},
+    }
+    high_liquidity = {
+        **low_liquidity,
+        "priceUsd": "0.2",
+        "liquidity": {"usd": "1000"},
+    }
+
+    async def quote_for(payload: object) -> object:
+        async def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=payload)
+
+        adapter, client = make_adapter(httpx.MockTransport(handler))
+        try:
+            return await adapter.quote(
+                QuoteRequest(
+                    context=context(),
+                    input_mint=USDC,
+                    output_mint=MINT,
+                    amount=1,
+                    slippage_bps=0,
+                )
+            )
+        finally:
+            await client.aclose()
+
+    first = asyncio.run(
+        quote_for({"schemaVersion": "1.0.0", "pairs": [low_liquidity, high_liquidity]})
+    )
+    second = asyncio.run(quote_for([high_liquidity, low_liquidity]))
+    assert first.market_context is not None
+    assert second.market_context is not None
+    assert first.market_context.liquidity_usd == Decimal("1000")
+    assert second.market_context.liquidity_usd == Decimal("1000")
+    assert first.output_amount == second.output_amount == Decimal("5")
 
 
 @pytest.mark.parametrize(
