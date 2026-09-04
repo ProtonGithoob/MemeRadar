@@ -1,7 +1,7 @@
 # FREE-FIRST Provider Architecture Design
 
-**Status:** Approved for implementation  
-**Date:** 2026-09-05  
+**Status:** Approved for implementation
+**Date:** 2026-09-05
 **Baseline:** `main` at `ba5de244152d2c45e678cd07d44265e67c2f4ee1`
 
 ## Goal
