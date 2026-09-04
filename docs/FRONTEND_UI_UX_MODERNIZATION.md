@@ -1,4 +1,9 @@
+> [!IMPORTANT]
+> **REVERTED / SUPERSEDED REFERENCE MATERIAL**
+> The UI-A through UI-J multi-page workstation redesign described in this specification was reverted on 2026-09-04 because the combined UI redesign produced an overcrowded, inconsistent visual layout. The frontend has been returned to the stable pre-modernization baseline. This document is retained for historical reference only. Future UI redesigns must be incremental and visually accepted screen-by-screen.
+
 # MemeRadar — Frontend UI/UX Modernization
+
 
 ## Objective
 

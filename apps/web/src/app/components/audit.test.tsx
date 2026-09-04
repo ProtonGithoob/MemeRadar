@@ -40,7 +40,7 @@ describe("AuditDashboard", () => {
   it("preserves audit/config order and renders only allow-listed values", () => {
     render(<AuditDashboard auditResult={page([audit])} configResult={page([config])} />);
 
-    expect(screen.getByRole("heading", { name: /Audit Explorer/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Audit explorer" })).toBeInTheDocument();
     expect(screen.getByText("control.analysis_pause")).toBeInTheDocument();
     expect(screen.getByText(/ACTOR operator/)).toBeInTheDocument();
     expect(screen.getByText("decision_entry_ready_threshold")).toBeInTheDocument();
