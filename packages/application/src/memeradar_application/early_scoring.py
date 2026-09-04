@@ -484,10 +484,94 @@ class EarlyScorer:
         return source_confidence * coverage
 
 
+@dataclass(frozen=True, slots=True)
+class AsymmetricAlphaProjection:
+    """Measurement-only upside candidate projection (E6.5).
+
+    Derived from EarlyScore/AlphaStrategy without emitting guaranteed predictions.
+    """
+
+    early_quality_score: Decimal
+    upside_evidence_score: Decimal
+    rug_dump_risk: Decimal
+    execution_quality: Decimal
+    evidence_confidence: Decimal
+    launch_age_ms: int | None = None
+    market_cap_at_decision: Decimal | None = None
+    reason_codes: tuple[ReasonCode, ...] = ()
+    strategy_version: str = "asymmetric-alpha-v1"
+    config_hash: str = "asymmetric-alpha-hash"
+
+    def __post_init__(self) -> None:
+        eq_bounded = bounded_decimal(
+            self.early_quality_score, "early_quality_score", Decimal("0"), Decimal("100")
+        )
+        object.__setattr__(self, "early_quality_score", eq_bounded)
+
+        ue_bounded = bounded_decimal(
+            self.upside_evidence_score, "upside_evidence_score", Decimal("0"), Decimal("100")
+        )
+        object.__setattr__(self, "upside_evidence_score", ue_bounded)
+
+        rd_bounded = bounded_decimal(
+            self.rug_dump_risk, "rug_dump_risk", Decimal("0"), Decimal("100")
+        )
+        object.__setattr__(self, "rug_dump_risk", rd_bounded)
+
+        ex_bounded = bounded_decimal(
+            self.execution_quality, "execution_quality", Decimal("0"), Decimal("100")
+        )
+        object.__setattr__(self, "execution_quality", ex_bounded)
+
+        ec_bounded = bounded_decimal(
+            self.evidence_confidence, "evidence_confidence", Decimal("0"), Decimal("1")
+        )
+        object.__setattr__(self, "evidence_confidence", ec_bounded)
+
+
+def build_asymmetric_alpha_projection(
+    snapshot: EarlyScoreSnapshot,
+    market_cap_at_decision: Decimal | None = None,
+    launch_age_ms: int | None = None,
+) -> AsymmetricAlphaProjection:
+    components = snapshot.components
+    flow = components.get("OrganicFlowAcceleration") or Decimal("50")
+    wallet = components.get("WalletQuality") or Decimal("50")
+    momentum = components.get("LaunchMomentum") or Decimal("50")
+    upside_score = (
+        (flow * Decimal("0.40")) + (wallet * Decimal("0.35")) + (momentum * Decimal("0.25"))
+    )
+
+    safety = components.get("OnChainSafety") or Decimal("50")
+    rug_risk = max(Decimal("0"), Decimal("100") - safety)
+    if snapshot.hard_risk_blocked or snapshot.risk_disposition == RiskDisposition.BLOCK:
+        rug_risk = Decimal("100")
+
+    exec_quality = components.get("LiquidityAndSellability") or Decimal("50")
+
+    reasons = list(snapshot.reason_codes) + [ReasonCode("ASYMMETRIC_ALPHA_PROJECTED")]
+
+    return AsymmetricAlphaProjection(
+        early_quality_score=snapshot.score,
+        upside_evidence_score=bounded_decimal(
+            upside_score, "upside_score", Decimal("0"), Decimal("100")
+        ),
+        rug_dump_risk=bounded_decimal(rug_risk, "rug_risk", Decimal("0"), Decimal("100")),
+        execution_quality=exec_quality,
+        evidence_confidence=snapshot.confidence,
+        launch_age_ms=launch_age_ms,
+        market_cap_at_decision=market_cap_at_decision,
+        reason_codes=tuple(sorted(set(reasons), key=str)),
+        config_hash=snapshot.config_hash,
+    )
+
+
 __all__ = [
     "EARLY_SCORE_COMPONENT_WEIGHTS",
     "EARLY_SCORE_V1_VERSION",
+    "AsymmetricAlphaProjection",
     "EarlyScorePolicy",
     "EarlyScoreSnapshot",
     "EarlyScorer",
+    "build_asymmetric_alpha_projection",
 ]

@@ -636,6 +636,185 @@ ForwardOutcomeHorizonLabel = EarlyOutcomeHorizonLabel
 EarlyForwardOutcomeLabeler = EarlyOutcomeLabeler
 
 
+@dataclass(frozen=True, slots=True)
+class ExtremeWinnerOutcomeSnapshot:
+    """Future-only extreme winner outcome labels (E10.4).
+
+    Distinguishes observed mark-price wicks from executable liquid outcomes.
+    """
+
+    checkpoint_id: UUID
+    token_id: UUID
+    signal_at: datetime
+    first_seen_market_cap: Decimal | None = None
+    entry_ready_market_cap: Decimal | None = None
+    launch_age_at_decision_ms: int | None = None
+    hit_2x: bool = False
+    hit_5x: bool = False
+    hit_10x: bool = False
+    hit_20x: bool = False
+    hit_50x: bool = False
+    hit_100x: bool = False
+    time_to_2x: Decimal | None = None
+    time_to_5x: Decimal | None = None
+    time_to_10x: Decimal | None = None
+    time_to_20x: Decimal | None = None
+    time_to_50x: Decimal | None = None
+    time_to_100x: Decimal | None = None
+    mfe: Decimal | None = None
+    mae: Decimal | None = None
+    peak_market_cap: Decimal | None = None
+    time_to_peak: Decimal | None = None
+    post_peak_drawdown: Decimal | None = None
+    liquidity_survival: bool = True
+    sellability: bool = True
+    mark_multiple: Decimal | None = None
+    executable_multiple: Decimal | None = None
+    rug_before_multiple: bool = False
+    realized_paper_multiple: Decimal | None = None
+    quality_state: QualityState = QualityState.FRESH
+    reason_codes: tuple[ReasonCode, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+
+
+class ExtremeWinnerOutcomeLabeler:
+    """Derives extreme winner labels ensuring mark wicks are separated from executable outcomes."""
+
+    def evaluate(
+        self,
+        records: Sequence[ReplayEventRecord],
+        checkpoint: ReplayCheckpoint,
+        baseline_price: Decimal | None = None,
+    ) -> ExtremeWinnerOutcomeSnapshot:
+        signal_at = checkpoint.as_of
+        future = [r for r in records if r.event_at >= signal_at]
+
+        base_mc = getattr(checkpoint, "market_cap_usd", None)
+        base_price = baseline_price
+
+        mark_max_mult: Decimal | None = None
+        exec_max_mult: Decimal | None = None
+
+        hit_2x = False
+        hit_5x = False
+        hit_10x = False
+        hit_20x = False
+        hit_50x = False
+        hit_100x = False
+
+        t_2x: Decimal | None = None
+        t_5x: Decimal | None = None
+        t_10x: Decimal | None = None
+        t_20x: Decimal | None = None
+        t_50x: Decimal | None = None
+        t_100x: Decimal | None = None
+
+        max_mc: Decimal | None = base_mc
+        t_peak: Decimal | None = None
+        min_post_peak_mc: Decimal | None = None
+        rug_seen = False
+
+        for r in future:
+            obs = r.observation
+            payload = obs.normalized_payload
+
+            price = _decimal(_payload_value(payload, "price_usd", "price"), "price", positive=True)
+            mc = _market_cap(r)
+            liq = _liquidity(r)
+            is_sellable = _boolean(_payload_value(payload, "is_sellable", "sellable")) is not False
+            impact_val = _payload_value(payload, "impact_bps", "price_impact_bps")
+            impact_bps = _decimal(impact_val, "impact")
+
+            if obs.kind in _RUG_KINDS:
+                rug_seen = True
+
+            # Calculate mark multiple
+            mult: Decimal | None = None
+            if price is not None and base_price is not None and base_price > 0:
+                mult = price / base_price
+            elif mc is not None and base_mc is not None and base_mc > 0:
+                mult = mc / base_mc
+
+            if mult is not None:
+                if mark_max_mult is None or mult > mark_max_mult:
+                    mark_max_mult = mult
+
+                # Check executable criteria: minimum liquidity, sellable, bounded impact
+                is_executable = (
+                    is_sellable
+                    and (liq is None or liq >= Decimal("1000"))
+                    and (impact_bps is None or impact_bps <= Decimal("1000"))
+                )
+
+                if is_executable:
+                    if exec_max_mult is None or mult > exec_max_mult:
+                        exec_max_mult = mult
+
+                    elapsed = Decimal(str(max(0.0, (r.event_at - signal_at).total_seconds())))
+
+                    if mult >= Decimal("2.0") and not hit_2x:
+                        hit_2x = True
+                        t_2x = elapsed
+                    if mult >= Decimal("5.0") and not hit_5x:
+                        hit_5x = True
+                        t_5x = elapsed
+                    if mult >= Decimal("10.0") and not hit_10x:
+                        hit_10x = True
+                        t_10x = elapsed
+                    if mult >= Decimal("20.0") and not hit_20x:
+                        hit_20x = True
+                        t_20x = elapsed
+                    if mult >= Decimal("50.0") and not hit_50x:
+                        hit_50x = True
+                        t_50x = elapsed
+                    if mult >= Decimal("100.0") and not hit_100x:
+                        hit_100x = True
+                        t_100x = elapsed
+
+            if mc is not None:
+                if max_mc is None or mc > max_mc:
+                    max_mc = mc
+                    t_peak = Decimal(str(max(0.0, (r.event_at - signal_at).total_seconds())))
+                elif max_mc is not None and mc < max_mc:
+                    if min_post_peak_mc is None or mc < min_post_peak_mc:
+                        min_post_peak_mc = mc
+
+        post_peak_drawdown: Decimal | None = None
+        if max_mc is not None and min_post_peak_mc is not None and max_mc > 0:
+            post_peak_drawdown = (max_mc - min_post_peak_mc) / max_mc
+
+        reasons = [ReasonCode("EXTREME_WINNER_LABELED")]
+
+        return ExtremeWinnerOutcomeSnapshot(
+            checkpoint_id=checkpoint.id,
+            token_id=checkpoint.token_id,
+            signal_at=signal_at,
+            first_seen_market_cap=base_mc,
+            entry_ready_market_cap=getattr(checkpoint, "market_cap_usd", None),
+            hit_2x=hit_2x,
+            hit_5x=hit_5x,
+            hit_10x=hit_10x,
+            hit_20x=hit_20x,
+            hit_50x=hit_50x,
+            hit_100x=hit_100x,
+            time_to_2x=t_2x,
+            time_to_5x=t_5x,
+            time_to_10x=t_10x,
+            time_to_20x=t_20x,
+            time_to_50x=t_50x,
+            time_to_100x=t_100x,
+            mfe=mark_max_mult,
+            peak_market_cap=max_mc,
+            time_to_peak=t_peak,
+            post_peak_drawdown=post_peak_drawdown,
+            mark_multiple=mark_max_mult,
+            executable_multiple=exec_max_mult,
+            rug_before_multiple=rug_seen,
+            quality_state=QualityState.FRESH if future else QualityState.UNKNOWN,
+            reason_codes=tuple(reasons),
+        )
+
+
 __all__ = [
     "EARLY_MARKET_CAP_MILESTONES",
     "EARLY_OUTCOME_HORIZONS",
@@ -645,6 +824,9 @@ __all__ = [
     "EarlyOutcomeLabel",
     "EarlyOutcomeLabeler",
     "EarlyOutcomePolicy",
+    "ExtremeWinnerOutcomeLabeler",
+    "ExtremeWinnerOutcomeSnapshot",
     "ForwardOutcomeHorizonLabel",
     "ForwardOutcomeLabel",
 ]
+

@@ -23,6 +23,7 @@ from memeradar_application.read_api import (
     ClosedTradeExplanationView,
     ConfigQuery,
     ConfigVersionView,
+    CreatorReputationView,
     CursorError,
     EarlyRadarQuery,
     EarlyRadarView,
@@ -265,6 +266,19 @@ class WalletResponse(_StrictModel):
     reason_codes: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     execution_eligible: bool = False
+
+
+class CreatorReputationResponse(_StrictModel):
+    address: str
+    as_of: datetime
+    launches_total: int
+    winner_rate: Decimal
+    severe_failure_rate: Decimal
+    rug_rate: Decimal
+    score: Decimal
+    confidence: Decimal
+    reputation_class: str
+    reason_codes: list[str] = Field(default_factory=list)
 
 
 class ProviderHealthResponse(_StrictModel):
@@ -535,6 +549,21 @@ def _wallet_response(value: WalletView) -> WalletResponse:
     )
 
 
+def _creator_reputation_response(value: CreatorReputationView) -> CreatorReputationResponse:
+    return CreatorReputationResponse(
+        address=value.address,
+        as_of=value.as_of,
+        launches_total=value.launches_total,
+        winner_rate=value.winner_rate,
+        severe_failure_rate=value.severe_failure_rate,
+        rug_rate=value.rug_rate,
+        score=value.score,
+        confidence=value.confidence,
+        reputation_class=value.reputation_class,
+        reason_codes=list(value.reason_codes),
+    )
+
+
 def _provider_health_response(value: ProviderHealthView) -> ProviderHealthResponse:
     return ProviderHealthResponse(
         provider=value.provider,
@@ -789,6 +818,17 @@ def build_read_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="wallet not found")
         return _wallet_response(value)
 
+    @router.get("/creator-reputation/{address}", response_model=CreatorReputationResponse)
+    async def get_creator_reputation(
+        address: Annotated[str, Path(min_length=32, max_length=64)],
+    ) -> CreatorReputationResponse:
+        value = await _call(_require_service(service).get_creator_reputation(address))
+        if value is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="creator reputation not found"
+            )
+        return _creator_reputation_response(value)
+
     @router.get("/providers/health", response_model=PageResponse[ProviderHealthResponse])
     async def list_provider_health(
         params: Annotated[ProviderHealthQueryParams, Query()],
@@ -839,6 +879,7 @@ __all__ = [
     "ClosedTradeExplanationResponse",
     "ConfigQueryParams",
     "ConfigVersionResponse",
+    "CreatorReputationResponse",
     "EarlyRadarQueryParams",
     "EarlyRadarResponse",
     "PageResponse",

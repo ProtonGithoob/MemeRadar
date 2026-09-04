@@ -9,7 +9,7 @@ import math
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Generic, Protocol, TypeVar
@@ -886,6 +886,29 @@ class WalletView:
             raise ValueError("read views cannot authorize execution")
 
 
+@dataclass(frozen=True, slots=True)
+class CreatorReputationView:
+    address: str
+    as_of: datetime
+    launches_total: int
+    winner_rate: Decimal
+    severe_failure_rate: Decimal
+    rug_rate: Decimal
+    score: Decimal
+    confidence: Decimal
+    reputation_class: str
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "address", require_solana_address(self.address, "creator address"))
+        object.__setattr__(self, "as_of", ensure_utc(self.as_of, "as_of"))
+        rep_cls = require_text(
+            self.reputation_class, "reputation_class", max_length=64
+        ).upper()
+        object.__setattr__(self, "reputation_class", rep_cls)
+        object.__setattr__(self, "reason_codes", normalize_texts(self.reason_codes, "reason_codes"))
+
+
 class ReadProviderHealthState(str, Enum):
     HEALTHY = "HEALTHY"
     DEGRADED = "DEGRADED"
@@ -1524,6 +1547,8 @@ class ReadQueryPort(Protocol):
 
     async def get_position(self, position_id: UUID) -> PositionView | None: ...
 
+    async def get_creator_reputation(self, address: str) -> CreatorReputationView | None: ...
+
 
 def _page(
     resource: str,
@@ -1884,6 +1909,22 @@ class InMemoryReadQueryService:
         if not isinstance(position_id, UUID):
             raise TypeError("position_id must be a UUID")
         return next((value for value in self.positions if value.id == position_id), None)
+
+    async def get_creator_reputation(self, address: str) -> CreatorReputationView | None:
+        normalized = require_solana_address(address, "creator address")
+        now = datetime.now(UTC)
+        return CreatorReputationView(
+            address=normalized,
+            as_of=now,
+            launches_total=0,
+            winner_rate=Decimal("0"),
+            severe_failure_rate=Decimal("0"),
+            rug_rate=Decimal("0"),
+            score=Decimal("50"),
+            confidence=Decimal("0"),
+            reputation_class="UNPROVEN",
+            reason_codes=("INSUFFICIENT_CREATOR_HISTORY",),
+        )
 
 
 __all__ = [

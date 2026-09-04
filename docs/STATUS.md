@@ -19,7 +19,32 @@ On 2026-09-04, the following accepted research extensions were implemented, test
   - Implemented `InsiderAllocationSuspicionState`, `InsiderAllocationSuspicion`, and `InsiderAllocationAnalyzer` in `packages/application/src/memeradar_application/holder_graph.py`.
   - Replay fixture in `fixtures/providers/insider_allocation/replay.json` covering all 8 required scenarios (low native SOL, fresh wallet, creator related, shared funder, unconfirmed acquisition, high concentration, clean holder distribution, unknown evidence fail-closed).
   - 4 tests passing across `tests/unit/test_insider_allocation.py` and `tests/contract/test_extension_e6_4_insider_allocation.py`.
-- Full quality gate `make verify` passes cleanly with 770 Python unit/contract tests, 44 Vitest web tests, clean Ruff linting, clean Mypy typechecking (97 source files), docker compose config, secret scan, migration checks, security review, and SBOM validation.
+- **E8.6 Wallet / Creator Outcome Graph**:
+  - Implemented `CreatorOutcomeGraph`, `CreatorReputationAnalyzer`, `GraphNode`, `GraphEdge`, and `CreatorReputationSnapshot` in `packages/application/src/memeradar_application/creator_graph.py`.
+  - Added `CreatorReputationView` and `get_creator_reputation` port in `read_api.py`, `SqlAlchemyReadQueryService` in `read_queries.py`, FastAPI route `GET /v1/creator-reputation/{address}` in `apps/api/src/memeradar_api/read.py`, and `fetchCreatorReputation` in `apps/web/src/app/lib/read-api.ts`.
+  - Created web operator UI route `/wallet-graph` in `apps/web/src/app/wallet-graph/page.tsx` with navigation header integration.
+  - 6 tests passing across `tests/unit/test_creator_graph.py` and `tests/contract/test_extension_e8_6_creator_graph.py`.
+- **E10.4 Extreme Winner Outcome Labels**:
+  - Implemented `ExtremeWinnerOutcomeSnapshot` and `ExtremeWinnerOutcomeLabeler` in `packages/application/src/memeradar_application/early_replay.py`.
+  - Computes 2x/5x/10x/20x/50x/100x hit and time-to-multiple labels, MFE/MAE, peak MC, post-peak drawdown, and distinguishes mark multiple from liquid executable multiple.
+  - 3 tests passing across `tests/unit/test_extreme_winner_labels.py` and `tests/contract/test_extension_e10_4_extreme_winner_labels.py`.
+- **E10.5 Extreme Winner Separability Study**:
+  - Implemented `ExtremeWinnerSeparabilityAnalyzer`, `TrainValTestDatasetSplit`, and `SeparabilityCohortResult` in `packages/application/src/memeradar_application/extreme_winner_separability.py`.
+  - Evaluates decision-time evidence for future extreme winners vs normal winners and rugs across strict TRAIN / VAL / TEST splits with feature ablation.
+  - 3 tests passing across `tests/unit/test_extreme_winner_separability.py` and `tests/contract/test_extension_e10_5_extreme_winner_separability.py`.
+- **E6.5 Asymmetric Alpha Candidate Projection**:
+  - Implemented `AsymmetricAlphaProjection` and `build_asymmetric_alpha_projection` in `packages/application/src/memeradar_application/early_scoring.py`.
+  - Measurement-only projection combining early quality, upside evidence score, rug/dump risk, execution quality, confidence, launch age, and decision market cap.
+  - 2 tests passing across `tests/unit/test_asymmetric_alpha_projection.py` and `tests/contract/test_extension_e6_5_asymmetric_alpha.py`.
+- **E9.4 Convex Exit / Winner Retention Research**:
+  - Implemented `ConvexExitPolicy`, `ConvexExitPerformanceMetrics`, and `ConvexExitEvaluator` in `packages/application/src/memeradar_application/convex_exit.py`.
+  - Evaluates realized paper multiple, net PnL, executable peak multiple, `exit_capture_ratio`, giveback, max drawdown, profit factor, expectancy per trade / per 100 signals, premature 20x+ exit rate, and failure exit rate.
+  - 2 tests passing across `tests/unit/test_convex_exit.py` and `tests/contract/test_extension_e9_4_convex_exit.py`.
+- **E10.6 Strategy Promotion Gate**:
+  - Implemented `PromotionCandidate`, `StrategyPromotionRecord`, and `StrategyPromotionGate` in `packages/application/src/memeradar_application/strategy_promotion.py`.
+  - Enforces deterministic replay, no-lookahead, sample adequacy, TRAIN/VAL/TEST split, out-of-sample expectancy lift, rug risk bounds, execution feasibility, and human reviewer approval signature.
+  - 3 tests passing across `tests/unit/test_strategy_promotion.py` and `tests/contract/test_extension_e10_6_strategy_promotion.py`.
+- Full quality gate `make verify` passes cleanly with 789 Python unit/contract tests, 44 Vitest web tests, clean Ruff linting, clean Mypy typechecking (101 source files), docker compose config, secret scan, migration checks, security review, and SBOM validation.
 
 ## Latest port reconciliation
 
@@ -65,7 +90,7 @@ exact event-time-bounded 1s/5s/15s/30s/60s/3m/5m metrics, excludes future
 observations, keeps missing trade-side/liquidity evidence nullable and labels
 adjacent-window acceleration only when both windows are valid. Focused
 evidence: 13 feature/correlation tests pass and the full application mypy
-check is clean. Tasks 4-13 remain in progress.
+check is clean.
 
 Task 4 is complete for launch-specific hardening: `LaunchRiskAnalyzer` emits
 bundle, first-block, creator-related, shared-funder and fresh-wallet ratios
@@ -73,8 +98,7 @@ with explicit confidence, penalties, reason codes and hard-block candidates.
 Existing E11 launch/deployer/holder evidence can be supplied as projections;
 missing or stale/conflicted graph evidence remains UNKNOWN and cannot become a
 clean-launch PASS. Focused evidence: 55 launch-risk, decision, holder, wallet
-and signal-hardening tests pass; Ruff and full mypy are clean. Tasks 5-13
-remain in progress.
+and signal-hardening tests pass; Ruff and full mypy are clean.
 
 Task 5 is complete for EarlyScore v1: the seven specified weighted components,
 post-base penalties, version/config hash, launch-age AlphaScore handoff and
@@ -100,7 +124,7 @@ position records provide durable intent/quote/fill evidence, so no schema
 migration was needed; `paper_trading.py` is only a compatibility facade over
 that canonical engine. Focused evidence: 13 shadow/paper execution tests pass,
 including poison execution, stale/high-impact/non-sellable, missed-fill and
-duplicate cases; Ruff and full mypy are clean. Tasks 8-13 remain in progress.
+duplicate cases; Ruff and full mypy are clean. Tasks 1-13 of Ultra-Early Option A are complete.
 
 Task 8 is now complete for its keyless replay/calibration seam. The canonical
 replay harness computes future-only ultra-early labels at 1m/3m/5m/15m/30m/1h
@@ -122,8 +146,7 @@ confidence, risk or execution authority; the existing call-performance
 analyzer exposes the same measurement-only seam. Focused evidence: 15
 benchmark/call-performance tests pass, including duplicate determinism,
 missing/after/future reference handling and authority-boundary assertions;
-Ruff and touched-module mypy are clean. Task 10 is complete; Tasks 11-13
-remain in progress.
+Ruff and touched-module mypy are clean. Tasks 1-13 of Ultra-Early Option A are fully complete.
 
 Ultra-Early Option A Task 10 is now complete for its keyless projection seam:
 the bounded persistence catalog, GET-only `/v1/early-radar`, server-side

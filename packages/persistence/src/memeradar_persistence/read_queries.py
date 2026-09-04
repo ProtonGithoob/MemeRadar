@@ -19,6 +19,7 @@ from memeradar_application.read_api import (
     CandidateView,
     ConfigQuery,
     ConfigVersionView,
+    CreatorReputationView,
     EarlyRadarQuery,
     EarlyRadarView,
     InMemoryReadQueryService,
@@ -727,6 +728,9 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
 
     async def get_wallet(self, address: str) -> WalletView | None:
         return await self._catalog.get_wallet(address)
+
+    async def get_creator_reputation(self, address: str) -> CreatorReputationView | None:
+        return await InMemoryReadQueryService().get_creator_reputation(address)
 
     async def list_provider_health(self, query: ProviderHealthQuery) -> Page[ProviderHealthView]:
         return await self._catalog.list_provider_health(query)

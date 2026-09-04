@@ -40,6 +40,7 @@ def test_business_routes_use_v1_and_mutations_are_explicitly_allow_listed() -> N
         "/v1/control/config",
         "/v1/control/execution-kill-switch",
         "/v1/control/state",
+        "/v1/creator-reputation/{address}",
         "/v1/early-radar",
         "/v1/manual/mints",
         "/v1/operations/overview",

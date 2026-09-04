@@ -167,6 +167,7 @@ def test_all_read_routes_return_bounded_safe_envelopes() -> None:
     health = client.get("/v1/providers/health")
     audit = client.get("/v1/audit/events")
     config = client.get("/v1/config/versions")
+    creator = client.get(f"/v1/creator-reputation/{WALLET}")
 
     assert candidates.status_code == 200
     assert candidates.json()["items"][0]["execution_eligible"] is False
@@ -185,6 +186,8 @@ def test_all_read_routes_return_bounded_safe_envelopes() -> None:
     assert health.json()["items"][0]["state"] == "UNKNOWN"
     assert audit.status_code == 200
     assert config.status_code == 200
+    assert creator.status_code == 200
+    assert creator.json()["reputation_class"] == "UNPROVEN"
     assert "must-not-appear" not in audit.text
     assert "must-not-appear" not in config.text
 

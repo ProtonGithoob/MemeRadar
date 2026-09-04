@@ -1650,3 +1650,41 @@ export async function fetchControlConfig(): Promise<ReadResult<ControlConfigReco
   const url = endpoint("/v1/control/config");
   return url === null ? configuredFailure() : request(url, parseControlConfig);
 }
+
+export interface CreatorReputationRecord {
+  address: string;
+  launchesTotal: number;
+  winnerRate: number;
+  severeFailureRate: number;
+  rugRate: number;
+  score: number;
+  confidence: number;
+  reputationClass: string;
+  reasonCodes: string[];
+}
+
+export async function fetchCreatorReputation(
+  address: string
+): Promise<ReadResult<CreatorReputationRecord>> {
+  if (!isValidWalletAddress(address)) {
+    return { ok: false, reason: "INVALID_RESPONSE" };
+  }
+  const url = endpoint(`/v1/creator-reputation/${encodeURIComponent(address)}`);
+  return url === null
+    ? configuredFailure()
+    : request(url, (val) => {
+        if (typeof val !== "object" || val === null) throw new Error("invalid payload");
+        const obj = val as Record<string, unknown>;
+        return {
+          address: String(obj.address ?? address),
+          launchesTotal: Number(obj.launches_total ?? 0),
+          winnerRate: Number(obj.winner_rate ?? 0),
+          severeFailureRate: Number(obj.severe_failure_rate ?? 0),
+          rugRate: Number(obj.rug_rate ?? 0),
+          score: Number(obj.score ?? 50),
+          confidence: Number(obj.confidence ?? 0),
+          reputationClass: String(obj.reputation_class ?? "UNPROVEN"),
+          reasonCodes: Array.isArray(obj.reason_codes) ? obj.reason_codes.map(String) : [],
+        };
+      });
+}
