@@ -37,7 +37,7 @@ Repository instructions cannot override non-bypassable host/runtime security pol
 MANDATORY STARTUP:
 1. Read README.md.
 2. Read AGENTS.md completely, including its operator authorization/no-prompt policy.
-3. Read all files under docs/, especially MASTER_SPEC.md, ARCHITECTURE.md, ROADMAP.md, ROADMAP_RESEARCH_EXTENSIONS.md, RESEARCH_REUSE_REGISTRY.md, STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md, MADEONSOL_SIGNAL_HARDENING.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_04.md, DATA_MODEL.md, SCORING_AND_RISK.md, PROVIDERS.md, SECURITY.md, TESTING.md and STATUS.md.
+3. Read all files under docs/, especially MASTER_SPEC.md, ARCHITECTURE.md, ROADMAP.md, ROADMAP_RESEARCH_EXTENSIONS.md, RESEARCH_REUSE_REGISTRY.md, STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md, MADEONSOL_SIGNAL_HARDENING.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_04.md, WALLET_CREATOR_OUTCOME_GRAPH.md, DATA_MODEL.md, SCORING_AND_RISK.md, PROVIDERS.md, SECURITY.md, TESTING.md and STATUS.md.
 4. Inspect the actual repository, git state and development environment.
 5. Treat repository truth as authoritative and resume from the exact next task recorded in docs/STATUS.md.
 
@@ -49,10 +49,12 @@ CURRENT RESEARCH-EXTENSION ORDERING RULE:
   2. E10.3 winner-vs-rug historical early-filter optimization using the existing replay/backtest/calibration stack.
 - Next execute the small P1 safety extension in `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_04.md`:
   3. E6.4 pre-mine/insider allocation suspicion inside existing HolderGraph/LaunchRiskAnalyzer only.
+- Then implement `docs/WALLET_CREATOR_OUTCOME_GRAPH.md` as E8.6:
+  4. Wallet/Creator Outcome Graph with creator/funder/token relationships, creator reputation, recurring creator/funder clusters, profitability-vs-public-outcome divergence, bounded GET-only APIs and a read-only graph UI.
 - E8.5 Anchor IDL onboarding remains lower-priority development tooling only.
 - E11.2 Rust/Yellowstone/Jito low-latency sidecar remains CONDITIONAL. Do not rewrite working Python/provider infrastructure merely because a Rust implementation exists. First use E11.1 latency metrics and the E11.2 benchmark contract. Keep the current Python path as default unless measured live/shadow evidence shows a material repeatable benefit without semantic divergence.
 - Any optional low-latency sidecar must emit the same canonical normalized events and remain behind the existing E8.4 verification/gap/reorg/replay boundary. It must never score risk, authorize a decision, sign, submit, or directly execute trades.
-- Do not create duplicate wallet, holder, risk, flow, dashboard, decoder, indexer, or execution systems.
+- Do not create duplicate wallet, holder, risk, flow, dashboard, decoder, indexer, graph, or execution systems. The wallet/creator graph is a read/research projection over existing canonical evidence.
 
 EXECUTION MODE:
 - Execute the roadmap phase by phase, sprint by sprint, task by task until all currently feasible roadmap work is complete.
