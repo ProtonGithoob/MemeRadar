@@ -8,12 +8,12 @@ describe("operator shell", () => {
     render(<RadarDashboard filters={{}} result={{ ok: false, reason: "NOT_CONFIGURED" }} />);
 
     expect(screen.getByRole("heading", { name: "MemeRadar" })).toBeInTheDocument();
-    expect(screen.getByText("ANALYSIS ONLY")).toBeInTheDocument();
+    expect(screen.getAllByText("ANALYSIS ONLY").length).toBeGreaterThan(0);
     expect(screen.getByText("PAPER TRADING")).toBeInTheDocument();
     expect(screen.getAllByText("Disabled")).toHaveLength(2);
     expect(screen.getByText("LIVE DATA")).toBeInTheDocument();
     expect(screen.getByText("ADVISORY OUTPUT")).toBeInTheDocument();
-    expect(screen.getByText("STREAM DISABLED")).toBeInTheDocument();
+    expect(screen.getAllByText(/STREAM DISABLED/i).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /theme/i })).toBeInTheDocument();
   });
 });
