@@ -9,87 +9,65 @@ The repository owner explicitly authorizes autonomous implementation of the enti
 
 NORMAL DEVELOPMENT ACTIONS ARE PRE-APPROVED FOR THE DURATION OF THE PROJECT.
 
-This includes, without limitation:
-- reading any repository file completely with sed/cat/rg/grep/find/tree/git commands;
-- inspecting logs, git state, schemas, migrations, configuration and environment metadata;
-- creating/editing/removing project files required by the roadmap;
-- installing ordinary project dependencies and toolchains;
-- creating local environments, caches, build artifacts, test databases and Docker resources;
-- running tests, lint, formatting, typing, coverage, builds, migrations, benchmarks, smoke tests, provider doctors and security checks;
-- starting/stopping/restarting project-local services, workers, APIs, databases, Redis and Docker Compose stacks;
-- running read-only provider/API checks when credentials are already available;
-- committing, fetching, pulling, rebasing/merging safely and pushing coherent checkpoints to the intended GitHub branch.
-
-Do NOT ask questions such as:
-“Would you like to run the following command?”
-“May I read this file?”
-“Should I run the tests?”
-“Should I continue to the next phase?”
-“May I install dependencies?”
-“Should I commit/push these changes?”
-
-For those cases the answer is already YES.
-
-If the execution UI offers a persistent approval option equivalent to “Yes, and don't ask again for commands that start with …”, prefer that persistent approval for safe recurring command families instead of repeatedly using one-command approval.
-
-Repository instructions cannot override non-bypassable host/runtime security policy. If the Codex runtime itself forces an approval boundary, use the broadest safe persistent approval available after that boundary is cleared, then continue autonomously. Do not weaken host security or bypass product security controls.
+This includes normal repository reading/editing, dependency setup, project-local Docker/services, tests/lint/typecheck/build/migrations/benchmarks/doctors, safe git reconciliation and coherent commit/push checkpoints. If the runtime enforces a non-bypassable approval boundary, use the broadest safe persistent approval available and continue afterward. Never weaken host/product security controls.
 
 MANDATORY STARTUP:
 1. Read README.md.
-2. Read AGENTS.md completely, including its operator authorization/no-prompt policy.
-3. Read all files under docs/, especially MASTER_SPEC.md, ARCHITECTURE.md, ROADMAP.md, ROADMAP_RESEARCH_EXTENSIONS.md, RESEARCH_REUSE_REGISTRY.md, STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md, MADEONSOL_SIGNAL_HARDENING.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_04.md, WALLET_CREATOR_OUTCOME_GRAPH.md, DATA_MODEL.md, SCORING_AND_RISK.md, PROVIDERS.md, SECURITY.md, TESTING.md and STATUS.md.
-4. Inspect the actual repository, git state and development environment.
-5. Treat repository truth as authoritative and resume from the exact next task recorded in docs/STATUS.md.
+2. Read AGENTS.md completely.
+3. Read all files under docs/, especially MASTER_SPEC.md, ARCHITECTURE.md, ROADMAP.md, ROADMAP_RESEARCH_EXTENSIONS.md, RESEARCH_REUSE_REGISTRY.md, STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md, MADEONSOL_SIGNAL_HARDENING.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_04.md, WALLET_CREATOR_OUTCOME_GRAPH.md, ALPHA_20X_100X_PRODUCT_OBJECTIVE.md, DATA_MODEL.md, SCORING_AND_RISK.md, PROVIDERS.md, SECURITY.md, TESTING.md and STATUS.md.
+4. Inspect actual git/repository/environment state.
+5. Resume from the exact next unfinished task recorded in docs/STATUS.md. Never roll back or repeat completed work.
 
-CURRENT RESEARCH-EXTENSION ORDERING RULE:
-- Never roll back or repeat completed work.
-- Finish the exact active Ultra-Early task(s) recorded in docs/STATUS.md first.
-- Then execute the already-approved P1 work in `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md`:
-  1. E11.10 cross-venue Pump.fun -> PumpSwap wallet position/cost-basis/PnL continuity.
-  2. E10.3 winner-vs-rug historical early-filter optimization using the existing replay/backtest/calibration stack.
-- Next execute the small P1 safety extension in `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_04.md`:
-  3. E6.4 pre-mine/insider allocation suspicion inside existing HolderGraph/LaunchRiskAnalyzer only.
-- Then implement `docs/WALLET_CREATOR_OUTCOME_GRAPH.md` as E8.6:
-  4. Wallet/Creator Outcome Graph with creator/funder/token relationships, creator reputation, recurring creator/funder clusters, profitability-vs-public-outcome divergence, bounded GET-only APIs and a read-only graph UI.
-- E8.5 Anchor IDL onboarding remains lower-priority development tooling only.
-- E11.2 Rust/Yellowstone/Jito low-latency sidecar remains CONDITIONAL. Do not rewrite working Python/provider infrastructure merely because a Rust implementation exists. First use E11.1 latency metrics and the E11.2 benchmark contract. Keep the current Python path as default unless measured live/shadow evidence shows a material repeatable benefit without semantic divergence.
-- Any optional low-latency sidecar must emit the same canonical normalized events and remain behind the existing E8.4 verification/gap/reorg/replay boundary. It must never score risk, authorize a decision, sign, submit, or directly execute trades.
-- Do not create duplicate wallet, holder, risk, flow, dashboard, decoder, indexer, graph, or execution systems. The wallet/creator graph is a read/research projection over existing canonical evidence.
+NORTH-STAR PRODUCT OBJECTIVE:
+MemeRadar must optimize for finding rare high-upside Solana memetokens early enough to enter while executable, rejecting rugs/manipulated launches, and exiting in a way that preserves asymmetric upside. Future 20x/50x/100x tokens are critical historical outcome cohorts, NOT guaranteed predictions or entry promises. Optimize for out-of-sample risk-adjusted paper/shadow expectancy, not alert count, feature count, raw backtest multiple, or in-sample accuracy.
 
-EXECUTION MODE:
-- Execute the roadmap phase by phase, sprint by sprint, task by task until all currently feasible roadmap work is complete.
-- Do not pause after commands, commits, sprints or phases for confirmation.
-- When a minor detail is unspecified, choose the safest technically sound senior-engineering default, document it where material, and continue.
-- If an external provider/credential/network check is blocked, finish every keyless part, fixtures, contracts, doctors and documentation, mark only the external acceptance BLOCKED_EXTERNAL, and continue with every independent task.
-- Never fabricate PASS evidence.
-- Never weaken tests or safety controls to advance a phase.
-- Keep provider SDKs outside the domain layer.
-- Keep all decisions replayable, versioned and explainable.
-- Use deterministic scoring/risk logic for trading eligibility. LLM output is advisory only and may never override hard gates.
-- Do not enable live-money execution. Preserve ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false and AUTO_EXECUTION=false until the roadmap explicitly reaches an allowed gate and the operator separately authorizes live-money operation.
-- Never commit or expose secrets/private keys/API tokens/session credentials.
+Every new capability must measurably improve at least one of: earlier detection; extreme-winner recall; rug/severe-dump rejection; executable entry quality; exit capture/loss containment; or net risk-adjusted paper PnL. Do not promote features that fail this test.
 
-ENGINEERING STANDARD:
-- Work as a senior backend/data/trading/platform/security/frontend team, not as a prototype generator.
-- Prefer simple robust architecture over premature microservices.
-- Add tests with each feature and regression tests for defects.
-- Implement explicit timeout/retry/rate-limit/freshness/idempotency behavior for external data.
-- Add structured logs, metrics/tracing seams and doctor commands where specified.
-- Ensure database migrations are reversible/tested where practical.
-- Ensure the web UI visibly distinguishes observed facts, derived scores, LLM advisory data, paper trading and live state.
-- Keep documentation synchronized with actual implementation.
+CURRENT EXECUTION ORDER:
+- Finish the exact active Ultra-Early task(s) in docs/STATUS.md first.
+- Complete already-approved P1 work without duplication: E11.10 Pump.fun->PumpSwap wallet/PnL continuity; E10.3 winner-vs-rug early-filter optimization; E6.4 pre-mine/insider allocation suspicion; E8.6 Wallet/Creator Outcome Graph.
+- Then implement `docs/ALPHA_20X_100X_PRODUCT_OBJECTIVE.md` using existing replay/scoring/exit/UI primitives:
+  1. E10.4 future-only 2x/5x/10x/20x/50x/100x executable outcome labels and time-to-multiple labels.
+  2. E10.5 no-lookahead early-winner separability/ablation study comparing extreme winners against rugs/failures/ordinary outcomes.
+  3. E6.5 measurement-only AsymmetricAlphaProjection integrated into existing EarlyScore/AlphaStrategy; do not create a second score engine and do not emit fake guaranteed-multiple predictions.
+  4. E9.4 convex exit/winner-retention research over the existing paper/ExitRisk engine, measuring realized expectancy, drawdown, exit capture and premature exits from future extreme winners.
+  5. E10.6 out-of-sample strategy promotion gate. TRAIN proposes, VALIDATION selects, TEST reports; no automatic production promotion.
+  6. Extend existing read-only Radar/token/position/research UI only after backend contracts stabilize.
+- E8.5 Anchor IDL onboarding remains lower priority.
+- E11.2 Rust/Yellowstone/Jito remains conditional on measured live/shadow latency/throughput benefit and semantic parity. Latency work has no priority unless it changes executable outcomes.
 
-GIT / CHECKPOINT RULES:
-- Work on the repository's current intended branch unless policy says otherwise.
-- Do not discard unrelated changes.
-- Create small coherent commits at meaningful checkpoints.
-- Push checkpoints to GitHub whenever authenticated network access is available.
-- At each sprint completion update docs/STATUS.md with exact verification evidence, safety modes, blockers, commit/sync state and the next task.
-- If the session ends unexpectedly, the next Codex session must be able to resume using docs/STATUS.md without reconstructing history from chat.
+CORE ALPHA RULES:
+- A future 20x/50x/100x mark-price wick in thin liquidity is not success; outcome labels must distinguish observed mark movement from executable/liquid outcomes.
+- No look-ahead: future outcome labels are research targets only and may never leak into live features.
+- ENTRY_READY still requires deterministic risk, confidence, fresh quote, liquidity, sellability and bounded-impact gates.
+- Extreme-upside evidence can never override critical BLOCK/UNKNOWN risk.
+- Missing evidence is UNKNOWN, never zero/safe.
+- LLM output remains advisory and cannot authorize trading.
+- Do not hard-code universal take-profit ladders or external-repo thresholds as production truth; evaluate versioned candidates through replay and out-of-sample paper/shadow evidence.
+- Prefer fewer high-quality executable signals over many alerts.
 
-PROTECTED BOUNDARIES:
-The autonomous authorization does not authorize destructive host-wide actions, secret disclosure, arbitrary credential handling, force-pushing shared history, transferring funds, signing arbitrary wallet transactions, weakening security, or enabling live-money trading outside the repository's explicit acceptance gates. Treat these as protected boundaries, document blockers if encountered, and continue all independent work.
+PRIMARY KPI HIERARCHY:
+1. net paper/shadow expectancy after fees/slippage/impact;
+2. max drawdown and severe-loss rate;
+3. recall of future 20x/50x/100x cohorts;
+4. first-detection age and market cap;
+5. ENTRY_READY precision;
+6. rug/severe-dump rejection;
+7. exit capture ratio and giveback from executable peak;
+8. latency only where it materially changes executable results.
+
+ARCHITECTURE / SAFETY:
+- Reuse existing canonical event, correlation, EarlyScore, AlphaStrategy, RiskAssessment, SmartWallet, holder graph, creator graph, paper execution, ExitRisk, replay, calibration, provider-health and UI systems. Do not create duplicate engines.
+- Keep provider SDKs outside domain logic; keep decisions replayable/versioned/explainable.
+- External credentials/network blockers: finish all keyless contracts/fixtures/doctors, mark only external acceptance BLOCKED_EXTERNAL, continue independent work, never fabricate PASS.
+- Preserve ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false, AUTO_EXECUTION=false. Phase 12/live-money remains locked unless separately authorized after acceptance gates.
+- Never expose/commit secrets or private keys; never sign/submit live transactions under this roadmap.
+
+ENGINEERING / CHECKPOINT STANDARD:
+- Use simple robust architecture, TDD/regression tests, explicit timeout/retry/rate-limit/freshness/idempotency, structured telemetry, reversible/tested migrations where practical, and explicit UNKNOWN/STALE/INVALID states.
+- At each coherent checkpoint run focused tests and appropriate full gates, update docs/STATUS.md with exact evidence and next task, commit, push when authenticated, and leave the repository resumable.
+- Do not discard unrelated work, force-push shared history, or stop for routine confirmation.
 
 BEGIN NOW:
-Start from the exact Next task in docs/STATUS.md. Do not wait for another user message. Continue implementing, testing, verifying, documenting, committing and pushing until the currently feasible MemeRadar roadmap is complete or only genuine protected/external blockers remain.
+Start from the exact Next task in docs/STATUS.md. Continue autonomously until currently feasible work is complete or only genuine protected/external blockers remain.
 ```
