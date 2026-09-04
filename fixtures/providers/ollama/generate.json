@@ -1,0 +1,9 @@
+{
+  "model": "qwen3:latest",
+  "created_at": "2026-08-27T21:00:01Z",
+  "response": "{\"narrative\":\"Community discussion is active but evidence remains limited.\",\"topic\":\"community\",\"novelty\":\"0.55\",\"organic_assessment\":\"MIXED\",\"organic_probability\":\"0.55\",\"promotional_probability\":\"0.35\",\"sentiment\":\"NEUTRAL\",\"uncertainty\":\"0.40\",\"confidence\":\"0.60\",\"evidence_refs\":[\"evidence-1\"]}",
+  "done": true,
+  "done_reason": "stop",
+  "prompt_eval_count": 22,
+  "eval_count": 9
+}

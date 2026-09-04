@@ -1,0 +1,11 @@
+{
+  "models": [
+    {
+      "name": "qwen3:latest",
+      "model": "qwen3:latest",
+      "modified_at": "2026-08-27T20:00:00Z",
+      "size": 123456789,
+      "digest": "sha256:fixture"
+    }
+  ]
+}
