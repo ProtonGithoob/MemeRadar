@@ -37,20 +37,22 @@ Repository instructions cannot override non-bypassable host/runtime security pol
 MANDATORY STARTUP:
 1. Read README.md.
 2. Read AGENTS.md completely, including its operator authorization/no-prompt policy.
-3. Read all files under docs/, especially MASTER_SPEC.md, ARCHITECTURE.md, ROADMAP.md, ROADMAP_RESEARCH_EXTENSIONS.md, RESEARCH_REUSE_REGISTRY.md, STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md, DATA_MODEL.md, SCORING_AND_RISK.md, PROVIDERS.md, SECURITY.md, TESTING.md and STATUS.md.
+3. Read all files under docs/, especially MASTER_SPEC.md, ARCHITECTURE.md, ROADMAP.md, ROADMAP_RESEARCH_EXTENSIONS.md, RESEARCH_REUSE_REGISTRY.md, STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md, MADEONSOL_SIGNAL_HARDENING.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md, EXTERNAL_REPO_GAP_INTEGRATION_2026_09_04.md, DATA_MODEL.md, SCORING_AND_RISK.md, PROVIDERS.md, SECURITY.md, TESTING.md and STATUS.md.
 4. Inspect the actual repository, git state and development environment.
 5. Treat repository truth as authoritative and resume from the exact next task recorded in docs/STATUS.md.
 
 CURRENT RESEARCH-EXTENSION ORDERING RULE:
-- Do not interrupt active Phase 8 frontend/dashboard work to retrofit stream reliability.
-- Finish the current Phase 8 sprint(s) and Gate P8 first.
-- Then execute `docs/STREAM_RELIABILITY_PROTOCOL_VERIFICATION.md` as Extension E8.4 before Phase 9 paper trading unless the repository has already advanced further.
-- If it has advanced further, do not roll back or repeat completed work. Insert E8.4 at the next safe backend hardening point before relying on real-time paper-trading evidence.
-- E8.4 must reuse existing event/provenance/provider/replay/persistence primitives wherever possible rather than creating parallel infrastructure.
-- Live, replay and backfill Solana data must use the same canonical decoder/normalizer path.
-- Protocol routing must use verified `(program_id, discriminator/tag)` matching, never discriminator-only matching.
-- Unresolved stream gaps, unverified protocol identities and live/backfill conflicts must reduce data quality fail-closed and must never increase AlphaScore.
-- Yellowstone/Rust remains conditional on measured need under the latency benchmark extension; do not prematurely rewrite working Python/provider infrastructure.
+- Never roll back or repeat completed work.
+- Finish the exact active Ultra-Early task(s) recorded in docs/STATUS.md first.
+- Then execute the already-approved P1 work in `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md`:
+  1. E11.10 cross-venue Pump.fun -> PumpSwap wallet position/cost-basis/PnL continuity.
+  2. E10.3 winner-vs-rug historical early-filter optimization using the existing replay/backtest/calibration stack.
+- Next execute the small P1 safety extension in `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_04.md`:
+  3. E6.4 pre-mine/insider allocation suspicion inside existing HolderGraph/LaunchRiskAnalyzer only.
+- E8.5 Anchor IDL onboarding remains lower-priority development tooling only.
+- E11.2 Rust/Yellowstone/Jito low-latency sidecar remains CONDITIONAL. Do not rewrite working Python/provider infrastructure merely because a Rust implementation exists. First use E11.1 latency metrics and the E11.2 benchmark contract. Keep the current Python path as default unless measured live/shadow evidence shows a material repeatable benefit without semantic divergence.
+- Any optional low-latency sidecar must emit the same canonical normalized events and remain behind the existing E8.4 verification/gap/reorg/replay boundary. It must never score risk, authorize a decision, sign, submit, or directly execute trades.
+- Do not create duplicate wallet, holder, risk, flow, dashboard, decoder, indexer, or execution systems.
 
 EXECUTION MODE:
 - Execute the roadmap phase by phase, sprint by sprint, task by task until all currently feasible roadmap work is complete.
