@@ -531,8 +531,7 @@ class FlowAnalyzer:
                 item
                 for item in matched
                 if item.observed_at < latest.observed_at
-                and _quality_at(item, checked_at, self.policy.evidence_ttl)
-                is QualityState.FRESH
+                and _quality_at(item, checked_at, self.policy.evidence_ttl) is QualityState.FRESH
             )
             previous = (
                 max(previous_candidates, key=lambda item: (item.observed_at, item.ingested_at))

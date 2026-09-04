@@ -56,9 +56,7 @@ def test_security_review_source_contracts_cover_prompt_injection_and_execution_b
     )
     narrative_source = (
         ROOT / "packages/application/src/memeradar_application/narrative.py"
-    ).read_text(
-        encoding="utf-8"
-    )
+    ).read_text(encoding="utf-8")
     narrative_contracts = (
         ROOT / "packages/application/src/memeradar_application/provider_contracts.py"
     ).read_text(encoding="utf-8")

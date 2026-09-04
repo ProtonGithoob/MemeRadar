@@ -107,9 +107,7 @@ def build_snapshots(
         reason_codes=(ReasonCode("RISK_FIXTURE_RESULT"),),
         confidence=Decimal(str(raw_risk["confidence"])),
         config_hash=str(payload["config_hash"]),
-        critical_evidence_state=QualityState(
-            str(raw_risk.get("critical_evidence_state", "FRESH"))
-        ),
+        critical_evidence_state=QualityState(str(raw_risk.get("critical_evidence_state", "FRESH"))),
         id=uuid5(NAMESPACE_URL, f"alpha-risk:{scenario_name}"),
     )
     return feature, risk_snapshot, str(payload["config_hash"])
@@ -193,12 +191,7 @@ def test_unknown_risk_and_strategy_switch_are_visible_in_replay() -> None:
 
 def test_strategy_source_has_no_provider_or_execution_dependencies() -> None:
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "alpha_strategy.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "alpha_strategy.py"
     ).read_text()
 
     assert "memeradar_providers" not in source

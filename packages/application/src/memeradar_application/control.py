@@ -112,11 +112,7 @@ class LockedExecutionBoundary:
             raise ValueError("execution boundary status must remain LOCKED")
         if self.stages != LOCKED_EXECUTION_STAGES:
             raise ValueError("execution boundary stages are versioned and immutable")
-        if (
-            self.execution_eligible
-            or self.signer_available
-            or self.submission_available
-        ):
+        if self.execution_eligible or self.signer_available or self.submission_available:
             raise ValueError("execution boundary capabilities must remain disabled")
 
     def to_dict(self) -> dict[str, object]:
@@ -353,11 +349,7 @@ def make_config_version(
         created_at=ensure_utc(created_at, "created_at"),
         actor=require_text(actor, "actor", max_length=256),
         config_hash=canonical_config_hash(normalized),
-        decision_affecting=(
-            bool(decision_affecting)
-            if decision_affecting is not None
-            else True
-        ),
+        decision_affecting=(bool(decision_affecting) if decision_affecting is not None else True),
         config=normalized,
     )
 

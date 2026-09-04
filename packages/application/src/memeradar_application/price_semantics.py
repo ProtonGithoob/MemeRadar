@@ -175,9 +175,7 @@ class PriceEvidence:
 
     def is_usable(self, at: datetime, *, semantics: PriceSemantics) -> bool:
         return (
-            self.semantics is semantics
-            and self.price is not None
-            and self.freshness.is_fresh(at)
+            self.semantics is semantics and self.price is not None and self.freshness.is_fresh(at)
         )
 
 

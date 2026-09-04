@@ -80,9 +80,7 @@ def test_renderer_is_bounded_explainable_and_redacts_secret_shaped_text() -> Non
         dedupe_key="alert:entry-ready:1",
         requested_at=NOW,
         candidate_id=CANDIDATE_ID,
-        reason_codes=(
-            ReasonCode("ENTRY_READY_THRESHOLD_REACHED", evidence_refs=("score:1",)),
-        ),
+        reason_codes=(ReasonCode("ENTRY_READY_THRESHOLD_REACHED", evidence_refs=("score:1",)),),
     )
 
     rendered = AlertRenderer().render(alert)

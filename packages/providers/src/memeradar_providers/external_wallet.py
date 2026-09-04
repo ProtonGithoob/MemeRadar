@@ -112,9 +112,7 @@ class FixtureExternalWalletIntelligenceAdapter(ExternalWalletIntelligencePort):
             evidence_refs.extend((*item.evidence_refs, item.raw_source_id))
             states.append(item.quality_state)
         reason_code = (
-            "EXTERNAL_WALLET_INTELLIGENCE_RECEIVED"
-            if evidence
-            else "EXTERNAL_EVIDENCE_MISSING"
+            "EXTERNAL_WALLET_INTELLIGENCE_RECEIVED" if evidence else "EXTERNAL_EVIDENCE_MISSING"
         )
         quality_priority = {
             QualityState.FRESH: 0,

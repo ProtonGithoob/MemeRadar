@@ -138,9 +138,7 @@ def test_fixture_scenarios_pass_continuity_contracts() -> None:
             qual_ok = continuity.quality.value in expected["quality_in"]
             assert qual_ok, f"Failed quality_in in {name}"
         if "pre_migration_quantity" in expected:
-            assert continuity.pre_migration_quantity == Decimal(
-                expected["pre_migration_quantity"]
-            )
+            assert continuity.pre_migration_quantity == Decimal(expected["pre_migration_quantity"])
         if "post_migration_quantity" in expected:
             assert continuity.post_migration_quantity == Decimal(
                 expected["post_migration_quantity"]

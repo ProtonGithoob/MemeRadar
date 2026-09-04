@@ -351,8 +351,7 @@ class ExternalWalletIntelligenceRequest:
             raise TypeError("token must be a TokenIdentity")
         addresses = tuple(
             dict.fromkeys(
-                require_solana_address(value, "wallet_addresses")
-                for value in self.wallet_addresses
+                require_solana_address(value, "wallet_addresses") for value in self.wallet_addresses
             )
         )
         if len(addresses) > 1_000:
@@ -380,9 +379,7 @@ class ExternalWalletIntelligenceResult:
     token_signals: tuple[ExternalWalletTokenSignal, ...] = ()
     provenance: tuple[Provenance, ...] = ()
     evidence_refs: tuple[str, ...] = ()
-    reason_codes: tuple[ReasonCode | str, ...] = (
-        "EXTERNAL_WALLET_INTELLIGENCE_RECEIVED",
-    )
+    reason_codes: tuple[ReasonCode | str, ...] = ("EXTERNAL_WALLET_INTELLIGENCE_RECEIVED",)
     quality_state: QualityState = QualityState.FRESH
     version: str = EXTERNAL_WALLET_VERSION
 
@@ -785,9 +782,7 @@ class ExternalWalletReconciler:
         fresh_labels = tuple(
             item for item in labels_sorted if label_states[item] is QualityState.FRESH
         )
-        stale_label_count = sum(
-            label_states[item] is QualityState.STALE for item in labels_sorted
-        )
+        stale_label_count = sum(label_states[item] is QualityState.STALE for item in labels_sorted)
         if stale_label_count:
             reasons.append("EXTERNAL_LABEL_STALE")
         if label_conflicts:
@@ -892,10 +887,7 @@ class ExternalWalletReconciler:
                 reasons.append(f"EXTERNAL_WALLET_GRAPH_{graph_evidence_state.value}")
         wallets = tuple(
             sorted(
-                {
-                    item.wallet_address
-                    for item in labels_sorted
-                }
+                {item.wallet_address for item in labels_sorted}
                 | {
                     item.wallet_address
                     for item in signals_sorted
@@ -931,9 +923,7 @@ class ExternalWalletReconciler:
             for signal_item in signals_sorted
             if signal_item.observed_at <= checked_at
         )
-        as_of_values.extend(
-            score.as_of for score in normalized_scores if score.as_of <= checked_at
-        )
+        as_of_values.extend(score.as_of for score in normalized_scores if score.as_of <= checked_at)
         if wallet_graph is not None and wallet_graph.as_of <= checked_at:
             as_of_values.append(wallet_graph.as_of)
         as_of = min(max(as_of_values, default=checked_at), checked_at)

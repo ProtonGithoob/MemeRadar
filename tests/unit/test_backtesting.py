@@ -158,9 +158,7 @@ def _outcome(
             "2x": None,
             "3x": None,
         },
-        time_to_drawdown=(
-            None if drawdown_seconds is None else Decimal(drawdown_seconds)
-        ),
+        time_to_drawdown=(None if drawdown_seconds is None else Decimal(drawdown_seconds)),
         liquidity_collapsed=liquidity_collapsed,
         rugged=rugged,
         creator_dump=creator_dump,

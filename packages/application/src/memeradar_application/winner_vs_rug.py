@@ -184,9 +184,7 @@ class WinnerVsRugCandidatePolicy:
             "max_launch_risk_penalty",
             to_decimal(self.max_launch_risk_penalty, "max_launch_risk_penalty"),
         )
-        if not isinstance(self.min_unique_buyers, int) or isinstance(
-            self.min_unique_buyers, bool
-        ):
+        if not isinstance(self.min_unique_buyers, int) or isinstance(self.min_unique_buyers, bool):
             raise TypeError("min_unique_buyers must be an integer")
         object.__setattr__(
             self,
@@ -280,9 +278,7 @@ class WinnerVsRugSample:
     def __post_init__(self) -> None:
         object.__setattr__(self, "cohort", WinnerVsRugCohort(self.cohort))
         object.__setattr__(self, "launch_at", ensure_utc(self.launch_at, "launch_at"))
-        object.__setattr__(
-            self, "decision_at", ensure_utc(self.decision_at, "decision_at")
-        )
+        object.__setattr__(self, "decision_at", ensure_utc(self.decision_at, "decision_at"))
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -385,14 +381,10 @@ class WinnerVsRugMetrics:
             "pct_detected_before_mc_100k": str(self.pct_detected_before_mc_100k),
             "pct_detected_before_mc_250k": str(self.pct_detected_before_mc_250k),
             "accepted_mfe_median": (
-                str(self.accepted_mfe_median)
-                if self.accepted_mfe_median is not None
-                else None
+                str(self.accepted_mfe_median) if self.accepted_mfe_median is not None else None
             ),
             "accepted_mae_median": (
-                str(self.accepted_mae_median)
-                if self.accepted_mae_median is not None
-                else None
+                str(self.accepted_mae_median) if self.accepted_mae_median is not None else None
             ),
             "expected_paper_pnl": str(self.expected_paper_pnl),
             "rejection_reasons": self.rejection_reasons,
@@ -414,14 +406,10 @@ class WinnerVsRugReport:
     pareto_shortlist: tuple[str, ...]
     reason_codes: tuple[ReasonCode | str, ...]
     config_hash: str
-    modes: dict[str, bool] = field(
-        default_factory=lambda: dict(_PROTECTED_MODES)
-    )
+    modes: dict[str, bool] = field(default_factory=lambda: dict(_PROTECTED_MODES))
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "evaluated_at", ensure_utc(self.evaluated_at, "evaluated_at")
-        )
+        object.__setattr__(self, "evaluated_at", ensure_utc(self.evaluated_at, "evaluated_at"))
         object.__setattr__(
             self,
             "reason_codes",
@@ -439,15 +427,9 @@ class WinnerVsRugReport:
             "baseline_candidate_id": self.baseline_candidate_id,
             "selected_candidate_id": self.selected_candidate_id,
             "status": self.status,
-            "train_metrics": {
-                k: v.to_json_dict() for k, v in self.train_metrics.items()
-            },
-            "validation_metrics": {
-                k: v.to_json_dict() for k, v in self.validation_metrics.items()
-            },
-            "test_metrics": {
-                k: v.to_json_dict() for k, v in self.test_metrics.items()
-            },
+            "train_metrics": {k: v.to_json_dict() for k, v in self.train_metrics.items()},
+            "validation_metrics": {k: v.to_json_dict() for k, v in self.validation_metrics.items()},
+            "test_metrics": {k: v.to_json_dict() for k, v in self.test_metrics.items()},
             "pareto_shortlist": list(self.pareto_shortlist),
             "reason_codes": [
                 code.code if isinstance(code, ReasonCode) else str(code)
@@ -530,9 +512,7 @@ class WinnerVsRugOptimizer:
             else:
                 # Rejected
                 primary_reason = reasons[0]
-                rejection_reasons[primary_reason] = (
-                    rejection_reasons.get(primary_reason, 0) + 1
-                )
+                rejection_reasons[primary_reason] = rejection_reasons.get(primary_reason, 0) + 1
                 if sample.cohort is WinnerVsRugCohort.WINNER:
                     rejected_winners += 1
                 elif sample.cohort is WinnerVsRugCohort.RUG_OR_SEVERE_FAILURE:
@@ -548,14 +528,10 @@ class WinnerVsRugOptimizer:
         non_winners = sample_count - winner_count
 
         winner_recall = (
-            Decimal(accepted_winners) / Decimal(winner_count)
-            if winner_count > 0
-            else Decimal("0")
+            Decimal(accepted_winners) / Decimal(winner_count) if winner_count > 0 else Decimal("0")
         )
         rug_rejection_rate = (
-            Decimal(rejected_rugs) / Decimal(rug_count)
-            if rug_count > 0
-            else Decimal("1")
+            Decimal(rejected_rugs) / Decimal(rug_count) if rug_count > 0 else Decimal("1")
         )
         precision = (
             Decimal(accepted_winners) / Decimal(total_accepted)
@@ -563,30 +539,20 @@ class WinnerVsRugOptimizer:
             else Decimal("0")
         )
         false_positive_rate = (
-            Decimal(accepted_rugs) / Decimal(non_winners)
-            if non_winners > 0
-            else Decimal("0")
+            Decimal(accepted_rugs) / Decimal(non_winners) if non_winners > 0 else Decimal("0")
         )
         false_negative_rate = (
-            Decimal(rejected_winners) / Decimal(winner_count)
-            if winner_count > 0
-            else Decimal("0")
+            Decimal(rejected_winners) / Decimal(winner_count) if winner_count > 0 else Decimal("0")
         )
 
         pct_50k = (
-            Decimal(before_50k) / Decimal(total_accepted)
-            if total_accepted > 0
-            else Decimal("0")
+            Decimal(before_50k) / Decimal(total_accepted) if total_accepted > 0 else Decimal("0")
         )
         pct_100k = (
-            Decimal(before_100k) / Decimal(total_accepted)
-            if total_accepted > 0
-            else Decimal("0")
+            Decimal(before_100k) / Decimal(total_accepted) if total_accepted > 0 else Decimal("0")
         )
         pct_250k = (
-            Decimal(before_250k) / Decimal(total_accepted)
-            if total_accepted > 0
-            else Decimal("0")
+            Decimal(before_250k) / Decimal(total_accepted) if total_accepted > 0 else Decimal("0")
         )
 
         expected_paper_pnl = Decimal("0")
@@ -668,27 +634,17 @@ class WinnerVsRugOptimizer:
     ) -> WinnerVsRugReport:
         all_candidates = (
             self.baseline_policy,
-            *[
-                c
-                for c in candidates
-                if c.candidate_id != self.baseline_policy.candidate_id
-            ],
+            *[c for c in candidates if c.candidate_id != self.baseline_policy.candidate_id],
         )
 
         train_samples = [
-            s
-            for s in samples
-            if split.partition(s.decision_at) == CalibrationPartition.TRAIN
+            s for s in samples if split.partition(s.decision_at) == CalibrationPartition.TRAIN
         ]
         val_samples = [
-            s
-            for s in samples
-            if split.partition(s.decision_at) == CalibrationPartition.VALIDATION
+            s for s in samples if split.partition(s.decision_at) == CalibrationPartition.VALIDATION
         ]
         test_samples = [
-            s
-            for s in samples
-            if split.partition(s.decision_at) == CalibrationPartition.TEST
+            s for s in samples if split.partition(s.decision_at) == CalibrationPartition.TEST
         ]
 
         # If strict partitioning leaves train empty (e.g. in small fixture test),
@@ -704,12 +660,8 @@ class WinnerVsRugOptimizer:
             train_metrics[candidate.candidate_id] = self.evaluate_candidate(
                 candidate, train_samples
             )
-            val_metrics[candidate.candidate_id] = self.evaluate_candidate(
-                candidate, val_samples
-            )
-            test_metrics[candidate.candidate_id] = self.evaluate_candidate(
-                candidate, test_samples
-            )
+            val_metrics[candidate.candidate_id] = self.evaluate_candidate(candidate, val_samples)
+            test_metrics[candidate.candidate_id] = self.evaluate_candidate(candidate, test_samples)
 
         baseline_train = train_metrics[self.baseline_policy.candidate_id]
         selected_id: str | None = None

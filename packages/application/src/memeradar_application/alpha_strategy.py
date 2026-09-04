@@ -707,8 +707,7 @@ class AlphaScoreV1Strategy:
             confidence_factor = Decimal("0")
         confidence_factor *= max(
             Decimal("0"),
-            Decimal("1")
-            - self.policy.missing_component_confidence_penalty * len(missing),
+            Decimal("1") - self.policy.missing_component_confidence_penalty * len(missing),
         )
         if invalid:
             confidence_factor = Decimal("0")

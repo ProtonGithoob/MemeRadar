@@ -1,5 +1,7 @@
 {
+  "evidence_class": "SYNTHETIC_FIXTURE",
   "trade_count": 4,
+  "best_synthetic_candidate": "balanced-convex-v1",
   "best_policy_version": "balanced-convex-v1",
   "best_expectancy_per_trade": "3.575",
   "policy_evaluations": {
@@ -82,5 +84,5 @@
       }
     }
   },
-  "evaluated_at": "2026-09-04T13:58:40.999523"
+  "evaluated_at": "2026-09-04T14:24:07.662401"
 }

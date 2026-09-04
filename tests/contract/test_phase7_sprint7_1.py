@@ -36,9 +36,7 @@ class Store:
 
 
 def replay() -> tuple[str, str, int]:
-    fixture = json.loads(
-        (ROOT / "fixtures" / "providers" / "telegram" / "replay.json").read_text()
-    )
+    fixture = json.loads((ROOT / "fixtures" / "providers" / "telegram" / "replay.json").read_text())
     source = fixture["event"]
     from memeradar_domain import EventEnvelope, ReasonCode
 

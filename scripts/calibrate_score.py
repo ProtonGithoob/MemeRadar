@@ -45,8 +45,7 @@ _PROTECTED_MODES = {
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Compare advisory score candidates on deterministic "
-            "train/validation/test splits."
+            "Compare advisory score candidates on deterministic train/validation/test splits."
         )
     )
     parser.add_argument("--input", required=True, type=Path, help="normalized replay bundle JSON")

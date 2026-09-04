@@ -424,9 +424,7 @@ class EarlyCalibrationBucket:
                 None if self.mean_max_return_5m is None else str(self.mean_max_return_5m)
             ),
             "milestone_precision_50k": (
-                None
-                if self.milestone_precision_50k is None
-                else str(self.milestone_precision_50k)
+                None if self.milestone_precision_50k is None else str(self.milestone_precision_50k)
             ),
             "rug_rate_5m": None if self.rug_rate_5m is None else str(self.rug_rate_5m),
             "promotion_allowed": False,
@@ -447,9 +445,14 @@ class EarlyCalibrationSummary:
         buckets = tuple(self.buckets)
         if any(not isinstance(value, EarlyCalibrationBucket) for value in buckets):
             raise TypeError("buckets must contain EarlyCalibrationBucket values")
-        if tuple(
-            sorted(buckets, key=lambda value: (value.early_score_bucket, value.launch_age_segment))
-        ) != buckets:
+        if (
+            tuple(
+                sorted(
+                    buckets, key=lambda value: (value.early_score_bucket, value.launch_age_segment)
+                )
+            )
+            != buckets
+        ):
             raise ValueError("buckets must be sorted deterministically")
         if not isinstance(self.sample_count, int) or isinstance(self.sample_count, bool):
             raise TypeError("sample_count must be an integer")
@@ -759,9 +762,7 @@ class PromotionEvidencePolicy:
         normalized_reasons = normalize_reason_codes(reasons)
         return PromotionAssessment(
             status=(
-                "BLOCKED_INSUFFICIENT_EVIDENCE"
-                if normalized_reasons
-                else "MANUAL_REVIEW_REQUIRED"
+                "BLOCKED_INSUFFICIENT_EVIDENCE" if normalized_reasons else "MANUAL_REVIEW_REQUIRED"
             ),
             manual_approval_required=True,
             reason_codes=normalized_reasons,
@@ -1008,9 +1009,7 @@ class AttributionCalibrationReport:
         metrics = tuple(self.metrics)
         if any(not isinstance(value, AttributionCalibrationMetric) for value in metrics):
             raise TypeError("metrics must contain AttributionCalibrationMetric values")
-        ordered = tuple(
-            sorted(metrics, key=lambda value: (value.component, value.partition.value))
-        )
+        ordered = tuple(sorted(metrics, key=lambda value: (value.component, value.partition.value)))
         if ordered != metrics:
             raise ValueError("attribution metrics must be sorted")
         object.__setattr__(self, "metrics", metrics)
@@ -1130,9 +1129,7 @@ class AttributionCalibrationAnalyzer:
         augmented_rate = _mean(tuple(Decimal(value) for value in augmented_hits))
         external_baseline_rate = _mean(tuple(Decimal(value) for value in external_baseline_hits))
         external_augmented_rate = _mean(tuple(Decimal(value) for value in external_augmented_hits))
-        false_rate = (
-            None if not bundled else Decimal(len(false_confluence)) / Decimal(len(bundled))
-        )
+        false_rate = None if not bundled else Decimal(len(false_confluence)) / Decimal(len(bundled))
         return AttributionCalibrationMetric(
             component=component,
             partition=partition,

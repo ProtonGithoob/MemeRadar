@@ -90,9 +90,7 @@ def signal(
         provenance=provenance(source_id),
         tracked_supply_pct=(None if tracked_supply is None else Decimal(tracked_supply)),
         bundle_confidence=None if bundle is None else Decimal(bundle),
-        side_wallet_cluster_confidence=(
-            None if side_wallet is None else Decimal(side_wallet)
-        ),
+        side_wallet_cluster_confidence=(None if side_wallet is None else Decimal(side_wallet)),
         security_flags=security_flags,
         evidence_refs=(source_id,),
     )

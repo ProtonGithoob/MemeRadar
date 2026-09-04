@@ -124,9 +124,7 @@ def build_snapshot(
         realized_pnl=realized_pnl,
         round_trips=tuple(trips),
         first_entry_at=first_entry,
-        token_age_at_first_entry_seconds=(
-            trips[0].token_age_at_entry_seconds if trips else None
-        ),
+        token_age_at_first_entry_seconds=(trips[0].token_age_at_entry_seconds if trips else None),
         median_hold_seconds=(
             sum((trip.hold_seconds for trip in trips), Decimal("0")) / Decimal(len(trips))
             if trips
@@ -152,12 +150,8 @@ def test_smart_wallet_score_fixtures_replay_deterministically() -> None:
     assert isinstance(raw_snapshots, list)
     assert isinstance(raw_penalties, dict)
     token = TokenIdentity(mint_address=MINT, id=uuid4())
-    snapshots = tuple(
-        build_snapshot(token, row) for row in raw_snapshots if isinstance(row, dict)
-    )
-    penalties = {
-        str(address): Decimal(str(value)) for address, value in raw_penalties.items()
-    }
+    snapshots = tuple(build_snapshot(token, row) for row in raw_snapshots if isinstance(row, dict))
+    penalties = {str(address): Decimal(str(value)) for address, value in raw_penalties.items()}
     scorer = SmartWalletScorer(
         policy=SmartWalletScoringPolicy(
             minimum_sample_count=3,
@@ -224,12 +218,7 @@ def test_smart_wallet_score_fixture_contract_preserves_safe_modes_and_seam() -> 
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "wallet_scoring.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "wallet_scoring.py"
     ).read_text(encoding="utf-8")
     assert "memeradar_providers" not in source
     assert "httpx" not in source

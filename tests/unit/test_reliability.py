@@ -36,9 +36,12 @@ def test_latency_histograms_report_nearest_rank_percentiles_and_evictions() -> N
         "max_ms": 5.0,
         "mean_ms": 3.5,
     }
-    assert snapshot.latencies[LatencyMetric.CHAIN_EVENT_TO_INGEST.value][
-        ReliabilitySource.PROVIDER_NETWORK.value
-    ]["p95_ms"] == 5.0
+    assert (
+        snapshot.latencies[LatencyMetric.CHAIN_EVENT_TO_INGEST.value][
+            ReliabilitySource.PROVIDER_NETWORK.value
+        ]["p95_ms"]
+        == 5.0
+    )
     assert snapshot.source_totals[ReliabilitySource.PROVIDER_NETWORK.value] == {
         "count": 5,
         "total_ms": 15.0,

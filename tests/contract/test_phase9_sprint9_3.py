@@ -102,9 +102,7 @@ def test_paper_exit_projection_handles_persisted_reason_objects_and_bounds_paylo
                 "risk_score": {
                     "score": "95",
                     "confidence": "0.9",
-                    "reason_codes": [
-                        {"code": "FIXED_STOP_LOSS", "evidence_refs": ["quote:after"]}
-                    ],
+                    "reason_codes": [{"code": "FIXED_STOP_LOSS", "evidence_refs": ["quote:after"]}],
                     "evidence_refs": ["quote:after"],
                 },
                 "api_key": "must-not-be-persisted",

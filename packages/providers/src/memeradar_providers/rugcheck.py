@@ -156,9 +156,13 @@ def normalize_report_summary(
         except (TypeError, ValueError) as exc:
             raise ProviderSchemaError("token program was invalid") from exc
     raw_risks = payload.get("risks", _MISSING)
-    if raw_risks is _MISSING or not isinstance(raw_risks, Sequence) or isinstance(
-        raw_risks,
-        str | bytes | bytearray,
+    if (
+        raw_risks is _MISSING
+        or not isinstance(raw_risks, Sequence)
+        or isinstance(
+            raw_risks,
+            str | bytes | bytearray,
+        )
     ):
         raise ProviderSchemaError("report risks were invalid")
     if len(raw_risks) > 100:

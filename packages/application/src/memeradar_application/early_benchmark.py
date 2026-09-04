@@ -36,7 +36,8 @@ class EarlyCallBenchmarkPolicy:
         object.__setattr__(
             self,
             "config_hash",
-            "sha256:" + hashlib.sha256(
+            "sha256:"
+            + hashlib.sha256(
                 json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
         )
@@ -89,11 +90,15 @@ class EarlyCallBenchmark:
         if not isinstance(candidate_id, UUID):
             raise TypeError("candidate_id must be a UUID")
         first_seen = ensure_utc(memeradar_first_seen_at, "memeradar_first_seen_at")
-        watch = None if memeradar_first_watch_at is None else ensure_utc(
-            memeradar_first_watch_at, "memeradar_first_watch_at"
+        watch = (
+            None
+            if memeradar_first_watch_at is None
+            else ensure_utc(memeradar_first_watch_at, "memeradar_first_watch_at")
         )
-        entry_ready = None if memeradar_entry_ready_at is None else ensure_utc(
-            memeradar_entry_ready_at, "memeradar_entry_ready_at"
+        entry_ready = (
+            None
+            if memeradar_entry_ready_at is None
+            else ensure_utc(memeradar_entry_ready_at, "memeradar_entry_ready_at")
         )
         checked_as_of = None if as_of is None else ensure_utc(as_of, "as_of")
         normalized_source_id = require_text(source_id, "source_id")

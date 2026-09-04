@@ -14,6 +14,21 @@ AUTO_EXECUTION=false
 
 ---
 
+## Complete Provider Path Audit (8 External Provider Paths)
+
+| Provider Path | Status | Env Vars | Doctor Command | Fail-Closed / Fallback Behavior |
+|---|---|---|---|---|
+| 1. Helius RPC / Stream | `IMPLEMENTED` | `HELIUS_API_KEY`, `HELIUS_RPC_URL` | `python3 scripts/early_live_doctor.py` | Falls back to synthetic fixtures (`BLOCKED_EXTERNAL`). |
+| 2. Yellowstone gRPC | `NOT_IMPLEMENTED / FIXTURE_ONLY` | `YELLOWSTONE_GRPC_URL`, `YELLOWSTONE_X_TOKEN` | `python3 scripts/stream_integrity_doctor.py` | Marks feed `UNKNOWN` / `FIXTURE_ONLY`; fails closed. |
+| 3. Shyft API | `NOT_IMPLEMENTED / FIXTURE_ONLY` | `SHYFT_API_KEY` | `python3 scripts/provider_doctor.py` | Marks feed `UNKNOWN` / `FIXTURE_ONLY`; fails closed. |
+| 4. Birdeye API | `IMPLEMENTED` | `BIRDEYE_API_KEY` | `python3 scripts/birdeye_doctor.py` | Returns `QualityState.UNKNOWN` on missing key or 429. |
+| 5. DexScreener API | `IMPLEMENTED` | `DEXSCREENER_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Keyless public read; degrades freshness on timeout. |
+| 6. Raydium API / SDK | `IMPLEMENTED` | `RAYDIUM_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Verified `(program_id, discriminator)` identity routing. |
+| 7. Jupiter API | `IMPLEMENTED` | `JUPITER_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Paper trade quote routing only; no live swap execution. |
+| 8. Pump.fun / Solana Indexer | `IMPLEMENTED` | `PUMPFUN_API_BASE_URL` | `python3 scripts/provider_doctor.py` | Verified bonding curve state & graduation continuity. |
+
+---
+
 ## Required Environment Variables
 
 | Variable | Required | Default / Fallback | Description |
@@ -36,19 +51,19 @@ Run these doctor commands to verify environment readiness before live read-only 
 
 ```bash
 # 1. General Environment and Provider Doctor
-.venv/bin/python scripts/provider_doctor.py
+python3 scripts/provider_doctor.py
 
 # 2. Early-Live Ingestion and Provider Doctor
-.venv/bin/python scripts/early_live_doctor.py
+python3 scripts/early_live_doctor.py
 
 # 3. Birdeye Specific Read-Only Doctor
-.venv/bin/python scripts/birdeye_doctor.py
+python3 scripts/birdeye_doctor.py
 
 # 4. Stream Integrity and Gap Recovery Doctor
-.venv/bin/python scripts/stream_integrity_doctor.py
+python3 scripts/stream_integrity_doctor.py
 
 # 5. Paper Trading Engine Doctor
-.venv/bin/python scripts/paper_trading_doctor.py
+python3 scripts/paper_trading_doctor.py
 ```
 
 ---

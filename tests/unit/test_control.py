@@ -29,9 +29,10 @@ def principal(role: ControlRole) -> ControlPrincipal:
 def test_role_matrix_keeps_permissions_separate() -> None:
     assert authorize(principal(ControlRole.VIEWER), ControlAction.READ_STATE) is None
     assert authorize(principal(ControlRole.OPERATOR), ControlAction.PAUSE_ANALYSIS) is None
-    assert authorize(
-        principal(ControlRole.EXECUTION), ControlAction.ACTIVATE_EXECUTION_KILL_SWITCH
-    ) is None
+    assert (
+        authorize(principal(ControlRole.EXECUTION), ControlAction.ACTIVATE_EXECUTION_KILL_SWITCH)
+        is None
+    )
     assert authorize(principal(ControlRole.ADMIN), ControlAction.MUTATE_CONFIG) is None
 
     with pytest.raises(ControlAuthorizationError):

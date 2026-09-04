@@ -163,9 +163,7 @@ def test_gateway_fails_closed_on_malformed_output_and_provider_timeout() -> None
     malformed_result = asyncio.run(analyzer.summarize(request("ordinary community post")))
     assert malformed_result.quality_state is QualityState.UNKNOWN
     assert malformed_result.confidence == 0
-    assert "NARRATIVE_SCHEMA_INVALID" in {
-        reason.code for reason in malformed_result.reason_codes
-    }
+    assert "NARRATIVE_SCHEMA_INVALID" in {reason.code for reason in malformed_result.reason_codes}
 
     async def slow(_request: NarrativeInput) -> NarrativeSnapshot:
         await asyncio.sleep(0.05)

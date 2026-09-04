@@ -182,15 +182,11 @@ def evaluation_from_row(row: DomainEventRow) -> ExitEvaluation:
         ),
         before_evidence_refs=tuple(
             _required_string(value, "before_evidence_refs")
-            for value in _required_list(
-                payload.get("before_evidence_refs"), "before_evidence_refs"
-            )
+            for value in _required_list(payload.get("before_evidence_refs"), "before_evidence_refs")
         ),
         after_evidence_refs=tuple(
             _required_string(value, "after_evidence_refs")
-            for value in _required_list(
-                payload.get("after_evidence_refs"), "after_evidence_refs"
-            )
+            for value in _required_list(payload.get("after_evidence_refs"), "after_evidence_refs")
         ),
         policy_version=_required_string(payload.get("policy_version"), "policy_version"),
         config_hash=_required_string(payload.get("config_hash"), "config_hash"),

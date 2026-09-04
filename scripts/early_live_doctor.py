@@ -242,9 +242,7 @@ async def _run_configured(
         )
         assert helius is not None
         assert birdeye is not None
-        helius_result = await _provider_result(
-            lambda: helius.check_health(context=helius_context)
-        )
+        helius_result = await _provider_result(lambda: helius.check_health(context=helius_context))
         birdeye_result = await _provider_result(
             lambda: birdeye.check_health(context=birdeye_context)
         )

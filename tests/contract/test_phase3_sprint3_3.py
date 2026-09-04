@@ -223,12 +223,7 @@ def test_safe_and_suspicious_flow_fixtures_replay_deterministically() -> None:
 
 def test_flow_analysis_fixture_contract_has_no_live_execution_surface() -> None:
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "flow_analysis.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "flow_analysis.py"
     ).read_text()
     assert "memeradar_providers" not in source
     assert "httpx" not in source

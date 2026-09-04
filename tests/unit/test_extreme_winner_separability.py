@@ -26,29 +26,31 @@ def test_separability_analyzer_train_val_test_split():
         else:
             outcome = "failure"
 
-        samples.append({
-            "sample_id": f"sample_{i}",
-            "event_time": datetime(2026, 9, 1, 12, i % 60, tzinfo=UTC),
-            "outcome": outcome,
-            "features": {
-                "micro_flow_3m": (
-                    Decimal("0.8")
-                    if is_extreme
-                    else (Decimal("0.5") if is_winner else Decimal("0.1"))
-                ),
-                "independent_buyers": 25 if is_extreme else (10 if is_winner else 2),
-                "insider_suspicion": (
-                    "LOW_EVIDENCE"
-                    if is_extreme
-                    else ("HIGH_SUSPICION" if is_rug else "LOW_EVIDENCE")
-                ),
-                "creator_reputation_score": (
-                    Decimal("80")
-                    if is_extreme
-                    else (Decimal("20") if is_rug else Decimal("50"))
-                ),
-            },
-        })
+        samples.append(
+            {
+                "sample_id": f"sample_{i}",
+                "event_time": datetime(2026, 9, 1, 12, i % 60, tzinfo=UTC),
+                "outcome": outcome,
+                "features": {
+                    "micro_flow_3m": (
+                        Decimal("0.8")
+                        if is_extreme
+                        else (Decimal("0.5") if is_winner else Decimal("0.1"))
+                    ),
+                    "independent_buyers": 25 if is_extreme else (10 if is_winner else 2),
+                    "insider_suspicion": (
+                        "LOW_EVIDENCE"
+                        if is_extreme
+                        else ("HIGH_SUSPICION" if is_rug else "LOW_EVIDENCE")
+                    ),
+                    "creator_reputation_score": (
+                        Decimal("80")
+                        if is_extreme
+                        else (Decimal("20") if is_rug else Decimal("50"))
+                    ),
+                },
+            }
+        )
 
     analyzer = ExtremeWinnerSeparabilityAnalyzer()
     split = analyzer.split_dataset(

@@ -155,8 +155,7 @@ def _report(iterations: int) -> dict[str, object]:
         LatencyMetric.CANDIDATE_TO_ALERT.value,
     )
     latency_summary = {
-        name: cast(dict[str, object], metrics_dict["latencies"])[name]
-        for name in latency_names
+        name: cast(dict[str, object], metrics_dict["latencies"])[name] for name in latency_names
     }
     internal_total = float(
         cast(dict[str, object], snapshot.source_totals)
@@ -187,9 +186,7 @@ def _report(iterations: int) -> dict[str, object]:
         "source_totals": metrics_dict["source_totals"],
         "dominant_source": dominant_source,
         "dominant_stage_internal": snapshot.dominant_stage(source="internal"),
-        "optimization_decision": (
-            "DEFER_RUST_YELLOWSTONE_UNTIL_REAL_PROVIDER_MEASUREMENT"
-        ),
+        "optimization_decision": ("DEFER_RUST_YELLOWSTONE_UNTIL_REAL_PROVIDER_MEASUREMENT"),
         "external_provider_acceptance": "BLOCKED_EXTERNAL",
         "external_network": "not_run",
         "modes": {

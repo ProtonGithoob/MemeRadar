@@ -1403,17 +1403,13 @@ class SignalHardeningAnalyzer:
             )
         current = tuple(record for record in records if start < record.event_at <= checked_end)
         critical_current = tuple(
-            record
-            for record in current
-            if record.observation.kind in _MARKET_KINDS | _TRADE_KINDS
+            record for record in current if record.observation.kind in _MARKET_KINDS | _TRADE_KINDS
         )
         nonfresh_critical = tuple(
             record for record in critical_current if record.quality_state is not QualityState.FRESH
         )
         if nonfresh_critical:
-            state = _combined_quality(
-                tuple(record.quality_state for record in nonfresh_critical)
-            )
+            state = _combined_quality(tuple(record.quality_state for record in nonfresh_critical))
             return self._unknown_momentum(
                 token,
                 now=checked_end,
@@ -1881,17 +1877,13 @@ class SignalHardeningAnalyzer:
             )
         current = tuple(record for record in records if start < record.event_at <= checked_end)
         critical_current = tuple(
-            record
-            for record in current
-            if record.observation.kind in _MARKET_KINDS | _TRADE_KINDS
+            record for record in current if record.observation.kind in _MARKET_KINDS | _TRADE_KINDS
         )
         nonfresh_critical = tuple(
             record for record in critical_current if record.quality_state is not QualityState.FRESH
         )
         if nonfresh_critical:
-            state = _combined_quality(
-                tuple(record.quality_state for record in nonfresh_critical)
-            )
+            state = _combined_quality(tuple(record.quality_state for record in nonfresh_critical))
             stale_reasons: list[ReasonCode | str] = [
                 "MOVE_EVIDENCE_NOT_FRESH",
                 f"MOVE_EVIDENCE_{state.value}",
@@ -2315,9 +2307,7 @@ class SignalHardeningAnalyzer:
                 initial_buy_amount=initial_buy_amount,
                 initial_acquired_supply_pct=initial_acquired_supply_pct,
             )
-        relevant_quality = _combined_quality(
-            tuple(record.quality_state for record in relevant)
-        )
+        relevant_quality = _combined_quality(tuple(record.quality_state for record in relevant))
         trade_records = tuple(
             record
             for record in records

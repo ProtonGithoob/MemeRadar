@@ -367,9 +367,7 @@ class EarlyScorer:
         elif disposition is RiskDisposition.WARN:
             penalties["RISK_WARNING"] = scoring_policy.warning_risk_penalty
             reasons.append(_reason("EARLY_SCORE_RISK_WARNING"))
-        missing_components = {
-            name for name, value in components.items() if value is None
-        }
+        missing_components = {name for name, value in components.items() if value is None}
         if missing_components - {"SocialCorroboration"}:
             penalties["INCOMPLETE_EVIDENCE"] = scoring_policy.incomplete_evidence_penalty
         total_penalty = min(sum(penalties.values(), Decimal("0")), Decimal("100"))
@@ -438,9 +436,7 @@ class EarlyScorer:
         safety = Decimal("100") if risk_disposition is RiskDisposition.PASS else None
         bundle = _decimal_score(_source_value(risk, "bundle_concentration"))
         wallet_quality = (
-            None
-            if bundle is None
-            else max(Decimal("0"), Decimal("100") - bundle * Decimal("100"))
+            None if bundle is None else max(Decimal("0"), Decimal("100") - bundle * Decimal("100"))
         )
         return {
             "OrganicFlowAcceleration": organic,

@@ -68,13 +68,9 @@ def test_birdeye_discovery_and_helius_enrichment_compose_keylessly() -> None:
             clock=lambda: NOW + timedelta(seconds=1),
         )
         try:
-            discovered = await birdeye.discover(
-                DiscoveryRequest(context=context(), limit=10)
-            )
+            discovered = await birdeye.discover(DiscoveryRequest(context=context(), limit=10))
             candidate = discovered[0]
-            enriched = await helius.enrich(
-                OnChainRequest(context=context(), token=candidate.token)
-            )
+            enriched = await helius.enrich(OnChainRequest(context=context(), token=candidate.token))
             return candidate, tuple(enriched)
         finally:
             await birdeye_client.aclose()

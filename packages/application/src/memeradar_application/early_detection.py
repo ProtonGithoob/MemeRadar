@@ -73,19 +73,16 @@ def _quality_from_value(value: object, default: QualityState = QualityState.FRES
 def _is_parsed_protocol_event(event: object) -> bool:
     """Recognize the provider DTO structurally without importing a provider package."""
 
-    return (
-        type(event).__name__ == "ParsedProtocolEvent"
-        and all(
-            hasattr(event, field_name)
-            for field_name in (
-                "payload",
-                "venue",
-                "mint_address",
-                "event_type",
-                "source_id",
-                "occurred_at",
-                "parser_version",
-            )
+    return type(event).__name__ == "ParsedProtocolEvent" and all(
+        hasattr(event, field_name)
+        for field_name in (
+            "payload",
+            "venue",
+            "mint_address",
+            "event_type",
+            "source_id",
+            "occurred_at",
+            "parser_version",
         )
     )
 
@@ -359,9 +356,7 @@ class UltraEarlyDetector:
                 observed_at=supplied_observed,
                 ingested_at=supplied_ingested,
                 authority=(
-                    DetectionAuthority.DIRECT_CHAIN
-                    if verified
-                    else DetectionAuthority.UNVERIFIED
+                    DetectionAuthority.DIRECT_CHAIN if verified else DetectionAuthority.UNVERIFIED
                 ),
                 quality_state=quality,
                 metadata={**dict(payload), "venue": parsed.venue.value},
@@ -405,9 +400,7 @@ class UltraEarlyDetector:
                 observed_at=supplied_observed,
                 ingested_at=supplied_ingested,
                 authority=(
-                    DetectionAuthority.DIRECT_CHAIN
-                    if verified
-                    else DetectionAuthority.UNVERIFIED
+                    DetectionAuthority.DIRECT_CHAIN if verified else DetectionAuthority.UNVERIFIED
                 ),
                 quality_state=quality,
                 metadata={
@@ -438,7 +431,9 @@ class UltraEarlyDetector:
             authority = (
                 DetectionAuthority.BIRDEYE_FALLBACK
                 if "birdeye" in provider
-                else DetectionAuthority.DIRECT_CHAIN if verified else DetectionAuthority.UNVERIFIED
+                else DetectionAuthority.DIRECT_CHAIN
+                if verified
+                else DetectionAuthority.UNVERIFIED
             )
             quality = event.quality_state
             if authority is DetectionAuthority.UNVERIFIED:

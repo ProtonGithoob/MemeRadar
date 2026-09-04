@@ -120,9 +120,7 @@ def test_runtime_samples_can_be_measured_but_latency_violation_remains_degraded(
 
     assert overview.slo_state is OperationalSloState.VIOLATED
     assert overview.overall_state is OperationalState.DEGRADED
-    assert any(
-        alert.code is OperationalAlertCode.LATENCY_SLO_VIOLATED for alert in overview.alerts
-    )
+    assert any(alert.code is OperationalAlertCode.LATENCY_SLO_VIOLATED for alert in overview.alerts)
 
 
 def test_queue_outbox_and_recovery_failures_are_operation_alerts_not_trade_signals() -> None:

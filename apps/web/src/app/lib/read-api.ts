@@ -1692,6 +1692,7 @@ export async function fetchControlConfig(): Promise<ReadResult<ControlConfigReco
 
 export interface CreatorReputationRecord {
   address: string;
+  asOf?: string;
   launchesTotal: number;
   winnerRate: number;
   severeFailureRate: number;
@@ -1700,15 +1701,33 @@ export interface CreatorReputationRecord {
   confidence: number;
   reputationClass: string;
   reasonCodes: string[];
+  sufficientOutcomeSamples?: boolean;
+  strongWinnerRate?: number;
+  medianMfe?: number | null;
+  medianMae?: number | null;
+  creatorRealizedPnl?: number | null;
+  creatorDumpRate?: number | null;
+  creatorExitBeforeMajorDrawdownRate?: number | null;
+  bundleSniperAssociation?: boolean | null;
+  sharedFunderRecurrence?: boolean | null;
+  sideWalletRecurrence?: boolean | null;
+  liquiditySurvivalRate?: number | null;
+  creatorProfitPublicLossRate?: number | null;
+  creatorProfitRugRate?: number | null;
+  clusterReputationScore?: number | null;
+  configHash?: string;
 }
 
 export async function fetchCreatorReputation(
-  address: string
+  address: string,
+  asOf?: string
 ): Promise<ReadResult<CreatorReputationRecord>> {
   if (!isValidWalletAddress(address)) {
     return { ok: false, reason: "INVALID_RESPONSE" };
   }
-  const url = endpoint(`/v1/creator-reputation/${encodeURIComponent(address)}`);
+  const query = singleQuery();
+  if (asOf) setBoundedText(query, "as_of", asOf);
+  const url = endpoint(`/v1/creator-reputation/${encodeURIComponent(address)}`, query);
   return url === null
     ? configuredFailure()
     : request(url, (val) => {
@@ -1716,6 +1735,7 @@ export async function fetchCreatorReputation(
         const obj = val as Record<string, unknown>;
         return {
           address: String(obj.address ?? address),
+          asOf: obj.as_of ? String(obj.as_of) : undefined,
           launchesTotal: Number(obj.launches_total ?? 0),
           winnerRate: Number(obj.winner_rate ?? 0),
           severeFailureRate: Number(obj.severe_failure_rate ?? 0),
@@ -1724,6 +1744,21 @@ export async function fetchCreatorReputation(
           confidence: Number(obj.confidence ?? 0),
           reputationClass: String(obj.reputation_class ?? "UNPROVEN"),
           reasonCodes: Array.isArray(obj.reason_codes) ? obj.reason_codes.map(String) : [],
+          sufficientOutcomeSamples: Boolean(obj.sufficient_outcome_samples ?? false),
+          strongWinnerRate: Number(obj.strong_winner_rate ?? 0),
+          medianMfe: obj.median_mfe != null ? Number(obj.median_mfe) : null,
+          medianMae: obj.median_mae != null ? Number(obj.median_mae) : null,
+          creatorRealizedPnl: obj.creator_realized_pnl != null ? Number(obj.creator_realized_pnl) : null,
+          creatorDumpRate: obj.creator_dump_rate != null ? Number(obj.creator_dump_rate) : null,
+          creatorExitBeforeMajorDrawdownRate: obj.creator_exit_before_major_drawdown_rate != null ? Number(obj.creator_exit_before_major_drawdown_rate) : null,
+          bundleSniperAssociation: obj.bundle_sniper_association != null ? Boolean(obj.bundle_sniper_association) : null,
+          sharedFunderRecurrence: obj.shared_funder_recurrence != null ? Boolean(obj.shared_funder_recurrence) : null,
+          sideWalletRecurrence: obj.side_wallet_recurrence != null ? Boolean(obj.side_wallet_recurrence) : null,
+          liquiditySurvivalRate: obj.liquidity_survival_rate != null ? Number(obj.liquidity_survival_rate) : null,
+          creatorProfitPublicLossRate: obj.creator_profit_public_loss_rate != null ? Number(obj.creator_profit_public_loss_rate) : null,
+          creatorProfitRugRate: obj.creator_profit_rug_rate != null ? Number(obj.creator_profit_rug_rate) : null,
+          clusterReputationScore: obj.cluster_reputation_score != null ? Number(obj.cluster_reputation_score) : null,
+          configHash: obj.config_hash ? String(obj.config_hash) : "creator-rep-v1-hash",
         };
       });
 }
@@ -1813,9 +1848,22 @@ function parseWalletGraph(val: unknown): WalletGraphRecord {
   };
 }
 
+export interface GraphFilters {
+  maxDepth?: number;
+  maxNodes?: number;
+  maxEdges?: number;
+  outcomeFilter?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  venue?: string;
+  walletRole?: string;
+  riskOutcomeClass?: string;
+  evidenceQuality?: string;
+}
+
 export async function fetchWalletGraph(
   address: string,
-  filters: { maxDepth?: number; maxNodes?: number; maxEdges?: number; outcomeFilter?: string } = {}
+  filters: GraphFilters = {}
 ): Promise<ReadResult<WalletGraphRecord>> {
   if (!isValidWalletAddress(address)) return { ok: false, reason: "INVALID_RESPONSE" };
   const query = singleQuery();
@@ -1823,13 +1871,19 @@ export async function fetchWalletGraph(
   if (filters.maxNodes) setBoundedNumber(query, "max_nodes", filters.maxNodes, 1, 200);
   if (filters.maxEdges) setBoundedNumber(query, "max_edges", filters.maxEdges, 1, 500);
   if (filters.outcomeFilter) setBoundedText(query, "outcome_filter", filters.outcomeFilter);
+  if (filters.dateFrom) setBoundedText(query, "date_from", filters.dateFrom);
+  if (filters.dateTo) setBoundedText(query, "date_to", filters.dateTo);
+  if (filters.venue) setBoundedText(query, "venue", filters.venue);
+  if (filters.walletRole) setBoundedText(query, "wallet_role", filters.walletRole);
+  if (filters.riskOutcomeClass) setBoundedText(query, "risk_outcome_class", filters.riskOutcomeClass);
+  if (filters.evidenceQuality) setBoundedText(query, "evidence_quality", filters.evidenceQuality);
   const url = endpoint(`/v1/wallet-graph/wallets/${encodeURIComponent(address)}`, query);
   return url === null ? configuredFailure() : request(url, parseWalletGraph);
 }
 
 export async function fetchTokenGraph(
   mint: string,
-  filters: { maxDepth?: number; maxNodes?: number; maxEdges?: number; outcomeFilter?: string } = {}
+  filters: GraphFilters = {}
 ): Promise<ReadResult<WalletGraphRecord>> {
   if (!isValidWalletAddress(mint)) return { ok: false, reason: "INVALID_RESPONSE" };
   const query = singleQuery();
@@ -1837,18 +1891,30 @@ export async function fetchTokenGraph(
   if (filters.maxNodes) setBoundedNumber(query, "max_nodes", filters.maxNodes, 1, 200);
   if (filters.maxEdges) setBoundedNumber(query, "max_edges", filters.maxEdges, 1, 500);
   if (filters.outcomeFilter) setBoundedText(query, "outcome_filter", filters.outcomeFilter);
+  if (filters.dateFrom) setBoundedText(query, "date_from", filters.dateFrom);
+  if (filters.dateTo) setBoundedText(query, "date_to", filters.dateTo);
+  if (filters.venue) setBoundedText(query, "venue", filters.venue);
+  if (filters.walletRole) setBoundedText(query, "wallet_role", filters.walletRole);
+  if (filters.riskOutcomeClass) setBoundedText(query, "risk_outcome_class", filters.riskOutcomeClass);
+  if (filters.evidenceQuality) setBoundedText(query, "evidence_quality", filters.evidenceQuality);
   const url = endpoint(`/v1/wallet-graph/tokens/${encodeURIComponent(mint)}`, query);
   return url === null ? configuredFailure() : request(url, parseWalletGraph);
 }
 
 export async function fetchClusterGraph(
   clusterId: string,
-  filters: { maxDepth?: number; maxNodes?: number; maxEdges?: number } = {}
+  filters: GraphFilters = {}
 ): Promise<ReadResult<WalletGraphRecord>> {
   const query = singleQuery();
   if (filters.maxDepth) setBoundedNumber(query, "max_depth", filters.maxDepth, 1, 5);
   if (filters.maxNodes) setBoundedNumber(query, "max_nodes", filters.maxNodes, 1, 200);
   if (filters.maxEdges) setBoundedNumber(query, "max_edges", filters.maxEdges, 1, 500);
+  if (filters.dateFrom) setBoundedText(query, "date_from", filters.dateFrom);
+  if (filters.dateTo) setBoundedText(query, "date_to", filters.dateTo);
+  if (filters.venue) setBoundedText(query, "venue", filters.venue);
+  if (filters.walletRole) setBoundedText(query, "wallet_role", filters.walletRole);
+  if (filters.riskOutcomeClass) setBoundedText(query, "risk_outcome_class", filters.riskOutcomeClass);
+  if (filters.evidenceQuality) setBoundedText(query, "evidence_quality", filters.evidenceQuality);
   const url = endpoint(`/v1/wallet-graph/clusters/${encodeURIComponent(clusterId)}`, query);
   return url === null ? configuredFailure() : request(url, parseWalletGraph);
 }

@@ -172,10 +172,7 @@ class SmartMoneyEvent:
         object.__setattr__(self, "cluster_id", require_text(self.cluster_id, "cluster_id"))
         addresses = tuple(
             sorted(
-                {
-                    require_solana_address(value, "wallet address")
-                    for value in self.wallet_addresses
-                }
+                {require_solana_address(value, "wallet address") for value in self.wallet_addresses}
             )
         )
         if not addresses:
@@ -463,9 +460,7 @@ class ConfluenceAnalyzer:
             existing_snapshot = seen_snapshots.get(snapshot_key)
             if existing_snapshot is not None:
                 if existing_snapshot != snapshot:
-                    raise ValueError(
-                        f"conflicting wallet snapshot for {snapshot.wallet_address}"
-                    )
+                    raise ValueError(f"conflicting wallet snapshot for {snapshot.wallet_address}")
                 continue
             seen_snapshots[snapshot_key] = snapshot
             grouped_snapshots.setdefault(token_key, {}).setdefault(
@@ -595,9 +590,7 @@ class ConfluenceAnalyzer:
             if score_state is not QualityState.FRESH:
                 reasons.append(f"SMART_MONEY_SCORE_{score_state.value}")
             if any(state is not QualityState.FRESH for state in snapshot_states):
-                reasons.append(
-                    f"SMART_MONEY_TRACKING_{_combined_quality(snapshot_states).value}"
-                )
+                reasons.append(f"SMART_MONEY_TRACKING_{_combined_quality(snapshot_states).value}")
             if candidate_score.recommended_tier not in (WalletTier.TIER_A, WalletTier.TIER_B):
                 reasons.append("SMART_MONEY_WALLET_TIER_GATE")
                 continue
@@ -738,9 +731,7 @@ class ConfluenceAnalyzer:
             for record in records
         ]
         cluster_evidence_fresh = cluster_context.quality_state is QualityState.FRESH
-        independent_cluster_count = (
-            len(cluster_context.members) if cluster_evidence_fresh else 0
-        )
+        independent_cluster_count = len(cluster_context.members) if cluster_evidence_fresh else 0
         entry_wallets = {record.wallet_address for record in entries}
         exit_wallets = {record.wallet_address for record in exits}
         raw_entry_clusters = {record.cluster_id for record in entries}
@@ -768,9 +759,7 @@ class ConfluenceAnalyzer:
                 reasons.append("SMART_MONEY_CONFLUENCE_WITHHELD_NONFRESH")
 
         for cluster_id in sorted(raw_exit_clusters):
-            cluster_exits = tuple(
-                record for record in exits if record.cluster_id == cluster_id
-            )
+            cluster_exits = tuple(record for record in exits if record.cluster_id == cluster_id)
             events.append(
                 self._event_from_records(
                     token,
@@ -823,9 +812,7 @@ class ConfluenceAnalyzer:
             default=Decimal("0"),
         )
         confidence = bounded_decimal(
-            base_confidence
-            * cluster_context.confidence
-            * _QUALITY_CONFIDENCE[quality_state],
+            base_confidence * cluster_context.confidence * _QUALITY_CONFIDENCE[quality_state],
             "confidence",
             Decimal("0"),
             Decimal("1"),
@@ -945,31 +932,19 @@ class ConfluenceAnalyzer:
         if not records:
             raise ValueError("event records must not be empty")
         occurred_at = max(
-            record.trip.buy_at
-            if event_type is SmartMoneyEventType.ENTRY
-            else record.trip.sell_at
+            record.trip.buy_at if event_type is SmartMoneyEventType.ENTRY else record.trip.sell_at
             for record in records
         )
-        observed_values = [
-            record.snapshot.as_of
-            for record in records
-        ] + [
-            record.score.as_of
-            for record in records
-        ] + [
-            provenance.observed_at
-            for record in records
-            for provenance in record.provenance
-        ]
+        observed_values = (
+            [record.snapshot.as_of for record in records]
+            + [record.score.as_of for record in records]
+            + [provenance.observed_at for record in records for provenance in record.provenance]
+        )
         observed_at = max(occurred_at, *observed_values)
         ingested_at = max(observed_at, *(record.snapshot.as_of for record in records))
         addresses = tuple(sorted({record.wallet_address for record in records}))
         cluster_ids = {record.cluster_id for record in records}
-        cluster_id = (
-            next(iter(cluster_ids))
-            if len(cluster_ids) == 1
-            else "cluster:confluence"
-        )
+        cluster_id = next(iter(cluster_ids)) if len(cluster_ids) == 1 else "cluster:confluence"
         refs: list[str] = []
         sources: list[Provenance] = []
         for record in records:
@@ -995,7 +970,8 @@ class ConfluenceAnalyzer:
             score_contribution=sum(
                 (record.score.score for record in records),
                 Decimal("0"),
-            ) / Decimal(len(records)),
+            )
+            / Decimal(len(records)),
             provenance=tuple(sources),
             evidence_refs=tuple(refs),
             reason_codes=tuple(reasons),

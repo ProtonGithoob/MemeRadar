@@ -74,9 +74,7 @@ def test_new_listing_fixture_maps_discovery_candidate() -> None:
         clock=lambda: NOW + timedelta(seconds=1),
     )
     try:
-        result = asyncio.run(
-            adapter.discover(DiscoveryRequest(context=context(), limit=10))
-        )
+        result = asyncio.run(adapter.discover(DiscoveryRequest(context=context(), limit=10)))
     finally:
         asyncio.run(client.aclose())
 
@@ -113,15 +111,11 @@ def test_market_fixture_set_maps_four_normalized_observations() -> None:
         client=client,
         clock=lambda: NOW + timedelta(seconds=1),
     )
-    token_result = asyncio.run(
-        adapter.discover(DiscoveryRequest(context=context(), limit=10))
-    )
+    token_result = asyncio.run(adapter.discover(DiscoveryRequest(context=context(), limit=10)))
     token = token_result[0].token
     try:
         result = asyncio.run(
-            adapter.snapshot(
-                MarketDataRequest(context=context(), token_ids=(token.id,))
-            )
+            adapter.snapshot(MarketDataRequest(context=context(), token_ids=(token.id,)))
         )
     finally:
         asyncio.run(client.aclose())

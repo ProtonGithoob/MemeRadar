@@ -19,12 +19,7 @@ def test_exit_engine_is_explicitly_paper_advisory_and_protected() -> None:
 
 def test_exit_engine_has_no_provider_persistence_or_signing_authority() -> None:
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "exit_engine.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "exit_engine.py"
     ).read_text()
 
     forbidden = (
@@ -46,12 +41,7 @@ def test_exit_engine_has_no_provider_persistence_or_signing_authority() -> None:
 
 def test_exit_engine_does_not_mutate_position_or_alpha_score() -> None:
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "exit_engine.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "exit_engine.py"
     ).read_text()
 
     assert "AlphaScore" not in source

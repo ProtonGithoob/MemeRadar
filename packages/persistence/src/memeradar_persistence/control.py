@@ -240,32 +240,32 @@ class SqlAlchemyControlPlane(ControlPlanePort):
         action = ControlAction.PAUSE_ANALYSIS if active else ControlAction.RESUME_ANALYSIS
         authorize(principal, action)
         async with self._session_factory() as session, session.begin():
-                row = await self._state_for_update(session)
-                current = _state_from_row(row, now=ensure_utc(self._clock(), "clock timestamp"))
-                if current.analysis_paused is active:
-                    return current
-                updated = ControlState(
-                    analysis_paused=active,
-                    execution_kill_switch=current.execution_kill_switch,
-                    version=current.version + 1,
-                    updated_at=ensure_utc(self._clock(), "clock timestamp"),
-                    updated_by=principal.subject,
-                    correlation_id=normalized_correlation,
-                )
-                state_row = self._write_state(row, updated)
-                if row is None:
-                    session.add(state_row)
-                await self._append_audit(
-                    session,
-                    principal=principal,
-                    action=action,
-                    target="analysis",
-                    before=_state_payload(current),
-                    after=_state_payload(updated),
-                    occurred_at=updated.updated_at,
-                    correlation_id=normalized_correlation,
-                )
-                return updated
+            row = await self._state_for_update(session)
+            current = _state_from_row(row, now=ensure_utc(self._clock(), "clock timestamp"))
+            if current.analysis_paused is active:
+                return current
+            updated = ControlState(
+                analysis_paused=active,
+                execution_kill_switch=current.execution_kill_switch,
+                version=current.version + 1,
+                updated_at=ensure_utc(self._clock(), "clock timestamp"),
+                updated_by=principal.subject,
+                correlation_id=normalized_correlation,
+            )
+            state_row = self._write_state(row, updated)
+            if row is None:
+                session.add(state_row)
+            await self._append_audit(
+                session,
+                principal=principal,
+                action=action,
+                target="analysis",
+                before=_state_payload(current),
+                after=_state_payload(updated),
+                occurred_at=updated.updated_at,
+                correlation_id=normalized_correlation,
+            )
+            return updated
 
     async def set_execution_kill_switch(
         self,
@@ -290,32 +290,32 @@ class SqlAlchemyControlPlane(ControlPlanePort):
                 "execution kill switch cannot be cleared in protected operating modes"
             )
         async with self._session_factory() as session, session.begin():
-                row = await self._state_for_update(session)
-                current = _state_from_row(row, now=ensure_utc(self._clock(), "clock timestamp"))
-                if current.execution_kill_switch is active:
-                    return current
-                updated = ControlState(
-                    analysis_paused=current.analysis_paused,
-                    execution_kill_switch=active,
-                    version=current.version + 1,
-                    updated_at=ensure_utc(self._clock(), "clock timestamp"),
-                    updated_by=principal.subject,
-                    correlation_id=normalized_correlation,
-                )
-                state_row = self._write_state(row, updated)
-                if row is None:
-                    session.add(state_row)
-                await self._append_audit(
-                    session,
-                    principal=principal,
-                    action=action,
-                    target="execution",
-                    before=_state_payload(current),
-                    after=_state_payload(updated),
-                    occurred_at=updated.updated_at,
-                    correlation_id=normalized_correlation,
-                )
-                return updated
+            row = await self._state_for_update(session)
+            current = _state_from_row(row, now=ensure_utc(self._clock(), "clock timestamp"))
+            if current.execution_kill_switch is active:
+                return current
+            updated = ControlState(
+                analysis_paused=current.analysis_paused,
+                execution_kill_switch=active,
+                version=current.version + 1,
+                updated_at=ensure_utc(self._clock(), "clock timestamp"),
+                updated_by=principal.subject,
+                correlation_id=normalized_correlation,
+            )
+            state_row = self._write_state(row, updated)
+            if row is None:
+                session.add(state_row)
+            await self._append_audit(
+                session,
+                principal=principal,
+                action=action,
+                target="execution",
+                before=_state_payload(current),
+                after=_state_payload(updated),
+                occurred_at=updated.updated_at,
+                correlation_id=normalized_correlation,
+            )
+            return updated
 
     async def mutate_config(
         self,
@@ -329,61 +329,61 @@ class SqlAlchemyControlPlane(ControlPlanePort):
         normalized_correlation = require_text(correlation_id, "correlation_id", max_length=128)
         authorize(principal, ControlAction.MUTATE_CONFIG)
         async with self._session_factory() as session, session.begin():
-                row = await self._latest_config(session)
-                current = (
-                    _config_view(row)
-                    if row is not None
-                    else make_config_version(
-                        self._initial_config,
-                        version="control-config-v0",
-                        actor="system",
-                        created_at=ensure_utc(self._clock(), "clock timestamp"),
-                    )
+            row = await self._latest_config(session)
+            current = (
+                _config_view(row)
+                if row is not None
+                else make_config_version(
+                    self._initial_config,
+                    version="control-config-v0",
+                    actor="system",
+                    created_at=ensure_utc(self._clock(), "clock timestamp"),
                 )
-                updated_values = apply_config_patch(current.config, changes)
-                if updated_values == current.config:
-                    return current
-                now = ensure_utc(self._clock(), "clock timestamp")
-                updated = make_config_version(
-                    updated_values,
-                    version=next_config_version(current.version),
-                    actor=principal.subject,
-                    created_at=now,
-                    identifier=uuid4(),
-                    decision_affecting=config_is_decision_affecting(changes),
+            )
+            updated_values = apply_config_patch(current.config, changes)
+            if updated_values == current.config:
+                return current
+            now = ensure_utc(self._clock(), "clock timestamp")
+            updated = make_config_version(
+                updated_values,
+                version=next_config_version(current.version),
+                actor=principal.subject,
+                created_at=now,
+                identifier=uuid4(),
+                decision_affecting=config_is_decision_affecting(changes),
+            )
+            session.add(
+                ConfigVersionRow(
+                    id=updated.id,
+                    version=updated.version,
+                    created_at=updated.created_at,
+                    actor=updated.actor,
+                    config_hash=updated.config_hash,
+                    decision_affecting=updated.decision_affecting,
+                    config=_plain_json(updated.config),
                 )
-                session.add(
-                    ConfigVersionRow(
-                        id=updated.id,
-                        version=updated.version,
-                        created_at=updated.created_at,
-                        actor=updated.actor,
-                        config_hash=updated.config_hash,
-                        decision_affecting=updated.decision_affecting,
-                        config=_plain_json(updated.config),
-                    )
-                )
-                await self._append_audit(
-                    session,
-                    principal=principal,
-                    action=ControlAction.MUTATE_CONFIG,
-                    target="runtime-config",
-                    before={
-                        "version": current.version,
-                        "config_hash": current.config_hash,
-                        "decision_affecting": current.decision_affecting,
-                        "config": current.config,
-                    },
-                    after={
-                        "version": updated.version,
-                        "config_hash": updated.config_hash,
-                        "decision_affecting": updated.decision_affecting,
-                        "config": updated.config,
-                    },
-                    occurred_at=now,
-                    correlation_id=normalized_correlation,
-                )
-                return updated
+            )
+            await self._append_audit(
+                session,
+                principal=principal,
+                action=ControlAction.MUTATE_CONFIG,
+                target="runtime-config",
+                before={
+                    "version": current.version,
+                    "config_hash": current.config_hash,
+                    "decision_affecting": current.decision_affecting,
+                    "config": current.config,
+                },
+                after={
+                    "version": updated.version,
+                    "config_hash": updated.config_hash,
+                    "decision_affecting": updated.decision_affecting,
+                    "config": updated.config,
+                },
+                occurred_at=now,
+                correlation_id=normalized_correlation,
+            )
+            return updated
 
 
 __all__ = ["CONTROL_STATE_KEY", "SqlAlchemyControlPlane"]

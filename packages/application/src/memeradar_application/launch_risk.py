@@ -153,15 +153,17 @@ class LaunchRiskSnapshot:
         object.__setattr__(
             self,
             "penalties",
-            MappingProxyType({
-                require_text(key, "penalty key"): bounded_decimal(
-                    value,
-                    "penalty",
-                    Decimal("0"),
-                    Decimal("100"),
-                )
-                for key, value in self.penalties.items()
-            }),
+            MappingProxyType(
+                {
+                    require_text(key, "penalty key"): bounded_decimal(
+                        value,
+                        "penalty",
+                        Decimal("0"),
+                        Decimal("100"),
+                    )
+                    for key, value in self.penalties.items()
+                }
+            ),
         )
         object.__setattr__(self, "reason_codes", normalize_reason_codes(self.reason_codes))
         object.__setattr__(
@@ -282,9 +284,10 @@ class LaunchRiskAnalyzer:
                     funders.append(str(funder) if funder is not _MISSING else "")
                     if payload.get("creator_related") is True or payload.get("is_creator") is True:
                         creator_count += 1
-                    if payload.get("fresh_wallet") is True or payload.get(
-                        "wallet_age_seconds"
-                    ) in {0, "0"}:
+                    if payload.get("fresh_wallet") is True or payload.get("wallet_age_seconds") in {
+                        0,
+                        "0",
+                    }:
                         fresh_count += 1
                     slot = _field(payload, "slot", "first_block_slot")
                     if slot is not _MISSING:

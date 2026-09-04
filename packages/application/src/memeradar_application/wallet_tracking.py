@@ -180,11 +180,7 @@ class TrackedWalletRegistry:
         max_wallets: int = 1000,
         wallets: Sequence[TrackedWallet] = (),
     ) -> None:
-        if (
-            not isinstance(max_wallets, int)
-            or isinstance(max_wallets, bool)
-            or max_wallets < 1
-        ):
+        if not isinstance(max_wallets, int) or isinstance(max_wallets, bool) or max_wallets < 1:
             raise ValueError("max_wallets must be a positive integer")
         if max_wallets > 10_000:
             raise ValueError("max_wallets exceeds the configured bound")
@@ -900,16 +896,10 @@ class WalletTrackingAnalyzer:
                 lot = lots[0]
                 matched_quantity = min(remaining, lot.quantity)
                 matched_any = True
-                cost_basis = (
-                    None if lot.unit_cost is None else lot.unit_cost * matched_quantity
-                )
-                proceeds = (
-                    None if sell_unit_price is None else sell_unit_price * matched_quantity
-                )
+                cost_basis = None if lot.unit_cost is None else lot.unit_cost * matched_quantity
+                proceeds = None if sell_unit_price is None else sell_unit_price * matched_quantity
                 realized_pnl = (
-                    None
-                    if cost_basis is None or proceeds is None
-                    else proceeds - cost_basis
+                    None if cost_basis is None or proceeds is None else proceeds - cost_basis
                 )
                 token_age = self._token_age(token_created_at, lot.buy.occurred_at)
                 trip_reasons: list[str | ReasonCode] = ["FIFO_MATCHED"]

@@ -23,9 +23,9 @@ def test_latency_percentiles_are_deterministic_and_carry_evidence_class() -> Non
             evidence_class=EarlyEvidenceClass.SYNTHETIC,
         )
 
-    summary = metrics.snapshot().latencies[
-        EarlyLatencyMetric.FIRST_SEEN_TO_DECISION.value
-    ][EarlyEvidenceClass.SYNTHETIC.value]
+    summary = metrics.snapshot().latencies[EarlyLatencyMetric.FIRST_SEEN_TO_DECISION.value][
+        EarlyEvidenceClass.SYNTHETIC.value
+    ]
     assert summary["count"] == 4
     assert summary["p50_ms"] == 20.0
     assert summary["p95_ms"] == 40.0

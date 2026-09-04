@@ -332,8 +332,7 @@ class SmartWalletScorer:
         *,
         now: datetime,
         config_hash: str,
-        manipulation_penalties: Mapping[str, Decimal]
-        | Sequence[tuple[str, Decimal]] = (),
+        manipulation_penalties: Mapping[str, Decimal] | Sequence[tuple[str, Decimal]] = (),
     ) -> tuple[SmartWalletScore, ...]:
         checked_at = ensure_utc(now, "now")
         normalized_config_hash = require_text(config_hash, "config_hash")
@@ -478,9 +477,7 @@ class SmartWalletScorer:
             else Decimal(sum(value > 0 for value in known_returns)) / Decimal(sample_count)
         )
         realized_pnl = (
-            None
-            if not group.outcomes or not all_financial_known
-            else sum(known_pnl, Decimal("0"))
+            None if not group.outcomes or not all_financial_known else sum(known_pnl, Decimal("0"))
         )
         median_return = (
             None
@@ -500,14 +497,11 @@ class SmartWalletScorer:
         sample_confidence = (
             Decimal("0")
             if sample_count == 0
-            else Decimal(sample_count)
-            / Decimal(sample_count + self.policy.prior_sample_count)
+            else Decimal(sample_count) / Decimal(sample_count + self.policy.prior_sample_count)
         )
         evidence_confidence = min(group.snapshot_confidences, default=Decimal("0"))
         confidence = bounded_decimal(
-            sample_confidence
-            * evidence_confidence
-            * _QUALITY_CONFIDENCE[quality_state],
+            sample_confidence * evidence_confidence * _QUALITY_CONFIDENCE[quality_state],
             "confidence",
             Decimal("0"),
             Decimal("1"),

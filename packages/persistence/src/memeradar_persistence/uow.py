@@ -131,7 +131,6 @@ class SqlAlchemyOutboxStore:
             )
             await unit_of_work.commit()
 
-
     async def mark_retry(
         self,
         message_id: UUID,

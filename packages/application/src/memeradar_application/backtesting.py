@@ -729,9 +729,7 @@ class BacktestScoreBucket:
             "precision": None if self.precision is None else str(self.precision),
             "hit_rate": None if self.hit_rate is None else str(self.hit_rate),
             "mean_score": None if self.mean_score is None else str(self.mean_score),
-            "mean_net_return": None
-            if self.mean_net_return is None
-            else str(self.mean_net_return),
+            "mean_net_return": None if self.mean_net_return is None else str(self.mean_net_return),
             "expectancy": None if self.expectancy is None else str(self.expectancy),
         }
 
@@ -834,17 +832,13 @@ class BacktestMetrics:
             "precision": None if self.precision is None else str(self.precision),
             "hit_rate": None if self.hit_rate is None else str(self.hit_rate),
             "total_net_pnl": str(self.total_net_pnl),
-            "average_net_pnl": None
-            if self.average_net_pnl is None
-            else str(self.average_net_pnl),
+            "average_net_pnl": None if self.average_net_pnl is None else str(self.average_net_pnl),
             "total_net_return": str(self.total_net_return),
             "average_net_return": None
             if self.average_net_return is None
             else str(self.average_net_return),
             "expectancy": None if self.expectancy is None else str(self.expectancy),
-            "expectancy_pnl": None
-            if self.expectancy_pnl is None
-            else str(self.expectancy_pnl),
+            "expectancy_pnl": None if self.expectancy_pnl is None else str(self.expectancy_pnl),
             "gross_profit": str(self.gross_profit),
             "gross_loss": str(self.gross_loss),
             "profit_factor": None if self.profit_factor is None else str(self.profit_factor),
@@ -898,12 +892,15 @@ class BacktestReport:
         skips = tuple(self.skips)
         if any(not isinstance(value, BacktestSkippedSignal) for value in skips):
             raise TypeError("skips must contain BacktestSkippedSignal values")
-        if tuple(
-            sorted(
-                skips,
-                key=lambda value: (value.signal_at, value.stage, str(value.checkpoint_id)),
+        if (
+            tuple(
+                sorted(
+                    skips,
+                    key=lambda value: (value.signal_at, value.stage, str(value.checkpoint_id)),
+                )
             )
-        ) != skips:
+            != skips
+        ):
             raise ValueError("skips must be ordered deterministically")
         segments = tuple(self.segments)
         if any(not isinstance(value, BacktestSegment) for value in segments):
@@ -1098,9 +1095,7 @@ class BacktestHarness:
                         confidence=None if snapshot is None else snapshot.confidence,
                         segment_key=segment,
                         reason_codes=entry_errors,
-                        evidence_refs=()
-                        if snapshot is None
-                        else snapshot.evidence_refs,
+                        evidence_refs=() if snapshot is None else snapshot.evidence_refs,
                         early_outcome=_early_outcome_json(item),
                     )
                 )
@@ -1334,9 +1329,7 @@ class BacktestHarness:
             token_age_band="unknown" if cohort is None else cohort.token_age_band,
             market_regime=regime,
             social_velocity_band="unknown" if cohort is None else cohort.social_velocity_band,
-            smart_wallet_confluence="unknown"
-            if cohort is None
-            else cohort.smart_wallet_confluence,
+            smart_wallet_confluence="unknown" if cohort is None else cohort.smart_wallet_confluence,
         )
 
     def _exit_plan(
@@ -1525,9 +1518,7 @@ class BacktestHarness:
         gross_pnl = exit_fill.gross_cash_amount - entry_fill.gross_cash_amount
         net_pnl = entry_fill.cash_delta + exit_fill.cash_delta
         strategy_refs = (
-            ()
-            if item.strategy_snapshot is None
-            else item.strategy_snapshot.evidence_refs
+            () if item.strategy_snapshot is None else item.strategy_snapshot.evidence_refs
         )
         evidence_refs = normalize_texts(
             (*strategy_refs, *item.outcome.evidence_refs, *horizon.evidence_refs),
@@ -1633,9 +1624,7 @@ def _build_score_buckets(
                 skipped_signal_count=len(bucket_skips),
                 win_count=wins,
                 precision=(
-                    None
-                    if not bucket_trades
-                    else Decimal(wins) / Decimal(len(bucket_trades))
+                    None if not bucket_trades else Decimal(wins) / Decimal(len(bucket_trades))
                 ),
                 hit_rate=None if not signals else Decimal(wins) / Decimal(signals),
                 mean_score=_mean(

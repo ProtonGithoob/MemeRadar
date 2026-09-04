@@ -491,8 +491,10 @@ class SocialMention:
         if self.referenced_ticker is not None:
             ticker = require_text(self.referenced_ticker, "referenced_ticker", max_length=32)
             ticker = ticker.removeprefix("$").upper()
-            if not ticker or not ticker[0].isalpha() or not all(
-                character.isalnum() or character == "_" for character in ticker
+            if (
+                not ticker
+                or not ticker[0].isalpha()
+                or not all(character.isalnum() or character == "_" for character in ticker)
             ):
                 raise ValueError("referenced_ticker must be alphanumeric")
             object.__setattr__(self, "referenced_ticker", ticker)
@@ -573,11 +575,9 @@ class NarrativeSnapshot:
                 field_name,
                 normalized_value,
             )
-        if (
-            normalized_probabilities["organic_probability"]
-            + normalized_probabilities["promotional_probability"]
-            > Decimal("1.000001")
-        ):
+        if normalized_probabilities["organic_probability"] + normalized_probabilities[
+            "promotional_probability"
+        ] > Decimal("1.000001"):
             raise ValueError(
                 "organic_probability and promotional_probability must sum to at most 1"
             )

@@ -534,9 +534,8 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                 ObservationRow.ingested_at <= as_of,
                 or_(
                     ObservationRow.occurred_at <= as_of,
-                    ObservationRow.occurred_at.is_(None)
-                    & (ObservationRow.observed_at <= as_of),
-                )
+                    ObservationRow.occurred_at.is_(None) & (ObservationRow.observed_at <= as_of),
+                ),
             )
         statement = statement.limit(1)
         row = await session.scalar(statement)
@@ -620,10 +619,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         async with self._session_factory() as session:
             rows = (await session.scalars(statement)).all()
             values = tuple(
-                [
-                    await self._position_view_for_row(session, row, as_of=query.as_of)
-                    for row in rows
-                ]
+                [await self._position_view_for_row(session, row, as_of=query.as_of) for row in rows]
             )
         return await InMemoryReadQueryService(positions=values).list_positions(query)
 
@@ -633,9 +629,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         async with self._session_factory() as session:
             row = await session.get(PositionRow, position_id)
             return (
-                None
-                if row is None
-                else await self._position_view_for_row(session, row, as_of=None)
+                None if row is None else await self._position_view_for_row(session, row, as_of=None)
             )
 
     async def list_timeline(self, token_id: UUID, query: TimelineQuery) -> Page[TimelineEntryView]:

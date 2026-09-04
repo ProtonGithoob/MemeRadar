@@ -251,31 +251,20 @@ class ReliabilitySnapshot:
         return {
             "schema_version": "reliability-metrics-v1",
             "measurement_method": self.measurement_method,
-            "counters": {
-                name: self.counters[name] for name in sorted(self.counters)
-            },
+            "counters": {name: self.counters[name] for name in sorted(self.counters)},
             "provider_counters": {
-                provider: {
-                    name: values[name] for name in sorted(values)
-                }
+                provider: {name: values[name] for name in sorted(values)}
                 for provider, values in sorted(self.provider_counters.items())
             },
             "latencies": {
-                metric: {
-                    source: dict(values)
-                    for source, values in sorted(source_values.items())
-                }
+                metric: {source: dict(values) for source, values in sorted(source_values.items())}
                 for metric, source_values in sorted(self.latencies.items())
             },
             "source_totals": {
-                source: dict(values)
-                for source, values in sorted(self.source_totals.items())
+                source: dict(values) for source, values in sorted(self.source_totals.items())
             },
             "latency_source_totals": {
-                metric: {
-                    source: dict(values)
-                    for source, values in sorted(source_values.items())
-                }
+                metric: {source: dict(values) for source, values in sorted(source_values.items())}
                 for metric, source_values in sorted(self.latency_source_totals.items())
             },
             "gauges": {name: self.gauges[name] for name in sorted(self.gauges)},
@@ -402,24 +391,18 @@ class ReliabilityMetrics:
             }
             gauges = dict(sorted(self._gauges.items()))
             source_totals = {
-                source: dict(values)
-                for source, values in sorted(self._source_totals.items())
+                source: dict(values) for source, values in sorted(self._source_totals.items())
             }
             latency_source_totals = {
-                metric: {
-                    source: dict(values)
-                    for source, values in sorted(source_values.items())
-                }
+                metric: {source: dict(values) for source, values in sorted(source_values.items())}
                 for metric, source_values in sorted(self._latency_source_totals.items())
             }
             histograms = {
-                metric: dict(source_values)
-                for metric, source_values in self._histograms.items()
+                metric: dict(source_values) for metric, source_values in self._histograms.items()
             }
         latency_snapshots = {
             metric: {
-                source: histogram.summary()
-                for source, histogram in sorted(source_values.items())
+                source: histogram.summary() for source, histogram in sorted(source_values.items())
             }
             for metric, source_values in sorted(histograms.items())
         }

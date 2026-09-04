@@ -3,14 +3,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-CALIBRATION = (
-    ROOT
-    / "packages"
-    / "application"
-    / "src"
-    / "memeradar_application"
-    / "calibration.py"
-)
+CALIBRATION = ROOT / "packages" / "application" / "src" / "memeradar_application" / "calibration.py"
 SCRIPT = ROOT / "scripts" / "calibrate_score.py"
 MAKEFILE = ROOT / "Makefile"
 

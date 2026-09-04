@@ -23,23 +23,13 @@ def test_exit_timeline_uses_the_existing_append_only_domain_event_log() -> None:
         "reason_codes",
     } <= {column.name for column in DomainEventRow.__table__.columns}
     assert (
-        ROOT
-        / "packages"
-        / "persistence"
-        / "src"
-        / "memeradar_persistence"
-        / "exit.py"
+        ROOT / "packages" / "persistence" / "src" / "memeradar_persistence" / "exit.py"
     ).exists()
 
 
 def test_exit_persistence_adapter_keeps_provider_and_signing_boundaries() -> None:
     source = (
-        ROOT
-        / "packages"
-        / "persistence"
-        / "src"
-        / "memeradar_persistence"
-        / "exit.py"
+        ROOT / "packages" / "persistence" / "src" / "memeradar_persistence" / "exit.py"
     ).read_text()
     forbidden = (
         "PrivateKey",

@@ -149,9 +149,7 @@ class ExitTakeProfitLevel:
         object.__setattr__(self, "exit_fraction", fraction)
 
 
-_DEFAULT_TAKE_PROFIT_LEVELS = (
-    ExitTakeProfitLevel("tp-1", Decimal("1000"), Decimal("1")),
-)
+_DEFAULT_TAKE_PROFIT_LEVELS = (ExitTakeProfitLevel("tp-1", Decimal("1000"), Decimal("1")),)
 
 
 @dataclass(frozen=True, slots=True)
@@ -582,9 +580,11 @@ class PaperExitIntent:
         if not isinstance(self.signal_id, UUID) or not isinstance(self.decision_ref, UUID):
             raise TypeError("signal_id and decision_ref must be UUID values")
         object.__setattr__(self, "action", ExitAction(self.action))
-        object.__setattr__(self, "quantity_fraction", bounded_decimal(
-            self.quantity_fraction, "quantity_fraction", _ZERO, _ONE
-        ))
+        object.__setattr__(
+            self,
+            "quantity_fraction",
+            bounded_decimal(self.quantity_fraction, "quantity_fraction", _ZERO, _ONE),
+        )
         if self.action is ExitAction.REDUCE and self.quantity_fraction <= _ZERO:
             raise ValueError("reduce intent must have a positive quantity_fraction")
         if self.action is ExitAction.CLOSE and self.quantity_fraction != _ONE:
@@ -806,11 +806,7 @@ class InMemoryExitEvaluationStore:
             raise TypeError("position_id must be a UUID")
         return tuple(
             sorted(
-                (
-                    value
-                    for value in self._evaluations.values()
-                    if value.position_id == position_id
-                ),
+                (value for value in self._evaluations.values() if value.position_id == position_id),
                 key=lambda value: (value.occurred_at, value.evaluated_at, str(value.id)),
             )
         )
@@ -1050,11 +1046,13 @@ class ExitEngine:
         for value in evidence.signal_hardening.values():
             if value.token.id != position.token_id:
                 raise ValueError("signal hardening token_id does not match position")
-        consumed = frozenset(_normalized_refs(
-            consumed_take_profit_levels,
-            "consumed_take_profit_levels",
-            required=False,
-        ))
+        consumed = frozenset(
+            _normalized_refs(
+                consumed_take_profit_levels,
+                "consumed_take_profit_levels",
+                required=False,
+            )
+        )
         before_refs = _normalized_refs(
             (*before_evidence_refs, *evidence.prior_evidence_refs),
             "before_evidence_refs",
@@ -1187,8 +1185,7 @@ class ExitEngine:
             add("TIME_STOP", ExitAction.CLOSE, _ONE, Decimal("90"), "TIME_STOP")
         if (
             evidence.smart_money_distribution_pressure is not None
-            and evidence.smart_money_distribution_pressure
-            >= policy.distribution_pressure_threshold
+            and evidence.smart_money_distribution_pressure >= policy.distribution_pressure_threshold
             and (
                 evidence.independent_distribution_clusters is None
                 or evidence.independent_distribution_clusters
@@ -1316,9 +1313,8 @@ class ExitEngine:
                 Decimal("78"),
                 "TRAILING_STOP",
             )
-        if (
-            peak_profit_bps >= policy.break_even_activation_bps
-            and current_price <= entry * (_ONE + policy.break_even_buffer_bps / _BPS_MAX)
+        if peak_profit_bps >= policy.break_even_activation_bps and current_price <= entry * (
+            _ONE + policy.break_even_buffer_bps / _BPS_MAX
         ):
             add(
                 "BREAK_EVEN",
@@ -1372,10 +1368,7 @@ class ExitEngine:
             exit_fraction = max(trigger.fraction for trigger in triggers)
         else:
             exit_fraction = _ZERO
-        components = {
-            trigger.rule: trigger.score
-            for trigger in triggers
-        }
+        components = {trigger.rule: trigger.score for trigger in triggers}
         if not components:
             components = {"exit_evidence": _ZERO}
         score_value = max((trigger.score for trigger in triggers), default=_ZERO)

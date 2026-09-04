@@ -41,11 +41,7 @@ def round_trip(
     rug_exposure: bool | None = False,
     wallet: str = WALLET_A,
 ) -> WalletRoundTrip:
-    realized_pnl = (
-        None
-        if cost is None or proceeds is None
-        else Decimal(proceeds) - Decimal(cost)
-    )
+    realized_pnl = None if cost is None or proceeds is None else Decimal(proceeds) - Decimal(cost)
     return WalletRoundTrip(
         token=token_value,
         wallet_address=wallet,

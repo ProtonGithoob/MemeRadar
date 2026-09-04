@@ -227,9 +227,7 @@ def test_replay_uses_the_same_hardening_analyzer_and_persists_its_identity() -> 
     correlation_feature = first.checkpoints[0].correlation.window("1m")
     assert correlation_feature.signal_hardening["deployer"].transfer_delta == Decimal("-100")
     feature = next(
-        value
-        for value in first.checkpoints[0].feature_snapshots
-        if value.values["window"] == "1m"
+        value for value in first.checkpoints[0].feature_snapshots if value.values["window"] == "1m"
     )
     hardening = feature.values["signal_hardening"]
     assert isinstance(hardening, Mapping)

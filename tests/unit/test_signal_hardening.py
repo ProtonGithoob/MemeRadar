@@ -156,9 +156,7 @@ def test_sustained_price_move_without_liquidity_evidence_is_not_confirmed() -> N
 
     assert result.kind is MomentumRegimeKind.NONE
     assert result.confidence == Decimal("0")
-    assert "MOMENTUM_LIQUIDITY_EVIDENCE_MISSING" in {
-        reason.code for reason in result.reason_codes
-    }
+    assert "MOMENTUM_LIQUIDITY_EVIDENCE_MISSING" in {reason.code for reason in result.reason_codes}
 
 
 def test_one_tick_or_reversal_cannot_become_sustained_momentum() -> None:

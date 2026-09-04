@@ -294,9 +294,7 @@ def test_paper_replay_is_deterministic_and_excludes_future_requests() -> None:
         )
 
         assert replay == repeated
-        assert [result.order.idempotency_key for result in replay.executions] == [
-            "replay-first"
-        ]
+        assert [result.order.idempotency_key for result in replay.executions] == ["replay-first"]
         assert replay.excluded_idempotency_keys == ("replay-future",)
         assert replay.executions[0].order.policy_version == policy.version
         assert replay.executions[0].order.config_hash == policy.config_hash

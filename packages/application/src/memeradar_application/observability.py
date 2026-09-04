@@ -500,7 +500,7 @@ class OperationsOverview:
 
     @property
     def digest(self) -> str:
-        return f"sha256:{sha256(self.to_json().encode("utf-8")).hexdigest()}"
+        return f"sha256:{sha256(self.to_json().encode('utf-8')).hexdigest()}"
 
 
 def _alert(
@@ -644,9 +644,7 @@ class OperationsProjector:
     ) -> tuple[ProviderOperationalStatus, list[OperationalAlert]]:
         state = OperationalState(item.state)
         freshness_state = (
-            None
-            if item.freshness_state is None
-            else QualityState(item.freshness_state)
+            None if item.freshness_state is None else QualityState(item.freshness_state)
         )
         reasons = list(item.reason_codes)
         alerts: list[OperationalAlert] = []

@@ -185,6 +185,6 @@ def test_consumer_reports_provider_reconnect_malformed_and_duplicate_counters() 
         "duplicate_events": 1,
         "stream_reconnects": 1,
     }
-    assert metrics.snapshot().latencies["chain_event_to_ingest_ms"]["provider_network"][
-        "count"
-    ] == 2
+    assert (
+        metrics.snapshot().latencies["chain_event_to_ingest_ms"]["provider_network"]["count"] == 2
+    )

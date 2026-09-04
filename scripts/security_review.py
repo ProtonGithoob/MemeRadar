@@ -93,9 +93,7 @@ class SecurityReviewReport:
             return CheckStatus.FAIL
         if any(status is CheckStatus.FAIL for status in self.external_scans.values()):
             return CheckStatus.FAIL
-        if any(
-            status is CheckStatus.BLOCKED_EXTERNAL for status in self.external_scans.values()
-        ):
+        if any(status is CheckStatus.BLOCKED_EXTERNAL for status in self.external_scans.values()):
             return CheckStatus.BLOCKED_EXTERNAL
         return CheckStatus.PASS
 
@@ -338,8 +336,7 @@ def check_container_contracts(root: Path) -> SecurityCheck:
         if not bases:
             return _fail("container_runtime_contracts", f"{relative} has no base image")
         if any(
-            base.lower().endswith(":latest")
-            or (":" not in base and "@sha256:" not in base)
+            base.lower().endswith(":latest") or (":" not in base and "@sha256:" not in base)
             for base in bases
         ):
             return _fail(

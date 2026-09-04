@@ -15,7 +15,7 @@ def test_strategy_promotion_rejection_without_out_of_sample_improvement():
         config_hash="sha256:cand",
         train_expectancy=Decimal("2.5"),
         val_expectancy=Decimal("1.8"),
-        test_expectancy=Decimal("0.8"), # lower than baseline!
+        test_expectancy=Decimal("0.8"),  # lower than baseline!
         baseline_test_expectancy=Decimal("1.0"),
         sample_count_test=40,
         rug_rate_test=Decimal("0.15"),

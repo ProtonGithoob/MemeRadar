@@ -38,5 +38,5 @@ def test_contract_e6_5_asymmetric_alpha_projection():
 
     assert proj.early_quality_score == Decimal("80")
     assert proj.upside_evidence_score > Decimal("70")
-    assert proj.rug_dump_risk == Decimal("10") # 100 - 90
+    assert proj.rug_dump_risk == Decimal("10")  # 100 - 90
     assert ReasonCode("ASYMMETRIC_ALPHA_PROJECTED") in proj.reason_codes

@@ -142,16 +142,21 @@ def test_harness_selects_on_train_only_and_keeps_candidates_shadow_only() -> Non
         report.to_json_dict()["manifest"]["signal_hardening_version"]
         == replay.manifest.signal_hardening_version
     )
-    assert report.artifact_digest == ScoreCalibrationHarness().run(
-        replay,
-        candidates=(strict, baseline),
-        split=split,
-        backtest_policy=BacktestPolicy(
-            max_liquidity_fraction=None,
-            stop_loss_fraction=None,
-        ),
-        evidence_refs=("research:phase10.3:fixture",),
-    ).artifact_digest
+    assert (
+        report.artifact_digest
+        == ScoreCalibrationHarness()
+        .run(
+            replay,
+            candidates=(strict, baseline),
+            split=split,
+            backtest_policy=BacktestPolicy(
+                max_liquidity_fraction=None,
+                stop_loss_fraction=None,
+            ),
+            evidence_refs=("research:phase10.3:fixture",),
+        )
+        .artifact_digest
+    )
 
     strict_evaluation = next(
         value for value in report.evaluations if value.candidate.candidate_id == "strict-shadow"
@@ -225,8 +230,7 @@ def test_attribution_calibration_measures_incremental_and_false_confluence() -> 
     wallet_validation = next(
         value
         for value in report.metrics
-        if value.component == "SmartMoney"
-        and value.split is CalibrationPartition.VALIDATION
+        if value.component == "SmartMoney" and value.split is CalibrationPartition.VALIDATION
     )
     assert author_train.labeled_count == 1
     assert author_train.augmented_mean_return == Decimal("0.2")

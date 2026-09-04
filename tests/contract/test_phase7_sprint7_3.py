@@ -37,11 +37,7 @@ def test_control_surface_is_explicit_and_read_routes_remain_get_only() -> None:
         "/v1/control/analysis-kill-switch",
         "/v1/control/execution-kill-switch",
     }
-    control_routes = {
-        route.path
-        for route in app.routes
-        if route.path.startswith("/v1/control")
-    }
+    control_routes = {route.path for route in app.routes if route.path.startswith("/v1/control")}
 
     assert control_routes == expected_control
     for route in app.routes:
@@ -81,9 +77,13 @@ def test_keyless_control_replay_is_deterministic_and_restrictive() -> None:
     assert first_state == second_state
     assert first_config.config_hash == second_config.config_hash
     assert first_config.config == second_config.config
-    assert first_actions == second_actions == (
-        "control.analysis_pause",
-        "control.config.update",
+    assert (
+        first_actions
+        == second_actions
+        == (
+            "control.analysis_pause",
+            "control.config.update",
+        )
     )
     assert first_state.execution_kill_switch is True
 

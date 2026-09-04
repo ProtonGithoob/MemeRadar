@@ -23,12 +23,7 @@ def test_paper_policy_cannot_be_constructed_with_unsafe_modes() -> None:
 def test_paper_domain_and_application_modules_have_no_provider_or_signing_authority() -> None:
     paths = (
         ROOT / "packages" / "domain" / "src" / "memeradar_domain" / "paper.py",
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "paper_execution.py",
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "paper_execution.py",
     )
     forbidden = (
         "sqlalchemy",
@@ -55,12 +50,7 @@ def test_paper_policy_is_explicitly_paper_only() -> None:
 
 def test_paper_replay_contract_is_versioned_and_provider_free() -> None:
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "paper_execution.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "paper_execution.py"
     ).read_text()
     assert "PaperReplayManifest" in source
     assert "config_hash" in source

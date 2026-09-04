@@ -18,8 +18,8 @@ from memeradar_domain.common import to_decimal
 class ConvexExitPolicy:
     partial_take_profit_target: Decimal = Decimal("2.0")
     partial_take_profit_ratio: Decimal = Decimal("0.33")
-    trailing_stop_bps: Decimal = Decimal("1500") # 15%
-    max_drawdown_tolerance_bps: Decimal = Decimal("2500") # 25%
+    trailing_stop_bps: Decimal = Decimal("1500")  # 15%
+    max_drawdown_tolerance_bps: Decimal = Decimal("2500")  # 25%
     version: str = "convex-exit-v1"
     config_hash: str = "convex-exit-hash"
 
@@ -130,8 +130,8 @@ class ConvexExitEvaluator:
             total_peak_mult += peak_mult
 
             # Exit capture calculation
-            peak_profit = (peak_p - entry)
-            realized_profit = (exit_p - entry)
+            peak_profit = peak_p - entry
+            realized_profit = exit_p - entry
             if peak_profit > 0 and realized_profit > 0:
                 capture = realized_profit / peak_profit
                 total_capture_ratio += capture
@@ -150,7 +150,7 @@ class ConvexExitEvaluator:
             is_failure = trade.get("is_failure", False)
             if is_failure:
                 failure_count += 1
-                if pnl > Decimal("-0.30"): # Exited before >30% drawdown
+                if pnl > Decimal("-0.30"):  # Exited before >30% drawdown
                     successful_failure_exits += 1
 
         n_trades = Decimal(str(len(trades)))
@@ -174,9 +174,7 @@ class ConvexExitEvaluator:
             premature_rate = Decimal("0")
 
         if failure_count > 0:
-            failure_exit_rate = Decimal(str(successful_failure_exits)) / Decimal(
-                str(failure_count)
-            )
+            failure_exit_rate = Decimal(str(successful_failure_exits)) / Decimal(str(failure_count))
         else:
             failure_exit_rate = Decimal("1.0")
 

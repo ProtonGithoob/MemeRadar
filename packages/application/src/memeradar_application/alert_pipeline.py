@@ -180,9 +180,7 @@ class AlertRateLimiter:
         normalized_now = ensure_utc(now, "now")
         cutoff = normalized_now - self._policy.window
         reservations = [
-            value
-            for value in self._reservations.get(normalized_destination, [])
-            if value > cutoff
+            value for value in self._reservations.get(normalized_destination, []) if value > cutoff
         ]
         self._reservations[normalized_destination] = reservations
         if len(reservations) >= self._policy.max_messages:
@@ -210,9 +208,7 @@ def _safe_lines(value: object, *, max_items: int) -> tuple[str, ...]:
     else:
         return ()
     return tuple(
-        display
-        for item in values[:max_items]
-        if (display := _safe_display(item, max_length=256))
+        display for item in values[:max_items] if (display := _safe_display(item, max_length=256))
     )
 
 
@@ -678,11 +674,7 @@ class AlertEventProjector:
                 severity = (
                     AlertSeverity(raw_severity)
                     if raw_severity is not None
-                    else (
-                        AlertSeverity.CRITICAL
-                        if action == "CLOSE"
-                        else AlertSeverity.WARNING
-                    )
+                    else (AlertSeverity.CRITICAL if action == "CLOSE" else AlertSeverity.WARNING)
                 )
             except ValueError:
                 severity = AlertSeverity.CRITICAL if action == "CLOSE" else AlertSeverity.WARNING

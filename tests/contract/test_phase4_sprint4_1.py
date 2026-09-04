@@ -192,12 +192,7 @@ def test_wallet_tracking_contract_preserves_safe_modes_and_provider_independence
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "wallet_tracking.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "wallet_tracking.py"
     ).read_text(encoding="utf-8")
     assert "memeradar_providers" not in source
     assert "httpx" not in source

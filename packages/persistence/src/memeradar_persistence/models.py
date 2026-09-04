@@ -506,9 +506,7 @@ class CashLedgerRow(Base):
     __tablename__ = "cash_ledger"
     __table_args__ = (
         UniqueConstraint("idempotency_key", name="uq_cash_ledger_idempotency_key"),
-        UniqueConstraint(
-            "portfolio_id", "sequence", name="uq_cash_ledger_portfolio_sequence"
-        ),
+        UniqueConstraint("portfolio_id", "sequence", name="uq_cash_ledger_portfolio_sequence"),
         Index("ix_cash_ledger_portfolio_sequence", "portfolio_id", "sequence"),
     )
 

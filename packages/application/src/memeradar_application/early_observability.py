@@ -185,9 +185,7 @@ class EarlyDetectionSnapshot:
             "evidence_class": self.evidence_class,
             "counters": dict(self.counters),
             "source_distribution": dict(self.source_distribution),
-            "score_by_age": {
-                key: dict(value) for key, value in self.score_by_age.items()
-            },
+            "score_by_age": {key: dict(value) for key, value in self.score_by_age.items()},
             "hard_block_reasons": dict(self.hard_block_reasons),
             "latencies": {
                 metric: {
@@ -413,14 +411,10 @@ class EarlyDetectionMetrics:
                 sum(1 for hit in known_hits if hit) / len(known_hits) if known_hits else None
             )
             false_positive = (
-                sum(1 for hit in known_hits if not hit) / len(known_hits)
-                if known_hits
-                else None
+                sum(1 for hit in known_hits if not hit) / len(known_hits) if known_hits else None
             )
             rug_rate = (
-                sum(1 for rugged in known_rugs if rugged) / len(known_rugs)
-                if known_rugs
-                else None
+                sum(1 for rugged in known_rugs if rugged) / len(known_rugs) if known_rugs else None
             )
             milestone_metrics[key] = {
                 "sample_count": sample_count,

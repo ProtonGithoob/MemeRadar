@@ -2,9 +2,47 @@
 
 Last updated: 2026-09-04
 
-## Latest Research Extension Implementation
+## Current Status Classification Table
 
-On 2026-09-04, the following accepted research extensions were implemented, tested, and verified:
+| Metric / Dimension | Status / Classification | Evidence Class | Notes |
+|---|---|---|---|
+| Operating Mode | `ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false, AUTO_EXECUTION=false` | `ENFORCED_INVARIANT` | Auto-execution permanently locked |
+| Real-World Alpha Evidence | `NOT YET PROVEN` | `INSUFFICIENT_REAL_WORLD_SAMPLES` | Awaits live read-only shadow data collection |
+| Synthetic Replay Expectancy | `+3.575x per trade` (balanced-convex-v1) | `SYNTHETIC_FIXTURE` | Calibrated synthetic fixture replay only |
+| Wallet & Creator Outcome Graph | `NODE_LINK_VISUALIZATION_READY` | `IMPLEMENTED` | SVG interactive canvas + extended filter contract |
+| Creator Reputation Completeness | `AUDITED_20_FIELDS` | `IMPLEMENTED` | All 20 metrics & temporal bounds verified |
+| E10.4 Outcome Labels | `EXECUTABLE_LIQUIDITY_AUDITED` | `IMPLEMENTED` | State MCs & ages populated; wicks rejected |
+| Live Read-Only Readiness | `READY_FOR_LIVE_READ_ONLY_SHADOW` | `LIVE_READ_ONLY_READY` | All 8 provider paths & doctor scripts verified |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | 100% test pass rate (800+ Python tests, 44 Vitest tests) |
+
+---
+
+## Latest Product Audit & Research Extension Implementation
+
+On 2026-09-04, the final 10 product audit & execution requirements were completed, tested, and verified:
+1. **Wallet Graph Real Node-Link Visualization**:
+   - Upgraded `WalletGraphExplorer` in `apps/web/src/app/components/wallet-graph.tsx` with an interactive SVG node-link graph canvas rendering directional arrow edges, concentric circle node layout, zoom/pan controls, fit-to-view, role/outcome coloring, and shortest-path glowing highlight.
+   - Added unit test suite `apps/web/src/app/components/wallet-graph.test.tsx` verifying UI controls, canvas rendering, and path forms.
+2. **Complete Graph Filter Contract**:
+   - Extended `WalletGraphQuery`, `TokenGraphQuery`, `ClusterGraphQuery` in `read_api.py`, `read.py`, and `read-api.ts` with `date_from`, `date_to`, `venue`, `wallet_role`, `risk_outcome_class`, `evidence_quality`.
+   - Updated `CreatorOutcomeGraph.get_subgraph()` in `creator_graph.py` to filter nodes and edges across these parameters.
+3. **Creator Reputation Completeness Audit**:
+   - Extended `CreatorReputationView` and `CreatorReputationResponse` to expose all 20 fields from `CreatorReputationSnapshot` (winner rate, strong winner rate, severe failure rate, rug rate, score, confidence, median MFE/MAE, realized PnL, dump rate, bundle/sniper risk, shared funder recurrence, etc.).
+   - Connected `CreatorReputationAnalyzer` directly to `get_creator_reputation` with `as_of` temporal bounds support.
+4. **E10.4 Final Acceptance Audit**:
+   - Populated state market caps (`market_cap_at_first_seen`, `market_cap_at_watch`, `market_cap_at_early_watch`, `market_cap_at_strong_setup`, `market_cap_at_high_confluence`, `market_cap_at_entry_ready`) and state ages (`age_at_first_seen_ms`, `age_at_watch_ms`, `age_at_early_watch_ms`, `age_at_strong_setup_ms`, `age_at_high_confluence_ms`, `age_at_entry_ready_ms`) on `ExtremeWinnerOutcomeSnapshot` in `early_replay.py`.
+5. **Fix Research Report Overclaim**:
+   - Corrected exit policy phrasing in `docs/RESEARCH_GATE_REPORT.md` and `fixtures/research/product_level_research_gate.json` to `BEST_SYNTHETIC_CANDIDATE` for `balanced-convex-v1`.
+6. **Explicit Evidence Class Labels**:
+   - Added `evidence_class` (`SYNTHETIC_FIXTURE` vs `HISTORICAL_REAL` vs `LIVE_SHADOW` vs `INSUFFICIENT_SAMPLES`) across JSON research outputs (`separability_results.json`, `convex_exit_results.json`, `product_level_research_gate.json`) and markdown reports.
+7. **Live Read-Only Checklist Completion**:
+   - Updated `docs/LIVE_READONLY_CHECKLIST.md` auditing all 8 provider paths (Helius, Yellowstone, Shyft, Birdeye, DexScreener, Raydium, Jupiter, Pump.fun), marking non-existent adapters as `NOT_IMPLEMENTED / FIXTURE_ONLY`.
+8. **Port Documentation Consistency**:
+   - Verified host port alignment (`55432` PostgreSQL, `56379` Redis, `18000` API, `13000` Web) across Compose, `scripts/start.sh`, `scripts/doctor.py`, and documentation.
+9. **Real-World Validation Runbook**:
+   - Created `docs/LIVE_SHADOW_VALIDATION.md` detailing the 7-day initial read-only smoke test and 30-day out-of-sample calibration protocol.
+10. **Final Verification & Status Classification**:
+   - Verified full quality gate `make verify` passes cleanly with 800+ Python unit/contract tests, 44 Vitest web tests, clean Ruff linting, Mypy typechecking (101 source files), Docker Compose validation, secret scan, migration checks, security review, and SBOM.
 - **E11.10 Cross-Venue Wallet Position Continuity**:
   - Implemented `CrossVenuePositionContinuityState`, `CrossVenueContinuityConfig`, `CrossVenuePositionTracker`, and `CrossVenueContinuityAnalyzer` in `packages/application/src/memeradar_application/cross_venue_continuity.py`.
   - Extended `WalletActivity` in `wallet_tracking.py` to support `venue` and `canonical_trade_id`.

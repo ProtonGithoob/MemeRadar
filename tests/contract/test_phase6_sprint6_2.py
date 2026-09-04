@@ -109,9 +109,7 @@ def build_inputs(
         reason_codes=(ReasonCode("RISK_FIXTURE_RESULT"),),
         confidence=Decimal(str(raw_risk["confidence"])),
         config_hash=config_hash,
-        critical_evidence_state=QualityState(
-            str(raw_risk.get("critical_evidence_state", "FRESH"))
-        ),
+        critical_evidence_state=QualityState(str(raw_risk.get("critical_evidence_state", "FRESH"))),
     )
     return feature, risk_snapshot, config_hash
 

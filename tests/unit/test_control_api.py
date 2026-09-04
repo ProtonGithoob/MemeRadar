@@ -110,15 +110,24 @@ def test_control_role_separation_allows_only_explicit_mutations() -> None:
         "reason": "bound alert volume",
     }
 
-    assert control_client.post(
-        "/v1/control/analysis-kill-switch", json=pause_body, headers=headers(VIEWER)
-    ).status_code == 403
-    assert control_client.post(
-        "/v1/control/config", json=config_body, headers=headers(OPERATOR)
-    ).status_code == 403
-    assert control_client.post(
-        "/v1/control/config", json=config_body, headers=headers(EXECUTION)
-    ).status_code == 403
+    assert (
+        control_client.post(
+            "/v1/control/analysis-kill-switch", json=pause_body, headers=headers(VIEWER)
+        ).status_code
+        == 403
+    )
+    assert (
+        control_client.post(
+            "/v1/control/config", json=config_body, headers=headers(OPERATOR)
+        ).status_code
+        == 403
+    )
+    assert (
+        control_client.post(
+            "/v1/control/config", json=config_body, headers=headers(EXECUTION)
+        ).status_code
+        == 403
+    )
 
     paused = control_client.post(
         "/v1/control/analysis-kill-switch",

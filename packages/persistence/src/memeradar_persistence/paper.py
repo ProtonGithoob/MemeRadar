@@ -352,14 +352,10 @@ class SqlAlchemyPaperLedgerStore:
             )
             if existing is not None:
                 if existing.request_fingerprint != result.request_fingerprint:
-                    raise PaperIdempotencyConflict(
-                        "idempotency key has conflicting material input"
-                    )
+                    raise PaperIdempotencyConflict("idempotency key has conflicting material input")
                 return
             portfolio_row = await session.scalar(
-                select(PortfolioRow)
-                .where(PortfolioRow.id == result.portfolio.id)
-                .with_for_update()
+                select(PortfolioRow).where(PortfolioRow.id == result.portfolio.id).with_for_update()
             )
             if portfolio_row is None:
                 raise PaperLedgerConflict("portfolio does not exist")
@@ -373,9 +369,7 @@ class SqlAlchemyPaperLedgerStore:
             )
             if existing is not None:
                 if existing.request_fingerprint != result.request_fingerprint:
-                    raise PaperIdempotencyConflict(
-                        "idempotency key has conflicting material input"
-                    )
+                    raise PaperIdempotencyConflict("idempotency key has conflicting material input")
                 return
             expected_sequence = portfolio_row.ledger_sequence + len(result.ledger_entries)
             if result.portfolio.ledger_sequence != expected_sequence:

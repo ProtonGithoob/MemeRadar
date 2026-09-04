@@ -600,9 +600,7 @@ class InMemoryPaperLedgerStore:
 
     async def list_positions(self, portfolio_id: UUID) -> Sequence[Position]:
         return tuple(
-            copy(value)
-            for value in self._positions.values()
-            if value.portfolio_id == portfolio_id
+            copy(value) for value in self._positions.values() if value.portfolio_id == portfolio_id
         )
 
     async def corrupt_current_balance(self, portfolio_id: UUID, value: Decimal) -> None:
@@ -677,9 +675,7 @@ class PaperFillModel:
             raise PaperExecutionRejected("fill arithmetic produced a non-positive result")
         fee_amount = gross_cash * fee_bps / Decimal("10000")
         cash_delta = (
-            -(gross_cash + fee_amount)
-            if side is PaperOrderSide.BUY
-            else gross_cash - fee_amount
+            -(gross_cash + fee_amount) if side is PaperOrderSide.BUY else gross_cash - fee_amount
         )
         if cash_delta == 0:
             raise PaperExecutionRejected("fee model produced no cash movement")

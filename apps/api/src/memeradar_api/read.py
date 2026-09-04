@@ -148,6 +148,12 @@ class WalletGraphQueryParams(_StrictModel):
     max_nodes: int = Field(default=50, ge=1, le=200)
     max_edges: int = Field(default=100, ge=1, le=500)
     outcome_filter: str | None = Field(default=None, max_length=64)
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    venue: str | None = Field(default=None, max_length=64)
+    wallet_role: str | None = Field(default=None, max_length=64)
+    risk_outcome_class: str | None = Field(default=None, max_length=64)
+    evidence_quality: QualityState | None = None
 
 
 class TokenGraphQueryParams(_StrictModel):
@@ -155,12 +161,24 @@ class TokenGraphQueryParams(_StrictModel):
     max_nodes: int = Field(default=50, ge=1, le=200)
     max_edges: int = Field(default=100, ge=1, le=500)
     outcome_filter: str | None = Field(default=None, max_length=64)
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    venue: str | None = Field(default=None, max_length=64)
+    wallet_role: str | None = Field(default=None, max_length=64)
+    risk_outcome_class: str | None = Field(default=None, max_length=64)
+    evidence_quality: QualityState | None = None
 
 
 class ClusterGraphQueryParams(_StrictModel):
     max_depth: int = Field(default=2, ge=1, le=5)
     max_nodes: int = Field(default=50, ge=1, le=200)
     max_edges: int = Field(default=100, ge=1, le=500)
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    venue: str | None = Field(default=None, max_length=64)
+    wallet_role: str | None = Field(default=None, max_length=64)
+    risk_outcome_class: str | None = Field(default=None, max_length=64)
+    evidence_quality: QualityState | None = None
 
 
 class ShortestPathQueryParams(_StrictModel):
@@ -325,6 +343,21 @@ class CreatorReputationResponse(_StrictModel):
     confidence: Decimal
     reputation_class: str
     reason_codes: list[str] = Field(default_factory=list)
+    sufficient_outcome_samples: bool = False
+    strong_winner_rate: Decimal = Decimal("0")
+    median_mfe: Decimal | None = None
+    median_mae: Decimal | None = None
+    creator_realized_pnl: Decimal | None = None
+    creator_dump_rate: Decimal | None = None
+    creator_exit_before_major_drawdown_rate: Decimal | None = None
+    bundle_sniper_association: bool | None = None
+    shared_funder_recurrence: bool | None = None
+    side_wallet_recurrence: bool | None = None
+    liquidity_survival_rate: Decimal | None = None
+    creator_profit_public_loss_rate: Decimal | None = None
+    creator_profit_rug_rate: Decimal | None = None
+    cluster_reputation_score: Decimal | None = None
+    config_hash: str = "creator-rep-v1-hash"
 
 
 class ProviderHealthResponse(_StrictModel):
@@ -564,8 +597,7 @@ def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
                 launch_age_ms=value.asymmetric_alpha.launch_age_ms,
                 market_cap_at_decision=value.asymmetric_alpha.market_cap_at_decision,
                 reason_codes=[
-                    str(getattr(r, "code", r))
-                    for r in value.asymmetric_alpha.reason_codes
+                    str(getattr(r, "code", r)) for r in value.asymmetric_alpha.reason_codes
                 ],
                 strategy_version=value.asymmetric_alpha.strategy_version,
                 config_hash=value.asymmetric_alpha.config_hash,
@@ -579,9 +611,7 @@ def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
                     upside_evidence_score=Decimal(
                         str(value.asymmetric_alpha.get("upside_evidence_score", 0))
                     ),
-                    rug_dump_risk=Decimal(
-                        str(value.asymmetric_alpha.get("rug_dump_risk", 0))
-                    ),
+                    rug_dump_risk=Decimal(str(value.asymmetric_alpha.get("rug_dump_risk", 0))),
                     execution_quality=Decimal(
                         str(value.asymmetric_alpha.get("execution_quality", 0))
                     ),
@@ -698,6 +728,21 @@ def _creator_reputation_response(value: CreatorReputationView) -> CreatorReputat
         confidence=value.confidence,
         reputation_class=value.reputation_class,
         reason_codes=list(value.reason_codes),
+        sufficient_outcome_samples=value.sufficient_outcome_samples,
+        strong_winner_rate=value.strong_winner_rate,
+        median_mfe=value.median_mfe,
+        median_mae=value.median_mae,
+        creator_realized_pnl=value.creator_realized_pnl,
+        creator_dump_rate=value.creator_dump_rate,
+        creator_exit_before_major_drawdown_rate=value.creator_exit_before_major_drawdown_rate,
+        bundle_sniper_association=value.bundle_sniper_association,
+        shared_funder_recurrence=value.shared_funder_recurrence,
+        side_wallet_recurrence=value.side_wallet_recurrence,
+        liquidity_survival_rate=value.liquidity_survival_rate,
+        creator_profit_public_loss_rate=value.creator_profit_public_loss_rate,
+        creator_profit_rug_rate=value.creator_profit_rug_rate,
+        cluster_reputation_score=value.cluster_reputation_score,
+        config_hash=value.config_hash,
     )
 
 

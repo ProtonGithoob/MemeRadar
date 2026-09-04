@@ -635,9 +635,7 @@ class SocialRestAdapter(SocialDataPort):
             raise TypeError("request must be a SocialDataRequest")
         observed_at = ensure_utc(self._clock(), "observed_at")
         ingested_at = observed_at
-        query = request.query or (
-            request.token.mint_address if request.token is not None else None
-        )
+        query = request.query or (request.token.mint_address if request.token is not None else None)
         if query is None:
             raise ValueError("social search requires a token or query")
         params: dict[str, str | int] = {"query": query, "limit": min(request.limit, 100)}

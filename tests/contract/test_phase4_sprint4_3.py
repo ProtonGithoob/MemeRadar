@@ -114,9 +114,7 @@ def build_snapshot(token: TokenIdentity, row: dict[str, object]) -> WalletTracki
                 proceeds=proceeds,
                 realized_pnl=proceeds - cost_basis,
                 hold_seconds=Decimal(str((sell_at - buy_at).total_seconds())),
-                token_age_at_entry_seconds=Decimal(
-                    str(raw_trip["token_age_at_entry_seconds"])
-                ),
+                token_age_at_entry_seconds=Decimal(str(raw_trip["token_age_at_entry_seconds"])),
                 rug_exposure=bool(raw_trip["rug_exposure"]),
                 provenance=(build_provenance(source_id, sell_at),),
                 evidence_refs=(source_id,),
@@ -141,9 +139,7 @@ def build_snapshot(token: TokenIdentity, row: dict[str, object]) -> WalletTracki
         realized_pnl=sum((trip.realized_pnl or Decimal("0") for trip in trips), Decimal("0")),
         round_trips=tuple(trips),
         first_entry_at=first_entry,
-        token_age_at_first_entry_seconds=(
-            trips[0].token_age_at_entry_seconds if trips else None
-        ),
+        token_age_at_first_entry_seconds=(trips[0].token_age_at_entry_seconds if trips else None),
         median_hold_seconds=(
             sum((trip.hold_seconds for trip in trips), Decimal("0")) / Decimal(len(trips))
             if trips
@@ -214,9 +210,7 @@ def test_confluence_fixtures_replay_scores_clusters_and_events_deterministically
     assert isinstance(raw_snapshots, list)
     assert isinstance(raw_graph, dict)
     scores = tuple(build_score(row) for row in raw_scores if isinstance(row, dict))
-    snapshots = tuple(
-        build_snapshot(token, row) for row in raw_snapshots if isinstance(row, dict)
-    )
+    snapshots = tuple(build_snapshot(token, row) for row in raw_snapshots if isinstance(row, dict))
     analyzer = ConfluenceAnalyzer()
     graph_value = build_graph(token, raw_graph)
     result = analyzer.analyze(
@@ -279,12 +273,7 @@ def test_confluence_fixture_contract_preserves_safe_modes_and_provider_independe
         assert environment["MANUAL_EXECUTION"] == "false"
         assert environment["AUTO_EXECUTION"] == "false"
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "confluence.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "confluence.py"
     ).read_text(encoding="utf-8")
     assert "memeradar_providers" not in source
     assert "httpx" not in source

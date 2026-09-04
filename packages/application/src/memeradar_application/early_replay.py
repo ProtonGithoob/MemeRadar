@@ -511,9 +511,7 @@ class EarlyOutcomeLabeler:
             and record.observation.quality_state is QualityState.FRESH
         )
         price_points = tuple(
-            (record, price)
-            for record in future
-            if (price := self._price(record)) is not None
+            (record, price) for record in future if (price := self._price(record)) is not None
         )
         returns = tuple(price / baseline - Decimal("1") for _, price in price_points)
         forward_return = returns[-1] if returns else None
@@ -521,9 +519,7 @@ class EarlyOutcomeLabeler:
         pre_target_drawdown = min(Decimal("0"), min(returns)) if returns else None
 
         market_cap_points = tuple(
-            (record, value)
-            for record in future
-            if (value := _market_cap(record)) is not None
+            (record, value) for record in future if (value := _market_cap(record)) is not None
         )
         crossed: dict[str, bool | None] = {}
         time_to_market_cap: dict[str, Decimal | None] = {}
@@ -540,9 +536,7 @@ class EarlyOutcomeLabeler:
             )
 
         liquidity_points = tuple(
-            (record, value)
-            for record in future
-            if (value := _liquidity(record)) is not None
+            (record, value) for record in future if (value := _liquidity(record)) is not None
         )
         liquidity_collapsed = self._liquidity_collapsed(liquidity_points)
         liquidity_survived = None if not liquidity_points else not liquidity_collapsed
@@ -578,9 +572,7 @@ class EarlyOutcomeLabeler:
                 )
                 if executable is not None:
                     shadow_exit_values.append(executable)
-        shadow_exit_executable = (
-            None if not shadow_exit_values else all(shadow_exit_values)
-        )
+        shadow_exit_executable = None if not shadow_exit_values else all(shadow_exit_values)
 
         reasons: list[ReasonCode] = []
         if not future:
@@ -648,6 +640,18 @@ class ExtremeWinnerOutcomeSnapshot:
     signal_at: datetime
     first_seen_market_cap: Decimal | None = None
     entry_ready_market_cap: Decimal | None = None
+    market_cap_at_first_seen: Decimal | None = None
+    market_cap_at_watch: Decimal | None = None
+    market_cap_at_early_watch: Decimal | None = None
+    market_cap_at_strong_setup: Decimal | None = None
+    market_cap_at_high_confluence: Decimal | None = None
+    market_cap_at_entry_ready: Decimal | None = None
+    age_at_first_seen_ms: int | None = None
+    age_at_watch_ms: int | None = None
+    age_at_early_watch_ms: int | None = None
+    age_at_strong_setup_ms: int | None = None
+    age_at_high_confluence_ms: int | None = None
+    age_at_entry_ready_ms: int | None = None
     launch_age_at_decision_ms: int | None = None
     hit_2x: bool = False
     hit_5x: bool = False
@@ -800,6 +804,24 @@ class ExtremeWinnerOutcomeLabeler:
             signal_at=signal_at,
             first_seen_market_cap=base_mc,
             entry_ready_market_cap=getattr(checkpoint, "market_cap_usd", None),
+            market_cap_at_first_seen=getattr(checkpoint, "market_cap_at_first_seen", base_mc),
+            market_cap_at_watch=getattr(checkpoint, "market_cap_at_watch", None),
+            market_cap_at_early_watch=getattr(checkpoint, "market_cap_at_early_watch", None),
+            market_cap_at_strong_setup=getattr(checkpoint, "market_cap_at_strong_setup", None),
+            market_cap_at_high_confluence=getattr(
+                checkpoint, "market_cap_at_high_confluence", None
+            ),
+            market_cap_at_entry_ready=getattr(
+                checkpoint,
+                "market_cap_at_entry_ready",
+                getattr(checkpoint, "market_cap_usd", base_mc),
+            ),
+            age_at_first_seen_ms=getattr(checkpoint, "age_at_first_seen_ms", None),
+            age_at_watch_ms=getattr(checkpoint, "age_at_watch_ms", None),
+            age_at_early_watch_ms=getattr(checkpoint, "age_at_early_watch_ms", None),
+            age_at_strong_setup_ms=getattr(checkpoint, "age_at_strong_setup_ms", None),
+            age_at_high_confluence_ms=getattr(checkpoint, "age_at_high_confluence_ms", None),
+            age_at_entry_ready_ms=getattr(checkpoint, "age_at_entry_ready_ms", launch_age_ms),
             launch_age_at_decision_ms=launch_age_ms,
             hit_2x=hit_2x,
             hit_5x=hit_5x,
@@ -839,4 +861,3 @@ __all__ = [
     "ForwardOutcomeHorizonLabel",
     "ForwardOutcomeLabel",
 ]
-

@@ -398,8 +398,7 @@ class EarlyDecisionEngine:
             resolved_impact = _source_value(quote, "price_impact_bps")
         impact = _decimal(resolved_impact, "price_impact_bps")
         impact_ok = (
-            impact is not None
-            and Decimal("0") <= impact <= self.policy.max_price_impact_bps
+            impact is not None and Decimal("0") <= impact <= self.policy.max_price_impact_bps
         )
         if not impact_ok:
             reasons.append(_reason("EARLY_PRICE_IMPACT_GATE", refs=_refs(quote)))

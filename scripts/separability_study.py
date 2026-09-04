@@ -64,15 +64,17 @@ def parse_dataset_samples(data: dict[str, Any]) -> list[dict[str, Any]]:
         has_rug = any(e.get("kind") == "risk.rug_event" for e in events)
         outcome = "rug" if has_rug else "failure"
 
-        samples.append({
-            "sample_id": cp.get("id", f"sample_{i}"),
-            "event_time": event_time,
-            "outcome": outcome,
-            "features": {
-                "micro_flow_3m": Decimal("0.1"),
-                "creator_reputation_score": Decimal("50"),
-            },
-        })
+        samples.append(
+            {
+                "sample_id": cp.get("id", f"sample_{i}"),
+                "event_time": event_time,
+                "outcome": outcome,
+                "features": {
+                    "micro_flow_3m": Decimal("0.1"),
+                    "creator_reputation_score": Decimal("50"),
+                },
+            }
+        )
 
     return samples
 
@@ -112,6 +114,7 @@ def main() -> int:
         else str(result.quality_state)
     )
     output_dict = {
+        "evidence_class": "SYNTHETIC_FIXTURE",
         "sample_count": result.sample_count,
         "is_insufficient_samples": result.is_insufficient_samples,
         "cohort_distributions": _json_serialize(result.cohort_distributions),

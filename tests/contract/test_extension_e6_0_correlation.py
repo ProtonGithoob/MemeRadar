@@ -271,11 +271,7 @@ def build_snapshot(
     built_observations.extend(extra_observations)
     built_mentions = mentions(mention_rows, token)
     built_wallets = wallet_activities(wallet_rows, token)
-    scores = (
-        (smart_money_score(smart_rows, token),)
-        if smart_rows
-        else ()
-    )
+    scores = (smart_money_score(smart_rows, token),) if smart_rows else ()
     raw_risk = scenario["risk"]
     assert isinstance(raw_risk, Mapping)
     creator_wallets = tuple(str(value) for value in scenario.get("creator_wallets", ()))
@@ -377,19 +373,12 @@ def test_future_fixture_evidence_is_excluded_and_invalidates_confidence() -> Non
     assert with_future.windows["5s"].transaction_count == 0
     assert with_future.quality_state is QualityState.INVALID
     assert with_future.confidence == Decimal("0")
-    assert "CORRELATION_FUTURE_EVIDENCE" in {
-        reason.code for reason in with_future.reason_codes
-    }
+    assert "CORRELATION_FUTURE_EVIDENCE" in {reason.code for reason in with_future.reason_codes}
 
 
 def test_fixture_contract_is_provider_free_and_preserves_safe_modes() -> None:
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "correlation.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "correlation.py"
     ).read_text(encoding="utf-8")
     assert "memeradar_providers" not in source
     assert "httpx" not in source

@@ -257,7 +257,5 @@ def test_provider_verification_is_informational_and_never_endorsement() -> None:
 
     assert result.disposition is RiskDisposition.PASS
     assert result.hard_blocks == ()
-    assert "VERIFICATION_STATUS_INFORMATIONAL" in {
-        reason.code for reason in result.reason_codes
-    }
+    assert "VERIFICATION_STATUS_INFORMATIONAL" in {reason.code for reason in result.reason_codes}
     assert result.execution_eligible(NOW) is True

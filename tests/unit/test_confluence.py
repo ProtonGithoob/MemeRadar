@@ -248,9 +248,7 @@ def test_confluence_deduplicates_correlated_wallets_and_emits_explainable_events
         event.cluster_id for event in entries if WALLET_C in event.wallet_addresses
     )
     assert result.execution_eligible(NOW) is False
-    assert "SMART_MONEY_CONFLUENCE_DETECTED" in {
-        reason.code for reason in result.reason_codes
-    }
+    assert "SMART_MONEY_CONFLUENCE_DETECTED" in {reason.code for reason in result.reason_codes}
 
 
 def test_missing_graph_evidence_cannot_claim_independent_confluence() -> None:
@@ -278,9 +276,7 @@ def test_missing_graph_evidence_cannot_claim_independent_confluence() -> None:
     assert result.confluence_detected is False
     assert result.confluence_event_count == 0
     assert result.independent_cluster_count == 0
-    assert "SMART_MONEY_CLUSTER_EVIDENCE_MISSING" in {
-        reason.code for reason in result.reason_codes
-    }
+    assert "SMART_MONEY_CLUSTER_EVIDENCE_MISSING" in {reason.code for reason in result.reason_codes}
     assert all(event.quality_state is QualityState.UNKNOWN for event in result.events)
 
 
@@ -321,9 +317,7 @@ def test_future_round_trip_invalidates_token_confluence_and_duplicate_snapshots_
     assert result.quality_state is QualityState.INVALID
     assert result.score == Decimal("0")
     assert result.events == ()
-    assert "SMART_MONEY_FUTURE_ACTIVITY_EXCLUDED" in {
-        reason.code for reason in result.reason_codes
-    }
+    assert "SMART_MONEY_FUTURE_ACTIVITY_EXCLUDED" in {reason.code for reason in result.reason_codes}
 
 
 def test_non_smart_wallets_are_gated_and_policy_is_bounded() -> None:

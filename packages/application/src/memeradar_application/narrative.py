@@ -151,7 +151,8 @@ def _safe_plain_text(value: str, *, maximum: int) -> str:
     normalized = unicodedata.normalize("NFKC", value)
     normalized = "".join(
         character
-        if character in "\n\r\t" and character != "\x00"
+        if character in "\n\r\t"
+        and character != "\x00"
         or (ord(character) >= 32 and ord(character) != 127)
         else " "
         for character in normalized

@@ -67,9 +67,7 @@ def test_token_fixture_maps_token_2022_authority_and_observation() -> None:
 
     try:
         metadata = asyncio.run(adapter.fetch_token_metadata(token, context=context()))
-        observations = asyncio.run(
-            adapter.enrich(OnChainRequest(context=context(), token=token))
-        )
+        observations = asyncio.run(adapter.enrich(OnChainRequest(context=context(), token=token)))
     finally:
         asyncio.run(client.aclose())
 

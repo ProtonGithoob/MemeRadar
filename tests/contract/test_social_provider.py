@@ -145,12 +145,7 @@ def test_social_search_and_health_fixtures_replay_through_read_only_adapter() ->
 
 def test_social_seam_and_runtime_keep_provider_and_execution_boundaries() -> None:
     provider_source = (
-        ROOT
-        / "packages"
-        / "providers"
-        / "src"
-        / "memeradar_providers"
-        / "social.py"
+        ROOT / "packages" / "providers" / "src" / "memeradar_providers" / "social.py"
     ).read_text(encoding="utf-8")
     application_source = (
         ROOT

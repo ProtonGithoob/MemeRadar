@@ -72,9 +72,7 @@ def _feature_and_risk(rng: Random, candidate_id: UUID) -> tuple[FeatureSnapshot,
     quality = rng.choice(tuple(QualityState))
     disposition = rng.choice(tuple(RiskDisposition))
     hard_blocks = ("PROPERTY_BLOCK",) if disposition is RiskDisposition.BLOCK else ()
-    values = {
-        key: Decimal(rng.randrange(0, 10001)) / Decimal("100") for key in COMPONENT_KEYS
-    }
+    values = {key: Decimal(rng.randrange(0, 10001)) / Decimal("100") for key in COMPONENT_KEYS}
     feature = FeatureSnapshot(
         candidate_id=candidate_id,
         as_of=NOW - timedelta(seconds=10),

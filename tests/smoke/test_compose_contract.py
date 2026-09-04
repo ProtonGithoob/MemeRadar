@@ -476,12 +476,7 @@ def test_correlation_replay_seam_is_packaged_provider_free_and_safe():
     assert (correlation_fixture_dir / "README.md").is_file()
     assert (correlation_fixture_dir / "replay.json").is_file()
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "correlation.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "correlation.py"
     ).read_text(encoding="utf-8")
     assert "memeradar_providers" not in source
     assert "httpx" not in source
@@ -523,12 +518,7 @@ def test_alpha_strategy_replay_seam_is_versioned_provider_free_and_safe():
     assert (alpha_fixture_dir / "README.md").is_file()
     assert (alpha_fixture_dir / "replay.json").is_file()
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "alpha_strategy.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "alpha_strategy.py"
     ).read_text(encoding="utf-8")
     assert "memeradar_providers" not in source
     assert "memeradar_persistence" not in source
@@ -559,12 +549,7 @@ def test_feature_window_replay_seam_is_versioned_provider_free_and_safe():
     assert (fixture_dir / "README.md").is_file()
     assert (fixture_dir / "replay.json").is_file()
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "feature_windows.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "feature_windows.py"
     ).read_text(encoding="utf-8")
     assert "memeradar_providers" not in source
     assert "memeradar_persistence" not in source
@@ -628,12 +613,7 @@ def test_decision_state_machine_and_timeline_are_provider_free_and_safe():
     assert (fixture_dir / "README.md").is_file()
     assert (fixture_dir / "replay.json").is_file()
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "decision_engine.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "decision_engine.py"
     ).read_text(encoding="utf-8")
     assert "memeradar_providers" not in source
     assert "memeradar_persistence" not in source
@@ -673,12 +653,7 @@ def test_alert_pipeline_and_telegram_adapter_are_explicit_and_safe():
     assert "TELEGRAM_BOT_TOKEN=" in env_example
     assert "TELEGRAM_CHAT_ID=" in env_example
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "alert_pipeline.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "alert_pipeline.py"
     ).read_text()
     assert "memeradar_providers" not in source
     assert "memeradar_persistence" not in source
@@ -743,9 +718,7 @@ def test_control_api_rbac_and_kill_switch_are_packaged_and_safe():
         "EXECUTION_API_TOKEN=",
     ):
         assert name in env_example
-    control_source = (
-        ROOT / "apps" / "api" / "src" / "memeradar_api" / "control.py"
-    ).read_text()
+    control_source = (ROOT / "apps" / "api" / "src" / "memeradar_api" / "control.py").read_text()
     auth_source = (ROOT / "apps" / "api" / "src" / "memeradar_api" / "auth.py").read_text()
     assert "sign_transaction" not in control_source
     assert "private_key" not in control_source

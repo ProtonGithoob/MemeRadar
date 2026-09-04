@@ -70,8 +70,7 @@ def _build_inputs(payload: dict[str, object]) -> tuple[UUID, TokenIdentity, Corr
         row = rows[name]
         assert isinstance(row, dict)
         values = {
-            key: Decimal(value) if isinstance(value, str) else value
-            for key, value in row.items()
+            key: Decimal(value) if isinstance(value, str) else value for key, value in row.items()
         }
         windows[name] = CorrelationWindowFeatures(
             window_name=name,
@@ -213,7 +212,6 @@ def test_feature_window_fixture_replays_in_reverse_order_deterministically() -> 
     assert all(value.quality_state is QualityState.FRESH for value in first)
     assert all(value.completeness == Decimal(str(expected["completeness"])) for value in first)
     assert all(
-        set(value.values["components"]) == set(expected["component_names"])
-        for value in first
+        set(value.values["components"]) == set(expected["component_names"]) for value in first
     )
     assert all(value.values["execution_eligible"] is False for value in first)

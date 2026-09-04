@@ -325,9 +325,7 @@ def test_time_stop_is_explicit_and_evidence_bearing() -> None:
         ingested_at=BASE + timedelta(minutes=40, seconds=1),
         expires_at=BASE + timedelta(hours=2),
     )
-    result = ExitEngine(policy).evaluate(
-        _position(), evidence, now=evidence.observed_at
-    )
+    result = ExitEngine(policy).evaluate(_position(), evidence, now=evidence.observed_at)
 
     assert result.action is ExitAction.CLOSE
     assert result.triggered_rules == ("TIME_STOP",)
@@ -347,9 +345,7 @@ def test_time_stop_is_explicit_and_evidence_bearing() -> None:
 )
 def test_missing_or_nonfresh_price_evidence_is_explicit_unknown(changes: dict[str, object]) -> None:
     evidence = _evidence(**changes)
-    result = ExitEngine(_policy()).evaluate(
-        _position(), evidence, now=BASE + timedelta(minutes=5)
-    )
+    result = ExitEngine(_policy()).evaluate(_position(), evidence, now=BASE + timedelta(minutes=5))
 
     assert result.action is ExitAction.UNKNOWN
     assert result.signal is None

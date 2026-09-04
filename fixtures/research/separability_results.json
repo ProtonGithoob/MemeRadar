@@ -1,4 +1,5 @@
 {
+  "evidence_class": "SYNTHETIC_FIXTURE",
   "sample_count": 1,
   "is_insufficient_samples": true,
   "cohort_distributions": {
@@ -8,12 +9,12 @@
     }
   },
   "feature_ablation": {
-    "micro_flow_3m": {
+    "creator_reputation_score": {
       "precision": "0",
       "recall": "0",
       "incremental_lift": "0.05"
     },
-    "creator_reputation_score": {
+    "micro_flow_3m": {
       "precision": "0",
       "recall": "0",
       "incremental_lift": "0.05"

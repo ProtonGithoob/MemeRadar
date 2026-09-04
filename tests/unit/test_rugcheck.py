@@ -70,9 +70,7 @@ def test_safe_summary_maps_informational_verification_with_provenance() -> None:
         clock=lambda: NOW,
     )
     try:
-        findings = asyncio.run(
-            adapter.assess(RiskDataRequest(context=context(), token=token()))
-        )
+        findings = asyncio.run(adapter.assess(RiskDataRequest(context=context(), token=token())))
     finally:
         asyncio.run(client.aclose())
 

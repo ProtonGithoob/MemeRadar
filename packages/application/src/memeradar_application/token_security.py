@@ -353,7 +353,9 @@ class TokenSecurityEvaluator:
         if _SECURITY_RELEVANT_EXTENSIONS.intersection(normalized_extensions):
             warning(
                 "TOKEN_2022_SECURITY_EXTENSION",
-                detail=",".join(sorted(_SECURITY_RELEVANT_EXTENSIONS.intersection(normalized_extensions))),
+                detail=",".join(
+                    sorted(_SECURITY_RELEVANT_EXTENSIONS.intersection(normalized_extensions))
+                ),
             )
         return payload_state
 

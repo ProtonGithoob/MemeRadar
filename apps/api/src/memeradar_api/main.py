@@ -65,9 +65,7 @@ def create_app(
     ):
         owned_engine = create_database_engine(runtime_settings.database_url)
     if read_service is None and owned_engine is not None:
-        owned_read_service = SqlAlchemyReadQueryService(
-            owned_engine
-        )
+        owned_read_service = SqlAlchemyReadQueryService(owned_engine)
         read_service = owned_read_service
     if control_plane is None and owned_engine is not None:
         initial_config = dict(DEFAULT_CONTROL_CONFIG)

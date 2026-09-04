@@ -1344,13 +1344,9 @@ class InsiderAllocationAnalyzer:
             )
             funder_raw = _field(data, "shared_funder", "funded_by")
             holder_funder: str | None = (
-                funder_raw
-                if isinstance(funder_raw, str)
-                else holder_funders.get(holder.address)
+                funder_raw if isinstance(funder_raw, str) else holder_funders.get(holder.address)
             )
-            is_shared_funder = (
-                isinstance(holder_funder, str) and holder_funder in shared_funders
-            )
+            is_shared_funder = isinstance(holder_funder, str) and holder_funder in shared_funders
             acq_time_raw = _field(data, "acquired_at", "first_acquisition_at")
             acquired_at = (
                 ensure_utc(

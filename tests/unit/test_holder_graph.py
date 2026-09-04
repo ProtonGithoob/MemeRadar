@@ -273,12 +273,8 @@ def test_shared_funder_cluster_increases_effective_concentration() -> None:
     assert clusters.quality_state is QualityState.FRESH
     assert clusters.raw_top1 == Decimal("0.20")
     assert clusters.clustered_top == Decimal("0.35")
-    assert any(
-        cluster.addresses == (WALLET_A, WALLET_B) for cluster in clusters.clusters
-    )
-    assert "SHARED_FUNDER_CLUSTER" in {
-        reason.code for reason in clusters.reason_codes
-    }
+    assert any(cluster.addresses == (WALLET_A, WALLET_B) for cluster in clusters.clusters)
+    assert "SHARED_FUNDER_CLUSTER" in {reason.code for reason in clusters.reason_codes}
     assert clusters.clustered_top >= clusters.raw_top1
 
 

@@ -74,9 +74,7 @@ async def _exercise_restart(database_url: str) -> None:
         assert result.delivered == 1
         assert seen == [str(event_id)]
         async with restarted_engine.connect() as connection:
-            status = await connection.scalar(
-                select(OutboxRow.status).where(OutboxRow.id == row.id)
-            )
+            status = await connection.scalar(select(OutboxRow.status).where(OutboxRow.id == row.id))
         assert status == "DELIVERED"
     finally:
         if restarted_engine is not None:
@@ -84,9 +82,7 @@ async def _exercise_restart(database_url: str) -> None:
         cleanup_engine = create_database_engine(database_url)
         try:
             async with cleanup_engine.begin() as connection:
-                await connection.execute(
-                    delete(OutboxRow).where(OutboxRow.event_id == event_id)
-                )
+                await connection.execute(delete(OutboxRow).where(OutboxRow.event_id == event_id))
                 await connection.execute(
                     delete(DomainEventRow).where(DomainEventRow.id == event_id)
                 )

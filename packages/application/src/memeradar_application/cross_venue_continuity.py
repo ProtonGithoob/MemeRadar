@@ -224,9 +224,7 @@ class CrossVenueWalletContinuity:
     def feeds_smart_wallet_score(self) -> bool:
         """Only verified continuous histories may enter SmartWalletScore outcomes."""
 
-        return (
-            self.quality is ContinuityQuality.VERIFIED and self.snapshot.realized_pnl is not None
-        )
+        return self.quality is ContinuityQuality.VERIFIED and self.snapshot.realized_pnl is not None
 
     def execution_eligible(self, at: datetime) -> bool:
         del at

@@ -253,8 +253,7 @@ def main(argv: list[str] | None = None) -> int:
             count = len(components) if isinstance(components, list) else 0
             digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
             print(
-                f"SBOM PASS schema={SBOM_SCHEMA_VERSION} "
-                f"components={count} digest=sha256:{digest}"
+                f"SBOM PASS schema={SBOM_SCHEMA_VERSION} components={count} digest=sha256:{digest}"
             )
         elif args.output is None:
             sys.stdout.write(encoded)

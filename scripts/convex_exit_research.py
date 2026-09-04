@@ -160,7 +160,9 @@ def main() -> int:
             best_policy_version = policy.version
 
     output_payload = {
+        "evidence_class": "SYNTHETIC_FIXTURE",
         "trade_count": len(trades),
+        "best_synthetic_candidate": best_policy_version,
         "best_policy_version": best_policy_version,
         "best_expectancy_per_trade": str(best_expectancy),
         "policy_evaluations": results_by_policy,

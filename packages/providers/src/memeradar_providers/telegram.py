@@ -160,8 +160,7 @@ class TelegramNotificationAdapter(NotificationPort):
 
     def __repr__(self) -> str:
         return (
-            f"TelegramNotificationAdapter(base_url={self._base_url!r}, "
-            "bot_token_configured=True)"
+            f"TelegramNotificationAdapter(base_url={self._base_url!r}, bot_token_configured=True)"
         )
 
     async def __aenter__(self) -> TelegramNotificationAdapter:
@@ -188,8 +187,7 @@ class TelegramNotificationAdapter(NotificationPort):
         if context.deadline_at is None:
             return None
         remaining = (
-            ensure_utc(context.deadline_at, "deadline_at")
-            - ensure_utc(self._clock(), "now")
+            ensure_utc(context.deadline_at, "deadline_at") - ensure_utc(self._clock(), "now")
         ).total_seconds()
         if remaining <= 0:
             raise ProviderTimeoutError("provider request deadline expired")

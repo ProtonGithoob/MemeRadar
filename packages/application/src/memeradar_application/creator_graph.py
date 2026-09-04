@@ -99,21 +99,11 @@ class GraphEdge:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "id", require_text(self.id, "id", max_length=256))
-        object.__setattr__(
-            self, "from_id", require_text(self.from_id, "from_id", max_length=256)
-        )
-        object.__setattr__(
-            self, "to_id", require_text(self.to_id, "to_id", max_length=256)
-        )
-        object.__setattr__(
-            self, "occurred_at", ensure_utc(self.occurred_at, "occurred_at")
-        )
-        object.__setattr__(
-            self, "observed_at", ensure_utc(self.observed_at, "observed_at")
-        )
-        object.__setattr__(
-            self, "ingested_at", ensure_utc(self.ingested_at, "ingested_at")
-        )
+        object.__setattr__(self, "from_id", require_text(self.from_id, "from_id", max_length=256))
+        object.__setattr__(self, "to_id", require_text(self.to_id, "to_id", max_length=256))
+        object.__setattr__(self, "occurred_at", ensure_utc(self.occurred_at, "occurred_at"))
+        object.__setattr__(self, "observed_at", ensure_utc(self.observed_at, "observed_at"))
+        object.__setattr__(self, "ingested_at", ensure_utc(self.ingested_at, "ingested_at"))
         if self.token_mint is not None:
             object.__setattr__(
                 self,
@@ -159,9 +149,7 @@ class CreatorReputationSnapshot:
     config_hash: str = "creator-rep-v1-hash"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "address", require_text(self.address, "address", max_length=64)
-        )
+        object.__setattr__(self, "address", require_text(self.address, "address", max_length=64))
         object.__setattr__(self, "as_of", ensure_utc(self.as_of, "as_of"))
         object.__setattr__(
             self,
@@ -239,6 +227,12 @@ class CreatorOutcomeGraph:
         max_edges: int = 100,
         as_of: datetime | None = None,
         outcome_filter: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        venue: str | None = None,
+        wallet_role: str | None = None,
+        risk_outcome_class: str | None = None,
+        evidence_quality: str | QualityState | None = None,
     ) -> dict[str, Any]:
         """Bounded breadth-first traversal producing a safe graph projection."""
         as_of_dt = ensure_utc(as_of or datetime.now(UTC), "as_of")
@@ -250,6 +244,17 @@ class CreatorOutcomeGraph:
             if start_id in self.nodes:
                 visited_nodes.add(start_id)
                 queue.append((start_id, 0))
+
+        effective_outcome = risk_outcome_class or outcome_filter
+        quality_str = (
+            str(
+                evidence_quality.value
+                if isinstance(evidence_quality, QualityState)
+                else evidence_quality
+            ).upper()
+            if evidence_quality
+            else None
+        )
 
         has_more = False
         while queue and len(visited_nodes) < max_nodes:
@@ -263,18 +268,49 @@ class CreatorOutcomeGraph:
                     has_more = True
                     break
 
+                if (
+                    quality_str
+                    and nxt_id in self.nodes
+                    and self.nodes[nxt_id].quality_state.value.upper() != quality_str
+                ):
+                    continue
+
                 # Collect edge between curr_id and nxt_id
-                edges = (
-                    self._edge_by_nodes.get((curr_id, nxt_id), [])
-                    + self._edge_by_nodes.get((nxt_id, curr_id), [])
+                edges = self._edge_by_nodes.get((curr_id, nxt_id), []) + self._edge_by_nodes.get(
+                    (nxt_id, curr_id), []
                 )
                 for e in edges:
                     if e.occurred_at <= as_of_dt and len(visited_edges) < max_edges:
-                        if outcome_filter and e.to_id in self.nodes:
+                        if date_from and e.occurred_at < date_from:
+                            continue
+                        if date_to and e.occurred_at > date_to:
+                            continue
+                        if (
+                            venue
+                            and e.properties.get("venue")
+                            and str(e.properties.get("venue")).lower() != venue.lower()
+                        ):
+                            continue
+                        if quality_str and e.quality_state.value.upper() != quality_str:
+                            continue
+
+                        if effective_outcome and e.to_id in self.nodes:
                             target_node = self.nodes[e.to_id]
-                            out_val = target_node.properties.get("outcome")
-                            if out_val and str(out_val).upper() != outcome_filter.upper():
+                            out_val = target_node.properties.get(
+                                "outcome"
+                            ) or target_node.properties.get("risk_outcome_class")
+                            if out_val and str(out_val).upper() != effective_outcome.upper():
                                 continue
+                        if wallet_role and e.from_id in self.nodes:
+                            src_node = self.nodes[e.from_id]
+                            role_val = (
+                                src_node.properties.get("role")
+                                or src_node.properties.get("wallet_role")
+                                or src_node.kind.value
+                            )
+                            if role_val and str(role_val).upper() != wallet_role.upper():
+                                continue
+
                         visited_edges.add(e.id)
 
                 if nxt_id not in visited_nodes:
@@ -342,12 +378,14 @@ class CreatorOutcomeGraph:
                     edges = self._edge_by_nodes.get((u, v)) or self._edge_by_nodes.get((v, u)) or []
                     if edges:
                         e = edges[0]
-                        path_edges.append({
-                            "id": e.id,
-                            "from_id": e.from_id,
-                            "to_id": e.to_id,
-                            "kind": e.kind.value,
-                        })
+                        path_edges.append(
+                            {
+                                "id": e.id,
+                                "from_id": e.from_id,
+                                "to_id": e.to_id,
+                                "kind": e.kind.value,
+                            }
+                        )
                 return {
                     "nodes": [self.nodes[nid].id for nid in path if nid in self.nodes],
                     "edges": path_edges,
@@ -377,9 +415,7 @@ class CreatorReputationAnalyzer:
         self.graph = graph or CreatorOutcomeGraph()
         self.config = config or CreatorReputationConfig()
 
-    def evaluate(
-        self, address: str, as_of: datetime | None = None
-    ) -> CreatorReputationSnapshot:
+    def evaluate(self, address: str, as_of: datetime | None = None) -> CreatorReputationSnapshot:
         as_of_dt = ensure_utc(as_of or datetime.now(UTC), "as_of")
         wallet_node_id = f"wallet:{address}"
 

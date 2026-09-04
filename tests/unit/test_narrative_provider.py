@@ -207,10 +207,14 @@ def test_rest_adapter_rejects_unsafe_base_url_and_classifies_auth() -> None:
     )
     try:
         with pytest.raises(ProviderAuthenticationError):
-            asyncio.run(adapter.check_health(context=ProviderRequestContext(
-                correlation_id="narrative-unit-test",
-                requested_at=NOW,
-                deadline_at=NOW + timedelta(seconds=5),
-            )))
+            asyncio.run(
+                adapter.check_health(
+                    context=ProviderRequestContext(
+                        correlation_id="narrative-unit-test",
+                        requested_at=NOW,
+                        deadline_at=NOW + timedelta(seconds=5),
+                    )
+                )
+            )
     finally:
         asyncio.run(client.aclose())

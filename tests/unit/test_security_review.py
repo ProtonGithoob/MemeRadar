@@ -68,15 +68,15 @@ def test_container_review_rejects_latest_or_root_only_images(tmp_path: Path) -> 
     docker_dir = tmp_path / "infra" / "docker"
     docker_dir.mkdir(parents=True)
     (docker_dir / "api.Dockerfile").write_text(
-        "FROM python:latest\nCMD [\"python\", \"-m\", \"example\"]\n",
+        'FROM python:latest\nCMD ["python", "-m", "example"]\n',
         encoding="utf-8",
     )
     (docker_dir / "worker.Dockerfile").write_text(
-        "FROM python:3.12-slim\nCMD [\"python\", \"-m\", \"example\"]\n",
+        'FROM python:3.12-slim\nCMD ["python", "-m", "example"]\n',
         encoding="utf-8",
     )
     (docker_dir / "web.Dockerfile").write_text(
-        "FROM node:22-alpine\nUSER root\nCMD [\"npm\", \"run\", \"dev\"]\n",
+        'FROM node:22-alpine\nUSER root\nCMD ["npm", "run", "dev"]\n',
         encoding="utf-8",
     )
 

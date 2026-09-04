@@ -186,12 +186,7 @@ def test_malformed_output_and_injection_content_degrade_without_blocking_analysi
 
 def test_narrative_application_boundary_is_provider_independent_and_safe() -> None:
     source = (
-        ROOT
-        / "packages"
-        / "application"
-        / "src"
-        / "memeradar_application"
-        / "narrative.py"
+        ROOT / "packages" / "application" / "src" / "memeradar_application" / "narrative.py"
     ).read_text(encoding="utf-8")
     contracts = (
         ROOT

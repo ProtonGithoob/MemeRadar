@@ -87,8 +87,7 @@ def _fixture_key(request: NarrativeInput) -> str:
             for item in request.evidence
         ],
         "observations": [
-            (str(item.id), item.kind, item.quality_state.value)
-            for item in request.observations
+            (str(item.id), item.kind, item.quality_state.value) for item in request.observations
         ],
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()

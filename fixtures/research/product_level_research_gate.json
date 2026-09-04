@@ -13,66 +13,77 @@
       "id": 1,
       "question": "Can future 20x/50x/100x winners be detected before major market-cap expansion?",
       "status": "INSUFFICIENT_REAL_WORLD_SAMPLES",
+      "evidence_class": "SYNTHETIC_FIXTURE / INSUFFICIENT_SAMPLES",
       "summary": "Synthetic replay demonstrates theoretical early detection at sub-$50k market caps; real-world live sample size remains insufficient."
     },
     {
       "id": 2,
       "question": "What decision-time micro-features provide the strongest out-of-sample lift for extreme winners?",
       "status": "INSUFFICIENT_REAL_WORLD_SAMPLES",
+      "evidence_class": "SYNTHETIC_FIXTURE / INSUFFICIENT_SAMPLES",
       "summary": "micro_flow_3m acceleration and creator_reputation_score show initial lift in synthetic ablation; empirical live ranking pending."
     },
     {
       "id": 3,
       "question": "Does creator outcome history and graph connectivity reliably separate winners from rugs?",
       "status": "PROVEN_IN_SYNTHETIC_REPLAY",
+      "evidence_class": "SYNTHETIC_FIXTURE",
       "summary": "CreatorOutcomeGraph shortest path and reputation scoring fail closed on UNKNOWN and reduce rug false positives."
     },
     {
       "id": 4,
       "question": "Do thin-liquidity mark-price wicks create false positive 20x+ outcome labels?",
       "status": "PROVEN_REJECTED",
+      "evidence_class": "SYNTHETIC_FIXTURE",
       "summary": "ExtremeWinnerOutcomeLabeler enforces $1,000 liquidity, sellability, and <=1,000bps impact, successfully failing closed on mark wicks."
     },
     {
       "id": 5,
       "question": "Can pre-mine and insider allocation suspicion identify hidden rug/dump risks early?",
       "status": "PROVEN_IN_SYNTHETIC_REPLAY",
+      "evidence_class": "SYNTHETIC_FIXTURE",
       "summary": "InsiderAllocationAnalyzer correctly flags fresh wallet clusters, shared funding, and low native SOL balances before liquidity collapse."
     },
     {
       "id": 6,
       "question": "Does cross-venue wallet position continuity maintain accurate position tracking across DEX migrations?",
       "status": "PROVEN",
+      "evidence_class": "SYNTHETIC_FIXTURE",
       "summary": "CrossVenuePositionTracker maintains canonical trade ID and wallet position state across Pump.fun -> Raydium graduation."
     },
     {
       "id": 7,
       "question": "What is the optimal convex exit policy for retaining asymmetric upside while bounding drawdown?",
-      "status": "BALANCED_CONVEX_V1",
-      "summary": "balanced-convex-v1 (33% partial TP at 2.0x, 15% trailing stop, 25% max DD tolerance) achieves top expectancy in trade cohort replay."
+      "status": "BEST_SYNTHETIC_CANDIDATE",
+      "evidence_class": "SYNTHETIC_FIXTURE",
+      "summary": "BEST_SYNTHETIC_CANDIDATE: balanced-convex-v1 (33% partial TP at 2.0x, 15% trailing stop, 25% max DD tolerance) achieves top expectancy in synthetic trade cohort replay; this is a synthetic candidate hypothesis, not a production optimality claim."
     },
     {
       "id": 8,
       "question": "Can asymmetric alpha candidate projections enhance decision confidence without emitting guaranteed predictions?",
       "status": "PROVEN",
+      "evidence_class": "SYNTHETIC_FIXTURE",
       "summary": "AsymmetricAlphaProjection exposes early quality score, upside evidence, rug risk, and execution quality without fake multiple guarantees."
     },
     {
       "id": 9,
       "question": "Is out-of-sample strategy promotion strictly enforced against lookahead bias and sample inadequacy?",
       "status": "PROVEN",
+      "evidence_class": "SYNTHETIC_FIXTURE",
       "summary": "StrategyPromotionGate enforces TRAIN/VAL/TEST split, sample adequacy, deterministic replay, out-of-sample lift, and human review."
     },
     {
       "id": 10,
       "question": "What is the current risk-adjusted paper PnL expectancy across evaluated replay cohorts?",
       "status": "CALIBRATED_SYNTHETIC",
-      "summary": "Positive net paper expectancy (+3.575x per trade) demonstrated in synthetic replay; live paper trading expectancy remains INSUFFICIENT_REAL_WORLD_SAMPLES."
+      "evidence_class": "SYNTHETIC_FIXTURE",
+      "summary": "Positive net paper expectancy (+3.575x per trade under balanced-convex-v1) demonstrated in synthetic replay (tagged SYNTHETIC_FIXTURE); live paper trading expectancy remains INSUFFICIENT_REAL_WORLD_SAMPLES."
     },
     {
       "id": 11,
       "question": "Is the system ready for live read-only shadow trading under locked auto-execution?",
       "status": "READY_FOR_LIVE_READ_ONLY_SHADOW_TRADING",
+      "evidence_class": "SYNTHETIC_FIXTURE / LIVE_READ_ONLY_READY",
       "summary": "All 9 research extensions fully implemented and verified with 100% test pass rate under locked auto-execution."
     }
   ]

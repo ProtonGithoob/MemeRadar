@@ -67,12 +67,8 @@ def test_helius_authority_and_rugcheck_findings_compose_without_provider_bypass(
         clock=lambda: NOW,
     )
     try:
-        observations = asyncio.run(
-            helius.enrich(OnChainRequest(context=context(), token=token))
-        )
-        findings = asyncio.run(
-            rugcheck.assess(RiskDataRequest(context=context(), token=token))
-        )
+        observations = asyncio.run(helius.enrich(OnChainRequest(context=context(), token=token)))
+        findings = asyncio.run(rugcheck.assess(RiskDataRequest(context=context(), token=token)))
     finally:
         asyncio.run(helius_client.aclose())
         asyncio.run(rugcheck_client.aclose())

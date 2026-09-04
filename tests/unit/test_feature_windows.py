@@ -323,8 +323,9 @@ def test_future_component_evidence_invalidates_every_window() -> None:
     )
 
 
-def test_external_wallet_evidence_is_visible_as_corroboration_without_replacing_internal_score(
-) -> None:
+def test_external_wallet_evidence_is_visible_as_corroboration_without_replacing_score() -> (
+    None
+):
     token_value = token()
     snapshots = FeatureWindowAggregator().build(
         CANDIDATE_ID,

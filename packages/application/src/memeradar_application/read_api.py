@@ -379,12 +379,27 @@ class WalletGraphQuery:
     max_nodes: int = 50
     max_edges: int = 100
     outcome_filter: str | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    venue: str | None = None
+    wallet_role: str | None = None
+    risk_outcome_class: str | None = None
+    evidence_quality: QualityState | str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "address", require_solana_address(self.address, "wallet address"))
         object.__setattr__(self, "max_depth", max(1, min(5, self.max_depth)))
         object.__setattr__(self, "max_nodes", max(1, min(200, self.max_nodes)))
         object.__setattr__(self, "max_edges", max(1, min(500, self.max_edges)))
+        object.__setattr__(self, "venue", _optional_text(self.venue, "venue", max_length=64))
+        object.__setattr__(
+            self, "wallet_role", _optional_text(self.wallet_role, "wallet_role", max_length=64)
+        )
+        object.__setattr__(
+            self,
+            "risk_outcome_class",
+            _optional_text(self.risk_outcome_class, "risk_outcome_class", max_length=64),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -394,12 +409,27 @@ class TokenGraphQuery:
     max_nodes: int = 50
     max_edges: int = 100
     outcome_filter: str | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    venue: str | None = None
+    wallet_role: str | None = None
+    risk_outcome_class: str | None = None
+    evidence_quality: QualityState | str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mint", require_solana_address(self.mint, "token mint"))
         object.__setattr__(self, "max_depth", max(1, min(5, self.max_depth)))
         object.__setattr__(self, "max_nodes", max(1, min(200, self.max_nodes)))
         object.__setattr__(self, "max_edges", max(1, min(500, self.max_edges)))
+        object.__setattr__(self, "venue", _optional_text(self.venue, "venue", max_length=64))
+        object.__setattr__(
+            self, "wallet_role", _optional_text(self.wallet_role, "wallet_role", max_length=64)
+        )
+        object.__setattr__(
+            self,
+            "risk_outcome_class",
+            _optional_text(self.risk_outcome_class, "risk_outcome_class", max_length=64),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +438,12 @@ class ClusterGraphQuery:
     max_depth: int = 2
     max_nodes: int = 50
     max_edges: int = 100
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    venue: str | None = None
+    wallet_role: str | None = None
+    risk_outcome_class: str | None = None
+    evidence_quality: QualityState | str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -416,6 +452,15 @@ class ClusterGraphQuery:
         object.__setattr__(self, "max_depth", max(1, min(5, self.max_depth)))
         object.__setattr__(self, "max_nodes", max(1, min(200, self.max_nodes)))
         object.__setattr__(self, "max_edges", max(1, min(500, self.max_edges)))
+        object.__setattr__(self, "venue", _optional_text(self.venue, "venue", max_length=64))
+        object.__setattr__(
+            self, "wallet_role", _optional_text(self.wallet_role, "wallet_role", max_length=64)
+        )
+        object.__setattr__(
+            self,
+            "risk_outcome_class",
+            _optional_text(self.risk_outcome_class, "risk_outcome_class", max_length=64),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -994,13 +1039,26 @@ class CreatorReputationView:
     confidence: Decimal
     reputation_class: str
     reason_codes: tuple[str, ...] = ()
+    sufficient_outcome_samples: bool = False
+    strong_winner_rate: Decimal = Decimal("0")
+    median_mfe: Decimal | None = None
+    median_mae: Decimal | None = None
+    creator_realized_pnl: Decimal | None = None
+    creator_dump_rate: Decimal | None = None
+    creator_exit_before_major_drawdown_rate: Decimal | None = None
+    bundle_sniper_association: bool | None = None
+    shared_funder_recurrence: bool | None = None
+    side_wallet_recurrence: bool | None = None
+    liquidity_survival_rate: Decimal | None = None
+    creator_profit_public_loss_rate: Decimal | None = None
+    creator_profit_rug_rate: Decimal | None = None
+    cluster_reputation_score: Decimal | None = None
+    config_hash: str = "creator-rep-v1-hash"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "address", require_solana_address(self.address, "creator address"))
         object.__setattr__(self, "as_of", ensure_utc(self.as_of, "as_of"))
-        rep_cls = require_text(
-            self.reputation_class, "reputation_class", max_length=64
-        ).upper()
+        rep_cls = require_text(self.reputation_class, "reputation_class", max_length=64).upper()
         object.__setattr__(self, "reputation_class", rep_cls)
         object.__setattr__(self, "reason_codes", normalize_texts(self.reason_codes, "reason_codes"))
 
@@ -1282,18 +1340,14 @@ class ClosedTradeExplanationView:
         if self.evaluation_id is not None and not isinstance(self.evaluation_id, UUID):
             raise TypeError("evaluation_id must be a UUID or None")
         object.__setattr__(self, "closed_at", ensure_utc(self.closed_at, "closed_at"))
-        object.__setattr__(
-            self, "average_exit", to_decimal(self.average_exit, "average_exit")
-        )
+        object.__setattr__(self, "average_exit", to_decimal(self.average_exit, "average_exit"))
         if self.average_exit <= 0:
             raise ValueError("average_exit must be positive")
         object.__setattr__(self, "realized_pnl", to_decimal(self.realized_pnl, "realized_pnl"))
         object.__setattr__(
             self, "action", require_text(self.action, "action", max_length=16).upper()
         )
-        object.__setattr__(
-            self, "reason_codes", normalize_texts(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", normalize_texts(self.reason_codes, "reason_codes"))
         if not self.reason_codes:
             raise ValueError("closed-trade reason_codes must not be empty")
         object.__setattr__(
@@ -1535,9 +1589,7 @@ def build_position_view(
     latest_evaluation = evaluations[-1] if evaluations else None
     mark_quality = QualityState.UNKNOWN if mark is None else QualityState(mark.quality_state)
     performance_as_of = (
-        mark.observed_at
-        if mark is not None
-        else position.closed_at or position.opened_at
+        mark.observed_at if mark is not None else position.closed_at or position.opened_at
     )
     if performance_as_of is None:
         raise ValueError("position projection requires an observed or lifecycle timestamp")
@@ -1988,11 +2040,7 @@ class InMemoryReadQueryService:
             and (query.mode is None or value.mode is query.mode)
             and (query.state is None or value.state is query.state)
             and (query.as_of is None or value.opened_at is None or value.opened_at <= query.as_of)
-            and (
-                query.as_of is None
-                or value.closed_at is None
-                or value.closed_at <= query.as_of
-            )
+            and (query.as_of is None or value.closed_at is None or value.closed_at <= query.as_of)
         ]
         if query.as_of is not None:
             values = [value.without_future_evidence(query.as_of) for value in values]
@@ -2016,20 +2064,45 @@ class InMemoryReadQueryService:
             raise TypeError("position_id must be a UUID")
         return next((value for value in self.positions if value.id == position_id), None)
 
-    async def get_creator_reputation(self, address: str) -> CreatorReputationView | None:
+    async def get_creator_reputation(
+        self, address: str, as_of: datetime | None = None
+    ) -> CreatorReputationView | None:
         normalized = require_solana_address(address, "creator address")
-        now = datetime.now(UTC)
+        from .creator_graph import CreatorReputationAnalyzer
+
+        analyzer = CreatorReputationAnalyzer(graph=self._creator_graph)
+        snapshot = analyzer.evaluate(normalized, as_of=as_of)
+        rep_cls = (
+            snapshot.reputation_class.value
+            if hasattr(snapshot.reputation_class, "value")
+            else str(snapshot.reputation_class)
+        )
         return CreatorReputationView(
-            address=normalized,
-            as_of=now,
-            launches_total=0,
-            winner_rate=Decimal("0"),
-            severe_failure_rate=Decimal("0"),
-            rug_rate=Decimal("0"),
-            score=Decimal("50"),
-            confidence=Decimal("0"),
-            reputation_class="UNPROVEN",
-            reason_codes=("INSUFFICIENT_CREATOR_HISTORY",),
+            address=snapshot.address,
+            as_of=snapshot.as_of,
+            launches_total=snapshot.launches_total,
+            sufficient_outcome_samples=snapshot.sufficient_outcome_samples,
+            winner_rate=snapshot.winner_rate,
+            strong_winner_rate=snapshot.strong_winner_rate,
+            severe_failure_rate=snapshot.severe_failure_rate,
+            rug_rate=snapshot.rug_rate,
+            score=snapshot.score,
+            confidence=snapshot.confidence,
+            reputation_class=rep_cls,
+            reason_codes=tuple(str(r) for r in snapshot.reason_codes),
+            median_mfe=snapshot.median_mfe,
+            median_mae=snapshot.median_mae,
+            creator_realized_pnl=snapshot.creator_realized_pnl,
+            creator_dump_rate=snapshot.creator_dump_rate,
+            creator_exit_before_major_drawdown_rate=snapshot.creator_exit_before_major_drawdown_rate,
+            bundle_sniper_association=snapshot.bundle_sniper_association,
+            shared_funder_recurrence=snapshot.shared_funder_recurrence,
+            side_wallet_recurrence=snapshot.side_wallet_recurrence,
+            liquidity_survival_rate=snapshot.liquidity_survival_rate,
+            creator_profit_public_loss_rate=snapshot.creator_profit_public_loss_rate,
+            creator_profit_rug_rate=snapshot.creator_profit_rug_rate,
+            cluster_reputation_score=snapshot.cluster_reputation_score,
+            config_hash=snapshot.config_hash,
         )
 
     async def get_wallet_graph(self, query: WalletGraphQuery) -> WalletGraphView:
@@ -2041,6 +2114,12 @@ class InMemoryReadQueryService:
             max_nodes=query.max_nodes,
             max_edges=query.max_edges,
             outcome_filter=query.outcome_filter,
+            date_from=query.date_from,
+            date_to=query.date_to,
+            venue=query.venue,
+            wallet_role=query.wallet_role,
+            risk_outcome_class=query.risk_outcome_class,
+            evidence_quality=query.evidence_quality,
         )
         return WalletGraphView(
             nodes=tuple(subgraph.get("nodes", [])),
@@ -2065,6 +2144,12 @@ class InMemoryReadQueryService:
             max_nodes=query.max_nodes,
             max_edges=query.max_edges,
             outcome_filter=query.outcome_filter,
+            date_from=query.date_from,
+            date_to=query.date_to,
+            venue=query.venue,
+            wallet_role=query.wallet_role,
+            risk_outcome_class=query.risk_outcome_class,
+            evidence_quality=query.evidence_quality,
         )
         return WalletGraphView(
             nodes=tuple(subgraph.get("nodes", [])),
@@ -2088,6 +2173,12 @@ class InMemoryReadQueryService:
             max_depth=query.max_depth,
             max_nodes=query.max_nodes,
             max_edges=query.max_edges,
+            date_from=query.date_from,
+            date_to=query.date_to,
+            venue=query.venue,
+            wallet_role=query.wallet_role,
+            risk_outcome_class=query.risk_outcome_class,
+            evidence_quality=query.evidence_quality,
         )
         return WalletGraphView(
             nodes=tuple(subgraph.get("nodes", [])),
