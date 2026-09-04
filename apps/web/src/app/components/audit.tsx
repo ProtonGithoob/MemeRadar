@@ -1,8 +1,7 @@
 import Link from "next/link";
 
 import { SafetyBadge } from "./status-badges";
-import { OperatorHeader } from "./operator-header";
-import { ProtectedShell } from "./radar";
+import { WorkstationTopBar } from "./ui-primitives";
 import type {
   AuditEventRecord,
   ConfigVersionRecord,
@@ -123,28 +122,60 @@ export function AuditDashboard({
   configResult: ReadResult<ReadPage<ConfigVersionRecord>>;
 }) {
   return (
-    <main className="shell">
-      <OperatorHeader />
-      <ProtectedShell />
-      <section className="section-block intelligence-section" aria-labelledby="audit-title">
-        <div className="section-heading">
-          <div><p className="eyebrow">IMMUTABLE CONTROL HISTORY / READ-ONLY</p><h3 id="audit-title">Audit explorer</h3></div>
-          <p className="section-note">Audit and config projections are evidence, not permissions.</p>
-        </div>
-        <section className="settings-block" aria-labelledby="audit-events-title">
-          <div className="panel-heading"><div><p className="eyebrow">OPERATOR / SYSTEM EVENTS</p><h3 id="audit-events-title">Audit events</h3></div><SafetyBadge label="MUTATION" value="API-GATED" tone="disabled" /></div>
-          <AuditEvents result={auditResult} />
+    <main className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans">
+      <WorkstationTopBar />
+      <div className="max-w-[1550px] mx-auto w-full p-4 md:p-6 space-y-6">
+        <section className="section-block intelligence-section space-y-6" aria-labelledby="audit-title">
+          <div className="section-heading flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-gray-800/80">
+            <div>
+              <p className="eyebrow text-[10px] font-bold text-emerald-400 uppercase tracking-wider m-0">IMMUTABLE CONTROL HISTORY / READ-ONLY</p>
+              <h3 id="audit-title" className="text-2xl font-bold text-gray-100 m-0">Audit Explorer</h3>
+              <p className="section-note text-xs text-gray-400 m-0 mt-1">Audit and config projections are evidence, not permissions.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono bg-emerald-950 text-emerald-300 border border-emerald-800 px-2.5 py-1 rounded">
+                ANALYSIS_ONLY=true
+              </span>
+              <span className="text-xs font-mono bg-cyan-950 text-cyan-300 border border-cyan-800 px-2.5 py-1 rounded">
+                PAPER_TRADING=true
+              </span>
+            </div>
+          </div>
+
+          <section className="settings-block space-y-3" aria-labelledby="audit-events-title">
+            <div className="panel-heading flex items-center justify-between">
+              <div>
+                <p className="eyebrow text-[10px] font-bold text-gray-400 uppercase tracking-wider">OPERATOR / SYSTEM EVENTS</p>
+                <h3 id="audit-events-title" className="text-sm font-bold text-gray-200">Audit events</h3>
+              </div>
+              <SafetyBadge label="MUTATION" value="API-GATED" tone="disabled" />
+            </div>
+            <AuditEvents result={auditResult} />
+          </section>
+
+          <section className="settings-block space-y-3" aria-labelledby="config-history-title">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow text-[10px] font-bold text-gray-400 uppercase tracking-wider">REPLAY IDENTITY</p>
+                <h3 id="config-history-title" className="text-sm font-bold text-gray-200">Configuration history</h3>
+              </div>
+            </div>
+            <ConfigHistory result={configResult} />
+          </section>
         </section>
-        <section className="settings-block" aria-labelledby="config-history-title">
-          <div className="panel-heading"><div><p className="eyebrow">REPLAY IDENTITY</p><h3 id="config-history-title">Configuration history</h3></div></div>
-          <ConfigHistory result={configResult} />
+
+        <section className="queue-card bg-gray-900/60 border border-gray-800 rounded-xl p-4 flex items-center justify-between" aria-labelledby="audit-boundary-title">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-gray-800 text-gray-400 flex items-center justify-center font-mono font-bold text-sm" aria-hidden="true">⌁</div>
+            <div>
+              <p className="eyebrow text-[10px] font-bold text-amber-400 uppercase tracking-wider">SAFE PROJECTION</p>
+              <h3 id="audit-boundary-title" className="text-xs font-bold text-gray-200">Sensitive values are withheld</h3>
+              <p className="text-[11px] text-gray-400">Only bounded allow-listed fields and correlation metadata are rendered.</p>
+            </div>
+          </div>
+          <Link className="text-xs font-mono text-indigo-400 hover:text-indigo-300 underline font-semibold" href="/settings">VIEW SETTINGS</Link>
         </section>
-      </section>
-      <section className="queue-card" aria-labelledby="audit-boundary-title">
-        <div className="queue-card__icon" aria-hidden="true">⌁</div>
-        <div><p className="eyebrow">SAFE PROJECTION</p><h3 id="audit-boundary-title">Sensitive values are withheld</h3><p>Only bounded allow-listed fields and correlation metadata are rendered.</p></div>
-        <Link className="back-link" href="/settings">VIEW SETTINGS</Link>
-      </section>
+      </div>
     </main>
   );
 }

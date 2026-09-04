@@ -444,6 +444,7 @@ function useSafeRouter() {
 
 export function WorkstationTopBar() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useSafeRouter();
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -451,20 +452,19 @@ export function WorkstationTopBar() {
     const query = searchQuery.trim();
     if (!query) return;
 
-    // Direct routing based on search string pattern
-    if (query.length >= 32) {
-      // Address / Mint search
-      if (router) {
-        router.push(`/tokens/${encodeURIComponent(query)}`);
-      } else {
-        window.location.href = `/tokens/${encodeURIComponent(query)}`;
-      }
-    } else {
-      if (router) {
-        router.push(`/?search=${encodeURIComponent(query)}`);
-      } else {
-        window.location.href = `/?search=${encodeURIComponent(query)}`;
-      }
+    let targetPath = `/?search=${encodeURIComponent(query)}`;
+    if (query.toLowerCase().startsWith("wallet:")) {
+      const addr = query.replace(/^wallet:/i, "").trim();
+      targetPath = `/wallet-graph?address=${encodeURIComponent(addr)}`;
+    } else if (query.length >= 32) {
+      targetPath = `/tokens/${encodeURIComponent(query)}`;
+    }
+
+    if (router) {
+      router.push(targetPath);
+    } else if (typeof window !== "undefined") {
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.href = targetPath;
     }
   };
 
@@ -516,22 +516,59 @@ export function WorkstationTopBar() {
               placeholder="Search mint / wallet / symbol..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-48 sm:w-64 bg-gray-900 border border-gray-700/80 rounded-lg px-3 py-1.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-emerald-400 font-mono"
+              className="w-44 sm:w-64 bg-gray-900 border border-gray-700/80 rounded-lg px-3 py-1.5 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 font-mono"
+              aria-label="Search tokens or wallets"
             />
-            <button type="submit" className="absolute right-2 top-1.2 text-xs text-gray-400 hover:text-gray-200">
+            <button type="submit" className="absolute right-2 top-1.5 text-xs text-gray-400 hover:text-gray-200" aria-label="Submit search">
               🔍
             </button>
           </form>
 
-          <span className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border border-emerald-500/30 text-emerald-400 bg-emerald-950/20">
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[10px] font-mono border border-emerald-500/30 text-emerald-400 bg-emerald-950/20">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
             READ ONLY MODE
           </span>
 
           <RealtimeStatus />
           <ThemeToggle />
+
+          {/* Mobile Navigation Toggle Button */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden px-2 py-1 text-xs bg-gray-900 border border-gray-700 rounded text-gray-300 hover:text-white"
+            aria-label="Toggle navigation menu"
+          >
+            {mobileMenuOpen ? "✕" : "☰"}
+          </button>
         </div>
       </div>
+
+      {/* Mobile Navigation Menu Dropdown */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-gray-800 bg-gray-950 mt-2.5 pt-2 pb-3 px-4 flex flex-col gap-2 text-xs font-semibold text-gray-300">
+          <Link href="/" onClick={() => setMobileMenuOpen(false)} className="py-1.5 px-2 rounded hover:bg-gray-900 hover:text-emerald-400">
+            Radar (Command Center)
+          </Link>
+          <Link href="/ultra-early" onClick={() => setMobileMenuOpen(false)} className="py-1.5 px-2 rounded hover:bg-gray-900 hover:text-emerald-400">
+            Ultra Early Workspace
+          </Link>
+          <Link href="/positions" onClick={() => setMobileMenuOpen(false)} className="py-1.5 px-2 rounded hover:bg-gray-900 hover:text-emerald-400">
+            Paper Positions
+          </Link>
+          <Link href="/wallet-graph" onClick={() => setMobileMenuOpen(false)} className="py-1.5 px-2 rounded hover:bg-gray-900 hover:text-emerald-400">
+            Wallet & Creator Graph
+          </Link>
+          <Link href="/operations" onClick={() => setMobileMenuOpen(false)} className="py-1.5 px-2 rounded hover:bg-gray-900 hover:text-emerald-400">
+            Providers & Shadow Operations
+          </Link>
+          <Link href="/research" onClick={() => setMobileMenuOpen(false)} className="py-1.5 px-2 rounded hover:bg-gray-900 hover:text-emerald-400">
+            Research & Calibration
+          </Link>
+          <Link href="/audit" onClick={() => setMobileMenuOpen(false)} className="py-1.5 px-2 rounded hover:bg-gray-900 hover:text-emerald-400">
+            System Audit & Docs
+          </Link>
+        </div>
+      )}
     </header>
   );
 }

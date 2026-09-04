@@ -245,17 +245,17 @@ export function RadarDashboard({
 
   const candidates = result.ok ? result.data.items : [];
   const earlyRadarItems = earlyResult?.ok ? earlyResult.data.items : [];
-  const positions = positionsResult?.ok ? positionsResult.data.items : [];
   const providerHealth = providerHealthResult?.ok ? providerHealthResult.data.items : [];
   const opsData = opsResult?.ok ? opsResult.data : null;
 
   const paperPositionMints = useMemo(() => {
+    const items = positionsResult?.ok ? positionsResult.data.items : [];
     const set = new Set<string>();
-    positions.forEach((p) => {
+    items.forEach((p) => {
       if (p.mintAddress) set.add(p.mintAddress);
     });
     return set;
-  }, [positions]);
+  }, [positionsResult]);
 
   const funnelCounts = useMemo(() => {
     const counts = {
@@ -265,20 +265,23 @@ export function RadarDashboard({
       HIGH_CONFLUENCE: 0,
       ENTRY_READY: 0,
     };
-    earlyRadarItems.forEach((item) => {
-      const st = item.earlyState;
-      if (st in counts) {
-        counts[st as keyof typeof counts]++;
-      }
-    });
+    if (earlyResult?.ok) {
+      earlyResult.data.items.forEach((item) => {
+        const st = item.earlyState;
+        if (st in counts) {
+          counts[st as keyof typeof counts]++;
+        }
+      });
+    }
     return counts;
-  }, [earlyRadarItems]);
+  }, [earlyResult]);
 
   const heliusHealth = providerHealth.find((p) => p.provider.toLowerCase().includes("helius"));
   const birdeyeHealth = providerHealth.find((p) => p.provider.toLowerCase().includes("birdeye"));
 
   const filteredCandidates = useMemo(() => {
-    let list = [...candidates];
+    const rawList = result.ok ? result.data.items : [];
+    let list = [...rawList];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -289,7 +292,7 @@ export function RadarDashboard({
       );
     }
     return list;
-  }, [candidates, searchQuery]);
+  }, [result, searchQuery]);
 
   return (
     <PageShell>
@@ -373,7 +376,7 @@ export function RadarDashboard({
         <MetricCard
           label="Active Candidates"
           value={candidates.length}
-          subtext={`${positions.length} paper positions`}
+          subtext={`${paperPositionMints.size} paper positions`}
           variant="info"
         />
       </div>

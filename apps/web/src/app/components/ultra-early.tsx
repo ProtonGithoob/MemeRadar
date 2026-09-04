@@ -152,27 +152,28 @@ export function UltraEarlyPanel({
   const items = result.ok ? result.data.items : [];
 
   const filteredItems = useMemo(() => {
-    if (!items.length) return [];
+    const rawItems = result.ok ? result.data.items : [];
+    if (!rawItems.length) return [];
     switch (activePreset) {
       case "FRESH_1M":
-        return items.filter((item) => (item.launchAgeSeconds ?? 999) <= 60);
+        return rawItems.filter((item) => (item.launchAgeSeconds ?? 999) <= 60);
       case "FRESH_5M":
-        return items.filter((item) => (item.launchAgeSeconds ?? 999) <= 300);
+        return rawItems.filter((item) => (item.launchAgeSeconds ?? 999) <= 300);
       case "HIGH_CONFLUENCE":
-        return items.filter((item) => (item.smartMoneyConfluence ?? 0) >= 50);
+        return rawItems.filter((item) => (item.smartMoneyConfluence ?? 0) >= 50);
       case "ENTRY_READY":
-        return items.filter((item) => item.earlyState === "ENTRY_READY");
+        return rawItems.filter((item) => item.earlyState === "ENTRY_READY");
       case "CREATOR_RISK":
-        return items.filter((item) => item.creatorRisk === "HIGH" || item.creatorRisk === "BLOCK");
+        return rawItems.filter((item) => item.creatorRisk === "HIGH" || item.creatorRisk === "BLOCK");
       case "BUNDLE_RISK":
-        return items.filter((item) => item.bundleRisk === "HIGH" || item.bundleRisk === "BLOCK");
+        return rawItems.filter((item) => item.bundleRisk === "HIGH" || item.bundleRisk === "BLOCK");
       case "UNKNOWN_CRITICAL":
-        return items.filter((item) => item.firstSeenQuality === "UNKNOWN" || item.holderRisk === "UNKNOWN");
+        return rawItems.filter((item) => item.firstSeenQuality === "UNKNOWN" || item.holderRisk === "UNKNOWN");
       case "ALL":
       default:
-        return items;
+        return rawItems;
     }
-  }, [items, activePreset]);
+  }, [result, activePreset]);
 
   if (!result.ok) {
     return (

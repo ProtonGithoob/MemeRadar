@@ -20,9 +20,9 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          command: "npm run dev -- --hostname 127.0.0.1 --port 13000",
+          command: "npx next dev -p 13000",
           url: "http://127.0.0.1:13000/",
-          reuseExistingServer: true,
+          reuseExistingServer: false,
           timeout: 120_000
         }
       })
