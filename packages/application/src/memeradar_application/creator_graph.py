@@ -5,6 +5,7 @@ tokens, pools, and their historical outcomes.
 """
 
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -143,6 +144,18 @@ class CreatorReputationSnapshot:
     confidence: Decimal
     reputation_class: CreatorReputationClass
     reason_codes: tuple[ReasonCode, ...]
+    median_mfe: Decimal | None = None
+    median_mae: Decimal | None = None
+    creator_realized_pnl: Decimal | None = None
+    creator_dump_rate: Decimal | None = None
+    creator_exit_before_major_drawdown_rate: Decimal | None = None
+    bundle_sniper_association: bool | None = None
+    shared_funder_recurrence: bool | None = None
+    side_wallet_recurrence: bool | None = None
+    liquidity_survival_rate: Decimal | None = None
+    creator_profit_public_loss_rate: Decimal | None = None
+    creator_profit_rug_rate: Decimal | None = None
+    cluster_reputation_score: Decimal | None = None
     config_hash: str = "creator-rep-v1-hash"
 
     def __post_init__(self) -> None:
@@ -217,6 +230,97 @@ class CreatorOutcomeGraph:
         if pair not in self._edge_by_nodes:
             self._edge_by_nodes[pair] = []
         self._edge_by_nodes[pair].append(edge)
+
+    def get_subgraph(
+        self,
+        start_node_ids: Sequence[str],
+        max_depth: int = 2,
+        max_nodes: int = 50,
+        max_edges: int = 100,
+        as_of: datetime | None = None,
+        outcome_filter: str | None = None,
+    ) -> dict[str, Any]:
+        """Bounded breadth-first traversal producing a safe graph projection."""
+        as_of_dt = ensure_utc(as_of or datetime.now(UTC), "as_of")
+        visited_nodes: set[str] = set()
+        visited_edges: set[str] = set()
+        queue: deque[tuple[str, int]] = deque()
+
+        for start_id in start_node_ids:
+            if start_id in self.nodes:
+                visited_nodes.add(start_id)
+                queue.append((start_id, 0))
+
+        has_more = False
+        while queue and len(visited_nodes) < max_nodes:
+            curr_id, curr_depth = queue.popleft()
+            if curr_depth >= max_depth:
+                continue
+
+            neighbors = self._adj_out.get(curr_id, set()) | self._adj_in.get(curr_id, set())
+            for nxt_id in neighbors:
+                if len(visited_nodes) >= max_nodes:
+                    has_more = True
+                    break
+
+                # Collect edge between curr_id and nxt_id
+                edges = (
+                    self._edge_by_nodes.get((curr_id, nxt_id), [])
+                    + self._edge_by_nodes.get((nxt_id, curr_id), [])
+                )
+                for e in edges:
+                    if e.occurred_at <= as_of_dt and len(visited_edges) < max_edges:
+                        if outcome_filter and e.to_id in self.nodes:
+                            target_node = self.nodes[e.to_id]
+                            out_val = target_node.properties.get("outcome")
+                            if out_val and str(out_val).upper() != outcome_filter.upper():
+                                continue
+                        visited_edges.add(e.id)
+
+                if nxt_id not in visited_nodes:
+                    visited_nodes.add(nxt_id)
+                    queue.append((nxt_id, curr_depth + 1))
+
+        nodes_out = [
+            {
+                "id": self.nodes[nid].id,
+                "kind": self.nodes[nid].kind.value,
+                "label": self.nodes[nid].label,
+                "properties": self.nodes[nid].properties,
+                "quality_state": self.nodes[nid].quality_state.value,
+                "created_at": self.nodes[nid].created_at.isoformat(),
+            }
+            for nid in visited_nodes
+            if nid in self.nodes
+        ]
+
+        edges_out = [
+            {
+                "id": self.edges[eid].id,
+                "from_id": self.edges[eid].from_id,
+                "to_id": self.edges[eid].to_id,
+                "kind": self.edges[eid].kind.value,
+                "occurred_at": self.edges[eid].occurred_at.isoformat(),
+                "observed_at": self.edges[eid].observed_at.isoformat(),
+                "ingested_at": self.edges[eid].ingested_at.isoformat(),
+                "token_mint": self.edges[eid].token_mint,
+                "properties": self.edges[eid].properties,
+                "quality_state": self.edges[eid].quality_state.value,
+                "reason_codes": [str(r) for r in self.edges[eid].reason_codes],
+            }
+            for eid in visited_edges
+            if eid in self.edges
+        ]
+
+        return {
+            "nodes": nodes_out,
+            "edges": edges_out,
+            "max_depth": max_depth,
+            "max_nodes": max_nodes,
+            "max_edges": max_edges,
+            "has_more": has_more,
+            "as_of": as_of_dt.isoformat(),
+        }
 
     def find_shortest_path(
         self, start_id: str, target_id: str, max_depth: int = 5

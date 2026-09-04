@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Generic, Literal, TypeVar, cast
@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, stat
 from pydantic import BaseModel, ConfigDict, Field
 
 from memeradar_application.control import ControlAction
+from memeradar_application.early_scoring import AsymmetricAlphaProjection
 from memeradar_application.read_api import (
     DEFAULT_PAGE_LIMIT,
     MAX_CURSOR_LENGTH,
@@ -21,6 +22,7 @@ from memeradar_application.read_api import (
     CandidateQuery,
     CandidateView,
     ClosedTradeExplanationView,
+    ClusterGraphQuery,
     ConfigQuery,
     ConfigVersionView,
     CreatorReputationView,
@@ -39,9 +41,13 @@ from memeradar_application.read_api import (
     ProviderHealthView,
     ReadProviderHealthState,
     ReadQueryPort,
+    ShortestPathQuery,
     TimelineEntryView,
     TimelineQuery,
+    TokenGraphQuery,
     TokenView,
+    WalletGraphQuery,
+    WalletGraphView,
     WalletQuery,
     WalletView,
 )
@@ -137,6 +143,32 @@ class PositionQueryParams(_StrictModel):
     as_of: datetime | None = None
 
 
+class WalletGraphQueryParams(_StrictModel):
+    max_depth: int = Field(default=2, ge=1, le=5)
+    max_nodes: int = Field(default=50, ge=1, le=200)
+    max_edges: int = Field(default=100, ge=1, le=500)
+    outcome_filter: str | None = Field(default=None, max_length=64)
+
+
+class TokenGraphQueryParams(_StrictModel):
+    max_depth: int = Field(default=2, ge=1, le=5)
+    max_nodes: int = Field(default=50, ge=1, le=200)
+    max_edges: int = Field(default=100, ge=1, le=500)
+    outcome_filter: str | None = Field(default=None, max_length=64)
+
+
+class ClusterGraphQueryParams(_StrictModel):
+    max_depth: int = Field(default=2, ge=1, le=5)
+    max_nodes: int = Field(default=50, ge=1, le=200)
+    max_edges: int = Field(default=100, ge=1, le=500)
+
+
+class ShortestPathQueryParams(_StrictModel):
+    start_id: str = Field(..., min_length=1, max_length=256)
+    target_id: str = Field(..., min_length=1, max_length=256)
+    max_depth: int = Field(default=5, ge=1, le=10)
+
+
 class PageResponse(_StrictModel, Generic[ResponseT]):
     """Stable page envelope shared by every collection endpoint."""
 
@@ -174,6 +206,19 @@ class CandidateResponse(_StrictModel):
     execution_eligible: bool = False
 
 
+class AsymmetricAlphaProjectionResponse(_StrictModel):
+    early_quality_score: Decimal
+    upside_evidence_score: Decimal
+    rug_dump_risk: Decimal
+    execution_quality: Decimal
+    evidence_confidence: Decimal
+    launch_age_ms: int | None = None
+    market_cap_at_decision: Decimal | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+    strategy_version: str = "asymmetric-alpha-v1"
+    config_hash: str = "asymmetric-alpha-hash"
+
+
 class EarlyRadarResponse(_StrictModel):
     candidate_id: UUID
     token_id: UUID
@@ -208,6 +253,7 @@ class EarlyRadarResponse(_StrictModel):
     reason_codes: list[str] = Field(default_factory=list)
     execution_eligible: bool = False
     auto_execution: str = "LOCKED"
+    asymmetric_alpha: AsymmetricAlphaProjectionResponse | None = None
 
 
 class ProvenanceResponse(_StrictModel):
@@ -395,6 +441,44 @@ class PositionResponse(_StrictModel):
     execution_eligible: bool = False
 
 
+class GraphNodeResponse(_StrictModel):
+    id: str
+    kind: str
+    label: str
+    properties: dict[str, object] = Field(default_factory=dict)
+    quality_state: str
+    created_at: str
+
+
+class GraphEdgeResponse(_StrictModel):
+    id: str
+    from_id: str
+    to_id: str
+    kind: str
+    occurred_at: str
+    observed_at: str
+    ingested_at: str
+    token_mint: str | None = None
+    properties: dict[str, object] = Field(default_factory=dict)
+    quality_state: str
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class WalletGraphResponse(_StrictModel):
+    nodes: list[GraphNodeResponse]
+    edges: list[GraphEdgeResponse]
+    max_depth: int
+    max_nodes: int
+    max_edges: int
+    has_more: bool
+    as_of: str
+
+
+class ShortestPathResponse(_StrictModel):
+    nodes: list[str] = Field(default_factory=list)
+    edges: list[dict[str, object]] = Field(default_factory=list)
+
+
 def _materialize(value: object) -> object:
     if isinstance(value, Mapping):
         return {str(key): _materialize(item) for key, item in value.items()}
@@ -470,6 +554,59 @@ def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
         reason_codes=list(value.reason_codes),
         execution_eligible=False,
         auto_execution="LOCKED",
+        asymmetric_alpha=(
+            AsymmetricAlphaProjectionResponse(
+                early_quality_score=value.asymmetric_alpha.early_quality_score,
+                upside_evidence_score=value.asymmetric_alpha.upside_evidence_score,
+                rug_dump_risk=value.asymmetric_alpha.rug_dump_risk,
+                execution_quality=value.asymmetric_alpha.execution_quality,
+                evidence_confidence=value.asymmetric_alpha.evidence_confidence,
+                launch_age_ms=value.asymmetric_alpha.launch_age_ms,
+                market_cap_at_decision=value.asymmetric_alpha.market_cap_at_decision,
+                reason_codes=[
+                    str(getattr(r, "code", r))
+                    for r in value.asymmetric_alpha.reason_codes
+                ],
+                strategy_version=value.asymmetric_alpha.strategy_version,
+                config_hash=value.asymmetric_alpha.config_hash,
+            )
+            if isinstance(value.asymmetric_alpha, AsymmetricAlphaProjection)
+            else (
+                AsymmetricAlphaProjectionResponse(
+                    early_quality_score=Decimal(
+                        str(value.asymmetric_alpha.get("early_quality_score", 0))
+                    ),
+                    upside_evidence_score=Decimal(
+                        str(value.asymmetric_alpha.get("upside_evidence_score", 0))
+                    ),
+                    rug_dump_risk=Decimal(
+                        str(value.asymmetric_alpha.get("rug_dump_risk", 0))
+                    ),
+                    execution_quality=Decimal(
+                        str(value.asymmetric_alpha.get("execution_quality", 0))
+                    ),
+                    evidence_confidence=Decimal(
+                        str(value.asymmetric_alpha.get("evidence_confidence", 0))
+                    ),
+                    launch_age_ms=cast(int | None, value.asymmetric_alpha.get("launch_age_ms")),
+                    market_cap_at_decision=cast(
+                        Decimal | None, value.asymmetric_alpha.get("market_cap_at_decision")
+                    ),
+                    reason_codes=[
+                        str(r)
+                        for r in cast(list[object], value.asymmetric_alpha.get("reason_codes", []))
+                    ],
+                    strategy_version=str(
+                        value.asymmetric_alpha.get("strategy_version", "asymmetric-alpha-v1")
+                    ),
+                    config_hash=str(
+                        value.asymmetric_alpha.get("config_hash", "asymmetric-alpha-hash")
+                    ),
+                )
+                if isinstance(value.asymmetric_alpha, Mapping)
+                else None
+            )
+        ),
     )
 
 
@@ -702,6 +839,63 @@ def _position_response(value: PositionView) -> PositionResponse:
     )
 
 
+def _wallet_graph_response(value: WalletGraphView) -> WalletGraphResponse:
+    nodes: list[GraphNodeResponse] = []
+    for node in value.nodes:
+        if isinstance(node, Mapping):
+            props = node.get("properties")
+            nodes.append(
+                GraphNodeResponse(
+                    id=str(node.get("id", "")),
+                    kind=str(node.get("kind", "")),
+                    label=str(node.get("label", "")),
+                    properties=(
+                        _mapping(cast(Mapping[str, object], props))
+                        if isinstance(props, Mapping)
+                        else {}
+                    ),
+                    quality_state=str(node.get("quality_state", "FRESH")),
+                    created_at=str(node.get("created_at", "")),
+                )
+            )
+    edges: list[GraphEdgeResponse] = []
+    for edge in value.edges:
+        if isinstance(edge, Mapping):
+            props = edge.get("properties")
+            reasons = edge.get("reason_codes")
+            edges.append(
+                GraphEdgeResponse(
+                    id=str(edge.get("id", "")),
+                    from_id=str(edge.get("from_id", "")),
+                    to_id=str(edge.get("to_id", "")),
+                    kind=str(edge.get("kind", "")),
+                    occurred_at=str(edge.get("occurred_at", "")),
+                    observed_at=str(edge.get("observed_at", "")),
+                    ingested_at=str(edge.get("ingested_at", "")),
+                    properties=(
+                        _mapping(cast(Mapping[str, object], props))
+                        if isinstance(props, Mapping)
+                        else {}
+                    ),
+                    quality_state=str(edge.get("quality_state", "FRESH")),
+                    reason_codes=(
+                        [str(r) for r in cast(Sequence[object], reasons)]
+                        if isinstance(reasons, list | tuple)
+                        else []
+                    ),
+                )
+            )
+    return WalletGraphResponse(
+        nodes=nodes,
+        edges=edges,
+        max_depth=value.max_depth,
+        max_nodes=value.max_nodes,
+        max_edges=value.max_edges,
+        has_more=value.has_more,
+        as_of=value.as_of.isoformat(),
+    )
+
+
 def _page_response(
     page: Page[SourceT], mapper: Callable[[SourceT], ResponseT]
 ) -> PageResponse[ResponseT]:
@@ -829,6 +1023,62 @@ def build_read_router(
             )
         return _creator_reputation_response(value)
 
+    @router.get("/wallet-graph/wallets/{address}", response_model=WalletGraphResponse)
+    async def get_wallet_graph(
+        address: Annotated[str, Path(min_length=32, max_length=64)],
+        params: Annotated[WalletGraphQueryParams, Query()],
+    ) -> WalletGraphResponse:
+        query = _build(lambda: WalletGraphQuery(address=address, **params.model_dump()))
+        view = await _call(_require_service(service).get_wallet_graph(query))
+        return _wallet_graph_response(view)
+
+    @router.get("/wallet-graph/tokens/{mint}", response_model=WalletGraphResponse)
+    async def get_token_graph(
+        mint: Annotated[str, Path(min_length=32, max_length=64)],
+        params: Annotated[TokenGraphQueryParams, Query()],
+    ) -> WalletGraphResponse:
+        query = _build(lambda: TokenGraphQuery(mint=mint, **params.model_dump()))
+        view = await _call(_require_service(service).get_token_graph(query))
+        return _wallet_graph_response(view)
+
+    @router.get("/wallet-graph/clusters/{cluster_id}", response_model=WalletGraphResponse)
+    async def get_cluster_graph(
+        cluster_id: Annotated[str, Path(min_length=1, max_length=128)],
+        params: Annotated[ClusterGraphQueryParams, Query()],
+    ) -> WalletGraphResponse:
+        query = _build(lambda: ClusterGraphQuery(cluster_id=cluster_id, **params.model_dump()))
+        view = await _call(_require_service(service).get_cluster_graph(query))
+        return _wallet_graph_response(view)
+
+    @router.get("/wallet-graph/shortest-path", response_model=ShortestPathResponse)
+    async def get_shortest_path(
+        params: Annotated[ShortestPathQueryParams, Query()],
+    ) -> ShortestPathResponse:
+        query = _build(lambda: ShortestPathQuery(**params.model_dump()))
+        result = await _call(_require_service(service).get_shortest_path(query))
+        if result is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="path not found")
+        raw_nodes = result.get("nodes", [])
+        raw_edges = result.get("edges", [])
+        nodes = (
+            [str(n) for n in cast(Sequence[object], raw_nodes)]
+            if isinstance(raw_nodes, list | tuple)
+            else []
+        )
+        edges = (
+            [
+                _mapping(cast(Mapping[str, object], e))
+                for e in cast(Sequence[object], raw_edges)
+                if isinstance(e, Mapping)
+            ]
+            if isinstance(raw_edges, list | tuple)
+            else []
+        )
+        return ShortestPathResponse(
+            nodes=nodes,
+            edges=edges,
+        )
+
     @router.get("/providers/health", response_model=PageResponse[ProviderHealthResponse])
     async def list_provider_health(
         params: Annotated[ProviderHealthQueryParams, Query()],
@@ -877,11 +1127,14 @@ __all__ = [
     "CandidateQueryParams",
     "CandidateResponse",
     "ClosedTradeExplanationResponse",
+    "ClusterGraphQueryParams",
     "ConfigQueryParams",
     "ConfigVersionResponse",
     "CreatorReputationResponse",
     "EarlyRadarQueryParams",
     "EarlyRadarResponse",
+    "GraphEdgeResponse",
+    "GraphNodeResponse",
     "PageResponse",
     "PoolResponse",
     "PositionExitRiskResponse",
@@ -892,9 +1145,14 @@ __all__ = [
     "ProviderHealthQueryParams",
     "ProviderHealthResponse",
     "ProvenanceResponse",
+    "ShortestPathQueryParams",
+    "ShortestPathResponse",
     "TimelineEntryResponse",
     "TimelineQueryParams",
+    "TokenGraphQueryParams",
     "TokenResponse",
+    "WalletGraphQueryParams",
+    "WalletGraphResponse",
     "WalletQueryParams",
     "WalletResponse",
     "build_read_router",

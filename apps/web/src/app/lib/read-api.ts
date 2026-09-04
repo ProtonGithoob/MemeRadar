@@ -66,6 +66,19 @@ export type EarlyRadarState =
   | "HIGH_CONFLUENCE"
   | "ENTRY_READY";
 
+export interface AsymmetricAlphaProjectionRecord {
+  earlyQualityScore: number;
+  upsideEvidenceScore: number;
+  rugDumpRisk: number;
+  executionQuality: number;
+  evidenceConfidence: number;
+  launchAgeMs: number | null;
+  marketCapAtDecision: number | null;
+  reasonCodes: string[];
+  strategyVersion: string;
+  configHash: string;
+}
+
 export interface EarlyRadarRecord {
   candidateId: string;
   tokenId: string;
@@ -98,6 +111,7 @@ export interface EarlyRadarRecord {
   latencyMs: Record<string, unknown>;
   evidenceRefs: string[];
   reasonCodes: string[];
+  asymmetricAlpha?: AsymmetricAlphaProjectionRecord | null;
 }
 
 export interface PoolRecord {
@@ -659,6 +673,30 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
   ) {
     return null;
   }
+  let asymmetricAlpha: AsymmetricAlphaProjectionRecord | null = null;
+  if (isRecord(value.asymmetric_alpha)) {
+    const rawAlpha = value.asymmetric_alpha;
+    const eq = optionalFiniteNumber(rawAlpha.early_quality_score, 0, 100);
+    const ue = optionalFiniteNumber(rawAlpha.upside_evidence_score, 0, 100);
+    const rd = optionalFiniteNumber(rawAlpha.rug_dump_risk, 0, 100);
+    const ex = optionalFiniteNumber(rawAlpha.execution_quality, 0, 100);
+    const ec = optionalFiniteNumber(rawAlpha.evidence_confidence, 0, 1);
+    if (eq != null && ue != null && rd != null && ex != null && ec != null) {
+      asymmetricAlpha = {
+        earlyQualityScore: eq,
+        upsideEvidenceScore: ue,
+        rugDumpRisk: rd,
+        executionQuality: ex,
+        evidenceConfidence: ec,
+        launchAgeMs: optionalFiniteNumber(rawAlpha.launch_age_ms, 0, 1e12) ?? null,
+        marketCapAtDecision: optionalFiniteNumber(rawAlpha.market_cap_at_decision, 0, 1e24) ?? null,
+        reasonCodes: stringArray(rawAlpha.reason_codes, 128) ?? [],
+        strategyVersion: boundedString(rawAlpha.strategy_version, 64) ?? "asymmetric-alpha-v1",
+        configHash: boundedString(rawAlpha.config_hash, 64) ?? "asymmetric-alpha-hash",
+      };
+    }
+  }
+
   return {
     candidateId,
     tokenId,
@@ -690,7 +728,8 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
     hardBlockReasons,
     latencyMs,
     evidenceRefs,
-    reasonCodes
+    reasonCodes,
+    asymmetricAlpha
   };
 }
 
@@ -1685,6 +1724,153 @@ export async function fetchCreatorReputation(
           confidence: Number(obj.confidence ?? 0),
           reputationClass: String(obj.reputation_class ?? "UNPROVEN"),
           reasonCodes: Array.isArray(obj.reason_codes) ? obj.reason_codes.map(String) : [],
+        };
+      });
+}
+
+export interface GraphNodeRecord {
+  id: string;
+  kind: string;
+  label: string;
+  properties: Record<string, unknown>;
+  qualityState: string;
+  createdAt: string;
+}
+
+export interface GraphEdgeRecord {
+  id: string;
+  fromId: string;
+  toId: string;
+  kind: string;
+  occurredAt: string;
+  observedAt: string;
+  ingestedAt: string;
+  tokenMint: string | null;
+  properties: Record<string, unknown>;
+  qualityState: string;
+  reasonCodes: string[];
+}
+
+export interface WalletGraphRecord {
+  nodes: GraphNodeRecord[];
+  edges: GraphEdgeRecord[];
+  maxDepth: number;
+  maxNodes: number;
+  maxEdges: number;
+  hasMore: boolean;
+  asOf: string;
+}
+
+export interface ShortestPathRecord {
+  nodes: string[];
+  edges: Record<string, unknown>[];
+}
+
+function parseGraphNode(val: unknown): GraphNodeRecord | null {
+  if (typeof val !== "object" || val === null) return null;
+  const obj = val as Record<string, unknown>;
+  return {
+    id: String(obj.id ?? ""),
+    kind: String(obj.kind ?? ""),
+    label: String(obj.label ?? obj.id ?? ""),
+    properties: (typeof obj.properties === "object" && obj.properties !== null) ? (obj.properties as Record<string, unknown>) : {},
+    qualityState: String(obj.quality_state ?? "FRESH"),
+    createdAt: String(obj.created_at ?? ""),
+  };
+}
+
+function parseGraphEdge(val: unknown): GraphEdgeRecord | null {
+  if (typeof val !== "object" || val === null) return null;
+  const obj = val as Record<string, unknown>;
+  return {
+    id: String(obj.id ?? ""),
+    fromId: String(obj.from_id ?? ""),
+    toId: String(obj.to_id ?? ""),
+    kind: String(obj.kind ?? ""),
+    occurredAt: String(obj.occurred_at ?? ""),
+    observedAt: String(obj.observed_at ?? ""),
+    ingestedAt: String(obj.ingested_at ?? ""),
+    tokenMint: obj.token_mint !== null && obj.token_mint !== undefined ? String(obj.token_mint) : null,
+    properties: (typeof obj.properties === "object" && obj.properties !== null) ? (obj.properties as Record<string, unknown>) : {},
+    qualityState: String(obj.quality_state ?? "FRESH"),
+    reasonCodes: Array.isArray(obj.reason_codes) ? obj.reason_codes.map(String) : [],
+  };
+}
+
+function parseWalletGraph(val: unknown): WalletGraphRecord {
+  if (typeof val !== "object" || val === null) throw new Error("invalid graph payload");
+  const obj = val as Record<string, unknown>;
+  const nodes = Array.isArray(obj.nodes) ? obj.nodes.map(parseGraphNode).filter((n): n is GraphNodeRecord => n !== null) : [];
+  const edges = Array.isArray(obj.edges) ? obj.edges.map(parseGraphEdge).filter((e): e is GraphEdgeRecord => e !== null) : [];
+  return {
+    nodes,
+    edges,
+    maxDepth: Number(obj.max_depth ?? 2),
+    maxNodes: Number(obj.max_nodes ?? 50),
+    maxEdges: Number(obj.max_edges ?? 100),
+    hasMore: Boolean(obj.has_more ?? false),
+    asOf: String(obj.as_of ?? ""),
+  };
+}
+
+export async function fetchWalletGraph(
+  address: string,
+  filters: { maxDepth?: number; maxNodes?: number; maxEdges?: number; outcomeFilter?: string } = {}
+): Promise<ReadResult<WalletGraphRecord>> {
+  if (!isValidWalletAddress(address)) return { ok: false, reason: "INVALID_RESPONSE" };
+  const query = singleQuery();
+  if (filters.maxDepth) setBoundedNumber(query, "max_depth", filters.maxDepth, 1, 5);
+  if (filters.maxNodes) setBoundedNumber(query, "max_nodes", filters.maxNodes, 1, 200);
+  if (filters.maxEdges) setBoundedNumber(query, "max_edges", filters.maxEdges, 1, 500);
+  if (filters.outcomeFilter) setBoundedText(query, "outcome_filter", filters.outcomeFilter);
+  const url = endpoint(`/v1/wallet-graph/wallets/${encodeURIComponent(address)}`, query);
+  return url === null ? configuredFailure() : request(url, parseWalletGraph);
+}
+
+export async function fetchTokenGraph(
+  mint: string,
+  filters: { maxDepth?: number; maxNodes?: number; maxEdges?: number; outcomeFilter?: string } = {}
+): Promise<ReadResult<WalletGraphRecord>> {
+  if (!isValidWalletAddress(mint)) return { ok: false, reason: "INVALID_RESPONSE" };
+  const query = singleQuery();
+  if (filters.maxDepth) setBoundedNumber(query, "max_depth", filters.maxDepth, 1, 5);
+  if (filters.maxNodes) setBoundedNumber(query, "max_nodes", filters.maxNodes, 1, 200);
+  if (filters.maxEdges) setBoundedNumber(query, "max_edges", filters.maxEdges, 1, 500);
+  if (filters.outcomeFilter) setBoundedText(query, "outcome_filter", filters.outcomeFilter);
+  const url = endpoint(`/v1/wallet-graph/tokens/${encodeURIComponent(mint)}`, query);
+  return url === null ? configuredFailure() : request(url, parseWalletGraph);
+}
+
+export async function fetchClusterGraph(
+  clusterId: string,
+  filters: { maxDepth?: number; maxNodes?: number; maxEdges?: number } = {}
+): Promise<ReadResult<WalletGraphRecord>> {
+  const query = singleQuery();
+  if (filters.maxDepth) setBoundedNumber(query, "max_depth", filters.maxDepth, 1, 5);
+  if (filters.maxNodes) setBoundedNumber(query, "max_nodes", filters.maxNodes, 1, 200);
+  if (filters.maxEdges) setBoundedNumber(query, "max_edges", filters.maxEdges, 1, 500);
+  const url = endpoint(`/v1/wallet-graph/clusters/${encodeURIComponent(clusterId)}`, query);
+  return url === null ? configuredFailure() : request(url, parseWalletGraph);
+}
+
+export async function fetchShortestPath(
+  startId: string,
+  targetId: string,
+  maxDepth = 5
+): Promise<ReadResult<ShortestPathRecord>> {
+  const query = singleQuery();
+  setBoundedText(query, "start_id", startId);
+  setBoundedText(query, "target_id", targetId);
+  setBoundedNumber(query, "max_depth", maxDepth, 1, 10);
+  const url = endpoint("/v1/wallet-graph/shortest-path", query);
+  return url === null
+    ? configuredFailure()
+    : request(url, (val) => {
+        if (typeof val !== "object" || val === null) throw new Error("invalid payload");
+        const obj = val as Record<string, unknown>;
+        return {
+          nodes: Array.isArray(obj.nodes) ? obj.nodes.map(String) : [],
+          edges: Array.isArray(obj.edges) ? (obj.edges as Record<string, unknown>[]) : [],
         };
       });
 }

@@ -783,6 +783,15 @@ class ExtremeWinnerOutcomeLabeler:
         if max_mc is not None and min_post_peak_mc is not None and max_mc > 0:
             post_peak_drawdown = (max_mc - min_post_peak_mc) / max_mc
 
+        launch_age_ms = getattr(checkpoint, "launch_age_ms", None) or getattr(
+            checkpoint, "launch_age_at_decision_ms", None
+        )
+        if launch_age_ms is None:
+            past_times = [r.event_at for r in records if r.event_at <= signal_at]
+            if past_times:
+                earliest = min(past_times)
+                launch_age_ms = int(max(0.0, (signal_at - earliest).total_seconds()) * 1000)
+
         reasons = [ReasonCode("EXTREME_WINNER_LABELED")]
 
         return ExtremeWinnerOutcomeSnapshot(
@@ -791,6 +800,7 @@ class ExtremeWinnerOutcomeLabeler:
             signal_at=signal_at,
             first_seen_market_cap=base_mc,
             entry_ready_market_cap=getattr(checkpoint, "market_cap_usd", None),
+            launch_age_at_decision_ms=launch_age_ms,
             hit_2x=hit_2x,
             hit_5x=hit_5x,
             hit_10x=hit_10x,

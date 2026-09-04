@@ -17,6 +17,7 @@ from memeradar_application.read_api import (
     AuditQuery,
     CandidateQuery,
     CandidateView,
+    ClusterGraphQuery,
     ConfigQuery,
     ConfigVersionView,
     CreatorReputationView,
@@ -32,9 +33,13 @@ from memeradar_application.read_api import (
     ProviderHealthQuery,
     ProviderHealthView,
     ReadQueryPort,
+    ShortestPathQuery,
     TimelineEntryView,
     TimelineQuery,
+    TokenGraphQuery,
     TokenView,
+    WalletGraphQuery,
+    WalletGraphView,
     WalletQuery,
     WalletView,
     build_position_view,
@@ -731,6 +736,18 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
 
     async def get_creator_reputation(self, address: str) -> CreatorReputationView | None:
         return await InMemoryReadQueryService().get_creator_reputation(address)
+
+    async def get_wallet_graph(self, query: WalletGraphQuery) -> WalletGraphView:
+        return await self._catalog.get_wallet_graph(query)
+
+    async def get_token_graph(self, query: TokenGraphQuery) -> WalletGraphView:
+        return await self._catalog.get_token_graph(query)
+
+    async def get_cluster_graph(self, query: ClusterGraphQuery) -> WalletGraphView:
+        return await self._catalog.get_cluster_graph(query)
+
+    async def get_shortest_path(self, query: ShortestPathQuery) -> Mapping[str, object] | None:
+        return await self._catalog.get_shortest_path(query)
 
     async def list_provider_health(self, query: ProviderHealthQuery) -> Page[ProviderHealthView]:
         return await self._catalog.list_provider_health(query)

@@ -1,0 +1,86 @@
+{
+  "trade_count": 4,
+  "best_policy_version": "balanced-convex-v1",
+  "best_expectancy_per_trade": "3.575",
+  "policy_evaluations": {
+    "balanced-convex-v1": {
+      "realized_paper_multiple": "4.575",
+      "realized_net_pnl": "14.3",
+      "executable_peak_multiple": "7.5375",
+      "exit_capture_ratio": "0.6666666666666666666666666665",
+      "giveback_from_peak": "2.9625",
+      "max_drawdown": "0.9047619047619047619047619048",
+      "profit_factor": "12.91666666666666666666666667",
+      "expectancy_per_trade": "3.575",
+      "expectancy_per_100_signals": "357.500",
+      "premature_exit_rate_20x_plus": "0",
+      "failure_exit_before_drawdown_rate": "0",
+      "quality_state": "FRESH",
+      "reason_codes": [
+        "CONVEX_EXIT_EVALUATED"
+      ],
+      "config_hash": "policy-balanced-v1",
+      "policy": {
+        "version": "balanced-convex-v1",
+        "partial_take_profit_target": "2.0",
+        "partial_take_profit_ratio": "0.33",
+        "trailing_stop_bps": "1500",
+        "max_drawdown_tolerance_bps": "2500",
+        "config_hash": "policy-balanced-v1"
+      }
+    },
+    "aggressive-runner-v1": {
+      "realized_paper_multiple": "4.575",
+      "realized_net_pnl": "14.3",
+      "executable_peak_multiple": "7.5375",
+      "exit_capture_ratio": "0.6666666666666666666666666665",
+      "giveback_from_peak": "2.9625",
+      "max_drawdown": "0.9047619047619047619047619048",
+      "profit_factor": "12.91666666666666666666666667",
+      "expectancy_per_trade": "3.575",
+      "expectancy_per_100_signals": "357.500",
+      "premature_exit_rate_20x_plus": "0",
+      "failure_exit_before_drawdown_rate": "0",
+      "quality_state": "FRESH",
+      "reason_codes": [
+        "CONVEX_EXIT_EVALUATED"
+      ],
+      "config_hash": "policy-aggressive-v1",
+      "policy": {
+        "version": "aggressive-runner-v1",
+        "partial_take_profit_target": "3.0",
+        "partial_take_profit_ratio": "0.20",
+        "trailing_stop_bps": "2000",
+        "max_drawdown_tolerance_bps": "3500",
+        "config_hash": "policy-aggressive-v1"
+      }
+    },
+    "conservative-protection-v1": {
+      "realized_paper_multiple": "4.575",
+      "realized_net_pnl": "14.3",
+      "executable_peak_multiple": "7.5375",
+      "exit_capture_ratio": "0.6666666666666666666666666665",
+      "giveback_from_peak": "2.9625",
+      "max_drawdown": "0.9047619047619047619047619048",
+      "profit_factor": "12.91666666666666666666666667",
+      "expectancy_per_trade": "3.575",
+      "expectancy_per_100_signals": "357.500",
+      "premature_exit_rate_20x_plus": "0",
+      "failure_exit_before_drawdown_rate": "0",
+      "quality_state": "FRESH",
+      "reason_codes": [
+        "CONVEX_EXIT_EVALUATED"
+      ],
+      "config_hash": "policy-conservative-v1",
+      "policy": {
+        "version": "conservative-protection-v1",
+        "partial_take_profit_target": "1.5",
+        "partial_take_profit_ratio": "0.50",
+        "trailing_stop_bps": "1000",
+        "max_drawdown_tolerance_bps": "1500",
+        "config_hash": "policy-conservative-v1"
+      }
+    }
+  },
+  "evaluated_at": "2026-09-04T13:58:40.999523"
+}

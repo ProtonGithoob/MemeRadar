@@ -1,0 +1,34 @@
+{
+  "sample_count": 1,
+  "is_insufficient_samples": true,
+  "cohort_distributions": {
+    "rug": {
+      "count": 1,
+      "features": {}
+    }
+  },
+  "feature_ablation": {
+    "micro_flow_3m": {
+      "precision": "0",
+      "recall": "0",
+      "incremental_lift": "0.05"
+    },
+    "creator_reputation_score": {
+      "precision": "0",
+      "recall": "0",
+      "incremental_lift": "0.05"
+    }
+  },
+  "precision": "0",
+  "recall": "0",
+  "rug_rejection_rate": "1.0",
+  "false_positive_rate": "0.0",
+  "false_negative_rate": "0",
+  "detection_age_ms_median": null,
+  "detection_mc_usd_median": null,
+  "quality_state": "UNKNOWN",
+  "reason_codes": [
+    "INSUFFICIENT_SAMPLES"
+  ],
+  "config_hash": "separability-v1-hash"
+}

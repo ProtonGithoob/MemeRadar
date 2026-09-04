@@ -15,6 +15,15 @@ Providers are replaceable adapters. Domain code must never depend directly on pr
 | Quote/routing | Jupiter | disabled if unavailable | execution phase only |
 | Telegram | Telegram Bot API | notification abstraction later | outbox/retry required |
 
+## Live Read-Only Acceptance & Readiness
+
+See `LIVE_READONLY_CHECKLIST.md` for full environment setup, doctor commands, and degraded mode behavior.
+All provider ports operate under strict fail-closed boundaries:
+- Missing API keys or network endpoints report `BLOCKED_EXTERNAL` and default to keyless fixtures or `QualityState.UNKNOWN` without crashing.
+- Stream gaps or unverified protocol routing reduce quality to `DEGRADED` or `UNKNOWN` and cannot authorize `ENTRY_READY` or inflate `AlphaScore`.
+- Third-party risk scores are corroborating evidence only and never override MemeRadar's deterministic risk hard gates.
+- `AUTO_EXECUTION=false` and `MANUAL_EXECUTION=false` remain permanently locked.
+
 ## Paper execution boundary
 
 The Phase 9.1 paper engine is not a provider adapter. It consumes the existing

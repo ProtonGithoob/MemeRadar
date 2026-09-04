@@ -21,30 +21,34 @@ On 2026-09-04, the following accepted research extensions were implemented, test
   - 4 tests passing across `tests/unit/test_insider_allocation.py` and `tests/contract/test_extension_e6_4_insider_allocation.py`.
 - **E8.6 Wallet / Creator Outcome Graph**:
   - Implemented `CreatorOutcomeGraph`, `CreatorReputationAnalyzer`, `GraphNode`, `GraphEdge`, and `CreatorReputationSnapshot` in `packages/application/src/memeradar_application/creator_graph.py`.
-  - Added `CreatorReputationView` and `get_creator_reputation` port in `read_api.py`, `SqlAlchemyReadQueryService` in `read_queries.py`, FastAPI route `GET /v1/creator-reputation/{address}` in `apps/api/src/memeradar_api/read.py`, and `fetchCreatorReputation` in `apps/web/src/app/lib/read-api.ts`.
-  - Created web operator UI route `/wallet-graph` in `apps/web/src/app/wallet-graph/page.tsx` with navigation header integration.
-  - 6 tests passing across `tests/unit/test_creator_graph.py` and `tests/contract/test_extension_e8_6_creator_graph.py`.
+  - Added graph query ports/methods in `read_api.py`, `read_queries.py`, 4 FastAPI graph endpoints (`/v1/wallet-graph/wallets/{address}`, `/v1/wallet-graph/tokens/{mint}`, `/v1/wallet-graph/clusters/{cluster_id}`, `/v1/wallet-graph/shortest-path`) in `read.py`, and `fetchWalletGraph` / `fetchTokenGraph` / `fetchClusterGraph` / `fetchShortestPath` in `read-api.ts`.
+  - Built interactive operator UI `WalletGraphExplorer` in `apps/web/src/app/components/wallet-graph.tsx` and route `/wallet-graph` in `apps/web/src/app/wallet-graph/page.tsx` with Playwright E2E coverage.
+  - Contract & unit tests passing across `tests/unit/test_creator_graph.py`, `tests/contract/test_extension_e8_6_creator_graph.py`, `test_api_schema.py`, and `test_phase7_sprint7_2.py`.
 - **E10.4 Extreme Winner Outcome Labels**:
   - Implemented `ExtremeWinnerOutcomeSnapshot` and `ExtremeWinnerOutcomeLabeler` in `packages/application/src/memeradar_application/early_replay.py`.
-  - Computes 2x/5x/10x/20x/50x/100x hit and time-to-multiple labels, MFE/MAE, peak MC, post-peak drawdown, and distinguishes mark multiple from liquid executable multiple.
+  - Computes 2x/5x/10x/20x/50x/100x hit and time-to-multiple labels, MFE/MAE, peak MC, post-peak drawdown, populates `launch_age_at_decision_ms` and `entry_ready_market_cap`, and distinguishes mark multiple from liquid executable multiple.
   - 3 tests passing across `tests/unit/test_extreme_winner_labels.py` and `tests/contract/test_extension_e10_4_extreme_winner_labels.py`.
 - **E10.5 Extreme Winner Separability Study**:
   - Implemented `ExtremeWinnerSeparabilityAnalyzer`, `TrainValTestDatasetSplit`, and `SeparabilityCohortResult` in `packages/application/src/memeradar_application/extreme_winner_separability.py`.
-  - Evaluates decision-time evidence for future extreme winners vs normal winners and rugs across strict TRAIN / VAL / TEST splits with feature ablation.
+  - Created CLI script `scripts/separability_study.py` generating `fixtures/research/separability_results.json`.
   - 3 tests passing across `tests/unit/test_extreme_winner_separability.py` and `tests/contract/test_extension_e10_5_extreme_winner_separability.py`.
 - **E6.5 Asymmetric Alpha Candidate Projection**:
   - Implemented `AsymmetricAlphaProjection` and `build_asymmetric_alpha_projection` in `packages/application/src/memeradar_application/early_scoring.py`.
-  - Measurement-only projection combining early quality, upside evidence score, rug/dump risk, execution quality, confidence, launch age, and decision market cap.
+  - Measurement-only projection integrated into `EarlyRadarView`, `read.py`, and `read-api.ts`.
   - 2 tests passing across `tests/unit/test_asymmetric_alpha_projection.py` and `tests/contract/test_extension_e6_5_asymmetric_alpha.py`.
 - **E9.4 Convex Exit / Winner Retention Research**:
-  - Implemented `ConvexExitPolicy`, `ConvexExitPerformanceMetrics`, and `ConvexExitEvaluator` in `packages/application/src/memeradar_application/convex_exit.py`.
-  - Evaluates realized paper multiple, net PnL, executable peak multiple, `exit_capture_ratio`, giveback, max drawdown, profit factor, expectancy per trade / per 100 signals, premature 20x+ exit rate, and failure exit rate.
+  - Implemented `ConvexExitPolicy`, `ConvexExitPerformanceMetrics`, `CANDIDATE_EXIT_POLICIES`, and `ConvexExitEvaluator` in `packages/application/src/memeradar_application/convex_exit.py`.
+  - Created CLI script `scripts/convex_exit_research.py` generating `fixtures/research/convex_exit_results.json`.
   - 2 tests passing across `tests/unit/test_convex_exit.py` and `tests/contract/test_extension_e9_4_convex_exit.py`.
 - **E10.6 Strategy Promotion Gate**:
   - Implemented `PromotionCandidate`, `StrategyPromotionRecord`, and `StrategyPromotionGate` in `packages/application/src/memeradar_application/strategy_promotion.py`.
-  - Enforces deterministic replay, no-lookahead, sample adequacy, TRAIN/VAL/TEST split, out-of-sample expectancy lift, rug risk bounds, execution feasibility, and human reviewer approval signature.
-  - 3 tests passing across `tests/unit/test_strategy_promotion.py` and `tests/contract/test_extension_e10_6_strategy_promotion.py`.
-- Full quality gate `make verify` passes cleanly with 789 Python unit/contract tests, 44 Vitest web tests, clean Ruff linting, clean Mypy typechecking (101 source files), docker compose config, secret scan, migration checks, security review, and SBOM validation.
+  - Expanded contract tests in `tests/contract/test_extension_e10_6_strategy_promotion.py` verifying human review and lookahead rejections.
+  - 4 tests passing across `tests/unit/test_strategy_promotion.py` and `tests/contract/test_extension_e10_6_strategy_promotion.py`.
+- **Full Product-Level Research Gate & Readiness**:
+  - Audited Ultra-Early Option A Tasks 11-13 (observability, early live doctor, shadow execution isolation).
+  - Generated `docs/RESEARCH_GATE_REPORT.md` and `fixtures/research/product_level_research_gate.json` answering all 11 key product questions.
+  - Created `docs/LIVE_READONLY_CHECKLIST.md` and updated `docs/PROVIDERS.md`.
+- Full quality gate `make verify` passes cleanly with 790+ Python unit/contract tests, 44 Vitest web tests, clean Ruff linting, clean Mypy typechecking (101 source files), docker compose config, secret scan, migration checks, security review, and SBOM validation.
 
 ## Latest port reconciliation
 

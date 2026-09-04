@@ -24,6 +24,34 @@ class ConvexExitPolicy:
     config_hash: str = "convex-exit-hash"
 
 
+CANDIDATE_EXIT_POLICIES: tuple[ConvexExitPolicy, ...] = (
+    ConvexExitPolicy(
+        partial_take_profit_target=Decimal("2.0"),
+        partial_take_profit_ratio=Decimal("0.33"),
+        trailing_stop_bps=Decimal("1500"),
+        max_drawdown_tolerance_bps=Decimal("2500"),
+        version="balanced-convex-v1",
+        config_hash="policy-balanced-v1",
+    ),
+    ConvexExitPolicy(
+        partial_take_profit_target=Decimal("3.0"),
+        partial_take_profit_ratio=Decimal("0.20"),
+        trailing_stop_bps=Decimal("2000"),
+        max_drawdown_tolerance_bps=Decimal("3500"),
+        version="aggressive-runner-v1",
+        config_hash="policy-aggressive-v1",
+    ),
+    ConvexExitPolicy(
+        partial_take_profit_target=Decimal("1.5"),
+        partial_take_profit_ratio=Decimal("0.50"),
+        trailing_stop_bps=Decimal("1000"),
+        max_drawdown_tolerance_bps=Decimal("1500"),
+        version="conservative-protection-v1",
+        config_hash="policy-conservative-v1",
+    ),
+)
+
+
 @dataclass(frozen=True)
 class ConvexExitPerformanceMetrics:
     realized_paper_multiple: Decimal

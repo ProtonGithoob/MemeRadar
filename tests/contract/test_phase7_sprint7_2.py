@@ -129,13 +129,17 @@ def test_read_api_route_surface_is_bounded_get_only_and_provider_free_at_applica
         "/v1/wallets",
         "/v1/wallets/{address}",
         "/v1/creator-reputation/{address}",
+        "/v1/wallet-graph/wallets/{address}",
+        "/v1/wallet-graph/tokens/{mint}",
+        "/v1/wallet-graph/clusters/{cluster_id}",
+        "/v1/wallet-graph/shortest-path",
         "/v1/early-radar",
-            "/v1/providers/health",
-            "/v1/audit/events",
-            "/v1/config/versions",
-            "/v1/positions",
-            "/v1/positions/{position_id}",
-        }
+        "/v1/providers/health",
+        "/v1/audit/events",
+        "/v1/config/versions",
+        "/v1/positions",
+        "/v1/positions/{position_id}",
+    }
     read_routes = {
         route.path
         for route in app.routes

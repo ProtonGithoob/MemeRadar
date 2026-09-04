@@ -33,6 +33,8 @@ from memeradar_domain.common import (
     to_decimal,
 )
 
+from .creator_graph import CreatorOutcomeGraph
+from .early_scoring import AsymmetricAlphaProjection
 from .exit_engine import ExitEvaluation
 
 READ_API_VERSION = "read-api-v1"
@@ -371,6 +373,79 @@ class ProviderHealthQuery:
 
 
 @dataclass(frozen=True, slots=True)
+class WalletGraphQuery:
+    address: str
+    max_depth: int = 2
+    max_nodes: int = 50
+    max_edges: int = 100
+    outcome_filter: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "address", require_solana_address(self.address, "wallet address"))
+        object.__setattr__(self, "max_depth", max(1, min(5, self.max_depth)))
+        object.__setattr__(self, "max_nodes", max(1, min(200, self.max_nodes)))
+        object.__setattr__(self, "max_edges", max(1, min(500, self.max_edges)))
+
+
+@dataclass(frozen=True, slots=True)
+class TokenGraphQuery:
+    mint: str
+    max_depth: int = 2
+    max_nodes: int = 50
+    max_edges: int = 100
+    outcome_filter: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "mint", require_solana_address(self.mint, "token mint"))
+        object.__setattr__(self, "max_depth", max(1, min(5, self.max_depth)))
+        object.__setattr__(self, "max_nodes", max(1, min(200, self.max_nodes)))
+        object.__setattr__(self, "max_edges", max(1, min(500, self.max_edges)))
+
+
+@dataclass(frozen=True, slots=True)
+class ClusterGraphQuery:
+    cluster_id: str
+    max_depth: int = 2
+    max_nodes: int = 50
+    max_edges: int = 100
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "cluster_id", _optional_text(self.cluster_id, "cluster_id", max_length=128) or ""
+        )
+        object.__setattr__(self, "max_depth", max(1, min(5, self.max_depth)))
+        object.__setattr__(self, "max_nodes", max(1, min(200, self.max_nodes)))
+        object.__setattr__(self, "max_edges", max(1, min(500, self.max_edges)))
+
+
+@dataclass(frozen=True, slots=True)
+class ShortestPathQuery:
+    start_id: str
+    target_id: str
+    max_depth: int = 5
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "start_id", _optional_text(self.start_id, "start_id", max_length=256) or ""
+        )
+        object.__setattr__(
+            self, "target_id", _optional_text(self.target_id, "target_id", max_length=256) or ""
+        )
+        object.__setattr__(self, "max_depth", max(1, min(10, self.max_depth)))
+
+
+@dataclass(frozen=True, slots=True)
+class WalletGraphView:
+    nodes: tuple[Mapping[str, object], ...] = ()
+    edges: tuple[Mapping[str, object], ...] = ()
+    max_depth: int = 2
+    max_nodes: int = 50
+    max_edges: int = 100
+    has_more: bool = False
+    as_of: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(frozen=True, slots=True)
 class AuditQuery:
     cursor: str | None = None
     limit: int = DEFAULT_PAGE_LIMIT
@@ -536,6 +611,7 @@ class EarlyRadarView:
     evidence_refs: tuple[str, ...] = ()
     reason_codes: tuple[str, ...] = ()
     execution_eligible: bool = False
+    asymmetric_alpha: AsymmetricAlphaProjection | Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.candidate_id, UUID) or not isinstance(self.token_id, UUID):
@@ -686,6 +762,26 @@ class EarlyRadarView:
                 "reason_codes": self.reason_codes,
                 "execution_eligible": False,
                 "auto_execution": "LOCKED",
+                "asymmetric_alpha": (
+                    {
+                        "early_quality_score": self.asymmetric_alpha.early_quality_score,
+                        "upside_evidence_score": self.asymmetric_alpha.upside_evidence_score,
+                        "rug_dump_risk": self.asymmetric_alpha.rug_dump_risk,
+                        "execution_quality": self.asymmetric_alpha.execution_quality,
+                        "evidence_confidence": self.asymmetric_alpha.evidence_confidence,
+                        "launch_age_ms": self.asymmetric_alpha.launch_age_ms,
+                        "market_cap_at_decision": self.asymmetric_alpha.market_cap_at_decision,
+                        "reason_codes": [str(r) for r in self.asymmetric_alpha.reason_codes],
+                        "strategy_version": self.asymmetric_alpha.strategy_version,
+                        "config_hash": self.asymmetric_alpha.config_hash,
+                    }
+                    if isinstance(self.asymmetric_alpha, AsymmetricAlphaProjection)
+                    else (
+                        safe_read_payload(self.asymmetric_alpha)
+                        if isinstance(self.asymmetric_alpha, Mapping)
+                        else None
+                    )
+                ),
             },
             "early_radar",
         )
@@ -1549,6 +1645,14 @@ class ReadQueryPort(Protocol):
 
     async def get_creator_reputation(self, address: str) -> CreatorReputationView | None: ...
 
+    async def get_wallet_graph(self, query: WalletGraphQuery) -> WalletGraphView: ...
+
+    async def get_token_graph(self, query: TokenGraphQuery) -> WalletGraphView: ...
+
+    async def get_cluster_graph(self, query: ClusterGraphQuery) -> WalletGraphView: ...
+
+    async def get_shortest_path(self, query: ShortestPathQuery) -> Mapping[str, object] | None: ...
+
 
 def _page(
     resource: str,
@@ -1633,6 +1737,7 @@ class InMemoryReadQueryService:
         audit_events: Sequence[AuditEventView] = (),
         config_versions: Sequence[ConfigVersionView] = (),
         positions: Sequence[PositionView] = (),
+        creator_graph: CreatorOutcomeGraph | None = None,
     ) -> None:
         self.candidates = tuple(candidates)
         self.early_radar = tuple(early_radar)
@@ -1646,6 +1751,7 @@ class InMemoryReadQueryService:
         self.audit_events = tuple(audit_events)
         self.config_versions = tuple(config_versions)
         self.positions = tuple(positions)
+        self._creator_graph = creator_graph or CreatorOutcomeGraph()
         if any(not isinstance(value, CandidateView) for value in self.candidates):
             raise TypeError("candidates must contain CandidateView values")
         if any(not isinstance(value, EarlyRadarView) for value in self.early_radar):
@@ -1926,12 +2032,91 @@ class InMemoryReadQueryService:
             reason_codes=("INSUFFICIENT_CREATOR_HISTORY",),
         )
 
+    async def get_wallet_graph(self, query: WalletGraphQuery) -> WalletGraphView:
+        if not isinstance(query, WalletGraphQuery):
+            raise TypeError("query must be a WalletGraphQuery")
+        subgraph = self._creator_graph.get_subgraph(
+            start_node_ids=[f"wallet:{query.address}", query.address],
+            max_depth=query.max_depth,
+            max_nodes=query.max_nodes,
+            max_edges=query.max_edges,
+            outcome_filter=query.outcome_filter,
+        )
+        return WalletGraphView(
+            nodes=tuple(subgraph.get("nodes", [])),
+            edges=tuple(subgraph.get("edges", [])),
+            max_depth=subgraph.get("max_depth", query.max_depth),
+            max_nodes=subgraph.get("max_nodes", query.max_nodes),
+            max_edges=subgraph.get("max_edges", query.max_edges),
+            has_more=subgraph.get("has_more", False),
+            as_of=(
+                datetime.fromisoformat(subgraph["as_of"])
+                if isinstance(subgraph.get("as_of"), str)
+                else datetime.now(UTC)
+            ),
+        )
+
+    async def get_token_graph(self, query: TokenGraphQuery) -> WalletGraphView:
+        if not isinstance(query, TokenGraphQuery):
+            raise TypeError("query must be a TokenGraphQuery")
+        subgraph = self._creator_graph.get_subgraph(
+            start_node_ids=[f"token:{query.mint}", query.mint],
+            max_depth=query.max_depth,
+            max_nodes=query.max_nodes,
+            max_edges=query.max_edges,
+            outcome_filter=query.outcome_filter,
+        )
+        return WalletGraphView(
+            nodes=tuple(subgraph.get("nodes", [])),
+            edges=tuple(subgraph.get("edges", [])),
+            max_depth=subgraph.get("max_depth", query.max_depth),
+            max_nodes=subgraph.get("max_nodes", query.max_nodes),
+            max_edges=subgraph.get("max_edges", query.max_edges),
+            has_more=subgraph.get("has_more", False),
+            as_of=(
+                datetime.fromisoformat(subgraph["as_of"])
+                if isinstance(subgraph.get("as_of"), str)
+                else datetime.now(UTC)
+            ),
+        )
+
+    async def get_cluster_graph(self, query: ClusterGraphQuery) -> WalletGraphView:
+        if not isinstance(query, ClusterGraphQuery):
+            raise TypeError("query must be a ClusterGraphQuery")
+        subgraph = self._creator_graph.get_subgraph(
+            start_node_ids=[f"cluster:{query.cluster_id}", query.cluster_id],
+            max_depth=query.max_depth,
+            max_nodes=query.max_nodes,
+            max_edges=query.max_edges,
+        )
+        return WalletGraphView(
+            nodes=tuple(subgraph.get("nodes", [])),
+            edges=tuple(subgraph.get("edges", [])),
+            max_depth=subgraph.get("max_depth", query.max_depth),
+            max_nodes=subgraph.get("max_nodes", query.max_nodes),
+            max_edges=subgraph.get("max_edges", query.max_edges),
+            has_more=subgraph.get("has_more", False),
+            as_of=(
+                datetime.fromisoformat(subgraph["as_of"])
+                if isinstance(subgraph.get("as_of"), str)
+                else datetime.now(UTC)
+            ),
+        )
+
+    async def get_shortest_path(self, query: ShortestPathQuery) -> Mapping[str, object] | None:
+        if not isinstance(query, ShortestPathQuery):
+            raise TypeError("query must be a ShortestPathQuery")
+        return self._creator_graph.find_shortest_path(
+            query.start_id, query.target_id, max_depth=query.max_depth
+        )
+
 
 __all__ = [
     "AuditEventView",
     "AuditQuery",
     "CandidateQuery",
     "CandidateView",
+    "ClusterGraphQuery",
     "ConfigQuery",
     "ConfigVersionView",
     "CursorCodec",
@@ -1954,9 +2139,13 @@ __all__ = [
     "ReadProviderHealthState",
     "ReadQueryPort",
     "READ_API_VERSION",
+    "ShortestPathQuery",
     "TimelineEntryView",
     "TimelineQuery",
+    "TokenGraphQuery",
     "TokenView",
+    "WalletGraphQuery",
+    "WalletGraphView",
     "WalletQuery",
     "WalletView",
     "build_position_view",
