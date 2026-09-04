@@ -32,9 +32,29 @@ Before initiating live read-only shadow ingestion:
    python3 scripts/paper_trading_doctor.py
    ```
 
-4. **Verify Health Endpoints**:
+4. **Verify Health & Provider Readiness**:
    - Live check: `curl -fsS http://localhost:18000/health/live`
-   - Ready check: `curl -fsS http://localhost:18000/health/ready`
+   - Provider health: `curl -fsS http://localhost:18000/v1/providers/health`
+   - Shadow status report: `python3 scripts/shadow_status.py` (`make shadow-status`)
+
+### Primary Provider Set & Operational States
+
+- **Minimum Primary Provider Set**:
+  - **Helius RPC / Stream Adapter** (`HeliusRpcAdapter`): Primary Solana transaction/block event stream and launch candidate discovery.
+  - **Birdeye REST Adapter** (`BirdeyeRestAdapter`): Primary token market pricing, pool liquidity, and mark verification.
+  - *Optional Corroboration*: DexScreener, Raydium, Jupiter, Pump.fun adapters.
+
+- **Explicit Readiness & Collection Classifications**:
+  - `STACK_READY`: Local containers (PostgreSQL, Redis, API, Web) are healthy and responding.
+  - `PROVIDERS_READY`: Minimum primary provider paths (Helius and Birdeye) are active and `FRESH`.
+  - `DEGRADED`: Partial provider degradation; candidate scoring degrades fail-closed.
+  - `BLOCKED_EXTERNAL`: Provider keys missing or provider endpoints returning error codes.
+  - `LIVE_SHADOW_COLLECTION_ACTIVE`: Stack is ready AND minimum primary providers are active (`FRESH` or `DEGRADED`). Real provider-originated observations are flowing.
+  - `NOT_ACTIVE`: Providers are `BLOCKED_EXTERNAL` or stack is offline.
+
+- **Durable Shadow Run Identity & Invariants**:
+  - Initiating `make shadow-start` creates a durable run identity (`run_id`, `run_started_at`) stored in `artifacts/research/live-shadow/current_run.json`. Existing run files are preserved in `artifacts/research/live-shadow/runs/`.
+  - **Telemetry Invariant (`UNKNOWN != ZERO`)**: Unqueried or unmeasured telemetry (stream gaps, recovery failures, matured outcome horizons) are explicitly reported as `UNKNOWN` / `NOT_AVAILABLE` (`null` in JSON), never fabricated as `0`.
 
 ---
 

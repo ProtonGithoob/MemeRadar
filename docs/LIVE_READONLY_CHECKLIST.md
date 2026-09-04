@@ -64,6 +64,12 @@ python3 scripts/stream_integrity_doctor.py
 
 # 5. Paper Trading Engine Doctor
 python3 scripts/paper_trading_doctor.py
+
+# 6. Safe Live Shadow Startup (Enforces Invariants & Creates Run Identity)
+bash scripts/start-shadow.sh  # or make shadow-start
+
+# 7. Shadow Status & Daily Telemetry Report
+python3 scripts/shadow_status.py  # or make shadow-status
 ```
 
 ---

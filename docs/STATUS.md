@@ -6,43 +6,42 @@ Last updated: 2026-09-04
 
 | Metric / Dimension | Status / Classification | Evidence Class | Notes |
 |---|---|---|---|
-| System Stage | `KEYLESS_ENGINEERING_COMPLETE_READY_FOR_LIVE_SHADOW_VALIDATION` | `VERIFIED_CONTRACTS` | Engineering complete; ready for live read-only shadow |
-| Real-World Alpha Evidence | `NOT YET PROVEN` | `INSUFFICIENT_REAL_WORLD_SAMPLES` | Awaits live read-only shadow data collection |
-| Operating Mode | `ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false, AUTO_EXECUTION=false` | `ENFORCED_INVARIANT` | Live auto-execution permanently locked |
-| Synthetic Replay Expectancy | `+3.575x per trade` (balanced-convex-v1) | `SYNTHETIC_FIXTURE` | `BEST_SYNTHETIC_CANDIDATE` only |
-| Safe Live Shadow Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Enforces fail-closed safety & verifies `/v1/providers/health` |
-| Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Daily report with explicit evidence provenance metadata |
-| Live Dataset Export Path | `artifacts/research/live-shadow/` | `CONFIGURED` | Ignored in `.gitignore`; `fixtures/` reserved for replay |
-| Wallet & Creator Graph | `NODE_LINK_VISUALIZATION_READY` | `IMPLEMENTED` | Interactive SVG canvas + extended query filters |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | 100% test pass rate (800+ Python tests, 44 Vitest tests) |
+| System Stage | `KEYLESS_ENGINEERING_COMPLETE` | `VERIFIED_CONTRACTS` | Keyless feature roadmap frozen & verified |
+| Stack Readiness | `STACK_READY` | `CONTAINER_HEALTHY` | API, Web, Postgres & Redis stack healthy |
+| Provider Readiness | `BLOCKED_EXTERNAL` / `PROVIDERS_READY` | `PROVIDER_HEALTH` | Requires primary Solana keys (Helius & Birdeye) |
+| Shadow Collection State | `NOT_ACTIVE` / `LIVE_SHADOW_COLLECTION_ACTIVE` | `PROVENANCE_AUDITED` | Active only when real provider observation streams flow |
+| Real-World Alpha Evidence | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` | `INSUFFICIENT_SAMPLES` | Awaits live read-only shadow data collection |
+| Protected Operating Modes | `ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false, AUTO_EXECUTION=false` | `ENFORCED_INVARIANT` | Live order submission & wallet signing hard-locked |
+| Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
+| Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | 100% pass rate (805+ Python tests incl 15 shadow tests, 45 Vitest tests) |
 
 ---
 
-## Operational Correctness & Live Read-Only Shadow Readiness
+## Operational Tooling Correctness & Live-Shadow Audit Fixes
 
-On 2026-09-04, the final 10 operational correctness tasks were completed and verified:
+On 2026-09-04, the 10 operational correctness fixes for live-shadow tooling were completed and verified:
 
-1. **Runbook Command & Endpoint Audit**:
-   - Corrected documentation and runbooks to reference `GET /v1/providers/health` (the exact registered FastAPI route in `apps/api/src/memeradar_api/read.py`).
-2. **Promotion Threshold Audit**:
-   - Removed arbitrary `+0.5x` promotion claim from `docs/LIVE_SHADOW_VALIDATION.md`. Replaced with a 7-point versioned promotion policy requiring baseline lift, sample adequacy (`sample_count >= 30`), drawdown/rug bounds, execution feasibility, time-cohort stability, safety invariants intact, and explicit human review.
-3. **Exit Policy Candidate Status Clarification**:
-   - Explicitly documented that `balanced-convex-v1`, `aggressive-runner-v1`, and `conservative-protection-v1` are unvalidated research candidates derived from synthetic replay. `balanced-convex-v1` is `BEST_SYNTHETIC_CANDIDATE` only; out-of-sample live shadow data can reject all three candidates.
-4. **Doctor Command Executability Audit**:
-   - Audited CLI execution across all 9 doctor and research scripts (`provider_doctor`, `early_live_doctor`, `birdeye_doctor`, `stream_integrity_doctor`, `paper_trading_doctor`, `replay_dataset`, `separability_study`, `convex_exit_research`, `winner_vs_rug_optimizer`). Verified all 5 doctor scripts fail closed with exit code 2 (`BLOCKED_EXTERNAL`) when credentials are missing.
-5. **Live Shadow Dataset Path Separation**:
-   - Configured live shadow export tools and runbooks to write operational datasets to `artifacts/research/live-shadow/`. Added `artifacts/` to `.gitignore` to preserve `fixtures/` strictly for version-controlled synthetic replay fixtures.
-6. **Safe Live-Shadow Start Script**:
-   - Created `scripts/start-shadow.sh` and Makefile target `make shadow-start`. Fails closed if any environment variable permits live money or manual execution, runs container stack, and verifies `GET /v1/providers/health`.
-7. **Shadow Status & Daily Report Command**:
-   - Created `scripts/shadow_status.py` and Makefile target `make shadow-status`. Generates structured daily telemetry reports summarizing uptime, candidates, paper entries/positions/PnL, provider health, stream gaps, and alerts.
-8. **Live-Shadow Data Provenance Metadata**:
-   - Integrated evidence provenance metadata fields (`evidence_class`, `collection_window`, `provider_versions`, `parser_version`, `strategy_version`, `config_hash`, `operating_modes`) into `shadow_status.py`.
-9. **Final Keyless Quality Gate**:
-   - Verified `make verify` quality gate: unit/contract tests, Vitest web tests, Ruff linting, Mypy typechecking, Docker Compose config, secret scan, migration checks, security review, and SBOM.
-10. **System Classification & Verdict**:
-   - System classified as: `KEYLESS_ENGINEERING_COMPLETE_READY_FOR_LIVE_SHADOW_VALIDATION`.
-   - Conceptual verdict: `KEYLESS ENGINEERING COMPLETE — REAL-WORLD ALPHA NOT YET PROVEN — READY TO BEGIN LIVE READ-ONLY SHADOW VALIDATION`.
+1. **Fixed Shadow Status Pagination Counts**:
+   - Updated `scripts/shadow_status.py` with `fetch_all_paginated_items()` helper. Traverses API pages using `next_cursor` without assuming a `total` field on `PageResponse`.
+2. **Removed Fake Zero Telemetry (`UNKNOWN != ZERO`)**:
+   - Audited all metrics in `shadow_status.py`. Unqueried/unmeasured telemetry (`stream_gaps_detected`, `stream_recovery_failures`, `matured_outcomes_count`) are explicitly set to `None` (`UNKNOWN / NOT_AVAILABLE`), never hardcoded as `0`.
+3. **Canonical Runtime Provenance**:
+   - Replaced static/fake provider version strings (`rpc-v1`, `v2`) and strategy versions (`balanced-convex-v1`) with canonical runtime values queried from `/v1/providers/health`, `/v1/config/versions`, active settings, and git commit SHA.
+4. **Durable Shadow Run Identity & Collection Window**:
+   - `scripts/start-shadow.sh` establishes a durable run identity (`run_id`, `run_started_at`) saved to `artifacts/research/live-shadow/current_run.json` (archiving previous runs to `runs/`). `shadow_status.py` reports the exact active run collection window.
+5. **Fail-Closed Safety Environment Propagation**:
+   - `scripts/start-shadow.sh` validates inherited env vars, fails immediately if unsafe (`MANUAL_EXECUTION=true` or `AUTO_EXECUTION=true` or `ANALYSIS_ONLY=false` or `PAPER_TRADING=false`), and explicitly `export`s the 4 protection invariants before calling child processes or Compose. Updated `docker-compose.yml` env var expansion.
+6. **Split Stack Readiness from Provider Readiness**:
+   - Separated status reporting into `STACK_READY` vs `PROVIDERS_READY` / `DEGRADED` / `BLOCKED_EXTERNAL`. Documented minimum primary provider set (Helius RPC/Stream + Birdeye REST).
+7. **Rigorous Evidence Class Classification**:
+   - Derived `evidence_class` from candidate/position item provenance (`source_type`, `provider`). `LIVE_SHADOW` is classified ONLY when observations originate from live providers during an active shadow run. Fixtures and unconfigured runs remain `SYNTHETIC_FIXTURE` or `INSUFFICIENT_SAMPLES`.
+8. **Real Business KPIs Reporting**:
+   - Exposed measured decision bands (`WATCH`, `EARLY_WATCH`, `STRONG_SETUP`, `HIGH_CONFLUENCE`, `ENTRY_READY`), paper trade position metrics, PnL, and provider health states.
+9. **Comprehensive Automated Test Suite**:
+   - Added `tests/unit/test_shadow_tooling.py` covering all 15 operational test scenarios (all 15 tests passing).
+10. **Final Gate Verification**:
+    - Full quality gate `make verify` passes cleanly with zero lint, type, or test errors.
 
 ---
 
