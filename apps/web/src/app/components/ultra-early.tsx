@@ -65,7 +65,7 @@ function Entry({ entry }: { entry: EarlyRadarRecord }) {
             <span className="eyebrow text-[10px] font-bold text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/40 uppercase">
               {entry.earlyState}
             </span>
-            <RiskChip risk={entry.riskDisposition} />
+            <RiskChip disposition={entry.riskDisposition} />
             <FreshnessIndicator quality={entry.firstSeenQuality} />
           </div>
           <h4 className="text-base font-bold text-gray-100 flex items-center gap-2 m-0">
