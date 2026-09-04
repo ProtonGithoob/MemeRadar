@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from types import TracebackType
-from urllib.parse import parse_qsl, quote, urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 
@@ -526,10 +526,9 @@ class HeliusRpcAdapter(OnChainPort):
         return self._last_rate_limit
 
     def _request_url(self) -> str:
-        if self._api_key is None:
-            return self._endpoint
-        separator = "&" if "?" in self._endpoint else "?"
-        return f"{self._endpoint}{separator}api-key={quote(self._api_key, safe='')}"
+        """Return the endpoint without putting credentials into the URL."""
+
+        return self._endpoint
 
     def _now_pair(self) -> tuple[datetime, datetime]:
         now = ensure_utc(self._clock(), "observed_at")
@@ -604,6 +603,8 @@ class HeliusRpcAdapter(OnChainPort):
             "content-type": "application/json",
             "x-correlation-id": context.correlation_id,
         }
+        if self._api_key is not None:
+            headers["x-api-key"] = self._api_key
 
         async def operation() -> object:
             try:

@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "blockTime": 1787810398,
+    "blockhash": "blockhash-fixture",
+    "previousBlockhash": "previous-blockhash-fixture",
+    "signatures": ["sig-one", "sig-two"]
+  }
+}

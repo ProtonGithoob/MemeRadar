@@ -194,3 +194,28 @@ def test_api_key_is_not_exposed_by_adapter_representation() -> None:
     )
 
     assert "secret-key-must-not-print" not in repr(adapter)
+
+
+def test_api_key_is_sent_in_a_header_and_never_in_request_url() -> None:
+    secret = "header-only-helius-secret"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.query == b""
+        assert request.headers["x-api-key"] == secret
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": "ok"})
+
+    async def scenario() -> None:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter = HeliusRpcAdapter(
+            "https://fixture.helius.example/rpc",
+            api_key=secret,
+            client=client,
+            transport=ProviderTransport(retry_policy=RetryPolicy(max_attempts=1)),
+            clock=lambda: NOW,
+        )
+        try:
+            assert await adapter.check_health(context=request_context()) == "ok"
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())

@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "slot": 123,
+    "blockTime": 1787810398,
+    "meta": {
+      "err": null
+    },
+    "transaction": {
+      "message": {
+        "accountKeys": [
+          {
+            "pubkey": "Vote111111111111111111111111111111111111111"
+          },
+          "Vote111111111111111111111111111111111111111"
+        ]
+      }
+    }
+  }
+}

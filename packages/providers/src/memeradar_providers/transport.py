@@ -56,6 +56,10 @@ class ProviderSchemaError(ProviderError):
     """A provider response failed normalized schema validation."""
 
 
+class CapabilityUnavailableError(ProviderError):
+    """The selected provider does not expose the requested capability."""
+
+
 class CircuitOpen(ProviderError):
     """The provider circuit is open and the operation was rejected locally."""
 
@@ -461,6 +465,7 @@ __all__ = [
     "CircuitOpen",
     "CircuitState",
     "ProviderAuthenticationError",
+    "CapabilityUnavailableError",
     "ProviderError",
     "ProviderRateLimitedError",
     "ProviderSchemaError",
