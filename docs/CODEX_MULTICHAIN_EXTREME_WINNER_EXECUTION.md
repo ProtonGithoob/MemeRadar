@@ -1,43 +1,146 @@
-# Codex Execution Handoff — Multi-Chain Extreme Winner Discovery
+# Codex Execution Handoff — Extreme Winner Discovery
 
-Use this document together with:
+## Read these first — canonical source of truth
 
-- `docs/MULTICHAIN_EXTREME_WINNER_IMPLEMENTATION_SPEC.md`
-- `docs/EXTERNAL_REPOSITORY_AUDIT_2026_09_05.md`
-- `docs/SMART_MONEY_CONVERGENCE_EXTENSION.md`
+Do not try to hold the whole roadmap in prompt context. Read and follow these repository files in this order:
 
-## Instruction
+1. `AGENTS.md`
+2. `docs/STATUS.md`
+3. `docs/OPPORTUNITY_DISCOVERY_EXTENSION.md`
+4. `docs/superpowers/plans/2026-09-05-opportunity-discovery.md`
+5. `docs/SMART_MONEY_CONVERGENCE_EXTENSION.md`
+6. `docs/MULTICHAIN_EXTREME_WINNER_IMPLEMENTATION_SPEC.md`
+7. `docs/ALPHA_20X_100X_PRODUCT_OBJECTIVE.md`
+8. `docs/ARCHITECTURE.md`
+9. `docs/SCORING_AND_RISK.md`
+10. `docs/PROVIDERS.md`
 
-Continue from the current `main` branch. Treat the documents above as the canonical requirements for the next MemeRadar phase.
+If two documents conflict, prefer the newer, more specific extension document and record the conflict in `docs/STATUS.md` before implementation.
 
-Do not stop after design or planning. Inspect the repository first, preserve any concurrent/uncommitted work, then implement incrementally with TDD, verify, document, commit and push.
+## Mission
 
-### Primary objective
+Evolve MemeRadar into a provider-independent **opportunity discovery + extreme-winner research system** that can detect promising candidates early enough to remain executable, while rejecting destructive launches and proving every promoted feature through no-lookahead replay and out-of-sample shadow/paper evidence.
 
-Make MemeRadar a chain-aware SOLANA + BNB early-token intelligence system optimized for detecting extreme-winner candidates as early as possible, without making unproven 10x/20x/50x/100x claims.
+The system is no longer conceptually limited to SOLANA + BNB. The mandatory discovery set for this roadmap is:
 
-### Mandatory scope
+```text
+SOLANA
+BNB
+ROBINHOOD
+```
 
-1. Introduce chain-aware canonical token/wallet identity while preserving Solana compatibility.
-2. Add BNB/EVM address validation and chain-aware idempotency.
-3. Extend capability routing/composition with a chain dimension.
-4. Add read-only BNB JSON-RPC support.
-5. Generalize DexScreener from Solana-only pair handling to SOLANA + BNB with deterministic chain-specific pair selection.
-6. Add read-only PancakeSwap discovery/evidence for BNB.
-7. Add Four.meme launch discovery/evidence only where interfaces can be verified; otherwise classify missing capability honestly.
-8. Add BNB-specific EVM risk features: honeypot/tax/owner/proxy/mint/pause/max-wallet/LP/holder/deployer/cluster risk.
-9. Keep Solana and BNB risk/scoring model versions and thresholds separately calibratable.
-10. Add optional read-only GMGN adapter for token, market, holder, wallet, smart-money, dev-history and discovery corroboration on SOLANA + BNB.
-11. Explicitly exclude all GMGN swap/order/cooking/private-key functionality.
-12. Audit current Pump.fun/PumpSwap decoding against trusted `nirholas/pump-fun-sdk` protocol references and add only genuinely missing deterministic lifecycle/migration/creator-fee features.
-13. Never integrate or execute code/scripts from observed `PumpFun-RugPool` repositories. Treat their generic heuristic descriptions only as ideas to independently re-derive from trusted on-chain data.
-14. Extend multi-chain smart-wallet reputation and provider corroboration/disagreement evidence.
-15. Extend Telegram ULTRA EARLY alerts with chain, token address, market/liquidity, wallet/risk/corroboration/provenance and alert-latency evidence.
-16. Extend live-shadow/replay/calibration/outcome reporting with separate SOLANA and BNB cohorts and decision-state KPIs.
-17. Preserve paper execution and all existing safety barriers.
-18. Implement the provider-independent smart-money convergence extension in `docs/SMART_MONEY_CONVERGENCE_EXTENSION.md`: historical wallet quality, bounded operator seed import, cluster-adjusted multi-wallet convergence, wallet-overlap recurrence, KOL historical quality/linkage, cross-signal research projection and smart-money distribution evidence. Reuse existing wallet/social/graph/scoring/replay/alert engines; do not create duplicates or hard-depend on external ranking websites.
+Robinhood Chain must use generic EVM primitives, not a parallel duplicated architecture.
 
-### Protected modes — immutable
+The long-term architecture must remain chain-extensible; do not hard-code assumptions that make adding another EVM/non-EVM chain require redesigning core domain logic.
+
+## Highest-priority correction
+
+Do not begin by adding more weights to EarlyScore.
+
+First build the **Opportunity Discovery Layer** described in `docs/OPPORTUNITY_DISCOVERY_EXTENSION.md`:
+
+```text
+chain/ecosystem opportunity
+-> external catalyst / narrative
+-> pre-token attention
+-> token/narrative semantic match
+-> original-vs-copycat resolution
+-> hard safety/sellability
+-> attention + smart-money + holder/liquidity corroboration
+-> existing EarlyScore/Alpha/decision gates
+```
+
+New evidence stays measurement-only until replay/ablation/promotion proves incremental value.
+
+## P0 execution order
+
+Use the exact task order in `docs/superpowers/plans/2026-09-05-opportunity-discovery.md` unless `docs/STATUS.md` records an already-active safe checkpoint that must be completed first.
+
+The P0 product priorities are:
+
+1. preserve/finish generic chain-aware identity and capability routing;
+2. add Robinhood Chain read-only support using generic EVM JSON-RPC;
+3. implement Chain Opportunity / Chain Heat evidence;
+4. implement provider-neutral Global Event contracts;
+5. implement Narrative Catalyst + Pre-Token Attention;
+6. implement Narrative-to-Token matching;
+7. implement Narrative Competition / Copycat resolution;
+8. integrate read-only API/Telegram reason evidence;
+9. build historical winner + negative-control no-lookahead fixtures;
+10. run separability/ablation before changing production scoring.
+
+Then execute P1/P2 exactly as defined in the spec/plan.
+
+## Robinhood Chain required facts
+
+Treat these as configuration with tests, not scattered literals:
+
+```text
+CHAIN=robinhood
+EVM=true
+CHAIN_ID=4663
+NATIVE_GAS=ETH
+PUBLIC_RPC=https://rpc.mainnet.chain.robinhood.com
+PUBLIC_SEQUENCER_FEED=wss://feed.mainnet.chain.robinhood.com
+BLOCK_EXPLORER=robinhoodchain.blockscout.com
+```
+
+Verify `eth_chainId` at runtime. Public/provider outages must degrade readiness honestly and must not crash the keyless/free core.
+
+## Smart-money integration
+
+`docs/SMART_MONEY_CONVERGENCE_EXTENSION.md` remains mandatory. Reuse existing wallet/social/graph primitives and implement:
+
+- historical wallet quality;
+- bounded external seed import;
+- cluster-adjusted multi-wallet convergence;
+- wallet cohort recurrence;
+- KOL/researcher historical quality;
+- explicit wallet-linkage boundaries;
+- smart-money distribution evidence.
+
+Opportunity/narrative and smart-money signals must be tested both independently and jointly.
+
+## Critical research rules
+
+- Future 2x/5x/10x/20x/50x/100x labels are research targets only.
+- Never leak future outcomes, later viral totals or later liquidity into event-time features.
+- Do not train only on winners; negative controls are mandatory.
+- Mark-price wicks in thin liquidity are not executable winners.
+- `INSUFFICIENT_SAMPLES` is a valid result and is preferable to fake confidence.
+- Do not dynamically change production weights because an idea looks intuitive.
+- TRAIN proposes; VALIDATION selects; TEST reports final out-of-sample evidence.
+- Strategy promotion requires the existing human-reviewed promotion gate.
+
+## Risk / upside separation
+
+Keep these concepts distinct in read/research models:
+
+```text
+upside_evidence
+market_integrity_risk
+contract/deployer_risk
+liquidity_exit_risk
+execution_quality
+confidence
+```
+
+High narrative/upside evidence must never override critical BLOCK/UNKNOWN risk, honeypot/non-sellability, insufficient liquidity or protected-mode gates.
+
+## Explicit exclusions
+
+Do not add:
+
+- copy trading or automatic KOL/wallet following;
+- live signing, swaps, private keys, snipers or live-money execution;
+- ticker/name equality as token identity;
+- required runtime scraping of FOMO/Hoodwatch/Stalkchain/X pages;
+- opaque LLM-created production scores;
+- duplicate wallet/social/graph/score/alert/dashboard engines;
+- guaranteed-multiple predictions;
+- dead `.env.example` settings not parsed/validated by runtime.
+
+## Protected modes — immutable
 
 ```env
 ANALYSIS_ONLY=true
@@ -46,158 +149,44 @@ MANUAL_EXECUTION=false
 AUTO_EXECUTION=false
 ```
 
-Do not add live wallet signing, swap submission, Jito/sniping, private keys, live-money order paths or auto-buy unlocking.
+`REAL_WORLD_ALPHA_NOT_YET_PROVEN` must remain until real out-of-sample live-shadow evidence clears the existing research gate.
 
-### Extreme-winner measurement policy
+## Engineering workflow
 
-Preserve and extend 2x/5x/10x/20x/50x/100x outcome labels. Do not manufacture probability values. Any `P(10x)` style projection must remain absent/UNCALIBRATED/research-only until sufficient real out-of-sample data exists.
-
-Measure per chain and per decision state:
-
-- precision/recall for 10x/20x and precision for rarer 50x/100x cohorts
-- post-alert rug rate
-- market cap and token age at alert
-- lead time to 2x/5x/10x
-- false-positive rate
-- executable vs mark multiple
-- liquidity/price/outcome maturity coverage
-- end-to-end Telegram alert latency
-
-Keep `REAL_WORLD_ALPHA_NOT_YET_PROVEN` until the live research gate is actually satisfied.
-
-### GMGN requirements
-
-Implement as an optional provider behind existing contracts. Missing credentials must never fail core boot. Add a doctor and normalized errors/statuses. Provider disagreement must be recorded as evidence rather than silently overwriting canonical values.
-
-Never expose execution capabilities from GMGN.
-
-### Smart-money convergence requirements
-
-External whale/KOL/top-wallet products are inspiration or optional seed sources only. The runtime must remain functional when every such external website is unavailable.
-
-- Extend `TrackedWalletRegistry`/wallet tracking rather than replacing them.
-- Keep external rank/PnL/win-rate claims advisory and provenance-tagged; never auto-promote wallet tiers.
-- Reuse canonical event-time windows for 15s/30s/60s/3m/5m convergence.
-- Count both raw unique wallets and actor-cluster-adjusted independent wallets.
-- Preserve UNKNOWN/STALE/CONFLICTED states; missing wallet/KOL evidence must never become SAFE or HIGH-CONFIDENCE.
-- Keep wallet/KOL/convergence projections measurement-only until replay/ablation and the existing promotion gate prove incremental lift.
-- Do not infer KOL identity-to-wallet linkage from names alone.
-- Do not add copy trading or automatic wallet following.
-
-### Pump protocol audit requirements
-
-Compare existing MemeRadar features with trusted protocol documentation for:
-
-- bonding curve state/progress
-- graduation/completion
-- Pump -> PumpSwap migration
-- canonical pool derivation
-- creator vault / creator fees / fee sharing
-- fee tiers where relevant to executable-return modeling
-- Token-2022 handling
-- migration/liquidity transition timing
-
-Only add features that are genuinely missing and measurable.
-
-### Supply-chain rule
-
-Do not vendor/copy/execute `PumpFun-RugPool` code or install scripts. Do not use remote loaders or disable security software. Add no dependency without license/dependency/install-script/network/security review.
-
-### Required tests
-
-Add/extend deterministic unit/contract/integration tests for:
-
-- chain identity and collision prevention
-- BNB RPC and chain-id verification
-- BNB DexScreener pair selection
-- PancakeSwap/Four.meme normalization
-- BNB risk scenarios including UNKNOWN != SAFE
-- GMGN optional/keyless behavior, normalization, rate limits, auth and corroboration
-- Pump lifecycle/migration/fee evidence
-- multi-chain smart-wallet features
-- wallet historical quality sample-size/freshness/provenance semantics
-- bounded CSV/JSON wallet seed import, malformed rows and idempotency
-- cluster-adjusted multi-wallet convergence and coordinated-wallet anti-inflation
-- wallet overlap/cohort recurrence without false collusion claims
-- KOL historical-quality and explicit wallet-linkage evidence boundaries
-- cross-signal projection remaining measurement-only before promotion
-- smart-money distribution as advisory exit evidence
-- Telegram SOL/BNB rendering, dedupe and latency
-- protected modes and absence of signing/execution capabilities
-- no Solana regressions
-
-### Configuration
-
-Only add env variables atomically with validated `Settings` support and tests. Do not add dead `.env.example` variables that runtime does not parse.
-
-Conceptual targets include:
-
-```env
-ENABLED_CHAINS=solana,bnb
-BNB_RPC_URL=
-BNB_RPC_FALLBACK_URL=
-BNB_CHAIN_ID=56
-GMGN_ENABLED=false
-GMGN_API_URL=
-GMGN_API_KEY=
-GMGN_READ_ONLY=true
-PANCAKESWAP_DISCOVERY_ENABLED=true
-FOURMEME_DISCOVERY_ENABLED=true
-```
-
-Preserve all existing legacy/provider compatibility that remains valid.
-
-### Workflow
-
-Before edits:
-
-```bash
-git status --short
-git branch --show-current
-git log -8 --oneline
-git fetch origin
-```
-
-Never destructive-reset concurrent work.
-
-Then:
+For every task:
 
 ```text
-audit current consumers
--> write failing tests
--> implement smallest coherent slice
--> targeted tests
--> repeat
--> full make verify
--> live/keyless doctors where possible
--> docs/status update
--> commit
--> push
--> verify local HEAD == origin/main
+inspect existing consumers
+-> write failing deterministic tests
+-> run and confirm failure
+-> implement the smallest coherent change
+-> run focused tests
+-> lint/typecheck as relevant
+-> update STATUS with evidence
+-> commit coherent checkpoint
+-> continue
 ```
 
-Do not redesign the frontend. Update UI only where needed for chain/provenance/risk/alert visibility and keep existing design work intact.
+At phase checkpoints run `make verify` and available doctors. Classify external failures honestly as BLOCKED_EXTERNAL/RATE_LIMITED/DEGRADED/etc.; never fabricate PASS.
 
-### Final acceptance report
+Never destructive-reset concurrent/uncommitted work. Never force-push shared history.
 
-Return:
+## Completion report
 
-- starting/final commit
-- branch and git sync status
-- changed/new/deleted files
-- SOLANA regression status
-- BNB support matrix
-- GMGN integration matrix
-- Pump protocol audit findings
-- smart-money convergence implementation matrix
-- external repository rejection/security evidence
-- config changes
-- Telegram changes
-- risk/scoring changes
-- shadow/research KPI changes
-- test counts and `make verify` result
-- live doctors and blockers
-- exact protected-mode evidence
-- remaining gaps before real-world alpha can be considered proven
+Return a compact implementation matrix with:
 
-Do not ask for design approval. Proceed end-to-end unless a genuine external blocker prevents repository work.
+- starting/final commits and sync state;
+- tasks completed vs blocked;
+- Solana/BNB/Robinhood support matrix;
+- chain opportunity implementation;
+- narrative/pre-token/copycat implementation;
+- smart-money/KOL integration;
+- API/Telegram changes;
+- replay/negative-control datasets;
+- ablation/promotion result;
+- test counts and `make verify` result;
+- provider doctor results/blockers;
+- exact protected-mode evidence;
+- exact next unfinished task written to `docs/STATUS.md`.
+
+Proceed autonomously. Do not stop after planning, and do not ask routine approval questions.
