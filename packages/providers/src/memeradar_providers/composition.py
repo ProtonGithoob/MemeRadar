@@ -33,10 +33,11 @@ from memeradar_application.provider_routing import (
     FreeFirstRoutePlan,
     build_free_first_route_plan,
 )
-from memeradar_domain import TokenIdentity
+from memeradar_domain import Chain, TokenIdentity
 
 from .birdeye import BirdeyeRestAdapter
 from .dexscreener import DexScreenerAdapter
+from .evm_rpc import EvmRpcAdapter
 from .helius import HeliusRpcAdapter
 from .narrative import (
     DisabledNarrativeAdapter,
@@ -209,7 +210,10 @@ class ProviderBundle:
     settings: Settings
     route_plan: FreeFirstRoutePlan
     solana_rpc: SolanaRpcAdapter
+    bnb_rpc: EvmRpcAdapter | None
+    robinhood_rpc: EvmRpcAdapter | None
     chain: OnChainPort
+    chain_routes: Mapping[str, OnChainPort]
     helius: HeliusRpcAdapter | None
     enhanced_asset_metadata: HeliusRpcAdapter | None
     dexscreener: DexScreenerAdapter
@@ -264,6 +268,8 @@ class ProviderBundle:
         seen: set[int] = set()
         for provider in (
             self.solana_rpc,
+            self.bnb_rpc,
+            self.robinhood_rpc,
             self.helius,
             self.dexscreener,
             self.birdeye,
@@ -349,6 +355,31 @@ def build_provider_bundle(
         transport=transport,
         clock=clock,
     )
+    bnb_rpc = (
+        EvmRpcAdapter(
+            Chain.BNB,
+            cast(str, settings.bnb_rpc_url),
+            expected_chain_id=settings.bnb_chain_id,
+            client=client,
+            transport=transport,
+            clock=clock,
+        )
+        if Chain.BNB.value in settings.enabled_chains and _configured(settings.bnb_rpc_url)
+        else None
+    )
+    robinhood_rpc = (
+        EvmRpcAdapter(
+            Chain.ROBINHOOD,
+            settings.robinhood_rpc_url,
+            expected_chain_id=settings.robinhood_chain_id,
+            client=client,
+            transport=transport,
+            clock=clock,
+        )
+        if Chain.ROBINHOOD.value in settings.enabled_chains
+        and _configured(settings.robinhood_rpc_url)
+        else None
+    )
     helius = (
         HeliusRpcAdapter(
             cast(str, settings.helius_rpc_url),
@@ -369,6 +400,11 @@ def build_provider_bundle(
         if len(chain_providers) == 1
         else BoundedOnChainFallback(chain_providers)
     )
+    chain_routes: dict[str, OnChainPort] = {Chain.SOLANA.value: chain}
+    if bnb_rpc is not None:
+        chain_routes[Chain.BNB.value] = bnb_rpc
+    if robinhood_rpc is not None:
+        chain_routes[Chain.ROBINHOOD.value] = robinhood_rpc
 
     dexscreener = DexScreenerAdapter(
         settings.dexscreener_api_url,
@@ -486,6 +522,10 @@ def build_provider_bundle(
     )
 
     optional_statuses = {
+        "bnb_rpc": "CONFIGURED" if bnb_rpc is not None else "UNCONFIGURED_OPTIONAL",
+        "robinhood_rpc": (
+            "CONFIGURED" if robinhood_rpc is not None else "UNCONFIGURED_OPTIONAL"
+        ),
         "helius": "CONFIGURED" if helius is not None else "UNCONFIGURED_OPTIONAL",
         "birdeye": "CONFIGURED" if birdeye is not None else "UNCONFIGURED_OPTIONAL",
         "rugcheck": "CONFIGURED" if rugcheck is not None else "UNCONFIGURED_OPTIONAL",
@@ -520,7 +560,10 @@ def build_provider_bundle(
         settings=settings,
         route_plan=route_plan,
         solana_rpc=solana_rpc,
+        bnb_rpc=bnb_rpc,
+        robinhood_rpc=robinhood_rpc,
         chain=chain,
+        chain_routes=chain_routes,
         helius=helius,
         enhanced_asset_metadata=helius,
         dexscreener=dexscreener,

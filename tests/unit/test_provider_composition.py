@@ -141,6 +141,20 @@ def test_keyless_provider_bundle_builds_without_network_or_optional_credentials(
         asyncio.run(bundle.aclose())
 
 
+def test_disabled_evm_chain_is_explicitly_unconfigured() -> None:
+    bundle = build_provider_bundle(Settings.from_env({"ENABLED_CHAINS": "solana"}))
+
+    try:
+        assert bundle.bnb_rpc is None
+        assert bundle.robinhood_rpc is None
+        assert "bnb" not in bundle.chain_routes
+        assert "robinhood" not in bundle.chain_routes
+        assert bundle.optional["bnb_rpc"] == "UNCONFIGURED_OPTIONAL"
+        assert bundle.optional["robinhood_rpc"] == "UNCONFIGURED_OPTIONAL"
+    finally:
+        asyncio.run(bundle.aclose())
+
+
 def test_configured_enhancements_are_ordered_after_or_alongside_free_capabilities() -> None:
     settings = Settings.from_env(
         {

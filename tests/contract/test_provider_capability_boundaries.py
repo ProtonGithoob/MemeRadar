@@ -2,6 +2,7 @@
 
 from memeradar_providers.birdeye import BirdeyeRestAdapter
 from memeradar_providers.dexscreener import DexScreenerAdapter
+from memeradar_providers.evm_rpc import EvmRpcAdapter
 from memeradar_providers.helius import HeliusRpcAdapter
 from memeradar_providers.narrative import OllamaNarrativeAdapter
 from memeradar_providers.solana_rpc import SolanaRpcAdapter
@@ -14,6 +15,9 @@ def test_free_first_provider_capabilities_are_scoped() -> None:
     }
     assert "enhanced_asset_metadata" not in SolanaRpcAdapter.capabilities
     assert "realtime_stream" not in SolanaRpcAdapter.capabilities
+
+    assert EvmRpcAdapter.capabilities >= {"chain_rpc", "on_chain"}
+    assert "transaction_history" not in EvmRpcAdapter.capabilities
 
     assert DexScreenerAdapter.capabilities >= {
         "market_snapshot",

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 FALSE_VALUES = frozenset({"0", "false", "no", "off"})
+SUPPORTED_CHAINS = ("solana", "bnb", "robinhood")
 
 
 def _parse_bool(name: str, value: str) -> bool:
@@ -69,6 +70,19 @@ def _provider_choice(
     return value
 
 
+def _chain_list(environ: Mapping[str, str], name: str) -> tuple[str, ...]:
+    raw = environ.get(name, ",".join(SUPPORTED_CHAINS))
+    values = tuple(item.strip().lower() for item in raw.split(",") if item.strip())
+    if not values:
+        raise ValueError(f"{name} must contain at least one chain")
+    unknown = sorted(set(values) - set(SUPPORTED_CHAINS))
+    if unknown:
+        raise ValueError(f"{name} contains unsupported chains: {', '.join(unknown)}")
+    if len(values) != len(set(values)):
+        raise ValueError(f"{name} must not contain duplicate chains")
+    return values
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Runtime settings that can be created without provider credentials."""
@@ -123,6 +137,15 @@ class Settings:
     narrative_api_url: str = "http://host.docker.internal:11434"
     narrative_api_key: str | None = None
     narrative_model: str | None = None
+    enabled_chains: tuple[str, ...] = SUPPORTED_CHAINS
+    bnb_rpc_url: str | None = None
+    bnb_rpc_fallback_url: str | None = None
+    bnb_chain_id: int = 56
+    robinhood_rpc_url: str = "https://rpc.mainnet.chain.robinhood.com"
+    robinhood_rpc_fallback_url: str | None = None
+    robinhood_chain_id: int = 4663
+    robinhood_sequencer_feed_url: str = "wss://feed.mainnet.chain.robinhood.com"
+    robinhood_blockscout_api_url: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -210,6 +233,16 @@ class Settings:
             values,
             ("MEMERADAR_SOLANA_BACKFILL_URL", "SOLANA_RPC_BACKFILL_URL"),
         )
+        enabled_chains = _chain_list(values, "ENABLED_CHAINS")
+        bnb_chain_id = _parse_int("BNB_CHAIN_ID", values.get("BNB_CHAIN_ID", "56"), 1, 2**64 - 1)
+        robinhood_chain_id = _parse_int(
+            "ROBINHOOD_CHAIN_ID",
+            values.get("ROBINHOOD_CHAIN_ID", "4663"),
+            1,
+            2**64 - 1,
+        )
+        if robinhood_chain_id != 4663:
+            raise ValueError("ROBINHOOD_CHAIN_ID is fixed at 4663")
         return cls(
             app_env=values.get("APP_ENV", "development").strip() or "development",
             log_level=values.get("LOG_LEVEL", "INFO").strip().upper() or "INFO",
@@ -301,4 +334,21 @@ class Settings:
             narrative_api_url=legacy_narrative_url or "http://host.docker.internal:11434",
             narrative_api_key=legacy_narrative_key,
             narrative_model=_optional_value(values, "NARRATIVE_MODEL"),
+            enabled_chains=enabled_chains,
+            bnb_rpc_url=_optional_value(values, "BNB_RPC_URL"),
+            bnb_rpc_fallback_url=_optional_value(values, "BNB_RPC_FALLBACK_URL"),
+            bnb_chain_id=bnb_chain_id,
+            robinhood_rpc_url=_default_value(
+                values,
+                "ROBINHOOD_RPC_URL",
+                "https://rpc.mainnet.chain.robinhood.com",
+            ),
+            robinhood_rpc_fallback_url=_optional_value(values, "ROBINHOOD_RPC_FALLBACK_URL"),
+            robinhood_chain_id=robinhood_chain_id,
+            robinhood_sequencer_feed_url=_default_value(
+                values,
+                "ROBINHOOD_SEQUENCER_FEED_URL",
+                "wss://feed.mainnet.chain.robinhood.com",
+            ),
+            robinhood_blockscout_api_url=_optional_value(values, "ROBINHOOD_BLOCKSCOUT_API_URL"),
         )

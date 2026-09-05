@@ -11,6 +11,7 @@ from typing import Protocol
 from uuid import UUID
 
 from memeradar_domain import (
+    Chain,
     Freshness,
     Observation,
     PoolIdentity,
@@ -19,6 +20,9 @@ from memeradar_domain import (
     QualityState,
     ReasonCode,
     TokenIdentity,
+    normalize_chain,
+    require_chain_address,
+    require_solana_address,
 )
 from memeradar_domain.common import (
     bounded_decimal,
@@ -30,7 +34,6 @@ from memeradar_domain.common import (
     to_decimal,
 )
 from memeradar_domain.events import normalize_reason_codes
-from memeradar_domain.identities import require_solana_address
 
 
 class ProviderCapability(str, Enum):
@@ -135,14 +138,25 @@ class OnChainRequest:
     token: TokenIdentity | None = None
     address: str | None = None
     signature: str | None = None
+    chain: Chain | str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.context, ProviderRequestContext):
             raise TypeError("context must be a ProviderRequestContext")
         if self.token is not None and not isinstance(self.token, TokenIdentity):
             raise TypeError("token must be a TokenIdentity")
+        normalized_chain = normalize_chain(self.chain) if self.chain is not None else None
+        if self.token is not None:
+            token_chain = normalize_chain(self.token.chain)
+            if normalized_chain is not None and normalized_chain is not token_chain:
+                raise ValueError("token and request must use the same chain")
+            normalized_chain = token_chain
+        if normalized_chain is None:
+            normalized_chain = Chain.SOLANA
         normalized_address = (
-            None if self.address is None else require_solana_address(self.address, "address")
+            None
+            if self.address is None
+            else require_chain_address(self.address, normalized_chain, "address")
         )
         normalized_signature = (
             None if self.signature is None else require_text(self.signature, "signature")
@@ -151,6 +165,7 @@ class OnChainRequest:
             raise ValueError("token, address or signature is required")
         object.__setattr__(self, "address", normalized_address)
         object.__setattr__(self, "signature", normalized_signature)
+        object.__setattr__(self, "chain", normalized_chain)
 
 
 @dataclass(frozen=True, slots=True)
