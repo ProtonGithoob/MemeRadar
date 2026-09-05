@@ -8,10 +8,12 @@ import pytest
 from memeradar_domain import (
     Freshness,
     GlobalEvent,
+    GlobalEventFamilyStatus,
     GlobalEventIdempotencyConflict,
     Provenance,
     QualityState,
     deduplicate_global_events,
+    degrade_global_event_family,
     normalize_global_event,
 )
 
@@ -68,7 +70,10 @@ def test_normalizer_keeps_provider_neutral_bounded_evidence() -> None:
             "text": "  $MEME launched\nwith a community  ",
             "author_id": " author-1 ",
             "entities": ["MEME", "MEME", "community"],
-            "urls": ["https://example.com/post-1#tracking", "javascript:bad"],
+            "urls": [
+                "https://example.com/post-1?access_token=secret&safe=1#tracking",
+                "javascript:bad",
+            ],
             "contract_addresses": [MINT, MINT],
             "chain": "SOLANA",
             "raw_payload_ref": "fixture://events/post-1",
@@ -81,14 +86,15 @@ def test_normalizer_keeps_provider_neutral_bounded_evidence() -> None:
     )
 
     assert event.source == "x"
-    assert event.source_id == "x"
+    assert event.source_id == "post-1"
+    assert event.source_family == "x"
     assert event.event_id == "post-1"
     assert event.source_event_id == "post-1"
     assert event.event_type == "post"
     assert event.text == "$MEME launched with a community"
     assert event.author_id == "author-1"
     assert event.entities == ("MEME", "community")
-    assert event.urls == ("https://example.com/post-1",)
+    assert event.urls == ("https://example.com/post-1?safe=1",)
     assert event.contract_addresses == (MINT,)
     assert event.raw_payload_ref == "fixture://events/post-1"
     assert event.provenance.provider == "x"
@@ -134,6 +140,92 @@ def test_duplicate_events_are_idempotent_but_conflicting_reuse_fails_closed() ->
 
     with pytest.raises(GlobalEventIdempotencyConflict):
         deduplicate_global_events((first, _event(text="different content")))
+
+    stale_duplicate = replace(
+        first,
+        quality_state=QualityState.STALE,
+        freshness=Freshness(
+            as_of=NOW + timedelta(seconds=1),
+            expires_at=NOW + timedelta(minutes=15),
+            quality_state=QualityState.STALE,
+        ),
+    )
+    with pytest.raises(GlobalEventIdempotencyConflict):
+        deduplicate_global_events((first, stale_duplicate))
+
+
+def test_identity_is_chain_safe_and_provenance_must_match_event_id() -> None:
+    left = replace(
+        _event("c"),
+        source="a:b",
+        provenance=_provenance("c"),
+    )
+    right = replace(
+        _event("b:c"),
+        source="a",
+        provenance=_provenance("b:c"),
+    )
+
+    assert left.dedupe_key != right.dedupe_key
+    assert left.id != right.id
+    assert len(deduplicate_global_events((left, right))) == 2
+
+    with pytest.raises(ValueError, match="provenance source_id"):
+        replace(_event(), provenance=_provenance("different"))
+
+
+def test_contract_addresses_require_an_explicit_chain() -> None:
+    with pytest.raises(ValueError, match="explicit chain"):
+        normalize_global_event(
+            {
+                "event_id": "evm-address",
+                "occurred_at": NOW,
+                "contract_address": "0x1111111111111111111111111111111111111111",
+            },
+            source="news",
+            observed_at=NOW,
+        )
+
+
+def test_collection_limits_apply_before_untrusted_payload_expansion() -> None:
+    with pytest.raises(ValueError, match="entities contains too many"):
+        normalize_global_event(
+            {
+                "event_id": "many-entities",
+                "occurred_at": NOW,
+                "entities": ["entity"] * 257,
+            },
+            source="news",
+            observed_at=NOW,
+        )
+
+    with pytest.raises(ValueError, match="evidence_refs contains too many"):
+        normalize_global_event(
+            {"event_id": "many-refs", "occurred_at": NOW},
+            source="news",
+            observed_at=NOW,
+            evidence_refs=tuple(f"ref-{index}" for index in range(257)),
+        )
+
+
+def test_provider_failure_degrades_only_its_global_event_family() -> None:
+    failure = degrade_global_event_family(
+        "News",
+        observed_at=NOW,
+        reason_code="NEWS_PROVIDER_DOWN",
+    )
+
+    assert isinstance(failure, GlobalEventFamilyStatus)
+    assert failure.source == "news"
+    assert failure.quality_state is QualityState.UNKNOWN
+    assert failure.reason_codes[0].code == "NEWS_PROVIDER_DOWN"
+
+    unrelated = normalize_global_event(
+        {"event_id": "social-1", "occurred_at": NOW},
+        source="social",
+        observed_at=NOW,
+    )
+    assert unrelated.quality_state is QualityState.FRESH
 
 
 def test_missing_author_and_entities_remain_unknown_fields_without_fabrication() -> None:

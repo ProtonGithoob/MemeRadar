@@ -21,9 +21,11 @@ from .early import (
 from .events import (
     EventEnvelope,
     GlobalEvent,
+    GlobalEventFamilyStatus,
     GlobalEventIdempotencyConflict,
     ReasonCode,
     deduplicate_global_events,
+    degrade_global_event_family,
     normalize_global_event,
     normalize_reason_codes,
 )
@@ -91,6 +93,7 @@ __all__ = [
     "CommitmentState",
     "EventEnvelope",
     "GlobalEvent",
+    "GlobalEventFamilyStatus",
     "GlobalEventIdempotencyConflict",
     "EarlyCandidateTiming",
     "EarlyDecisionState",
@@ -129,6 +132,7 @@ __all__ = [
     "WalletIdentity",
     "normalize_chain",
     "deduplicate_global_events",
+    "degrade_global_event_family",
     "normalize_global_event",
     "require_chain_address",
     "require_evm_address",

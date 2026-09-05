@@ -8,7 +8,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from math import isfinite
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from .common import (
@@ -23,11 +23,31 @@ from .identities import (
     Chain,
     normalize_chain,
     require_chain_address,
-    require_evm_address,
-    require_solana_address,
 )
 
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_.-]{0,63}$")
+_MAX_GLOBAL_COLLECTION_ITEMS = 256
+_CREDENTIAL_QUERY_KEYS = frozenset(
+    {
+        "access_token",
+        "api_key",
+        "apikey",
+        "auth",
+        "authorization",
+        "client_secret",
+        "cookie",
+        "key",
+        "password",
+        "passwd",
+        "private_key",
+        "refresh_token",
+        "secret",
+        "session",
+        "sig",
+        "signature",
+        "token",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +78,7 @@ def normalize_reason_codes(
     values: Iterable[ReasonCode | str],
     *,
     required: bool = False,
+    max_items: int | None = None,
 ) -> tuple[ReasonCode, ...]:
     """Normalize and de-duplicate reason codes without losing first-seen order."""
 
@@ -65,7 +86,9 @@ def normalize_reason_codes(
         raise TypeError("reason_codes must be a sequence")
     normalized: list[ReasonCode] = []
     seen: set[str] = set()
-    for value in values:
+    for index, value in enumerate(values):
+        if max_items is not None and index >= max_items:
+            raise ValueError("reason_codes contains too many items")
         code = value if isinstance(value, ReasonCode) else ReasonCode(value)
         if code.code not in seen:
             normalized.append(code)
@@ -188,6 +211,93 @@ class GlobalEventIdempotencyConflict(ValueError):
     """Raised when a source reuses an event ID for different normalized content."""
 
 
+@dataclass(frozen=True, slots=True)
+class GlobalEventFamilyStatus:
+    """Provider-neutral status for one unavailable or degraded event family."""
+
+    source: str
+    observed_at: datetime
+    ingested_at: datetime
+    quality_state: QualityState | str = QualityState.UNKNOWN
+    reason_codes: tuple[ReasonCode | str, ...] = ("GLOBAL_EVENT_SOURCE_UNAVAILABLE",)
+    evidence_refs: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        source = require_text(self.source, "source", max_length=128).lower()
+        _, observed, ingested = ensure_ordered_timestamps(
+            None,
+            self.observed_at,
+            self.ingested_at,
+        )
+        quality_state = QualityState(self.quality_state)
+        if quality_state is QualityState.FRESH:
+            raise ValueError("a failed event family cannot be FRESH")
+        object.__setattr__(self, "source", source)
+        object.__setattr__(self, "observed_at", observed)
+        object.__setattr__(self, "ingested_at", ingested)
+        object.__setattr__(self, "quality_state", quality_state)
+        object.__setattr__(
+            self,
+            "reason_codes",
+            normalize_reason_codes(
+                self.reason_codes,
+                required=True,
+                max_items=_MAX_GLOBAL_COLLECTION_ITEMS,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(
+                self.evidence_refs,
+                "evidence_refs",
+                max_items=_MAX_GLOBAL_COLLECTION_ITEMS,
+            ),
+        )
+
+    @property
+    def available(self) -> bool:
+        """Return whether this family can currently contribute usable evidence."""
+
+        return False
+
+    def execution_eligible(self) -> bool:
+        """Provider availability never authorizes execution."""
+
+        return False
+
+
+def degrade_global_event_family(
+    source: str,
+    *,
+    observed_at: datetime,
+    ingested_at: datetime | None = None,
+    reason_code: ReasonCode | str = "GLOBAL_EVENT_SOURCE_UNAVAILABLE",
+    evidence_refs: Iterable[str] = (),
+) -> GlobalEventFamilyStatus:
+    """Represent a provider failure as UNKNOWN for only its event family."""
+
+    return GlobalEventFamilyStatus(
+        source=source,
+        observed_at=observed_at,
+        ingested_at=observed_at if ingested_at is None else ingested_at,
+        quality_state=QualityState.UNKNOWN,
+        reason_codes=(reason_code,),
+        evidence_refs=normalize_texts(
+            evidence_refs,
+            "evidence_refs",
+            max_items=_MAX_GLOBAL_COLLECTION_ITEMS,
+        ),
+    )
+
+
+def _global_identity_key(source: str, event_id: str) -> str:
+    """Build a delimiter-safe key from normalized source and event identities."""
+
+    canonical = json.dumps((source, event_id), ensure_ascii=True, separators=(",", ":"))
+    return f"global-event:{hashlib.sha256(canonical.encode()).hexdigest()}"
+
+
 def _normalize_global_text(value: str, field: str, *, max_length: int) -> str:
     normalized = unicodedata.normalize("NFKC", require_text(value, field, max_length=max_length))
     normalized = " ".join(normalized.split())
@@ -204,12 +314,22 @@ def _normalize_global_url(value: str) -> str | None:
         or parsed.password is not None
     ):
         return None
-    return urlunsplit(("https", parsed.hostname.lower(), parsed.path, parsed.query, ""))
+    query = urlencode(
+        [
+            (key, item)
+            for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+            if key.casefold().replace("-", "_") not in _CREDENTIAL_QUERY_KEYS
+        ],
+        doseq=True,
+    )
+    return urlunsplit(("https", parsed.hostname.lower(), parsed.path, query, ""))
 
 
 def _normalize_global_urls(values: Sequence[str]) -> tuple[str, ...]:
     if isinstance(values, str | bytes | bytearray):
         raise TypeError("urls must be a sequence")
+    if len(values) > _MAX_GLOBAL_COLLECTION_ITEMS:
+        raise ValueError("urls contains too many items")
     normalized: list[str] = []
     for value in values:
         if not isinstance(value, str):
@@ -226,16 +346,16 @@ def _normalize_global_addresses(
 ) -> tuple[str, ...]:
     if isinstance(values, str | bytes | bytearray):
         raise TypeError("contract_addresses must be a sequence")
+    if len(values) > _MAX_GLOBAL_COLLECTION_ITEMS:
+        raise ValueError("contract_addresses contains too many items")
+    if chain is None and values:
+        raise ValueError("contract addresses require an explicit chain")
     normalized: list[str] = []
     for value in values:
         if not isinstance(value, str):
             raise TypeError("contract_addresses must contain strings")
-        if chain is not None:
-            address = require_chain_address(value, chain, "contract address")
-        elif value.strip().lower().startswith("0x"):
-            address = require_evm_address(value, "contract address")
-        else:
-            address = require_solana_address(value, "contract address")
+        assert chain is not None
+        address = require_chain_address(value, chain, "contract address")
         if address not in normalized:
             normalized.append(address)
     return tuple(normalized)
@@ -262,6 +382,8 @@ def _payload_texts(value: object, field: str) -> tuple[str, ...]:
         return normalize_texts(values, field, max_item_length=256)
     if not isinstance(value, Sequence) or isinstance(value, bytes | bytearray):
         raise TypeError(f"{field} must be a string, mapping or sequence")
+    if len(value) > _MAX_GLOBAL_COLLECTION_ITEMS:
+        raise ValueError(f"{field} contains too many items")
     values = []
     for item in value:
         if isinstance(item, Mapping):
@@ -283,6 +405,8 @@ def _payload_addresses(value: object) -> tuple[str, ...]:
         return () if address is None else (address,) if isinstance(address, str) else ()
     if not isinstance(value, Sequence) or isinstance(value, bytes | bytearray):
         raise TypeError("contract_addresses must be a string, mapping or sequence")
+    if len(value) > _MAX_GLOBAL_COLLECTION_ITEMS:
+        raise ValueError("contract_addresses contains too many items")
     values: list[str] = []
     for item in value:
         if isinstance(item, Mapping):
@@ -354,6 +478,8 @@ class GlobalEvent:
         assert occurred is not None
         if not isinstance(self.provenance, Provenance):
             raise TypeError("provenance must be a Provenance")
+        if self.provenance.source_id != event_id:
+            raise ValueError("provenance source_id must match event_id")
         if self.provenance.observed_at > observed:
             raise ValueError("provenance observed_at must not be later than observed_at")
         normalized_chain = None if self.chain is None else normalize_chain(self.chain)
@@ -375,7 +501,12 @@ class GlobalEvent:
         object.__setattr__(
             self,
             "entities",
-            normalize_texts(self.entities, "entities", max_item_length=256),
+            normalize_texts(
+                self.entities,
+                "entities",
+                max_item_length=256,
+                max_items=_MAX_GLOBAL_COLLECTION_ITEMS,
+            ),
         )
         object.__setattr__(self, "text", normalized_text)
         object.__setattr__(self, "urls", _normalize_global_urls(self.urls))
@@ -404,21 +535,38 @@ class GlobalEvent:
         object.__setattr__(
             self,
             "evidence_refs",
-            normalize_texts(self.evidence_refs, "evidence_refs"),
+            normalize_texts(
+                self.evidence_refs,
+                "evidence_refs",
+                max_items=_MAX_GLOBAL_COLLECTION_ITEMS,
+            ),
         )
-        object.__setattr__(self, "reason_codes", normalize_reason_codes(self.reason_codes))
+        object.__setattr__(
+            self,
+            "reason_codes",
+            normalize_reason_codes(
+                self.reason_codes,
+                max_items=_MAX_GLOBAL_COLLECTION_ITEMS,
+            ),
+        )
         if self.id is None:
             object.__setattr__(
                 self,
                 "id",
-                uuid5(NAMESPACE_URL, f"memeradar:global-event:{source}:{event_id}"),
+                uuid5(NAMESPACE_URL, _global_identity_key(source, event_id)),
             )
         elif not isinstance(self.id, UUID):
             raise TypeError("id must be a UUID")
 
     @property
     def source_id(self) -> str:
-        """Compatibility spelling for the normalized source family."""
+        """Compatibility spelling for the provider-assigned event identity."""
+
+        return self.event_id
+
+    @property
+    def source_family(self) -> str:
+        """Return the normalized source family name."""
 
         return self.source
 
@@ -436,9 +584,9 @@ class GlobalEvent:
 
     @property
     def dedupe_key(self) -> str:
-        """Return an idempotency key scoped to the source family."""
+        """Return a delimiter-safe idempotency key for source and event ID."""
 
-        return f"global-event:{self.source}:{self.event_id}"
+        return _global_identity_key(self.source, self.event_id)
 
     @property
     def content_identity(self) -> tuple[object, ...]:
@@ -455,6 +603,7 @@ class GlobalEvent:
             self.urls,
             self.contract_addresses,
             self.chain,
+            QualityState(self.quality_state),
         )
 
     def freshness_state(self, at: datetime) -> QualityState:
@@ -614,6 +763,13 @@ def normalize_global_event(
         quality_state=quality_state,
         freshness=event_freshness,
         raw_payload_ref=raw_reference,
-        evidence_refs=tuple(evidence_refs),
-        reason_codes=tuple(reason_codes),
+        evidence_refs=normalize_texts(
+            evidence_refs,
+            "evidence_refs",
+            max_items=_MAX_GLOBAL_COLLECTION_ITEMS,
+        ),
+        reason_codes=normalize_reason_codes(
+            reason_codes,
+            max_items=_MAX_GLOBAL_COLLECTION_ITEMS,
+        ),
     )

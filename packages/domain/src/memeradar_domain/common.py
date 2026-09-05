@@ -72,13 +72,16 @@ def normalize_texts(
     field: str,
     *,
     max_item_length: int = 256,
+    max_items: int | None = None,
 ) -> tuple[str, ...]:
     """Normalize a bounded sequence of non-empty strings while preserving order."""
 
     if isinstance(values, str):
         raise TypeError(f"{field} must be a sequence of strings")
     normalized: list[str] = []
-    for value in values:
+    for index, value in enumerate(values):
+        if max_items is not None and index >= max_items:
+            raise ValueError(f"{field} contains too many items")
         item = require_text(value, field, max_length=max_item_length)
         if item not in normalized:
             normalized.append(item)
