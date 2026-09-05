@@ -14,11 +14,49 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Shadow Collection State | `NOT_ACTIVE` / `LIVE_SHADOW_COLLECTION_ACTIVE` | `PROVENANCE_AUDITED` | Active only when real provider observation streams flow and free-core gates pass |
 | Real-World Alpha Evidence | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` | `INSUFFICIENT_SAMPLES` | Awaits live read-only shadow data collection |
 | Protected Operating Modes | `ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false, AUTO_EXECUTION=false` | `ENFORCED_INVARIANT` | Live order submission & wallet signing hard-locked |
-| Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; current uncommitted frontend returns HTTP 500 |
+| Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
 | Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 879 Python tests (11 skipped), 45 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
+---
+
+## Frontend Workstation Redesign Checkpoint
+
+On 2026-09-05, `apps/web` was redesigned as a Solana intelligence
+workstation (commit `08f5072`, frontend-only, no backend files touched):
+
+1. **Workstation shell**: persistent topbar (brand, bounded token-UUID /
+   wallet-address search, stack/provider status chips, protected-mode
+   chips, realtime status, theme toggle) plus sectioned sidebar
+   navigation (Intelligence / Research / System) with a mobile
+   off-canvas drawer and route-aware active state.
+2. **Command center overview**: metric strip (stack, providers, alerts,
+   SLO), early-alpha funnel, live-radar preview table and an explicit
+   `NO LIVE ORDERS` boundary strip.
+3. **Discovery surfaces**: dense sortable radar table joined with
+   ultra-early evidence on dedicated `/radar` and `/ultra-early` routes;
+   token detail is a research workspace with a collapsible inspector
+   panel. Legacy secondary pages (positions, wallets, graph, providers,
+   operations, settings, audit) render inside the shell without layout
+   wrappers.
+4. **Design system**: dark-first workstation tokens with light theme,
+   semantic risk/freshness colors, dense data-table primitives and
+   responsive breakpoints (1100 / 768 / 520 px); Playwright measurement
+   confirms zero page-level horizontal overflow at 1440/1280/1024/768/390
+   px on `/`, `/radar`, `/ultra-early`, `/wallet-graph` and `/providers`.
+
+Final evidence:
+
+- Frontend gates green: eslint clean, `tsc --noEmit` clean, 50/50 Vitest
+  tests pass, 6/6 Playwright e2e pass, production `next build` succeeds
+  (12 routes).
+- Protected modes stay visible on every surface
+  (`ANALYSIS ONLY`, `PAPER TRADING`, `EXECUTION LOCKED`); the browser
+  keeps no execution authority and no credentials.
+- UNKNOWN/error states verified fail-closed against a mock read API and
+  the empty local API; no rows are fabricated.
+
 ---
 
 ## Free-First Provider Architecture Checkpoint
