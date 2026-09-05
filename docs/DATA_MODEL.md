@@ -210,6 +210,13 @@ are idempotently collapsed and conflicting records are rejected. The
 `SocialRestAdapter` performs no persistence, browser scraping or write call;
 physical social tables remain the later persistence target.
 
+The optional global-event projection reuses this normalized social evidence
+without creating a second social store. Its bounded text/URL/entity fields,
+source identity, timestamps, provenance, quality/freshness and evidence
+references remain provider-neutral; malformed or oversized social responses
+become family-local `UNKNOWN` evidence and are never treated as an empty safe
+result.
+
 ### author_trust_snapshots
 - id
 - provider_author_id

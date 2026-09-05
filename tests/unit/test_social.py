@@ -11,7 +11,7 @@ from memeradar_application.provider_contracts import (
     ProviderRequestContext,
     SocialDataRequest,
 )
-from memeradar_domain import QualityState, TokenIdentity
+from memeradar_domain import GlobalEventFamilyStatus, QualityState, TokenIdentity
 from memeradar_providers.social import SocialRestAdapter
 from memeradar_providers.transport import (
     ProviderAuthenticationError,
@@ -177,6 +177,169 @@ def test_social_adapter_rejects_conflicting_duplicate_post_ids() -> None:
             asyncio.run(adapter.search(SocialDataRequest(context=context(), query="MEME")))
     finally:
         asyncio.run(client.aclose())
+
+
+def test_social_adapter_global_event_boundary_isolates_provider_failure() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "temporarily unavailable"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = SocialRestAdapter(
+        "https://fixture.social.example",
+        client=client,
+        transport=transport(),
+        clock=lambda: NOW,
+    )
+    try:
+        result = asyncio.run(
+            adapter.search_global_events(SocialDataRequest(context=context(), query="MEME"))
+        )
+    finally:
+        asyncio.run(client.aclose())
+
+    assert isinstance(result, GlobalEventFamilyStatus)
+    assert result.source == "social"
+    assert result.quality_state is QualityState.UNKNOWN
+    assert result.available is False
+
+
+def test_social_adapter_global_event_boundary_normalizes_successful_posts() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response_payload())
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = SocialRestAdapter(
+        "https://fixture.social.example",
+        client=client,
+        transport=transport(),
+        clock=lambda: NOW,
+    )
+    try:
+        result = asyncio.run(
+            adapter.search_global_events(
+                SocialDataRequest(context=context(), token=token(), limit=20)
+            )
+        )
+    finally:
+        asyncio.run(client.aclose())
+
+    assert len(result) == 3
+    first = result[0]
+    assert first.source == "social"
+    assert first.source_id == "post-1"
+    assert first.chain.value == "solana"
+    assert first.contract_addresses == (MINT,)
+    assert first.quality_state is QualityState.FRESH
+    assert first.execution_eligible() is False
+
+
+def test_social_global_events_preserve_redacted_text_and_safe_links() -> None:
+    text = f"A note https://example.com/research?access_token={SECRET}&safe=1"
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "post-text",
+                        "text": text,
+                        "author_id": "author-text",
+                        "created_at": "2026-08-27T19:59:00Z",
+                    }
+                ]
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = SocialRestAdapter(
+        "https://fixture.social.example",
+        client=client,
+        transport=transport(),
+        clock=lambda: NOW,
+    )
+    try:
+        result = asyncio.run(
+            adapter.search_global_events(SocialDataRequest(context=context(), query="MEME"))
+        )
+    finally:
+        asyncio.run(client.aclose())
+
+    assert isinstance(result, tuple)
+    assert result[0].text == "A note https://example.com/research?safe=1"
+    assert result[0].urls == ("https://example.com/research?safe=1",)
+    assert SECRET not in result[0].text
+
+
+def test_social_global_events_degrade_oversized_provider_batches_and_links() -> None:
+    posts = [
+        {
+            "id": f"post-{index}",
+            "text": "bounded post",
+            "author_id": f"author-{index}",
+            "created_at": "2026-08-27T19:59:00Z",
+        }
+        for index in range(257)
+    ]
+
+    async def batch_handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": posts})
+
+    batch_client = httpx.AsyncClient(transport=httpx.MockTransport(batch_handler))
+    batch_adapter = SocialRestAdapter(
+        "https://fixture.social.example",
+        client=batch_client,
+        transport=transport(),
+        clock=lambda: NOW,
+    )
+    try:
+        batch_result = asyncio.run(
+            batch_adapter.search_global_events(
+                SocialDataRequest(context=context(), query="MEME")
+            )
+        )
+    finally:
+        asyncio.run(batch_client.aclose())
+
+    assert isinstance(batch_result, GlobalEventFamilyStatus)
+    assert batch_result.quality_state is QualityState.UNKNOWN
+
+    links = [f"https://example.com/{index}" for index in range(257)]
+
+    async def links_handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "post-links",
+                        "text": "bounded links",
+                        "author_id": "author-links",
+                        "created_at": "2026-08-27T19:59:00Z",
+                        "urls": links,
+                    }
+                ]
+            },
+        )
+
+    links_client = httpx.AsyncClient(transport=httpx.MockTransport(links_handler))
+    links_adapter = SocialRestAdapter(
+        "https://fixture.social.example",
+        client=links_client,
+        transport=transport(),
+        clock=lambda: NOW,
+    )
+    try:
+        links_result = asyncio.run(
+            links_adapter.search_global_events(
+                SocialDataRequest(context=context(), query="MEME")
+            )
+        )
+    finally:
+        asyncio.run(links_client.aclose())
+
+    assert isinstance(links_result, GlobalEventFamilyStatus)
+    assert links_result.quality_state is QualityState.UNKNOWN
 
 
 def test_social_adapter_rejects_unsafe_base_urls_and_classifies_transport_errors() -> None:

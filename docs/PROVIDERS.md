@@ -170,7 +170,7 @@ Sprint 2.1 defines the provider ports in `packages/application/src/memeradar_app
 | `MarketDataPort` | `MarketDataRequest` -> provider-independent domain `Observation` values |
 | `OnChainPort` | `OnChainRequest` -> provider-independent domain `Observation` values |
 | `RiskDataPort` | `RiskDataRequest` -> `RiskFinding` values preserving `QualityState.UNKNOWN` |
-| `SocialDataPort` | `SocialDataRequest` -> `SocialMention` values with author/post identity, timestamps, metrics and provenance |
+| `SocialDataPort` | `SocialDataRequest` -> `SocialMention` values with author/post identity, timestamps, metrics and provenance; optional `search_global_events` returns bounded `GlobalEvent` values or family-local `UNKNOWN` status |
 | `NarrativePort` | bounded `NarrativeInput` -> strict `NarrativeSnapshot`; output is advisory evidence only |
 | `QuotePort` | `QuoteRequest` -> `QuoteSnapshot` with route, impact, freshness and provenance; no signing side effect |
 | `ExecutionPort` | `ExecutionRequest` -> unsigned `ExecutionPlan`, `ExecutionReceipt` and reconciliation; live submission remains policy-gated and unused |

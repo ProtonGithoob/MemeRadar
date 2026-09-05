@@ -101,6 +101,8 @@ def test_all_documented_provider_ports_expose_async_application_methods() -> Non
 
     assert inspect.iscoroutinefunction(SocialMetadataPort.metadata)
     assert get_type_hints(SocialMetadataPort.metadata)
+    assert inspect.iscoroutinefunction(SocialDataPort.search_global_events)
+    assert get_type_hints(SocialDataPort.search_global_events)
 
 
 def test_free_first_quote_context_preserves_market_reference_semantics() -> None:

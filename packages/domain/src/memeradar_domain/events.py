@@ -30,24 +30,46 @@ _MAX_GLOBAL_COLLECTION_ITEMS = 256
 _CREDENTIAL_QUERY_KEYS = frozenset(
     {
         "access_token",
+        "access_key",
+        "accesskey",
         "api_key",
         "apikey",
         "auth",
+        "auth_token",
+        "authtoken",
         "authorization",
+        "bearer",
+        "bearer_token",
+        "bearertoken",
         "client_secret",
+        "clientsecret",
         "cookie",
+        "id_token",
+        "idtoken",
+        "jwt",
         "key",
+        "oauth_token",
+        "oauthtoken",
         "password",
         "passwd",
         "private_key",
+        "privatekey",
         "refresh_token",
+        "refreshtoken",
         "secret",
+        "secret_key",
+        "secretkey",
         "session",
+        "session_token",
+        "sessiontoken",
         "sig",
         "signature",
         "token",
+        "x_api_key",
+        "xapikey",
     }
 )
+_GLOBAL_URL_PATTERN = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,15 +323,26 @@ def _global_identity_key(source: str, event_id: str) -> str:
 def _normalize_global_text(value: str, field: str, *, max_length: int) -> str:
     normalized = unicodedata.normalize("NFKC", require_text(value, field, max_length=max_length))
     normalized = " ".join(normalized.split())
+
+    def safe_url(match: re.Match[str]) -> str:
+        return normalize_https_url(match.group(0)) or "<redacted-url>"
+
+    normalized = _GLOBAL_URL_PATTERN.sub(safe_url, normalized)
     return require_text(normalized, field, max_length=max_length)
 
 
-def _normalize_global_url(value: str) -> str | None:
-    candidate = require_text(value, "url", max_length=1024).rstrip(".,;:!?)]}")
-    parsed = urlsplit(candidate)
+def normalize_https_url(value: str, *, max_length: int = 1024) -> str | None:
+    """Return a credential-free canonical HTTPS URL for bounded evidence."""
+
+    try:
+        candidate = require_text(value, "url", max_length=max_length).rstrip(".,;:!?)]}")
+        parsed = urlsplit(candidate)
+        hostname = parsed.hostname
+    except (TypeError, ValueError):
+        return None
     if (
         parsed.scheme.lower() != "https"
-        or not parsed.hostname
+        or not hostname
         or parsed.username is not None
         or parsed.password is not None
     ):
@@ -322,7 +355,11 @@ def _normalize_global_url(value: str) -> str | None:
         ],
         doseq=True,
     )
-    return urlunsplit(("https", parsed.hostname.lower(), parsed.path, query, ""))
+    return urlunsplit(("https", hostname.lower(), parsed.path, query, ""))
+
+
+def _normalize_global_url(value: str) -> str | None:
+    return normalize_https_url(value)
 
 
 def _normalize_global_urls(values: Sequence[str]) -> tuple[str, ...]:
@@ -604,6 +641,7 @@ class GlobalEvent:
             self.contract_addresses,
             self.chain,
             QualityState(self.quality_state),
+            self.freshness,
         )
 
     def freshness_state(self, at: datetime) -> QualityState:

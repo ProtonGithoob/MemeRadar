@@ -13,6 +13,8 @@ from uuid import UUID
 from memeradar_domain import (
     Chain,
     Freshness,
+    GlobalEvent,
+    GlobalEventFamilyStatus,
     Observation,
     PoolIdentity,
     PriceSemantics,
@@ -481,6 +483,7 @@ class SocialMention:
     ingested_at: datetime
     text_fingerprint: str
     metrics: Mapping[str, object]
+    text: str | None = None
     token_id: UUID | None = None
     referenced_mint: str | None = None
     quality_state: QualityState = QualityState.FRESH
@@ -506,6 +509,8 @@ class SocialMention:
             "text_fingerprint",
             require_text(self.text_fingerprint, "text_fingerprint"),
         )
+        if self.text is not None:
+            object.__setattr__(self, "text", require_text(self.text, "text", max_length=20_000))
         assert posted_at is not None
         object.__setattr__(self, "posted_at", posted_at)
         object.__setattr__(self, "observed_at", observed_at)
@@ -907,6 +912,13 @@ class SocialDataPort(Protocol):
     provider_name: str
 
     async def search(self, request: SocialDataRequest) -> Sequence[SocialMention]: ...
+
+    async def search_global_events(
+        self,
+        request: SocialDataRequest,
+        *,
+        reference_at: datetime | None = None,
+    ) -> Sequence[GlobalEvent] | GlobalEventFamilyStatus: ...
 
 
 class SocialMetadataPort(Protocol):

@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import TracebackType
-from urllib.parse import parse_qsl, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 
@@ -20,7 +20,15 @@ from memeradar_application.provider_contracts import (
     SocialDataRequest,
     SocialMention,
 )
-from memeradar_domain import Provenance, QualityState
+from memeradar_domain import (
+    GlobalEvent,
+    GlobalEventFamilyStatus,
+    Provenance,
+    QualityState,
+    degrade_global_event_family,
+    normalize_global_event,
+    normalize_https_url,
+)
 from memeradar_domain.common import (
     ensure_ordered_timestamps,
     ensure_utc,
@@ -50,9 +58,43 @@ _CREDENTIAL_QUERY_KEYS = {
     "api_key",
     "apikey",
     "access_token",
+    "access_key",
+    "accesskey",
+    "auth",
+    "auth_token",
+    "authtoken",
     "authorization",
+    "bearer",
+    "bearer_token",
+    "bearertoken",
+    "client_secret",
+    "clientsecret",
+    "cookie",
+    "id_token",
+    "idtoken",
+    "jwt",
+    "key",
+    "oauth_token",
+    "oauthtoken",
+    "password",
+    "passwd",
+    "private_key",
+    "privatekey",
+    "refresh_token",
+    "refreshtoken",
+    "secret",
+    "secret_key",
+    "secretkey",
+    "session",
+    "session_token",
+    "sessiontoken",
+    "sig",
+    "signature",
     "token",
+    "x_api_key",
+    "xapikey",
 }
+_MAX_SOCIAL_COLLECTION_ITEMS = 256
 _MINT_CANDIDATE = re.compile(r"(?<![A-Za-z0-9])[1-9A-HJ-NP-Za-km-z]{32,44}(?![A-Za-z0-9])")
 _URL_PATTERN = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 _TICKER_PATTERN = re.compile(r"(?<![A-Za-z0-9_])\$([A-Za-z][A-Za-z0-9_]{0,14})(?![A-Za-z0-9_])")
@@ -191,21 +233,26 @@ def _link_candidate(value: object) -> str | None:
         value = value.get("expanded_url", value.get("unwound_url", value.get("url", _MISSING)))
     if not isinstance(value, str):
         return None
-    candidate = value.rstrip(".,;:!?)]}")
-    parsed = urlsplit(candidate)
-    if parsed.scheme.lower() != "https" or not parsed.hostname:
-        return None
-    if parsed.username is not None or parsed.password is not None or parsed.fragment:
-        return None
-    return urlunsplit(("https", parsed.hostname, parsed.path, parsed.query, ""))
+    return normalize_https_url(value, max_length=512)
+
+
+def _redacted_text(value: str) -> str:
+    return _URL_PATTERN.sub(
+        lambda match: _link_candidate(match.group(0)) or "<redacted-url>",
+        value,
+    )
 
 
 def _extract_links(text: str, payload: Mapping[str, object]) -> tuple[str, ...]:
     values: list[str] = []
     candidates: list[object] = list(_URL_PATTERN.findall(text))
+    if len(candidates) > _MAX_SOCIAL_COLLECTION_ITEMS:
+        raise ProviderSchemaError("social links exceeded bound")
     for field_name in ("url", "canonical_url", "links", "urls"):
         value = payload.get(field_name, _MISSING)
         if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+            if len(value) > _MAX_SOCIAL_COLLECTION_ITEMS:
+                raise ProviderSchemaError("social links exceeded bound")
             candidates.extend(value)
         elif value is not _MISSING:
             candidates.append(value)
@@ -215,7 +262,11 @@ def _extract_links(text: str, payload: Mapping[str, object]) -> tuple[str, ...]:
         if isinstance(entity_urls, Sequence) and not isinstance(
             entity_urls, str | bytes | bytearray
         ):
+            if len(entity_urls) > _MAX_SOCIAL_COLLECTION_ITEMS:
+                raise ProviderSchemaError("social links exceeded bound")
             candidates.extend(entity_urls)
+    if len(candidates) > _MAX_SOCIAL_COLLECTION_ITEMS:
+        raise ProviderSchemaError("social links exceeded bound")
     for candidate in candidates:
         link = _link_candidate(candidate)
         if link is not None and link not in values:
@@ -272,6 +323,8 @@ def _posts(value: object) -> Sequence[object]:
         return ()
     if not isinstance(data, Sequence) or isinstance(data, str | bytes | bytearray):
         raise ProviderSchemaError("social posts were invalid")
+    if len(data) > _MAX_SOCIAL_COLLECTION_ITEMS:
+        raise ProviderSchemaError("social posts exceeded bound")
     return data
 
 
@@ -560,6 +613,7 @@ class SocialRestAdapter(SocialDataPort):
             ingested_at=normalized_ingested,
             text_fingerprint=fingerprint,
             metrics=metrics,
+            text=_redacted_text(text),
             token_id=token_id,
             referenced_mint=referenced_mint,
             quality_state=QualityState.FRESH,
@@ -650,6 +704,65 @@ class SocialRestAdapter(SocialDataPort):
             observed_at=observed_at,
             ingested_at=ingested_at,
         )
+
+    async def search_global_events(
+        self,
+        request: SocialDataRequest,
+        *,
+        reference_at: datetime | None = None,
+    ) -> tuple[GlobalEvent, ...] | GlobalEventFamilyStatus:
+        """Normalize social results and isolate provider failures to social evidence."""
+
+        observed_at = ensure_utc(self._clock(), "observed_at")
+        try:
+            mentions = await self.search(request)
+            events: list[GlobalEvent] = []
+            for mention in mentions:
+                event_payload: dict[str, object] = {
+                    "event_id": mention.provenance.source_id,
+                    "event_type": "social_post",
+                    "occurred_at": mention.posted_at,
+                    "author_id": mention.author_id,
+                    "entities": (
+                        (mention.referenced_ticker,)
+                        if mention.referenced_ticker is not None
+                        else ()
+                    ),
+                    "text": mention.text,
+                    "urls": mention.canonical_links,
+                    "contract_addresses": (
+                        (mention.referenced_mint,)
+                        if mention.referenced_mint is not None
+                        else ()
+                    ),
+                }
+                events.append(
+                    normalize_global_event(
+                        event_payload,
+                        source=self.provider_name,
+                        observed_at=mention.observed_at,
+                        ingested_at=mention.ingested_at,
+                        quality_state=mention.quality_state,
+                        chain="solana" if mention.referenced_mint is not None else None,
+                        reference_at=reference_at,
+                        provenance=mention.provenance,
+                        raw_payload_ref=mention.provenance.raw_payload_ref,
+                        evidence_refs=(mention.provenance.source_id,),
+                    )
+                )
+            return tuple(events)
+        except ProviderError:
+            return degrade_global_event_family(
+                self.provider_name,
+                observed_at=observed_at,
+                reason_code="GLOBAL_EVENT_SOURCE_UNAVAILABLE",
+            )
+        except (TypeError, ValueError):
+            return degrade_global_event_family(
+                self.provider_name,
+                observed_at=observed_at,
+                reason_code="GLOBAL_EVENT_SOURCE_INVALID",
+            )
 
 
 __all__ = [

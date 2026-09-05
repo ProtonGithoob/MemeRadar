@@ -71,7 +71,9 @@ def test_normalizer_keeps_provider_neutral_bounded_evidence() -> None:
             "author_id": " author-1 ",
             "entities": ["MEME", "MEME", "community"],
             "urls": [
-                "https://example.com/post-1?access_token=secret&safe=1#tracking",
+                "https://example.com/post-1?access_token=secret&auth_token=secret2&"
+                "clientSecret=secret3&privateKey=secret4&bearer=secret5&oauth_token=secret6&"
+                "safe=1#tracking",
                 "javascript:bad",
             ],
             "contract_addresses": [MINT, MINT],
@@ -137,6 +139,20 @@ def test_duplicate_events_are_idempotent_but_conflicting_reuse_fails_closed() ->
     )
     assert first.dedupe_key == equivalent_delivery.dedupe_key
     assert deduplicate_global_events((equivalent_delivery, first)) == (equivalent_delivery,)
+
+    changed_freshness_window = replace(
+        first,
+        observed_at=NOW + timedelta(seconds=4),
+        ingested_at=NOW + timedelta(seconds=5),
+        provenance=_provenance(),
+        freshness=Freshness(
+            as_of=NOW + timedelta(seconds=4),
+            expires_at=NOW + timedelta(minutes=20),
+            quality_state=QualityState.FRESH,
+        ),
+    )
+    with pytest.raises(GlobalEventIdempotencyConflict):
+        deduplicate_global_events((first, changed_freshness_window))
 
     with pytest.raises(GlobalEventIdempotencyConflict):
         deduplicate_global_events((first, _event(text="different content")))

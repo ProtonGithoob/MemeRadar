@@ -27,6 +27,7 @@ from .events import (
     deduplicate_global_events,
     degrade_global_event_family,
     normalize_global_event,
+    normalize_https_url,
     normalize_reason_codes,
 )
 from .evidence import Freshness, Observation, PriceSemantics, Provenance, QualityState
@@ -134,6 +135,7 @@ __all__ = [
     "deduplicate_global_events",
     "degrade_global_event_family",
     "normalize_global_event",
+    "normalize_https_url",
     "require_chain_address",
     "require_evm_address",
     "normalize_reason_codes",
