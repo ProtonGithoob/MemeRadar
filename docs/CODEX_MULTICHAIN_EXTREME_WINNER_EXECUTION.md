@@ -4,10 +4,11 @@ Use this document together with:
 
 - `docs/MULTICHAIN_EXTREME_WINNER_IMPLEMENTATION_SPEC.md`
 - `docs/EXTERNAL_REPOSITORY_AUDIT_2026_09_05.md`
+- `docs/SMART_MONEY_CONVERGENCE_EXTENSION.md`
 
 ## Instruction
 
-Continue from the current `main` branch. Treat the two documents above as the canonical requirements for the next MemeRadar phase.
+Continue from the current `main` branch. Treat the documents above as the canonical requirements for the next MemeRadar phase.
 
 Do not stop after design or planning. Inspect the repository first, preserve any concurrent/uncommitted work, then implement incrementally with TDD, verify, document, commit and push.
 
@@ -34,6 +35,7 @@ Make MemeRadar a chain-aware SOLANA + BNB early-token intelligence system optimi
 15. Extend Telegram ULTRA EARLY alerts with chain, token address, market/liquidity, wallet/risk/corroboration/provenance and alert-latency evidence.
 16. Extend live-shadow/replay/calibration/outcome reporting with separate SOLANA and BNB cohorts and decision-state KPIs.
 17. Preserve paper execution and all existing safety barriers.
+18. Implement the provider-independent smart-money convergence extension in `docs/SMART_MONEY_CONVERGENCE_EXTENSION.md`: historical wallet quality, bounded operator seed import, cluster-adjusted multi-wallet convergence, wallet-overlap recurrence, KOL historical quality/linkage, cross-signal research projection and smart-money distribution evidence. Reuse existing wallet/social/graph/scoring/replay/alert engines; do not create duplicates or hard-depend on external ranking websites.
 
 ### Protected modes — immutable
 
@@ -69,6 +71,19 @@ Implement as an optional provider behind existing contracts. Missing credentials
 
 Never expose execution capabilities from GMGN.
 
+### Smart-money convergence requirements
+
+External whale/KOL/top-wallet products are inspiration or optional seed sources only. The runtime must remain functional when every such external website is unavailable.
+
+- Extend `TrackedWalletRegistry`/wallet tracking rather than replacing them.
+- Keep external rank/PnL/win-rate claims advisory and provenance-tagged; never auto-promote wallet tiers.
+- Reuse canonical event-time windows for 15s/30s/60s/3m/5m convergence.
+- Count both raw unique wallets and actor-cluster-adjusted independent wallets.
+- Preserve UNKNOWN/STALE/CONFLICTED states; missing wallet/KOL evidence must never become SAFE or HIGH-CONFIDENCE.
+- Keep wallet/KOL/convergence projections measurement-only until replay/ablation and the existing promotion gate prove incremental lift.
+- Do not infer KOL identity-to-wallet linkage from names alone.
+- Do not add copy trading or automatic wallet following.
+
 ### Pump protocol audit requirements
 
 Compare existing MemeRadar features with trusted protocol documentation for:
@@ -100,6 +115,13 @@ Add/extend deterministic unit/contract/integration tests for:
 - GMGN optional/keyless behavior, normalization, rate limits, auth and corroboration
 - Pump lifecycle/migration/fee evidence
 - multi-chain smart-wallet features
+- wallet historical quality sample-size/freshness/provenance semantics
+- bounded CSV/JSON wallet seed import, malformed rows and idempotency
+- cluster-adjusted multi-wallet convergence and coordinated-wallet anti-inflation
+- wallet overlap/cohort recurrence without false collusion claims
+- KOL historical-quality and explicit wallet-linkage evidence boundaries
+- cross-signal projection remaining measurement-only before promotion
+- smart-money distribution as advisory exit evidence
 - Telegram SOL/BNB rendering, dedupe and latency
 - protected modes and absence of signing/execution capabilities
 - no Solana regressions
@@ -167,6 +189,7 @@ Return:
 - BNB support matrix
 - GMGN integration matrix
 - Pump protocol audit findings
+- smart-money convergence implementation matrix
 - external repository rejection/security evidence
 - config changes
 - Telegram changes
