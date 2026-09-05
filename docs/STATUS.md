@@ -2,6 +2,8 @@
 
 Last updated: 2026-09-05
 
+Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report](FREE_FIRST_PROVIDER_MIGRATION_RESULTS.md)
+
 ## Current Status Classification Table
 
 | Metric / Dimension | Status / Classification | Evidence Class | Notes |
