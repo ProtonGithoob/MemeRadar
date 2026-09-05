@@ -338,10 +338,12 @@ class QuoteRequest:
     output_mint: str
     amount: Decimal | int | float | str
     slippage_bps: int
+    chain: Chain | str = Chain.SOLANA
 
     def __post_init__(self) -> None:
-        input_mint = require_solana_address(self.input_mint, "input_mint")
-        output_mint = require_solana_address(self.output_mint, "output_mint")
+        chain = normalize_chain(self.chain)
+        input_mint = require_chain_address(self.input_mint, chain, "input_mint")
+        output_mint = require_chain_address(self.output_mint, chain, "output_mint")
         if input_mint == output_mint:
             raise ValueError("input_mint and output_mint must differ")
         amount = to_decimal(self.amount, "amount")
@@ -356,6 +358,7 @@ class QuoteRequest:
         object.__setattr__(self, "input_mint", input_mint)
         object.__setattr__(self, "output_mint", output_mint)
         object.__setattr__(self, "amount", amount)
+        object.__setattr__(self, "chain", chain)
 
 
 @dataclass(frozen=True, slots=True)
@@ -718,15 +721,13 @@ class QuoteMarketContext:
     pair_created_at: datetime | None = None
 
     def __post_init__(self) -> None:
-        chain = require_text(self.chain, "chain", max_length=32).lower()
-        if chain != "solana":
-            raise ValueError("quote market context must use the Solana chain")
+        chain = normalize_chain(self.chain)
         object.__setattr__(self, "chain", chain)
         for field_name in ("pair_address", "base_mint", "quote_mint"):
             object.__setattr__(
                 self,
                 field_name,
-                require_solana_address(getattr(self, field_name), field_name),
+                require_chain_address(getattr(self, field_name), chain, field_name),
             )
         if self.base_mint == self.quote_mint:
             raise ValueError("base_mint and quote_mint must differ")
@@ -756,12 +757,14 @@ class QuoteSnapshot:
     freshness: Freshness
     price_semantics: PriceSemantics = PriceSemantics.EXECUTION_QUOTE
     market_context: QuoteMarketContext | None = None
+    chain: Chain | str = Chain.SOLANA
 
     def __post_init__(self) -> None:
         if not isinstance(self.provenance, Provenance):
             raise TypeError("provenance must be a Provenance")
-        input_mint = require_solana_address(self.input_mint, "input_mint")
-        output_mint = require_solana_address(self.output_mint, "output_mint")
+        chain = normalize_chain(self.chain)
+        input_mint = require_chain_address(self.input_mint, chain, "input_mint")
+        output_mint = require_chain_address(self.output_mint, chain, "output_mint")
         if input_mint == output_mint:
             raise ValueError("input_mint and output_mint must differ")
         for field_name in ("input_amount", "output_amount", "price_impact_bps"):
@@ -780,12 +783,15 @@ class QuoteSnapshot:
                 self.market_context.quote_mint,
             }:
                 raise ValueError("market context mints must match quote mints")
+            if self.market_context.chain is not chain:
+                raise ValueError("market context chain must match quote chain")
             if self.market_context.pair_created_at is not None and (
                 self.market_context.pair_created_at > self.provenance.observed_at
             ):
                 raise ValueError("pair_created_at must not be later than quote observation")
         object.__setattr__(self, "input_mint", input_mint)
         object.__setattr__(self, "output_mint", output_mint)
+        object.__setattr__(self, "chain", chain)
         object.__setattr__(self, "route", normalize_texts(self.route, "route", max_item_length=128))
 
     @property

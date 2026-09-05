@@ -34,15 +34,17 @@ from memeradar_application.provider_contracts import (
     SocialMetadataPort,
 )
 from memeradar_domain import (
+    Chain,
     Freshness,
     Observation,
     PriceSemantics,
     Provenance,
     QualityState,
     TokenIdentity,
+    normalize_chain,
+    require_chain_address,
 )
 from memeradar_domain.common import ensure_utc, require_text, to_decimal
-from memeradar_domain.identities import require_solana_address
 
 from .transport import (
     ProviderAuthenticationError,
@@ -61,6 +63,16 @@ DEXSCREENER_PROVIDER = "dexscreener"
 DEXSCREENER_PARSER_VERSION = "dexscreener-market-v1"
 DEXSCREENER_CHAIN = "solana"
 DEXSCREENER_TOKEN_PAIRS_PATH = "/token-pairs/v1/solana"
+DEXSCREENER_CHAIN_BY_DOMAIN: Mapping[Chain, str] = {
+    Chain.SOLANA: "solana",
+    Chain.BNB: "bsc",
+    Chain.ROBINHOOD: "robinhood",
+}
+_DEXSCREENER_CHAIN_ALIASES: Mapping[Chain, frozenset[str]] = {
+    Chain.SOLANA: frozenset({"solana"}),
+    Chain.BNB: frozenset({"bnb", "bsc", "binance-smart-chain"}),
+    Chain.ROBINHOOD: frozenset({"robinhood", "robinhood-chain"}),
+}
 _CREDENTIAL_QUERY_KEYS = {
     "api_key",
     "apikey",
@@ -82,6 +94,8 @@ _QUOTE_ASSET_ORDER = {
     SOLANA_USDT_MINT: 1,
     SOLANA_NATIVE_MINT: 2,
 }
+_STABLE_QUOTE_SYMBOLS = frozenset({"usdc", "usdt", "busd", "dai", "usde"})
+_NATIVE_QUOTE_SYMBOLS = frozenset({"sol", "wsol", "bnb", "wbnb", "eth", "weth"})
 
 
 def _payload_hash(value: object) -> str:
@@ -157,13 +171,13 @@ def _optional_timestamp(value: object, field: str, *, observed_at: datetime) -> 
     return timestamp if timestamp <= observed_at else None
 
 
-def _safe_address(value: object, field: str) -> str | None:
+def _safe_address(value: object, field: str, chain: Chain = Chain.SOLANA) -> str | None:
     if value is _MISSING or value is None:
         return None
     if not isinstance(value, str):
         return None
     try:
-        return require_solana_address(value, field)
+        return require_chain_address(value, chain, field)
     except (TypeError, ValueError):
         return None
 
@@ -290,24 +304,49 @@ def _parse_links(info: Mapping[str, object] | None) -> tuple[tuple[str, ...], Ma
     return tuple(websites), socials
 
 
-def _parse_pair(value: object, *, observed_at: datetime) -> DexScreenerPair | None:
+def _parse_pair(
+    value: object,
+    *,
+    observed_at: datetime,
+    chain: Chain = Chain.SOLANA,
+) -> DexScreenerPair | None:
     if not isinstance(value, Mapping):
         raise ProviderSchemaError("provider pair item was invalid")
-    chain = _text(_field(value, "chainId", "chain_id", "chain"), "chain_id", max_length=32)
-    if chain is None or chain.lower() != DEXSCREENER_CHAIN:
+    normalized_chain = normalize_chain(chain)
+    provider_chain = _text(
+        _field(value, "chainId", "chain_id", "chain"),
+        "chain_id",
+        max_length=32,
+    )
+    if (
+        provider_chain is None
+        or provider_chain.lower() not in _DEXSCREENER_CHAIN_ALIASES[normalized_chain]
+    ):
         return None
-    pair_address = _safe_address(value.get("pairAddress", _MISSING), "pair_address")
+    pair_address = _safe_address(
+        value.get("pairAddress", _MISSING),
+        "pair_address",
+        normalized_chain,
+    )
     base = _mapping(value.get("baseToken", _MISSING), "baseToken")
     quote = _mapping(value.get("quoteToken", _MISSING), "quoteToken")
     if pair_address is None or base is None or quote is None:
         return None
-    base_mint = _safe_address(base.get("address", _MISSING), "base_mint")
-    quote_mint = _safe_address(quote.get("address", _MISSING), "quote_mint")
+    base_mint = _safe_address(
+        base.get("address", _MISSING),
+        "base_mint",
+        normalized_chain,
+    )
+    quote_mint = _safe_address(
+        quote.get("address", _MISSING),
+        "quote_mint",
+        normalized_chain,
+    )
     if base_mint is None or quote_mint is None or base_mint == quote_mint:
         return None
     websites, socials = _parse_links(_mapping(value.get("info", _MISSING), "info"))
     return DexScreenerPair(
-        chain=DEXSCREENER_CHAIN,
+        chain=normalized_chain.value,
         dex_id=_text(value.get("dexId", _MISSING), "dex_id", max_length=64) or "unknown",
         pair_address=pair_address,
         base_mint=base_mint,
@@ -336,7 +375,12 @@ def _parse_pair(value: object, *, observed_at: datetime) -> DexScreenerPair | No
     )
 
 
-def _parse_pairs(value: object, *, observed_at: datetime) -> tuple[DexScreenerPair, ...]:
+def _parse_pairs(
+    value: object,
+    *,
+    observed_at: datetime,
+    chain: Chain = Chain.SOLANA,
+) -> tuple[DexScreenerPair, ...]:
     raw_pairs: object = (
         value.get("pairs", _MISSING) if isinstance(value, Mapping) else value
     )
@@ -344,7 +388,7 @@ def _parse_pairs(value: object, *, observed_at: datetime) -> tuple[DexScreenerPa
         raise ProviderSchemaError("provider token-pairs response was invalid")
     pairs_by_address: dict[str, DexScreenerPair] = {}
     for item in raw_pairs[:500]:
-        pair = _parse_pair(item, observed_at=observed_at)
+        pair = _parse_pair(item, observed_at=observed_at, chain=chain)
         if pair is not None:
             previous = pairs_by_address.get(pair.pair_address)
             if previous is None or _duplicate_pair_rank(pair) < _duplicate_pair_rank(previous):
@@ -366,17 +410,48 @@ def _duplicate_pair_rank(pair: DexScreenerPair) -> tuple[object, ...]:
     )
 
 
-def _quote_asset_rank(pair: DexScreenerPair, token_mint: str) -> int:
+def _asset_kind(
+    mint: str,
+    symbol: str | None,
+    chain: Chain,
+) -> str | None:
+    if chain is Chain.SOLANA:
+        if mint in _STABLE_QUOTE_MINTS:
+            return "stable"
+        if mint == SOLANA_NATIVE_MINT:
+            return "native"
+    normalized_symbol = symbol.strip().lower() if symbol is not None else ""
+    if normalized_symbol in _STABLE_QUOTE_SYMBOLS:
+        return "stable"
+    if normalized_symbol in _NATIVE_QUOTE_SYMBOLS:
+        return "native"
+    return None
+
+
+def _quote_asset_rank(
+    pair: DexScreenerPair,
+    token_mint: str,
+    chain: Chain = Chain.SOLANA,
+) -> int:
     quote_mint = pair.quote_mint if pair.base_mint == token_mint else pair.base_mint
-    return _QUOTE_ASSET_ORDER.get(quote_mint, 3)
+    quote_symbol = pair.quote_symbol if pair.base_mint == token_mint else pair.base_symbol
+    if quote_mint in _QUOTE_ASSET_ORDER:
+        return _QUOTE_ASSET_ORDER[quote_mint]
+    kind = _asset_kind(quote_mint, quote_symbol, chain)
+    return 0 if kind == "stable" else 2 if kind == "native" else 3
 
 
-def _pair_rank(pair: DexScreenerPair, *, token_mint: str) -> tuple[object, ...]:
+def _pair_rank(
+    pair: DexScreenerPair,
+    *,
+    token_mint: str,
+    chain: Chain = Chain.SOLANA,
+) -> tuple[object, ...]:
     liquidity = pair.liquidity_usd
     created = pair.pair_created_at.timestamp() if pair.pair_created_at is not None else 0.0
     return (
         0 if liquidity is not None and liquidity > 0 else 1,
-        _quote_asset_rank(pair, token_mint),
+        _quote_asset_rank(pair, token_mint, chain),
         -(liquidity or Decimal("0")),
         -created,
         pair.pair_address,
@@ -384,25 +459,38 @@ def _pair_rank(pair: DexScreenerPair, *, token_mint: str) -> tuple[object, ...]:
     )
 
 
-def _market_price_usd(pair: DexScreenerPair, token_mint: str) -> Decimal | None:
+def _market_price_usd(
+    pair: DexScreenerPair,
+    token_mint: str,
+    chain: Chain = Chain.SOLANA,
+) -> Decimal | None:
     if pair.base_mint == token_mint:
         return pair.price_usd if pair.price_usd is not None and pair.price_usd > 0 else None
-    if (
-        pair.quote_mint == token_mint == SOLANA_NATIVE_MINT
-        and pair.price_usd is not None
-        and pair.price_usd > 0
-        and pair.price_native is not None
-        and pair.price_native > 0
-    ):
-        return pair.price_usd / pair.price_native
+    if pair.quote_mint == token_mint:
+        if chain is Chain.SOLANA and token_mint != SOLANA_NATIVE_MINT:
+            return None
+        if (
+            _asset_kind(pair.base_mint, pair.base_symbol, chain) is not None
+            and pair.price_usd is not None
+            and pair.price_usd > 0
+            and pair.price_native is not None
+            and pair.price_native > 0
+        ):
+            return pair.price_usd / pair.price_native
     return None
 
 
-def _quote_rate(pair: DexScreenerPair, input_mint: str, output_mint: str) -> Decimal | None:
+def _quote_rate(
+    pair: DexScreenerPair,
+    input_mint: str,
+    output_mint: str,
+    chain: Chain = Chain.SOLANA,
+) -> Decimal | None:
     if pair.base_mint == input_mint and pair.quote_mint == output_mint:
-        if pair.quote_mint in _STABLE_QUOTE_MINTS:
+        kind = _asset_kind(pair.quote_mint, pair.quote_symbol, chain)
+        if kind == "stable":
             return pair.price_usd if pair.price_usd is not None and pair.price_usd > 0 else None
-        if pair.quote_mint == SOLANA_NATIVE_MINT:
+        if kind == "native":
             return (
                 pair.price_native
                 if pair.price_native is not None and pair.price_native > 0
@@ -410,9 +498,10 @@ def _quote_rate(pair: DexScreenerPair, input_mint: str, output_mint: str) -> Dec
             )
         return None
     if pair.quote_mint == input_mint and pair.base_mint == output_mint:
-        if pair.quote_mint in _STABLE_QUOTE_MINTS:
+        kind = _asset_kind(pair.quote_mint, pair.quote_symbol, chain)
+        if kind == "stable":
             rate = pair.price_usd
-        elif pair.quote_mint == SOLANA_NATIVE_MINT:
+        elif kind == "native":
             rate = pair.price_native
         else:
             return None
@@ -497,7 +586,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
             raise ValueError("max_metadata_cache_entries must be between 1 and 10000")
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._token_registry = dict(token_registry or {})
-        self._metadata_cache: dict[str, _MetadataCacheEntry] = {}
+        self._metadata_cache: dict[tuple[str, str], _MetadataCacheEntry] = {}
         self._max_metadata_cache_entries = max_metadata_cache_entries
         self._last_rate_limit: RateLimitSnapshot | None = None
         self.metadata_cache_hits = 0
@@ -620,15 +709,21 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
         mint: str,
         *,
         context: ProviderRequestContext,
+        chain: Chain = Chain.SOLANA,
         use_metadata_cache: bool = False,
     ) -> tuple[DexScreenerPair, ...]:
-        normalized_mint = require_solana_address(mint, "mint")
+        normalized_chain = normalize_chain(chain)
+        normalized_mint = require_chain_address(mint, normalized_chain, "mint")
+        cache_key = (normalized_chain.value, normalized_mint)
         now = ensure_utc(self._clock(), "observed_at")
-        cached = self._metadata_cache.get(normalized_mint)
+        cached = self._metadata_cache.get(cache_key)
         if use_metadata_cache and cached is not None and now < cached.expires_at:
             self.metadata_cache_hits += 1
             return cached.pairs
-        path = f"{DEXSCREENER_TOKEN_PAIRS_PATH}/{normalized_mint}"
+        path = (
+            f"/token-pairs/v1/{DEXSCREENER_CHAIN_BY_DOMAIN[normalized_chain]}"
+            f"/{normalized_mint}"
+        )
         url = f"{self._base_url}{path}"
         headers = {
             "accept": "application/json",
@@ -679,7 +774,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
                 timeout_seconds=self._timeout_for(context),
             )
         observed_at = ensure_utc(self._clock(), "observed_at")
-        pairs = _parse_pairs(raw, observed_at=observed_at)
+        pairs = _parse_pairs(raw, observed_at=observed_at, chain=normalized_chain)
         if use_metadata_cache:
             if len(self._metadata_cache) >= self._max_metadata_cache_entries:
                 oldest = min(
@@ -687,7 +782,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
                     key=lambda key: self._metadata_cache[key].expires_at,
                 )
                 del self._metadata_cache[oldest]
-            self._metadata_cache[normalized_mint] = _MetadataCacheEntry(
+            self._metadata_cache[cache_key] = _MetadataCacheEntry(
                 pairs=pairs,
                 expires_at=observed_at + timedelta(seconds=self._metadata_ttl),
             )
@@ -703,41 +798,49 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
         )
 
     @staticmethod
-    def _select_market_pair(pairs: Sequence[DexScreenerPair], token_mint: str) -> DexScreenerPair:
+    def _select_market_pair(
+        pairs: Sequence[DexScreenerPair],
+        token_mint: str,
+        chain: Chain = Chain.SOLANA,
+    ) -> DexScreenerPair:
         eligible = [
             pair
             for pair in pairs
             if (pair.base_mint == token_mint or pair.quote_mint == token_mint)
-            and _market_price_usd(pair, token_mint) is not None
+            and _market_price_usd(pair, token_mint, chain) is not None
         ]
         if not eligible:
-            raise ProviderSchemaError("provider returned no eligible Solana market pair")
-        return min(eligible, key=lambda pair: _pair_rank(pair, token_mint=token_mint))
+            raise ProviderSchemaError("provider returned no eligible market pair")
+        return min(
+            eligible,
+            key=lambda pair: _pair_rank(pair, token_mint=token_mint, chain=chain),
+        )
 
     @staticmethod
     def _select_quote_pair(
         pairs: Sequence[DexScreenerPair],
         input_mint: str,
         output_mint: str,
+        chain: Chain = Chain.SOLANA,
     ) -> tuple[DexScreenerPair, Decimal]:
         eligible: list[tuple[DexScreenerPair, Decimal]] = []
         for pair in pairs:
             if pair.liquidity_usd is None or pair.liquidity_usd <= 0:
                 continue
-            rate = _quote_rate(pair, input_mint, output_mint)
+            rate = _quote_rate(pair, input_mint, output_mint, chain)
             if rate is not None and rate > 0:
                 eligible.append((pair, rate))
         if not eligible:
             raise ProviderSchemaError("provider returned no eligible Solana quote pair")
         pair, rate = min(
             eligible,
-            key=lambda item: _pair_rank(item[0], token_mint=output_mint),
+            key=lambda item: _pair_rank(item[0], token_mint=output_mint, chain=chain),
         )
         return pair, rate
 
     @staticmethod
     def _market_payload(pair: DexScreenerPair, token_mint: str) -> dict[str, object]:
-        price_usd = _market_price_usd(pair, token_mint)
+        price_usd = _market_price_usd(pair, token_mint, normalize_chain(pair.chain))
         assert price_usd is not None
         transactions = {
             window: dict(values) for window, values in pair.transactions.items()
@@ -787,8 +890,43 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
             if token is None:
                 raise ValueError(f"token registry has no token for {token_id}")
             observed_at, ingested_at = self._now_pair()
-            pairs = await self._get_pairs(token.mint_address, context=request.context)
-            pair = self._select_market_pair(pairs, token.mint_address)
+            chain = normalize_chain(token.chain)
+            pairs = await self._get_pairs(
+                token.address,
+                context=request.context,
+                chain=chain,
+            )
+            try:
+                pair = self._select_market_pair(pairs, token.address, chain)
+            except ProviderSchemaError:
+                if chain is Chain.SOLANA:
+                    raise
+                observations.append(
+                    Observation(
+                        kind="market.market_snapshot",
+                        provenance=self._provenance(
+                            f"/token-pairs/v1/{DEXSCREENER_CHAIN_BY_DOMAIN[chain]}"
+                            f"/{token.address}",
+                            observed_at,
+                            {"pair_count": len(pairs)},
+                        ),
+                        occurred_at=None,
+                        observed_at=observed_at,
+                        ingested_at=ingested_at,
+                        quality_state=QualityState.UNKNOWN,
+                        normalized_payload={
+                            "address": token.address,
+                            "mint_address": token.address,
+                            "chain": chain.value,
+                            "coverage_state": "UNKNOWN",
+                            "pair_address": None,
+                            "liquidity_usd": None,
+                            "price_usd": None,
+                        },
+                        token_id=token.id,
+                    )
+                )
+                continue
             quality = (
                 QualityState.FRESH
                 if pair.liquidity_usd is not None and pair.liquidity_usd > 0
@@ -798,7 +936,8 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
                 Observation(
                     kind="market.market_snapshot",
                     provenance=self._provenance(
-                        f"{DEXSCREENER_TOKEN_PAIRS_PATH}/{token.mint_address}:{pair.pair_address}",
+                        f"/token-pairs/v1/{DEXSCREENER_CHAIN_BY_DOMAIN[chain]}"
+                        f"/{token.address}:{pair.pair_address}",
                         observed_at,
                         pair.raw,
                     ),
@@ -806,7 +945,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
                     observed_at=observed_at,
                     ingested_at=ingested_at,
                     quality_state=quality,
-                    normalized_payload=self._market_payload(pair, token.mint_address),
+                    normalized_payload=self._market_payload(pair, token.address),
                     token_id=token.id,
                 )
             )
@@ -815,17 +954,23 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
     async def quote(self, request: QuoteRequest) -> QuoteSnapshot:
         if not isinstance(request, QuoteRequest):
             raise TypeError("request must be a QuoteRequest")
+        chain = normalize_chain(request.chain)
         primary_mint = (
             request.output_mint
-            if request.input_mint in _QUOTE_ASSET_ORDER
+            if chain is Chain.SOLANA and request.input_mint in _QUOTE_ASSET_ORDER
             else request.input_mint
         )
-        pairs = await self._get_pairs(primary_mint, context=request.context)
+        pairs = await self._get_pairs(
+            primary_mint,
+            context=request.context,
+            chain=chain,
+        )
         try:
             pair, rate = self._select_quote_pair(
                 pairs,
                 request.input_mint,
                 request.output_mint,
+                chain,
             )
         except ProviderSchemaError:
             alternate_mint = (
@@ -835,11 +980,16 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
             )
             if alternate_mint == primary_mint:
                 raise
-            pairs = await self._get_pairs(alternate_mint, context=request.context)
+            pairs = await self._get_pairs(
+                alternate_mint,
+                context=request.context,
+                chain=chain,
+            )
             pair, rate = self._select_quote_pair(
                 pairs,
                 request.input_mint,
                 request.output_mint,
+                chain,
             )
         observed_at, _ = self._now_pair()
         input_amount = to_decimal(request.amount, "amount")
@@ -847,7 +997,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
         pair_created_at = pair.pair_created_at
         assert pair.liquidity_usd is not None
         context = QuoteMarketContext(
-            chain=DEXSCREENER_CHAIN,
+            chain=chain,
             pair_address=pair.pair_address,
             base_mint=pair.base_mint,
             quote_mint=pair.quote_mint,
@@ -872,6 +1022,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
             ),
             price_semantics=PriceSemantics.MARKET_REFERENCE,
             market_context=context,
+            chain=chain,
         )
 
     async def metadata(
@@ -883,16 +1034,18 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
         if not isinstance(token, TokenIdentity):
             raise TypeError("token must be a TokenIdentity")
         pairs = await self._get_pairs(
-            token.mint_address,
+            token.address,
             context=context,
+            chain=normalize_chain(token.chain),
             use_metadata_cache=True,
         )
         matching = [
             pair
             for pair in pairs
-            if pair.base_mint == token.mint_address or pair.quote_mint == token.mint_address
+            if pair.base_mint == token.address or pair.quote_mint == token.address
         ]
-        matching.sort(key=lambda pair: _pair_rank(pair, token_mint=token.mint_address))
+        chain = normalize_chain(token.chain)
+        matching.sort(key=lambda pair: _pair_rank(pair, token_mint=token.address, chain=chain))
         websites, socials = _raw_links(matching)
         observed_at, ingested_at = self._now_pair()
         raw = tuple(pair.raw for pair in matching)
@@ -904,7 +1057,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
             ingested_at=ingested_at,
             quality_state=QualityState.FRESH if websites or socials else QualityState.UNKNOWN,
             provenance=self._provenance(
-                f"{DEXSCREENER_TOKEN_PAIRS_PATH}/{token.mint_address}",
+                f"/token-pairs/v1/{DEXSCREENER_CHAIN_BY_DOMAIN[chain]}/{token.address}",
                 observed_at,
                 raw,
             ),
@@ -913,6 +1066,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
 
 __all__ = [
     "DEXSCREENER_CHAIN",
+    "DEXSCREENER_CHAIN_BY_DOMAIN",
     "DEXSCREENER_PARSER_VERSION",
     "DEXSCREENER_PROVIDER",
     "DEXSCREENER_TOKEN_PAIRS_PATH",

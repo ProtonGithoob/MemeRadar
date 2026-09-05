@@ -10,13 +10,13 @@ execution modes.
 
 | Capability | Free/default | Optional enhancement | Boundary / limitation |
 | --- | --- | --- | --- |
-| `CHAIN_RPC` | standard Solana JSON-RPC | Helius standard/enhanced RPC | public RPC is rate-limited and non-guaranteed |
+| `CHAIN_RPC` | standard Solana JSON-RPC plus configured read-only BNB/Robinhood EVM RPC | Helius standard/enhanced RPC | public RPC is rate-limited and non-guaranteed |
 | `ENHANCED_ASSET_METADATA` | unavailable/degraded | Helius DAS/enhanced API | never emulated through public RPC |
 | `TRANSACTION_HISTORY` | standard Solana RPC reads | Helius enrichment | bounded reads only |
 | `REALTIME_STREAM` | explicit stream/backfill seam | Helius stream | REST market data is not a chain stream |
 | `MARKET_SNAPSHOT` | DexScreener | Birdeye fallback/enrichment | only normalized market/pair data |
 | `MARKET_QUOTE` | DexScreener reference quote | reviewed custom adapter | not a live swap quote or execution authority |
-| `PAIR_DISCOVERY` | DexScreener | Birdeye | Solana chain and token identity are required |
+| `PAIR_DISCOVERY` | DexScreener | Birdeye | enabled chain and token identity are required; coverage can be UNKNOWN |
 | `SOCIAL_METADATA` | DexScreener declared links | existing compliant provider | metadata only; no X scraping |
 | `SOCIAL_ANALYTICS` | unavailable | existing external social provider | no fabricated counts, sentiment or velocity |
 | `RISK_SUMMARY` | local deterministic checks | public/authenticated RugCheck evidence | third-party scores never replace local gates |
@@ -39,7 +39,8 @@ the provider-neutral `FreeFirstRoutePlan` and bounded fallback wrappers without
 putting provider imports in application routing:
 
 ```text
-standard chain reads: Helius (when URL + key are configured) -> Solana RPC
+standard Solana reads: Helius (when URL + key are configured) -> Solana RPC
+configured BNB/Robinhood reads: generic EVM JSON-RPC adapter -> optional route
 Helius enhanced capability: Helius only -> explicit unavailable/degraded
 market/pair: DexScreener -> Birdeye only when configured
 paper reference quote: DexScreener -> injected normalized custom port
@@ -54,6 +55,17 @@ Fallback is ordered, bounded and observable. It advances only after a concrete
 provider error; an unsupported capability is not silently converted into an
 unrelated provider result. Normalized observations and quotes retain provider,
 chain, token/pair identity, timestamps, freshness and provenance.
+
+The shared `DexScreenerAdapter` normalizes market pairs for all enabled
+discovery chains. It sends Solana requests with `solana`, BNB requests with
+DexScreener's `bsc` identifier, and Robinhood requests with `robinhood`, while
+returning MemeRadar's canonical `solana`/`bnb`/`robinhood` chain values. Address
+validation follows the canonical domain identity, so equal EVM addresses on
+different chains cannot share a metadata-cache entry. Pair selection remains
+deterministic: positive liquidity, preferred stable/native quote assets, depth,
+pair age and address/DEX tie-breakers. An EVM token with no eligible coverage
+returns `QualityState.UNKNOWN`; it never becomes a zero-price or safe market
+mark.
 
 ## Live Read-Only Acceptance & Readiness
 
