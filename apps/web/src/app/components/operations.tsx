@@ -1,7 +1,5 @@
 import Link from "next/link";
 
-import { OperatorHeader } from "./operator-header";
-import { ProtectedShell } from "./radar";
 import { SafetyBadge } from "./status-badges";
 import type {
   OperationalProviderRecord,
@@ -259,9 +257,7 @@ function OperationsContent({ result }: { result: ReadResult<OperationsRecord> })
 
 export function OperationsDashboard({ result }: { result: ReadResult<OperationsRecord> }) {
   return (
-    <main className="shell">
-      <OperatorHeader />
-      <ProtectedShell />
+    <>
       <section className="section-block intelligence-section" aria-labelledby="operations-title">
         <div className="section-heading">
           <div>
@@ -272,8 +268,7 @@ export function OperationsDashboard({ result }: { result: ReadResult<OperationsR
         </div>
         <OperationsContent result={result} />
       </section>
-      <section className="queue-card" aria-labelledby="operations-boundary-title">
-        <div className="queue-card__icon" aria-hidden="true">⌁</div>
+      <section className="boundary-strip" aria-labelledby="operations-boundary-title">
         <div>
           <p className="eyebrow">PROTECTED MODES</p>
           <h3 id="operations-boundary-title">Analysis-only operations</h3>
@@ -281,6 +276,6 @@ export function OperationsDashboard({ result }: { result: ReadResult<OperationsR
         </div>
         <SafetyBadge label="MODE" value="ANALYSIS ONLY" tone="safe" />
       </section>
-    </main>
+    </>
   );
 }

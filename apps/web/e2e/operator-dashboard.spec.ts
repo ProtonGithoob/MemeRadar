@@ -1,34 +1,43 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const protectedLabels = [
-  "ANALYSIS ONLY",
-  "PAPER TRADING",
-  "MANUAL EXECUTION",
-  "AUTO EXECUTION"
-];
+const protectedLabels = ["ANALYSIS ONLY", "PAPER TRADING", "EXECUTION LOCKED"];
 
 async function expectProtectedShell(page: Page) {
   for (const label of protectedLabels) {
-    await expect(page.getByText(label, { exact: true })).toBeVisible();
+    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
   }
-  await expect(page.getByText("ADVISORY OUTPUT", { exact: true })).toBeVisible();
-  await expect(page.locator(".status-orb").getByText("NO LIVE ORDERS", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "MemeRadar" })).toBeVisible();
 }
 
-test("operator shell exposes the read-only sections and protected modes", async ({ page }) => {
+test("workstation shell exposes navigation, search and protected modes", async ({ page }) => {
   const response = await page.goto("/");
   expect(response?.status()).toBe(200);
-  await expect(page.getByRole("heading", { name: "MemeRadar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expectProtectedShell(page);
-  await expect(page.getByRole("heading", { name: "Ultra-Early Detection" })).toBeVisible();
-  await expect(page.getByText(/Auto execution: LOCKED|NO ULTRA-EARLY CANDIDATES|EARLY RADAR/i).first()).toBeVisible();
+  await expect(page.getByText("NO LIVE ORDERS", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Search by token UUID or wallet address")).toBeVisible();
 
   const navigation = page.getByRole("navigation", { name: "Operator sections" });
-  for (const label of ["Radar", "Wallets", "Providers", "Settings", "Audit"]) {
-    await expect(navigation.getByRole("link", { name: label, exact: true })).toBeVisible();
+  for (const label of ["Overview", "Radar", "Ultra Early", "Positions", "Wallets", "Graph", "Providers", "Operations", "Settings", "Audit"]) {
+    await expect(navigation.getByRole("link", { name: label, exact: true })).toBeAttached();
   }
   await expect(page.locator("body")).not.toContainText("MEMERADAR_VIEWER_API_TOKEN");
   await expect(page.locator("body")).not.toContainText("private_key");
+});
+
+test("radar and ultra-early routes render read-only discovery workspaces", async ({ page }) => {
+  const radar = await page.goto("/radar");
+  expect(radar?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Radar" })).toBeVisible();
+  await expectProtectedShell(page);
+
+  const ultraEarly = await page.goto("/ultra-early");
+  expect(ultraEarly?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Ultra-Early Detection" })).toBeVisible();
+  await expect(
+    page.getByText(/Auto execution: LOCKED|NO ULTRA-EARLY CANDIDATES|EARLY RADAR/i).first()
+  ).toBeVisible();
+  await expectProtectedShell(page);
 });
 
 test("operator intelligence routes render server-side evidence boundaries", async ({ page }) => {
@@ -46,6 +55,14 @@ test("operator intelligence routes render server-side evidence boundaries", asyn
     await expectProtectedShell(page);
     await expect(page.locator("form")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /execute|sign|submit|save|mutate/i })).toHaveCount(0);
+  }
+});
+
+test("settings route renders protected modes without control authority", async ({ page }) => {
+  const response = await page.goto("/settings");
+  expect(response?.status()).toBe(200);
+  for (const label of ["ANALYSIS ONLY", "PAPER TRADING", "MANUAL EXECUTION", "AUTO EXECUTION"]) {
+    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
   }
 });
 

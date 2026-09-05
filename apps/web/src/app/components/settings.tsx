@@ -1,8 +1,6 @@
 import Link from "next/link";
 
 import { SafetyBadge } from "./status-badges";
-import { OperatorHeader } from "./operator-header";
-import { ProtectedShell } from "./radar";
 import type {
   ControlConfigRecord,
   ControlStateRecord,
@@ -43,6 +41,35 @@ function failureMessage(reason: ReadFailureReason, subject: string): string {
 function configDisplayValue(value: unknown): string {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return "UNKNOWN";
+}
+
+function ProtectedModesPanel({ result }: { result: ReadResult<ControlStateRecord> }) {
+  const modes = result.ok ? result.data.protectedModes : null;
+  const entries = [
+    { label: "ANALYSIS ONLY", value: modes ? modes.analysisOnly : null, tone: "safe", detail: "Evidence collection stays on." },
+    { label: "PAPER TRADING", value: modes ? modes.paperTrading : null, tone: "paper", detail: "Simulated outcomes only." },
+    { label: "MANUAL EXECUTION", value: modes ? modes.manualExecution : null, tone: "disabled", detail: "Operator approval path is locked." },
+    { label: "AUTO EXECUTION", value: modes ? modes.autoExecution : null, tone: "disabled", detail: "No autonomous orders are possible." }
+  ] as const;
+  return (
+    <div className="settings-block">
+      <div className="panel-heading">
+        <div><p className="eyebrow">PROTECTED MODES</p><h3>Operating policy</h3></div>
+        <small>ENFORCED BY API CONFIGURATION</small>
+      </div>
+      <div className="mode-grid">
+        {entries.map((entry) => (
+          <article className={`mode-card mode-card--${entry.tone}`} key={entry.label}>
+            <span className="card-label">{entry.label}</span>
+            <strong className={`mode-value mode-value--${entry.tone}`}>
+              {entry.value === null ? "UNKNOWN" : entry.value ? "Enabled" : "Disabled"}
+            </strong>
+            <small>{entry.detail}</small>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function StatePanel({ result }: { result: ReadResult<ControlStateRecord> }) {
@@ -133,9 +160,7 @@ export function SettingsDashboard({
   configResult: ReadResult<ControlConfigRecord>;
 }) {
   return (
-    <main className="shell">
-      <OperatorHeader />
-      <ProtectedShell />
+    <>
       <section className="section-block intelligence-section" aria-labelledby="settings-title">
         <div className="section-heading">
           <div>
@@ -144,6 +169,7 @@ export function SettingsDashboard({
           </div>
           <p className="section-note">Configuration is immutable, audited and permission-gated.</p>
         </div>
+        <ProtectedModesPanel result={stateResult} />
         <div className="settings-block">
           <div className="panel-heading"><div><p className="eyebrow">EMERGENCY STATE</p><h3>Current control state</h3></div></div>
           <StatePanel result={stateResult} />
@@ -154,8 +180,7 @@ export function SettingsDashboard({
         </div>
         <PermissionMatrix />
       </section>
-      <section className="queue-card" aria-labelledby="settings-boundary-title">
-        <div className="queue-card__icon" aria-hidden="true">⊘</div>
+      <section className="boundary-strip" aria-labelledby="settings-boundary-title">
         <div>
           <p className="eyebrow">PROTECTED MODES</p>
           <h3 id="settings-boundary-title">No browser-side control authority</h3>
@@ -163,7 +188,7 @@ export function SettingsDashboard({
         </div>
         <Link className="back-link" href="/audit">VIEW AUDIT</Link>
       </section>
-    </main>
+    </>
   );
 }
 

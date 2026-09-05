@@ -1,8 +1,6 @@
 import Link from "next/link";
 
 import { FreshnessBadge, SafetyBadge } from "./status-badges";
-import { OperatorHeader } from "./operator-header";
-import { ProtectedShell } from "./radar";
 import type {
   ProviderHealthRecord,
   ProviderHealthState,
@@ -100,9 +98,7 @@ function ProvidersContent({ result }: { result: ReadResult<ReadPage<ProviderHeal
 
 export function ProvidersDashboard({ result }: { result: ReadResult<ReadPage<ProviderHealthRecord>> }) {
   return (
-    <main className="shell">
-      <OperatorHeader />
-      <ProtectedShell />
+    <>
       <section className="section-block intelligence-section" aria-labelledby="providers-title">
         <div className="section-heading">
           <div>
@@ -113,8 +109,7 @@ export function ProvidersDashboard({ result }: { result: ReadResult<ReadPage<Pro
         </div>
         <ProvidersContent result={result} />
       </section>
-      <section className="queue-card" aria-labelledby="provider-boundary-title">
-        <div className="queue-card__icon" aria-hidden="true">⌁</div>
+      <section className="boundary-strip" aria-labelledby="provider-boundary-title">
         <div>
           <p className="eyebrow">FAIL-CLOSED OBSERVABILITY</p>
           <h3 id="provider-boundary-title">Degradation remains visible</h3>
@@ -122,7 +117,7 @@ export function ProvidersDashboard({ result }: { result: ReadResult<ReadPage<Pro
         </div>
         <SafetyBadge label="DATA" value="ADVISORY" tone="advisory" />
       </section>
-    </main>
+    </>
   );
 }
 

@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { RadarDashboard } from "./radar";
+import { RadarExplorer } from "./radar";
 import type {
   CandidateRecord,
   EarlyRadarRecord,
@@ -50,57 +50,91 @@ function earlyResult(items: EarlyRadarRecord[]): ReadResult<ReadPage<EarlyRadarR
   return { ok: true, data: { items, limit: 50, hasMore: false, nextCursor: null } };
 }
 
-describe("RadarDashboard", () => {
+describe("RadarExplorer", () => {
   afterEach(() => cleanup());
 
   it("preserves API ranking and exposes bounded filters and canonical detail links", () => {
     render(
-      <RadarDashboard
+      <RadarExplorer
         filters={{ state: "WATCH", riskDisposition: "PASS", minScore: 70 }}
         result={result([first, second])}
       />
     );
 
     expect(screen.getByRole("heading", { name: "Radar" })).toBeInTheDocument();
-    expect(screen.getByText("MOON")).toBeInTheDocument();
-    expect(screen.getByText("WAVE")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /MOON/i })).toHaveAttribute(
       "href",
       "/tokens/22222222-2222-4222-8222-222222222222"
     );
+    expect(screen.getByRole("link", { name: /WAVE/i })).toHaveAttribute(
+      "href",
+      "/tokens/44444444-4444-4444-8444-444444444444"
+    );
+    // API order is preserved in the dense table.
+    const links = screen.getAllByRole("link", { name: /MOON|WAVE/i });
+    expect(links[0]).toHaveTextContent("MOON");
+    expect(links[1]).toHaveTextContent("WAVE");
     expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("WATCH");
     expect(screen.getByRole("combobox", { name: "Risk" })).toHaveValue("PASS");
     expect(screen.getByRole("spinbutton", { name: "Minimum score" })).toHaveValue(70);
-    expect(screen.getByText("LIVE DATA")).toBeInTheDocument();
-    expect(screen.getByText("ADVISORY OUTPUT")).toBeInTheDocument();
-    expect(screen.getByText("SCORE 84 / 100")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: /Freshness: UNKNOWN/ })).toBeInTheDocument();
+    expect(screen.getByText("84")).toBeInTheDocument();
+    expect(screen.getAllByText("UNKNOWN").length).toBeGreaterThan(0);
+    expect(screen.getByText("AUTHORITY_CLEAR")).toBeInTheDocument();
   });
 
   it("does not invent rows for empty or unavailable data", () => {
     const { rerender } = render(
-      <RadarDashboard filters={{}} result={result([])} />
+      <RadarExplorer filters={{}} result={result([])} />
     );
     expect(screen.getByText("NO CANDIDATES MATCH FILTERS")).toBeInTheDocument();
     expect(screen.queryByText("MOON")).not.toBeInTheDocument();
 
-    rerender(<RadarDashboard filters={{}} result={{ ok: false, reason: "UNAVAILABLE" }} />);
+    rerender(<RadarExplorer filters={{}} result={{ ok: false, reason: "UNAVAILABLE" }} />);
     expect(screen.getByText("RADAR UNAVAILABLE")).toBeInTheDocument();
 
-    rerender(<RadarDashboard filters={{}} result={{ ok: false, reason: "NOT_CONFIGURED" }} />);
+    rerender(<RadarExplorer filters={{}} result={{ ok: false, reason: "NOT_CONFIGURED" }} />);
     expect(screen.getByText("READ API NOT CONFIGURED")).toBeInTheDocument();
   });
 
-  it("mounts the optional ultra-early projection beside the ranked radar", () => {
+  it("joins ultra-early liquidity evidence onto radar rows when available", () => {
+    const early: EarlyRadarRecord = {
+      candidateId: first.id,
+      tokenId: first.tokenId,
+      mintAddress: first.mintAddress,
+      symbol: "MOON",
+      name: "Moon Fixture",
+      launchAgeSeconds: 45,
+      firstSeenAt: "2026-08-31T12:00:00.000Z",
+      firstSeenSource: "fixture.discovery",
+      firstSeenLatencyMs: 120,
+      firstSeenQuality: "FRESH",
+      earlyScore: 71,
+      earlyScoreConfidence: 0.5,
+      earlyState: "WATCH",
+      riskDisposition: "PASS",
+      buyVelocity: {},
+      buyAcceleration: {},
+      uniqueBuyers: {},
+      quoteInflow: {},
+      liquidityUsd: 42000,
+      priceImpactBps: 90,
+      creatorRisk: "LOW",
+      bundleRisk: "LOW",
+      holderRisk: "UNKNOWN",
+      smartMoneyConfluence: null,
+      sellability: "PASS",
+      shadowEntryStatus: "NOT_SHADOWED",
+      externalCallLeadTimeMs: null,
+      hardBlockReasons: [],
+      latencyMs: {},
+      evidenceRefs: [],
+      reasonCodes: []
+    };
     render(
-      <RadarDashboard
-        filters={{}}
-        result={result([first])}
-        earlyResult={earlyResult([])}
-      />
+      <RadarExplorer filters={{}} result={result([first])} earlyResult={earlyResult([early])} />
     );
 
-    expect(screen.getByRole("heading", { name: "Ultra-Early Detection" })).toBeInTheDocument();
-    expect(screen.getByText("NO ULTRA-EARLY CANDIDATES")).toBeInTheDocument();
+    expect(screen.getByText("$42.0K")).toBeInTheDocument();
+    expect(screen.getByText("45s")).toBeInTheDocument();
   });
 });

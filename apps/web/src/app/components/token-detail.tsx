@@ -6,8 +6,19 @@ import {
   SafetyBadge,
   ScoreBadge
 } from "./status-badges";
+import {
+  Pill,
+  evidenceTone,
+  formatAgeSeconds,
+  formatConfidence,
+  formatScore,
+  formatUsd,
+  riskTone,
+  shortIdentity
+} from "./format";
+import { Inspector } from "./inspector";
 import type {
-  CandidateRecord,
+  EarlyRadarRecord,
   ReadPage,
   ReadResult,
   TimelineRecord,
@@ -72,11 +83,6 @@ function netFlowPointsFor(entries: TimelineRecord[]): MetricPoint[] {
     }
   }
   return points.slice(-MAX_CHART_POINTS);
-}
-
-function shortIdentity(value: string, visible = 9): string {
-  if (value.length <= visible * 2 + 1) return value;
-  return `${value.slice(0, visible)}…${value.slice(-visible)}`;
 }
 
 function displayDate(value: string): string {
@@ -151,83 +157,18 @@ export function MetricChart({ label, points }: { label: string; points: MetricPo
         <strong>{displayNumber(points[points.length - 1]?.value ?? 0)}</strong>
       </div>
       <svg
-        className="metric-chart__svg"
-        viewBox="0 0 100 100"
-        role="img"
         aria-label={`${label} evidence chart`}
+        className="metric-chart__svg"
         preserveAspectRatio="none"
+        role="img"
+        viewBox="0 0 100 100"
       >
         <title>{`${label} evidence chart, ${points.length} event-time points`}</title>
-        <line x1="0" y1="92" x2="100" y2="92" className="metric-chart__axis" />
-        <polyline points={coordinates} className="metric-chart__line" />
+        <line className="metric-chart__axis" x1="0" x2="100" y1="92" y2="92" />
+        <polyline className="metric-chart__line" points={coordinates} />
       </svg>
       <small>{points.length} event-time point{points.length === 1 ? "" : "s"}; API order preserved</small>
     </div>
-  );
-}
-
-function Overview({ token }: { token: TokenRecord }) {
-  const candidate = token.candidate;
-  const risk = candidate?.riskDisposition ?? "UNKNOWN";
-  const freshness = candidate?.riskQualityState ?? "UNKNOWN";
-  return (
-    <>
-      <section className="token-overview" aria-labelledby="token-overview-title">
-        <div className="token-identity">
-          <p className="eyebrow">TOKEN OVERVIEW / READ-ONLY</p>
-          <h2 id="token-overview-title">
-            {token.symbol || "UNNAMED"}
-            {token.name ? <span>{token.name}</span> : null}
-          </h2>
-          <code title={token.mintAddress}>{shortIdentity(token.mintAddress, 12)}</code>
-          <div className="badge-row">
-            <SafetyBadge label="ADVISORY OUTPUT" value="ONLY" tone="advisory" />
-            <SafetyBadge label="EXECUTION" value="LOCKED" tone="disabled" />
-          </div>
-        </div>
-        <div className="token-status-grid">
-          <ScoreBadge value={candidate?.score ?? null} />
-          <RiskBadge value={risk} />
-          <FreshnessBadge value={freshness} />
-        </div>
-      </section>
-
-      <section className="overview-grid" aria-label="Token metadata">
-        <article className="detail-panel">
-          <span className="card-label">IDENTITY</span>
-          <dl className="detail-list">
-            <div><dt>CHAIN</dt><dd>{token.chain}</dd></div>
-            <div><dt>PROGRAM</dt><dd>{token.tokenProgram}</dd></div>
-            <div><dt>STATUS</dt><dd>{token.status}</dd></div>
-            <div><dt>DECIMALS</dt><dd>{token.decimals ?? "UNKNOWN"}</dd></div>
-          </dl>
-        </article>
-        <article className="detail-panel">
-          <span className="card-label">CREATOR WALLET</span>
-          {token.creatorWallet ? (
-            <code title={token.creatorWallet}>{shortIdentity(token.creatorWallet, 12)}</code>
-          ) : <strong>UNKNOWN</strong>}
-          <small className="muted-copy">Wallet identity is evidence, not execution authority.</small>
-        </article>
-        <article className="detail-panel detail-panel--wide">
-          <div className="panel-heading">
-            <span className="card-label">LIQUIDITY POOLS</span>
-            <small>{token.pools.length} known</small>
-          </div>
-          {token.pools.length === 0 ? <strong>UNKNOWN</strong> : (
-            <div className="pool-list">
-              {token.pools.map((pool) => (
-                <div className="pool-row" key={pool.id}>
-                  <strong>{pool.venue}</strong>
-                  <code title={pool.poolAddress}>{shortIdentity(pool.poolAddress, 9)}</code>
-                  <small>QUOTE {shortIdentity(pool.quoteMint, 9)}</small>
-                </div>
-              ))}
-            </div>
-          )}
-        </article>
-      </section>
-    </>
   );
 }
 
@@ -242,8 +183,220 @@ function HolderBar({ label, value }: { label: string; value: number | null }) {
         <span>{label}</span>
         <strong>{displayPercent(value)}</strong>
       </div>
-      <div className="holder-bar" aria-hidden="true"><span style={{ width: `${width}%` }} /></div>
+      <div aria-hidden="true" className="holder-bar"><span style={{ width: `${width}%` }} /></div>
     </div>
+  );
+}
+
+function TokenHeader({ token, early }: { token: TokenRecord; early: EarlyRadarRecord | null }) {
+  const candidate = token.candidate;
+  const risk = candidate?.riskDisposition ?? early?.riskDisposition ?? "UNKNOWN";
+  const freshness = candidate?.riskQualityState ?? early?.firstSeenQuality ?? "UNKNOWN";
+  const score = candidate?.score ?? early?.earlyScore ?? null;
+  return (
+    <section aria-labelledby="token-overview-title" className="tw-header">
+      <div className="tw-header__identity">
+        <p className="eyebrow">Token workspace / read-only</p>
+        <h2 id="token-overview-title">
+          {token.symbol || "UNNAMED"}
+          {token.name ? <span>{token.name}</span> : null}
+        </h2>
+        <code title={token.mintAddress}>{token.mintAddress}</code>
+        <div className="badge-row">
+          <SafetyBadge label="ADVISORY OUTPUT" tone="advisory" value="ONLY" />
+          <SafetyBadge label="EXECUTION" tone="disabled" value="LOCKED" />
+        </div>
+      </div>
+      <div className="tw-header__badges">
+        <ScoreBadge value={score} />
+        <RiskBadge value={risk} />
+        <FreshnessBadge value={freshness} />
+        {early ? (
+          <span className="status-badge" role="status">
+            <span className="status-badge__label">LAUNCH AGE</span>
+            <strong>{early.launchAgeSeconds === null ? "UNKNOWN" : formatAgeSeconds(early.launchAgeSeconds)}</strong>
+          </span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function RiskFactors({ token, early }: { token: TokenRecord; early: EarlyRadarRecord | null }) {
+  const candidate = token.candidate;
+  const risk = candidate?.riskDisposition ?? early?.riskDisposition ?? "UNKNOWN";
+  const freshness = candidate?.riskQualityState ?? early?.firstSeenQuality ?? "UNKNOWN";
+  return (
+    <article className="detail-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Explicit risk factors</p>
+          <h3>RISK ANALYSIS</h3>
+        </div>
+        <small>UNKNOWN IS NOT SAFE</small>
+      </div>
+      <div className="risk-factor"><span>Overall disposition</span><Pill label={risk} tone={riskTone(risk)} /></div>
+      <div className="risk-factor"><span>Creator / deployer</span><Pill label={early?.creatorRisk ?? "UNKNOWN"} tone={evidenceTone(early?.creatorRisk ?? "UNKNOWN")} /></div>
+      <div className="risk-factor"><span>Bundle / sniper</span><Pill label={early?.bundleRisk ?? "UNKNOWN"} tone={evidenceTone(early?.bundleRisk ?? "UNKNOWN")} /></div>
+      <div className="risk-factor"><span>Holder concentration</span><Pill label={early?.holderRisk ?? "UNKNOWN"} tone={evidenceTone(early?.holderRisk ?? "UNKNOWN")} /></div>
+      <div className="risk-factor"><span>Sellability</span><Pill label={early?.sellability ?? "UNKNOWN"} tone={evidenceTone(early?.sellability ?? "UNKNOWN")} /></div>
+      <div className="risk-factor"><span>Evidence freshness</span><Pill label={freshness} tone={freshness.toLowerCase()} /></div>
+      {early && early.hardBlockReasons.length > 0 ? (
+        <div className="risk-factor">
+          <span>Hard blocks</span>
+          <Pill label={early.hardBlockReasons.join(", ")} tone="high" />
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+type CheckState = "ok" | "fail" | "unknown";
+
+function ChecklistItem({ label, state, value }: { label: string; state: CheckState; value: string }) {
+  return (
+    <li data-state={state}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </li>
+  );
+}
+
+function EntryChecklist({ token, early }: { token: TokenRecord; early: EarlyRadarRecord | null }) {
+  const risk = token.candidate?.riskDisposition ?? early?.riskDisposition ?? "UNKNOWN";
+  const confidence = token.candidate?.scoreConfidence ?? early?.earlyScoreConfidence ?? null;
+  return (
+    <article className="detail-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Evidence completeness</p>
+          <h3>ENTRY READINESS CONTEXT</h3>
+        </div>
+        <small>NOT AN AUTHORIZATION</small>
+      </div>
+      <ul className="checklist">
+        <ChecklistItem
+          label="Risk disposition"
+          state={risk === "PASS" ? "ok" : risk === "BLOCK" ? "fail" : "unknown"}
+          value={risk}
+        />
+        <ChecklistItem
+          label="Hard blocks"
+          state={early === null ? "unknown" : early.hardBlockReasons.length === 0 ? "ok" : "fail"}
+          value={early === null ? "UNKNOWN" : early.hardBlockReasons.length === 0 ? "NONE" : String(early.hardBlockReasons.length)}
+        />
+        <ChecklistItem
+          label="Liquidity observed"
+          state={early?.liquidityUsd != null ? "ok" : "unknown"}
+          value={early?.liquidityUsd != null ? formatUsd(early.liquidityUsd) : "UNKNOWN"}
+        />
+        <ChecklistItem
+          label="Price impact observed"
+          state={early?.priceImpactBps != null ? "ok" : "unknown"}
+          value={early?.priceImpactBps != null ? `${early.priceImpactBps} bps` : "UNKNOWN"}
+        />
+        <ChecklistItem
+          label="Score confidence"
+          state={confidence != null ? "ok" : "unknown"}
+          value={formatConfidence(confidence)}
+        />
+        <ChecklistItem
+          label="Smart money confluence"
+          state={early?.smartMoneyConfluence != null ? "ok" : "unknown"}
+          value={early?.smartMoneyConfluence != null ? formatScore(early.smartMoneyConfluence) : "UNKNOWN"}
+        />
+      </ul>
+    </article>
+  );
+}
+
+function SignalSummary({ early }: { early: EarlyRadarRecord | null }) {
+  return (
+    <article className="detail-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Ultra-early projection</p>
+          <h3>SIGNAL SUMMARY</h3>
+        </div>
+        <small>ADVISORY</small>
+      </div>
+      {early === null ? (
+        <p className="muted-copy">No ultra-early projection exists for this token in the current read page.</p>
+      ) : (
+        <dl className="detail-list">
+          <div><dt>EARLY STATE</dt><dd>{early.earlyState}</dd></div>
+          <div><dt>EARLY SCORE</dt><dd>{early.earlyScore === null ? "UNKNOWN" : `${formatScore(early.earlyScore)} / 100`}</dd></div>
+          <div><dt>CONFIDENCE</dt><dd>{formatConfidence(early.earlyScoreConfidence)}</dd></div>
+          <div><dt>SHADOW ENTRY</dt><dd>{early.shadowEntryStatus}</dd></div>
+          <div><dt>EXTERNAL LEAD</dt><dd>{early.externalCallLeadTimeMs === null ? "UNKNOWN" : `${early.externalCallLeadTimeMs}ms`}</dd></div>
+          <div><dt>FIRST-SEEN LATENCY</dt><dd>{early.firstSeenLatencyMs === null ? "UNKNOWN" : `${early.firstSeenLatencyMs}ms`}</dd></div>
+        </dl>
+      )}
+    </article>
+  );
+}
+
+function ProvenancePanel({ token, entries }: { token: TokenRecord; entries: TimelineRecord[] }) {
+  const providers = new Set<string>();
+  for (const entry of entries) {
+    for (const provenance of entry.provenance) providers.add(provenance.provider);
+  }
+  return (
+    <article className="detail-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Evidence provenance</p>
+          <h3>PROVENANCE</h3>
+        </div>
+        <small>RUNTIME SOURCES</small>
+      </div>
+      <dl className="detail-list">
+        <div><dt>CHAIN</dt><dd>{token.chain}</dd></div>
+        <div><dt>PROGRAM</dt><dd>{token.tokenProgram}</dd></div>
+        <div><dt>STATUS</dt><dd>{token.status}</dd></div>
+        <div><dt>DECIMALS</dt><dd>{token.decimals ?? "UNKNOWN"}</dd></div>
+      </dl>
+      {providers.size === 0 ? (
+        <p className="muted-copy">PROVENANCE UNKNOWN — no timeline providers reported.</p>
+      ) : (
+        <ul className="evidence-tags">
+          {[...providers].map((provider) => <li key={provider}>{provider}</li>)}
+        </ul>
+      )}
+    </article>
+  );
+}
+
+function MetadataPanels({ token }: { token: TokenRecord }) {
+  return (
+    <section aria-label="Token metadata" className="overview-grid">
+      <article className="detail-panel">
+        <span className="card-label">CREATOR WALLET</span>
+        {token.creatorWallet ? (
+          <Link href={`/wallets/${token.creatorWallet}`}>
+            <code title={token.creatorWallet}>{shortIdentity(token.creatorWallet, 12)}</code>
+          </Link>
+        ) : <strong>UNKNOWN</strong>}
+        <small className="muted-copy">Wallet identity is evidence, not execution authority.</small>
+      </article>
+      <article className="detail-panel detail-panel--wide">
+        <div className="panel-heading">
+          <span className="card-label">LIQUIDITY POOLS</span>
+          <small>{token.pools.length} known</small>
+        </div>
+        {token.pools.length === 0 ? <strong>UNKNOWN</strong> : (
+          <div className="pool-list">
+            {token.pools.map((pool) => (
+              <div className="pool-row" key={pool.id}>
+                <strong>{pool.venue}</strong>
+                <code title={pool.poolAddress}>{shortIdentity(pool.poolAddress, 9)}</code>
+                <small>QUOTE {shortIdentity(pool.quoteMint, 9)}</small>
+              </div>
+            ))}
+          </div>
+        )}
+      </article>
+    </section>
   );
 }
 
@@ -251,11 +404,11 @@ function EvidencePanels({ entries }: { entries: TimelineRecord[] }) {
   const top10 = holderMetric(entries, ["top10_hold_percent", "holder_supply_pct", "top10_concentration_pct"]);
   const clustered = holderMetric(entries, ["clustered_supply_pct", "clustered_supply_percent", "holder_cluster_pct"]);
   return (
-    <section className="evidence-grid" aria-label="Explainable evidence panels">
+    <section aria-label="Explainable evidence panels" className="evidence-grid">
       <article className="detail-panel chart-panel">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">MARKET EVIDENCE</p>
+            <p className="eyebrow">Market evidence</p>
             <h3>Event-time metrics</h3>
           </div>
           <small>ALLOW-LISTED ONLY</small>
@@ -267,7 +420,7 @@ function EvidencePanels({ entries }: { entries: TimelineRecord[] }) {
         </div>
       </article>
       <article className="detail-panel holder-panel">
-        <p className="eyebrow">HOLDER EVIDENCE</p>
+        <p className="eyebrow">Holder evidence</p>
         <h3>HOLDER CONCENTRATION / CLUSTERS</h3>
         <p className="muted-copy">Normalized holder snapshots remain contextual evidence.</p>
         <HolderBar label="TOP 10 SUPPLY" value={top10} />
@@ -282,7 +435,7 @@ function TokenTimeline({ entries }: { entries: TimelineRecord[] }) {
     return <div className="read-state" role="status"><strong>NO EVIDENCE YET</strong><p>No normalized timeline entries were returned.</p></div>;
   }
   return (
-    <div className="timeline-list" aria-label="Event-time evidence timeline">
+    <div aria-label="Event-time evidence timeline" className="timeline-list">
       {entries.map((entry) => (
         <article className="timeline-entry" key={entry.id}>
           <div className="timeline-entry__time">
@@ -317,10 +470,10 @@ function TokenTimeline({ entries }: { entries: TimelineRecord[] }) {
 function SocialNarrative({ entries }: { entries: TimelineRecord[] }) {
   const selected = entries.filter((entry) => entry.kind.startsWith("social.") || entry.kind.startsWith("narrative."));
   return (
-    <section className="detail-panel social-panel" aria-labelledby="social-title">
+    <section aria-labelledby="social-title" className="detail-panel social-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">CORRELATED CONTEXT</p>
+          <p className="eyebrow">Correlated context</p>
           <h3 id="social-title">SOCIAL / NARRATIVE EVIDENCE</h3>
         </div>
         <small>ADVISORY</small>
@@ -344,55 +497,72 @@ function SocialNarrative({ entries }: { entries: TimelineRecord[] }) {
 
 export function TokenDetailView({
   tokenResult,
-  timelineResult
+  timelineResult,
+  early
 }: {
   tokenResult: ReadResult<TokenRecord>;
   timelineResult: ReadResult<ReadPage<TimelineRecord>>;
+  early?: EarlyRadarRecord | null;
 }) {
   if (!tokenResult.ok) {
     return (
       <div className="read-state read-state--error" role="status">
-        <span className="eyebrow">TOKEN READ</span>
+        <span className="eyebrow">Token read</span>
         <strong>{failureMessage(tokenResult)}</strong>
         <p>The token projection could not be safely loaded.</p>
-        <Link href="/">BACK TO RADAR</Link>
+        <Link href="/radar">BACK TO RADAR</Link>
       </div>
     );
   }
 
   const token = tokenResult.data;
   if (!token) {
-    return <div className="read-state" role="status"><strong>TOKEN NOT FOUND</strong><Link href="/">BACK TO RADAR</Link></div>;
-  }
-  if (!timelineResult.ok) {
-    return (
-      <>
-        <Overview token={token} />
-        <div className="read-state read-state--error" role="status">
-          <span className="eyebrow">EVIDENCE TIMELINE</span>
-          <strong>{failureMessage(timelineResult)}</strong>
-          <p>Token metadata is available; evidence remains unavailable.</p>
-        </div>
-      </>
-    );
+    return <div className="read-state" role="status"><strong>TOKEN NOT FOUND</strong><Link href="/radar">BACK TO RADAR</Link></div>;
   }
 
-  const entries = timelineResult.data.items;
+  const earlyRecord = early ?? null;
+  const entries = timelineResult.ok ? timelineResult.data.items : null;
+
   return (
     <>
-      <Overview token={token} />
-      <EvidencePanels entries={entries} />
-      <section className="detail-panel timeline-panel" aria-labelledby="timeline-title">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">NO-LOOKAHEAD EVIDENCE</p>
-            <h3 id="timeline-title">Evidence timeline</h3>
-          </div>
-          <small>OCCURRED → OBSERVED → INGESTED</small>
+      <TokenHeader early={earlyRecord} token={token} />
+      <div className="tw-grid">
+        <div className="tw-main">
+          <MetadataPanels token={token} />
+          {entries === null ? (
+            <div className="read-state read-state--error" role="status">
+              <span className="eyebrow">Evidence timeline</span>
+              <strong>{failureMessage(timelineResult)}</strong>
+              <p>Token metadata is available; evidence remains unavailable.</p>
+            </div>
+          ) : (
+            <>
+              <EvidencePanels entries={entries} />
+              <section aria-labelledby="timeline-title" className="detail-panel timeline-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="eyebrow">No-lookahead evidence</p>
+                    <h3 id="timeline-title">Evidence timeline</h3>
+                  </div>
+                  <small>OCCURRED → OBSERVED → INGESTED</small>
+                </div>
+                <TokenTimeline entries={entries} />
+              </section>
+              <SocialNarrative entries={entries} />
+            </>
+          )}
         </div>
-        <TokenTimeline entries={entries} />
-      </section>
-      <SocialNarrative entries={entries} />
+        <Inspector>
+          <RiskFactors early={earlyRecord} token={token} />
+          <EntryChecklist early={earlyRecord} token={token} />
+          <SignalSummary early={earlyRecord} />
+          <ProvenancePanel entries={entries ?? []} token={token} />
+        </Inspector>
+      </div>
+      <div className="boundary-strip" role="note">
+        <strong>NO LIVE ORDERS</strong>
+        <span>Evidence and external labels remain read-only context for review.</span>
+      </div>
     </>
   );
 }

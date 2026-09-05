@@ -1,8 +1,6 @@
 import Link from "next/link";
 
 import { FreshnessBadge, SafetyBadge, ScoreBadge } from "./status-badges";
-import { OperatorHeader } from "./operator-header";
-import { ProtectedShell } from "./radar";
 import { isValidWalletAddress } from "../lib/read-api";
 import type { ReadPage, ReadResult, WalletRecord } from "../lib/read-api";
 
@@ -108,9 +106,7 @@ function WalletsContent({ result }: { result: ReadResult<ReadPage<WalletRecord>>
 
 export function WalletsDashboard({ result }: { result: ReadResult<ReadPage<WalletRecord>> }) {
   return (
-    <main className="shell">
-      <OperatorHeader />
-      <ProtectedShell />
+    <>
       <section className="section-block intelligence-section" aria-labelledby="wallets-title">
         <div className="section-heading">
           <div>
@@ -121,8 +117,7 @@ export function WalletsDashboard({ result }: { result: ReadResult<ReadPage<Walle
         </div>
         <WalletsContent result={result} />
       </section>
-      <section className="queue-card" aria-labelledby="wallet-boundary-title">
-        <div className="queue-card__icon" aria-hidden="true">◌</div>
+      <section className="boundary-strip" aria-labelledby="wallet-boundary-title">
         <div>
           <p className="eyebrow">CORROBORATING EVIDENCE / ADVISORY</p>
           <h3 id="wallet-boundary-title">Wallet labels never authorize entry</h3>
@@ -130,7 +125,7 @@ export function WalletsDashboard({ result }: { result: ReadResult<ReadPage<Walle
         </div>
         <SafetyBadge label="EXECUTION" value="LOCKED" tone="disabled" />
       </section>
-    </main>
+    </>
   );
 }
 

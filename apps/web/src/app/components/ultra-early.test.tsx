@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { UltraEarlyPanel } from "./ultra-early";
+import { UltraEarlyPanel, UltraEarlyWorkspace } from "./ultra-early";
 import type { EarlyRadarRecord, ReadPage, ReadResult } from "../lib/read-api";
 
 const entry: EarlyRadarRecord = {
@@ -45,14 +45,19 @@ function result(items: EarlyRadarRecord[]): ReadResult<ReadPage<EarlyRadarRecord
 describe("UltraEarlyPanel", () => {
   afterEach(() => cleanup());
 
-  it("renders bounded launch evidence and the locked execution boundary", () => {
+  it("renders bounded launch evidence in a dense table", () => {
     render(<UltraEarlyPanel result={result([entry])} />);
 
     expect(screen.getByRole("heading", { name: "Ultra-Early Detection" })).toBeInTheDocument();
-    expect(screen.getByText("EarlyScore 91 / 100")).toBeInTheDocument();
-    expect(screen.getByText(/direct-chain:fixture/)).toBeInTheDocument();
-    expect(screen.getByText(/Auto execution: LOCKED/)).toBeInTheDocument();
-    expect(screen.getByText(/Shadow entry: SHADOW_FILLED/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "MEME" })).toHaveAttribute(
+      "href",
+      "/tokens/22222222-2222-4222-8222-222222222222"
+    );
+    expect(screen.getByText("34s")).toBeInTheDocument();
+    expect(screen.getByText("91")).toBeInTheDocument();
+    expect(screen.getByText("$12.0K")).toBeInTheDocument();
+    expect(screen.getByText("125ms")).toBeInTheDocument();
+    expect(screen.getByText("ENTRY_READY")).toBeInTheDocument();
   });
 
   it("keeps unknown and blocked evidence explicit", () => {
@@ -62,8 +67,27 @@ describe("UltraEarlyPanel", () => {
       />
     );
 
-    expect(screen.getByText("EarlyScore UNKNOWN")).toBeInTheDocument();
-    expect(screen.getByText(/RISK_UNKNOWN/)).toBeInTheDocument();
+    expect(screen.getByText("REJECT/LOW")).toBeInTheDocument();
+    expect(screen.getAllByText("UNKNOWN").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the unavailable state explicit without substituting data", () => {
+    render(<UltraEarlyPanel result={{ ok: false, reason: "UNAVAILABLE" }} />);
+    expect(screen.getByText("EARLY RADAR UNAVAILABLE")).toBeInTheDocument();
+  });
+});
+
+describe("UltraEarlyWorkspace", () => {
+  afterEach(() => cleanup());
+
+  it("filters rows through presets without hiding unknown rows by default", () => {
+    render(<UltraEarlyWorkspace result={result([entry])} />);
+
+    expect(screen.getByRole("heading", { name: "Ultra-Early Detection" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fresh <1m" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Entry Ready" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unknown Critical Data" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "MEME" })).toBeInTheDocument();
     expect(screen.getByText(/Auto execution: LOCKED/)).toBeInTheDocument();
   });
 });

@@ -1,8 +1,6 @@
 import Link from "next/link";
 
 import { SafetyBadge } from "./status-badges";
-import { OperatorHeader } from "./operator-header";
-import { ProtectedShell } from "./radar";
 import type {
   AuditEventRecord,
   ConfigVersionRecord,
@@ -123,9 +121,7 @@ export function AuditDashboard({
   configResult: ReadResult<ReadPage<ConfigVersionRecord>>;
 }) {
   return (
-    <main className="shell">
-      <OperatorHeader />
-      <ProtectedShell />
+    <>
       <section className="section-block intelligence-section" aria-labelledby="audit-title">
         <div className="section-heading">
           <div><p className="eyebrow">IMMUTABLE CONTROL HISTORY / READ-ONLY</p><h3 id="audit-title">Audit explorer</h3></div>
@@ -140,12 +136,11 @@ export function AuditDashboard({
           <ConfigHistory result={configResult} />
         </section>
       </section>
-      <section className="queue-card" aria-labelledby="audit-boundary-title">
-        <div className="queue-card__icon" aria-hidden="true">⌁</div>
+      <section className="boundary-strip" aria-labelledby="audit-boundary-title">
         <div><p className="eyebrow">SAFE PROJECTION</p><h3 id="audit-boundary-title">Sensitive values are withheld</h3><p>Only bounded allow-listed fields and correlation metadata are rendered.</p></div>
         <Link className="back-link" href="/settings">VIEW SETTINGS</Link>
       </section>
-    </main>
+    </>
   );
 }
 

@@ -1,19 +1,20 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { RadarDashboard } from "./components/radar";
+import { CommandCenter } from "./components/command-center";
 
-describe("operator shell", () => {
-  it("shows the product identity and protected operating modes", () => {
-    render(<RadarDashboard filters={{}} result={{ ok: false, reason: "NOT_CONFIGURED" }} />);
+describe("command center", () => {
+  it("keeps unavailable evidence explicit and never fabricates candidates", () => {
+    render(
+      <CommandCenter
+        earlyResult={{ ok: false, reason: "NOT_CONFIGURED" }}
+        operations={{ ok: false, reason: "NOT_CONFIGURED" }}
+        result={{ ok: false, reason: "NOT_CONFIGURED" }}
+      />
+    );
 
-    expect(screen.getByRole("heading", { name: "MemeRadar" })).toBeInTheDocument();
-    expect(screen.getByText("ANALYSIS ONLY")).toBeInTheDocument();
-    expect(screen.getByText("PAPER TRADING")).toBeInTheDocument();
-    expect(screen.getAllByText("Disabled")).toHaveLength(2);
-    expect(screen.getByText("LIVE DATA")).toBeInTheDocument();
-    expect(screen.getByText("ADVISORY OUTPUT")).toBeInTheDocument();
-    expect(screen.getByText("STREAM DISABLED")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /theme/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getAllByText("READ API NOT CONFIGURED").length).toBeGreaterThan(0);
+    expect(screen.getByText("NO LIVE ORDERS")).toBeInTheDocument();
   });
 });

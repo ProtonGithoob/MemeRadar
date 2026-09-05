@@ -60,7 +60,7 @@ describe("WalletsDashboard", () => {
     expect(screen.getByText("75% WIN RATE")).toBeInTheDocument();
     expect(screen.getByText("FRESH")).toBeInTheDocument();
     expect(screen.getByText("UNKNOWN")).toBeInTheDocument();
-    expect(screen.getByText("ADVISORY OUTPUT")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "EXECUTION: LOCKED" })).toBeInTheDocument();
   });
 
   it("does not invent wallet evidence for empty or unavailable catalogs", () => {

@@ -5,9 +5,8 @@ test("wallet-graph route renders explorer and maintains protected mode boundarie
   expect(response?.status()).toBe(200);
 
   await expect(page.getByRole("heading", { name: "Wallet & Creator Outcome Graph" })).toBeVisible();
-  await expect(page.getByText("ANALYSIS ONLY", { exact: true })).toBeVisible();
-  await expect(page.getByText("PAPER TRADING", { exact: true })).toBeVisible();
-  await expect(page.getByText("ADVISORY OUTPUT", { exact: true })).toBeVisible();
+  await expect(page.getByText("ANALYSIS ONLY", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("PAPER TRADING", { exact: true }).first()).toBeVisible();
 
   // Search form controls present
   await expect(page.getByRole("button", { name: "Search Graph" })).toBeVisible();

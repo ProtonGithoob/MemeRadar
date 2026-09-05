@@ -94,8 +94,7 @@ export function WalletDetailView({ result }: { result: ReadResult<WalletRecord |
           ) : <p className="muted-copy">UNKNOWN REFERENCES</p>}
         </section>
       </div>
-      <section className="queue-card detail-boundary" aria-labelledby="wallet-detail-boundary-title">
-        <div className="queue-card__icon" aria-hidden="true">◌</div>
+      <section className="boundary-strip" aria-labelledby="wallet-detail-boundary-title">
         <div>
           <p className="eyebrow">SAFETY BOUNDARY</p>
           <h3 id="wallet-detail-boundary-title">Wallet evidence is not execution authority</h3>

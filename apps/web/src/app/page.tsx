@@ -1,17 +1,11 @@
-import { RadarDashboard } from "./components/radar";
-import { fetchCandidates, fetchEarlyRadar, parseRadarFilters } from "./lib/read-api";
+import { CommandCenter } from "./components/command-center";
+import { fetchCandidates, fetchEarlyRadar, fetchOperations } from "./lib/read-api";
 
-type SearchParams = Record<string, string | string[] | undefined>;
-
-export default async function Home({
-  searchParams
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
-  const filters = parseRadarFilters(await searchParams);
-  const [result, earlyResult] = await Promise.all([
-    fetchCandidates(filters),
-    fetchEarlyRadar()
+export default async function Home() {
+  const [result, earlyResult, operations] = await Promise.all([
+    fetchCandidates({}),
+    fetchEarlyRadar(),
+    fetchOperations()
   ]);
-  return <RadarDashboard filters={filters} result={result} earlyResult={earlyResult} />;
+  return <CommandCenter earlyResult={earlyResult} operations={operations} result={result} />;
 }

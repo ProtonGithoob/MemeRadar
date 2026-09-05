@@ -1,23 +1,22 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 
-import type {
-  EarlyRadarRecord,
-  ReadPage,
-  ReadResult
-} from "../lib/read-api";
+import type { EarlyRadarRecord, ReadPage, ReadResult } from "../lib/read-api";
+import {
+  Pill,
+  evidenceTone,
+  formatAgeSeconds,
+  formatCompactMap,
+  formatConfidence,
+  formatScore,
+  formatUsd,
+  riskTone,
+  shortIdentity
+} from "./format";
 
-function displayMetric(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return "UNKNOWN";
-  return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
-}
-
-function displayMap(value: Record<string, unknown>): string {
-  const entries = Object.entries(value).slice(0, 3);
-  if (entries.length === 0) return "UNKNOWN";
-  return entries.map(([key, item]) => `${key}=${String(item)}`).join(", ");
-}
-
-function errorMessage(result: ReadResult<unknown>): string {
+function readFailureMessage(result: ReadResult<unknown>): string {
   if (result.ok) return "";
   switch (result.reason) {
     case "NOT_CONFIGURED":
@@ -31,47 +30,163 @@ function errorMessage(result: ReadResult<unknown>): string {
   }
 }
 
-function Entry({ entry }: { entry: EarlyRadarRecord }) {
-  const displayName = entry.symbol || entry.name || "UNNAMED TOKEN";
-  const score = entry.earlyScore === null
-    ? "UNKNOWN"
-    : `${displayMetric(entry.earlyScore)} / 100`;
+function displayMetric(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "UNKNOWN";
+  return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
+}
+
+type PresetKey =
+  | "ALL"
+  | "FRESH_1M"
+  | "FRESH_5M"
+  | "HIGH_CONFLUENCE"
+  | "ENTRY_READY"
+  | "CREATOR_RISK"
+  | "BUNDLE_RISK"
+  | "UNKNOWN_CRITICAL";
+
+const PRESETS: Array<{ key: PresetKey; label: string; match: (entry: EarlyRadarRecord) => boolean }> = [
+  { key: "ALL", label: "All", match: () => true },
+  {
+    key: "FRESH_1M",
+    label: "Fresh <1m",
+    match: (entry) => entry.launchAgeSeconds !== null && entry.launchAgeSeconds < 60
+  },
+  {
+    key: "FRESH_5M",
+    label: "Fresh <5m",
+    match: (entry) => entry.launchAgeSeconds !== null && entry.launchAgeSeconds < 300
+  },
+  { key: "HIGH_CONFLUENCE", label: "High Confluence", match: (entry) => entry.earlyState === "HIGH_CONFLUENCE" },
+  { key: "ENTRY_READY", label: "Entry Ready", match: (entry) => entry.earlyState === "ENTRY_READY" },
+  {
+    key: "CREATOR_RISK",
+    label: "Creator Risk",
+    match: (entry) => ["medium", "high"].includes(evidenceTone(entry.creatorRisk))
+  },
+  {
+    key: "BUNDLE_RISK",
+    label: "Bundle Risk",
+    match: (entry) => ["medium", "high"].includes(evidenceTone(entry.bundleRisk))
+  },
+  {
+    key: "UNKNOWN_CRITICAL",
+    label: "Unknown Critical Data",
+    match: (entry) => entry.earlyScore === null || entry.riskDisposition === "UNKNOWN"
+  }
+];
+
+function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
+  const displayName = entry.symbol || entry.name || "UNNAMED";
   return (
-    <article className="early-radar-card">
-      <div className="early-radar-card__heading">
-        <div>
-          <p className="eyebrow">{entry.earlyState}</p>
-          <h4>{displayName}</h4>
-          <Link href={`/tokens/${entry.tokenId}`}>OPEN TOKEN DETAIL</Link>
+    <tr>
+      <td>
+        <div className="dt-token">
+          <Link href={`/tokens/${entry.tokenId}`}>{displayName}</Link>
+          <code title={entry.mintAddress}>{shortIdentity(entry.mintAddress)}</code>
         </div>
-        <strong>EarlyScore {score}</strong>
-      </div>
-      <div className="early-radar-card__grid">
-        <div><span>AGE</span><strong>{displayMetric(entry.launchAgeSeconds)}s</strong></div>
-        <div><span>FIRST SEEN</span><strong>{entry.firstSeenSource}</strong></div>
-        <div><span>LATENCY</span><strong>{displayMetric(entry.firstSeenLatencyMs)}ms</strong></div>
-        <div><span>CONFIDENCE</span><strong>{entry.earlyScoreConfidence === null ? "UNKNOWN" : `${Math.round(entry.earlyScoreConfidence * 100)}%`}</strong></div>
-        <div><span>BUY VELOCITY</span><strong>{displayMap(entry.buyVelocity)}</strong></div>
-        <div><span>BUY ACCELERATION</span><strong>{displayMap(entry.buyAcceleration)}</strong></div>
-        <div><span>UNIQUE BUYERS</span><strong>{displayMap(entry.uniqueBuyers)}</strong></div>
-        <div><span>QUOTE INFLOW</span><strong>{displayMap(entry.quoteInflow)}</strong></div>
-        <div><span>LIQUIDITY / IMPACT</span><strong>{displayMetric(entry.liquidityUsd)} / {displayMetric(entry.priceImpactBps)}bps</strong></div>
-        <div><span>CREATOR / BUNDLE / HOLDER</span><strong>{entry.creatorRisk} / {entry.bundleRisk} / {entry.holderRisk}</strong></div>
-        <div><span>SMART MONEY</span><strong>{displayMetric(entry.smartMoneyConfluence)}</strong></div>
-        <div><span>SELLABILITY</span><strong>{entry.sellability}</strong></div>
-      </div>
-      <div className="early-radar-card__footer">
-        <span>Shadow entry: {entry.shadowEntryStatus}</span>
-        <span>External lead: {displayMetric(entry.externalCallLeadTimeMs)}ms</span>
-        <strong>Auto execution: LOCKED</strong>
-      </div>
-      {entry.hardBlockReasons.length > 0 ? (
-        <p className="early-radar-card__blocks">Hard blocks: {entry.hardBlockReasons.join(", ")}</p>
-      ) : null}
-    </article>
+      </td>
+      <td className="num">{entry.launchAgeSeconds === null ? "UNKNOWN" : formatAgeSeconds(entry.launchAgeSeconds)}</td>
+      <td className="num">{entry.earlyScore === null ? "UNKNOWN" : formatScore(entry.earlyScore)}</td>
+      <td className="num">{formatConfidence(entry.earlyScoreConfidence)}</td>
+      <td><Pill label={entry.earlyState} tone="info" /></td>
+      <td><Pill label={entry.riskDisposition} tone={riskTone(entry.riskDisposition)} /></td>
+      <td className="num">{formatUsd(entry.liquidityUsd)}</td>
+      <td className="num">{entry.priceImpactBps === null ? "UNKNOWN" : `${displayMetric(entry.priceImpactBps)}`}</td>
+      <td className="dt-reasons" title={formatCompactMap(entry.buyVelocity, 6)}>{formatCompactMap(entry.buyVelocity)}</td>
+      <td><Pill label={entry.creatorRisk} tone={evidenceTone(entry.creatorRisk)} /></td>
+      <td><Pill label={entry.bundleRisk} tone={evidenceTone(entry.bundleRisk)} /></td>
+      <td><Pill label={entry.holderRisk} tone={evidenceTone(entry.holderRisk)} /></td>
+      <td className="num">{entry.smartMoneyConfluence === null ? "UNKNOWN" : formatScore(entry.smartMoneyConfluence)}</td>
+      <td><Pill label={entry.sellability} tone={evidenceTone(entry.sellability)} /></td>
+      <td className="num">{entry.firstSeenLatencyMs === null ? "UNKNOWN" : `${displayMetric(entry.firstSeenLatencyMs)}ms`}</td>
+    </tr>
   );
 }
 
+const TABLE_HEAD = [
+  "Token", "Age", "Score", "Conf", "State", "Risk", "Liquidity", "Impact bps",
+  "Buy velocity", "Creator", "Bundle", "Holder", "Smart $", "Sellable", "1st-seen latency"
+];
+
+export function UltraEarlyWorkspace({
+  result
+}: {
+  result: ReadResult<ReadPage<EarlyRadarRecord>>;
+}) {
+  const [preset, setPreset] = useState<PresetKey>("ALL");
+
+  const heading = (
+    <div className="page-heading">
+      <div>
+        <p className="eyebrow">Launch intelligence / read-only</p>
+        <h2>Ultra-Early Detection</h2>
+      </div>
+      <small>Observed, derived and paper-only fields; UNKNOWN remains explicit. Auto execution: LOCKED.</small>
+    </div>
+  );
+
+  if (!result.ok) {
+    return (
+      <>
+        {heading}
+        <div className="read-state read-state--error" role="status">
+          <strong>{readFailureMessage(result)}</strong>
+          <p>No launch projection was substituted.</p>
+          <Link href="/ultra-early">RETRY</Link>
+        </div>
+      </>
+    );
+  }
+
+  const items = result.data.items;
+  const activePreset = PRESETS.find((candidate) => candidate.key === preset) ?? PRESETS[0];
+  const filtered = items.filter(activePreset.match);
+
+  return (
+    <>
+      {heading}
+
+      <div aria-label="Ultra-early presets" className="preset-row" role="group">
+        {PRESETS.map((candidate) => (
+          <button
+            aria-pressed={preset === candidate.key}
+            className={preset === candidate.key ? "preset-chip preset-chip--active" : "preset-chip"}
+            key={candidate.key}
+            onClick={() => setPreset(candidate.key)}
+            type="button"
+          >
+            {candidate.label}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="read-state" role="status">
+          <strong>NO ULTRA-EARLY CANDIDATES</strong>
+          <p>
+            {items.length === 0
+              ? "No launch projection matched the current read boundary."
+              : `No launch projection matches the ${activePreset.label} preset.`}
+          </p>
+        </div>
+      ) : (
+        <div className="dt-wrap">
+          <table aria-label="Ultra-early launch candidates" className="dt">
+            <thead>
+              <tr>{TABLE_HEAD.map((head) => <th key={head} scope="col">{head}</th>)}</tr>
+            </thead>
+            <tbody>
+              {filtered.map((entry) => <UltraEarlyRow entry={entry} key={entry.candidateId} />)}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Compact read-only embed used inside the token workspace. */
 export function UltraEarlyPanel({
   result
 }: {
@@ -79,33 +194,42 @@ export function UltraEarlyPanel({
 }) {
   if (!result.ok) {
     return (
-      <section className="section-block ultra-early-section" aria-labelledby="ultra-early-title">
+      <section className="section-block" aria-labelledby="ultra-early-title">
         <div className="section-heading">
-          <div><p className="eyebrow">LAUNCH INTELLIGENCE / READ-ONLY</p><h3 id="ultra-early-title">Ultra-Early Detection</h3></div>
+          <h3 id="ultra-early-title">Ultra-Early Detection</h3>
         </div>
         <div className="read-state read-state--error" role="status">
-          <strong>{errorMessage(result)}</strong>
+          <strong>{readFailureMessage(result)}</strong>
           <p>No launch projection was substituted.</p>
-          <Link href="/">RETRY</Link>
         </div>
       </section>
     );
   }
 
+  const items = result.data.items;
   return (
-    <section className="section-block ultra-early-section" aria-labelledby="ultra-early-title">
+    <section className="section-block" aria-labelledby="ultra-early-title">
       <div className="section-heading">
-        <div><p className="eyebrow">LAUNCH INTELLIGENCE / READ-ONLY</p><h3 id="ultra-early-title">Ultra-Early Detection</h3></div>
+        <h3 id="ultra-early-title">Ultra-Early Detection</h3>
         <p className="section-note">Observed, derived and paper-only fields; UNKNOWN remains explicit.</p>
       </div>
-      {result.data.items.length === 0 ? (
-        <div className="read-state" role="status"><strong>NO ULTRA-EARLY CANDIDATES</strong><p>No launch projection matched the current read boundary.</p></div>
+      {items.length === 0 ? (
+        <div className="read-state" role="status">
+          <strong>NO ULTRA-EARLY CANDIDATES</strong>
+          <p>No launch projection matched the current read boundary.</p>
+        </div>
       ) : (
-        <div className="early-radar-list" aria-label="Ultra-early launch candidates">
-          {result.data.items.map((entry) => <Entry entry={entry} key={entry.candidateId} />)}
+        <div className="dt-wrap">
+          <table aria-label="Ultra-early launch candidates" className="dt">
+            <thead>
+              <tr>{TABLE_HEAD.map((head) => <th key={head} scope="col">{head}</th>)}</tr>
+            </thead>
+            <tbody>
+              {items.map((entry) => <UltraEarlyRow entry={entry} key={entry.candidateId} />)}
+            </tbody>
+          </table>
         </div>
       )}
     </section>
   );
 }
-

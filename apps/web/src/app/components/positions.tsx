@@ -1,7 +1,5 @@
 import Link from "next/link";
 
-import { OperatorHeader } from "./operator-header";
-import { ProtectedShell } from "./radar";
 import { FreshnessBadge, SafetyBadge } from "./status-badges";
 import type {
   PositionRecord,
@@ -173,9 +171,7 @@ function PositionsContent({ result }: { result: ReadResult<ReadPage<PositionReco
 
 export function PositionsDashboard({ result }: { result: ReadResult<ReadPage<PositionRecord>> }) {
   return (
-    <main className="shell">
-      <OperatorHeader />
-      <ProtectedShell />
+    <>
       <section className="section-block intelligence-section" aria-labelledby="positions-title">
         <div className="section-heading">
           <div><p className="eyebrow">PAPER PORTFOLIO / OBSERVED + DERIVED EVIDENCE</p><h3 id="positions-title">Positions</h3></div>
@@ -183,11 +179,10 @@ export function PositionsDashboard({ result }: { result: ReadResult<ReadPage<Pos
         </div>
         <PositionsContent result={result} />
       </section>
-      <section className="queue-card" aria-labelledby="position-boundary-title">
-        <div className="queue-card__icon" aria-hidden="true">◌</div>
+      <section className="boundary-strip" aria-labelledby="position-boundary-title">
         <div><p className="eyebrow">PAPER / ADVISORY ONLY</p><h3 id="position-boundary-title">No execution controls in this view</h3><p>Exit risk and closed-trade explanations preserve evidence without authorizing orders.</p></div>
         <SafetyBadge label="EXECUTION" value="LOCKED" tone="disabled" />
       </section>
-    </main>
+    </>
   );
 }
