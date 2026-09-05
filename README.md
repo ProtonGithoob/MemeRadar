@@ -410,7 +410,16 @@ Typical local workflow:
 ```bash
 git pull --ff-only
 ./scripts/start.sh
+./scripts/status.sh
 ```
+
+Stop the local stack without removing its PostgreSQL or Redis volumes:
+
+```bash
+./scripts/stop.sh
+```
+
+Equivalent Make targets are `make start`, `make status`, and `make stop`.
 
 For safe live-shadow operation after configuring required provider credentials:
 

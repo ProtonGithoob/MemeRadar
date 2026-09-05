@@ -14,6 +14,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Shadow Collection State | `NOT_ACTIVE` / `LIVE_SHADOW_COLLECTION_ACTIVE` | `PROVENANCE_AUDITED` | Active only when real provider observation streams flow and free-core gates pass |
 | Real-World Alpha Evidence | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` | `INSUFFICIENT_SAMPLES` | Awaits live read-only shadow data collection |
 | Protected Operating Modes | `ANALYSIS_ONLY=true, PAPER_TRADING=true, MANUAL_EXECUTION=false, AUTO_EXECUTION=false` | `ENFORCED_INVARIANT` | Live order submission & wallet signing hard-locked |
+| Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; current uncommitted frontend returns HTTP 500 |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
 | Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 879 Python tests (11 skipped), 45 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |

@@ -27,6 +27,7 @@ SBOM_OUTPUT ?=
 
 .PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
+	start stop status \
 	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
 	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
@@ -126,6 +127,15 @@ up:
 
 down:
 	$(COMPOSE) down
+
+start:
+	bash scripts/start.sh
+
+stop:
+	bash scripts/stop.sh
+
+status:
+	bash scripts/status.sh
 
 migrate:
 	@if [[ -f alembic.ini ]]; then \

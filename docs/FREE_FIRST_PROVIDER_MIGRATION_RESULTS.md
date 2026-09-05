@@ -170,6 +170,44 @@ network access could not complete the bounded live probe. Treat live endpoint
 verification as `BLOCKED_EXTERNAL`, not as a deterministic implementation
 failure.
 
+## Local project lifecycle scripts
+
+The local Compose stack can be managed from the repository root:
+
+```bash
+./scripts/start.sh
+./scripts/status.sh
+./scripts/stop.sh
+```
+
+Equivalent Make targets are `make start`, `make status`, and `make stop`.
+`start.sh` rebuilds with `--remove-orphans`, enforces the protected mode
+display, and waits for API liveness and readiness. `stop.sh` removes the
+Compose containers/network but preserves the named PostgreSQL and Redis
+volumes. `status.sh` reports all expected services plus API liveness,
+readiness, web reachability, and the protected modes without printing secret
+values.
+
+Restart evidence on 2026-09-05:
+
+```text
+./scripts/stop.sh: PASS
+./scripts/start.sh: PASS (API liveness/readiness)
+./scripts/status.sh: DEGRADED (exit 1)
+postgres, redis, api, worker, web: running
+API liveness: PASS
+API readiness: PASS
+Web container: running
+Web endpoint: FAIL (HTTP 500)
+```
+
+The current web response is caused by unrelated uncommitted frontend work in
+the worktree: `positions.tsx` and `wallets.tsx` import `ProtectedShell`, but
+the current `radar.tsx` does not export it. The lifecycle scripts did not edit
+those files. Finish or revert that existing frontend work through its own
+workflow, then rerun `./scripts/status.sh`; do not discard it while working on
+the provider migration or lifecycle scripts.
+
 ## Remaining work
 
 1. Run the live Solana public RPC and DexScreener doctors from a networked
