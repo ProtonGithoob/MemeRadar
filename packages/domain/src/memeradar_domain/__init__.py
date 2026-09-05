@@ -20,7 +20,17 @@ from .early import (
 )
 from .events import EventEnvelope, ReasonCode, normalize_reason_codes
 from .evidence import Freshness, Observation, PriceSemantics, Provenance, QualityState
-from .identities import Chain, PoolIdentity, TokenIdentity, require_solana_address
+from .identities import (
+    Chain,
+    ChainId,
+    PoolIdentity,
+    TokenIdentity,
+    WalletIdentity,
+    normalize_chain,
+    require_chain_address,
+    require_evm_address,
+    require_solana_address,
+)
 from .lifecycle import (
     Candidate,
     CandidateState,
@@ -66,6 +76,7 @@ __all__ = [
     "CashLedgerEntry",
     "CashLedgerEntryType",
     "Chain",
+    "ChainId",
     "ChainCommitment",
     "ChainCursor",
     "ChainRecoveryState",
@@ -105,6 +116,10 @@ __all__ = [
     "StreamVerification",
     "StreamVerificationStatus",
     "TokenIdentity",
+    "WalletIdentity",
+    "normalize_chain",
+    "require_chain_address",
+    "require_evm_address",
     "normalize_reason_codes",
     "require_solana_address",
 ]
