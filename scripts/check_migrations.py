@@ -49,9 +49,9 @@ def main() -> int:
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0006_paper_execution"]:
+    if heads != ["0007_multichain_identity"]:
         print(
-            "migration_error: expected exactly one 0006_paper_execution head",
+            "migration_error: expected exactly one 0007_multichain_identity head",
             file=sys.stderr,
         )
         return 1

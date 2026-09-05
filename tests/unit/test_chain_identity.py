@@ -63,4 +63,3 @@ def test_evm_pool_identity_reuses_the_same_chain_address_validator() -> None:
 def test_solana_identity_still_rejects_evm_addresses() -> None:
     with pytest.raises(ValueError, match="base58"):
         TokenIdentity(mint_address=EVM_ADDRESS, chain=Chain.SOLANA)
-

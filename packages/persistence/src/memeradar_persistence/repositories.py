@@ -465,26 +465,33 @@ class CandidateRepository:
 
     async def add(self, candidate: Candidate) -> None:
         token_row = await self._session.get(TokenRow, candidate.token.id)
+        token_chain = (
+            candidate.token.chain.value
+            if isinstance(candidate.token.chain, Chain)
+            else candidate.token.chain
+        )
         if token_row is None:
             existing_token = await self._session.scalar(
-                select(TokenRow).where(TokenRow.mint_address == candidate.token.mint_address)
+                select(TokenRow).where(
+                    TokenRow.chain == token_chain,
+                    TokenRow.mint_address == candidate.token.mint_address,
+                )
             )
             if existing_token is not None and existing_token.id != candidate.token.id:
-                raise ValueError("token mint is already bound to another token identity")
+                raise ValueError("token identity is already bound to another token")
             token_row = TokenRow(
                 id=candidate.token.id,
-                chain=(
-                    candidate.token.chain.value
-                    if isinstance(candidate.token.chain, Chain)
-                    else candidate.token.chain
-                ),
+                chain=token_chain,
                 mint_address=candidate.token.mint_address,
                 token_program=candidate.token.token_program,
                 first_seen_at=candidate.discovered_at,
             )
             self._session.add(token_row)
-        elif token_row.mint_address != candidate.token.mint_address:
-            raise ValueError("token identity ID does not match persisted mint")
+        elif (
+            token_row.chain != token_chain
+            or token_row.mint_address != candidate.token.mint_address
+        ):
+            raise ValueError("token identity ID does not match persisted chain or address")
 
         row = await self._session.get(CandidateRow, candidate.id)
         if row is None:

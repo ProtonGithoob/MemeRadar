@@ -7,7 +7,7 @@ This is the canonical logical model. Physical schemas may evolve through migrati
 ### tokens
 - id (UUID)
 - chain (`solana` initially)
-- mint_address (unique)
+- `(chain, mint_address)` unique
 - token_program
 - symbol/name/decimals
 - created_onchain_at nullable
@@ -20,7 +20,7 @@ This is the canonical logical model. Physical schemas may evolve through migrati
 - id
 - token_id
 - venue/program
-- pool_address unique
+- `(token_id, pool_address)` unique; token_id carries the chain-qualified token identity
 - quote_mint
 - created_onchain_at
 - first_seen_at

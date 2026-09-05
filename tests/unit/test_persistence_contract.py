@@ -43,8 +43,13 @@ def test_idempotency_and_identity_constraints_are_explicit() -> None:
 
     assert any(
         isinstance(constraint, UniqueConstraint)
-        and {column.name for column in constraint.columns} == {"mint_address"}
+        and {column.name for column in constraint.columns} == {"chain", "mint_address"}
         for constraint in tables["tokens"].constraints
+    )
+    assert any(
+        isinstance(constraint, UniqueConstraint)
+        and {column.name for column in constraint.columns} == {"token_id", "pool_address"}
+        for constraint in tables["pools"].constraints
     )
     assert any(
         isinstance(constraint, UniqueConstraint)

@@ -40,7 +40,9 @@ class Base(DeclarativeBase):
 
 class TokenRow(Base):
     __tablename__ = "tokens"
-    __table_args__ = (UniqueConstraint("mint_address", name="uq_tokens_mint_address"),)
+    __table_args__ = (
+        UniqueConstraint("chain", "mint_address", name="uq_tokens_chain_mint_address"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     chain: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -68,7 +70,7 @@ class TokenRow(Base):
 class PoolRow(Base):
     __tablename__ = "pools"
     __table_args__ = (
-        UniqueConstraint("pool_address", name="uq_pools_pool_address"),
+        UniqueConstraint("token_id", "pool_address", name="uq_pools_token_pool_address"),
         Index("ix_pools_token_venue", "token_id", "venue"),
     )
 
