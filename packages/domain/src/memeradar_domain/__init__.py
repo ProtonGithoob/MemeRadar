@@ -18,7 +18,15 @@ from .early import (
     EarlyLatencySnapshot,
     ExternalCallBenchmark,
 )
-from .events import EventEnvelope, ReasonCode, normalize_reason_codes
+from .events import (
+    EventEnvelope,
+    GlobalEvent,
+    GlobalEventIdempotencyConflict,
+    ReasonCode,
+    deduplicate_global_events,
+    normalize_global_event,
+    normalize_reason_codes,
+)
 from .evidence import Freshness, Observation, PriceSemantics, Provenance, QualityState
 from .identities import (
     Chain,
@@ -82,6 +90,8 @@ __all__ = [
     "ChainRecoveryState",
     "CommitmentState",
     "EventEnvelope",
+    "GlobalEvent",
+    "GlobalEventIdempotencyConflict",
     "EarlyCandidateTiming",
     "EarlyDecisionState",
     "EarlyLatencySnapshot",
@@ -118,6 +128,8 @@ __all__ = [
     "TokenIdentity",
     "WalletIdentity",
     "normalize_chain",
+    "deduplicate_global_events",
+    "normalize_global_event",
     "require_chain_address",
     "require_evm_address",
     "normalize_reason_codes",

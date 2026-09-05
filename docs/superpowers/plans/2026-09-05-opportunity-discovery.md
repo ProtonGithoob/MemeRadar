@@ -105,12 +105,12 @@
 **Interfaces:**
 - Produces: normalized event carrying source id, event id, `occurred_at`, `observed_at`, `ingested_at`, entities, URLs/contract addresses, quality/freshness and evidence refs.
 
-- [ ] Write failing tests for timestamp ordering, idempotency, duplicate events, missing author/entity fields, stale/conflicted evidence and future-time rejection.
-- [ ] Implement provider-neutral event contracts; keep provider SDK/raw payload types outside domain logic.
-- [ ] Add bounded normalization for text/entities/contract addresses without unrestricted raw-payload propagation.
-- [ ] Ensure provider failure only degrades that evidence family.
-- [ ] Run unit/type tests.
-- [ ] Commit.
+- [x] Write failing tests for timestamp ordering, idempotency, duplicate events, missing author/entity fields, stale/conflicted evidence and future-time rejection.
+- [x] Implement provider-neutral event contracts; keep provider SDK/raw payload types outside domain logic.
+- [x] Add bounded normalization for text/entities/contract addresses without unrestricted raw-payload propagation.
+- [x] Ensure provider failure only degrades that evidence family.
+- [x] Run unit/type tests.
+- [x] Commit.
 
 ### Task 6: Implement Chain Opportunity projections
 
