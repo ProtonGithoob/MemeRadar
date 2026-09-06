@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1025 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1029 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1349,10 +1349,14 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 4 TDD evidence: `tests/contract/test_alpha_caller_providers.py` first failed at collection with the expected missing `SocialCallPort` import; after the minimal implementation, the focused provider suite passes `6 tests`, and the combined social/Telegram/provider contract suite passes `47 tests`. Coverage includes resolved BNB and Robinhood contract calls, ticker-only unresolved evidence, intent/edit/delete/disclosure fields, malformed payloads, exact duplicates, channel callers, cursor progression and provider timeout classification.
 - Alpha Caller Task 4 verification: Ruff passes; strict mypy passes (`117 source files`); `make verify` exits `0` with `1025 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with the four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, external provider success, scraping dependency or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
 
+- Alpha Caller Task 5 checkpoint (2026-09-07): added the focused provider-independent `HistoricalCallerOutcomeProjector` in `packages/application/src/memeradar_application/caller_outcomes.py`, composing existing `SocialCallObservation`, canonical replay records and market price semantics. It freezes the latest fresh event-time price, liquidity, sellability and impact available at or before publication, then labels separate 5m/15m/1h/6h/24h/7d market and executable MFE/MAE paths plus 2x/5x/10x/20x/50x/100x research multiples. Missing or thin-liquidity execution evidence remains `UNKNOWN`; mark-price wicks cannot become executable wins, failed/rug paths remain labelable, and unmatured horizons remain partial. The projection is permanently research-only and does not alter production score weights, replay authority or execution modes.
+- Alpha Caller Task 5 TDD evidence: the initial focused collection failed with the expected missing `memeradar_application.caller_outcomes` module. After the minimal implementation, `tests/unit/test_alpha_caller_outcomes.py` passes `4 tests`; the combined caller-outcome/call-performance/replay/extreme-winner regression set passes `22 tests`. Tests cover event-time snapshot isolation from late/future mutations, horizon and multiple labels, executable MFE/MAE, thin-liquidity mark wicks, partial/missing evidence and explicit no-lookahead verification.
+- Alpha Caller Task 5 verification: Ruff passes; strict mypy passes (`118 source files`); `git diff --check` passes; `make verify` exits `0` with `1029 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with the four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, provider success, scraping dependency or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 5: compose existing canonical replay/outcome logic into
-event-time caller outcome projections. Begin with failing tests for horizon
-labels, executable MFE/MAE, mature versus partial evidence, failed/rug calls,
-and strict no-lookahead separation; keep sparse results
-`INSUFFICIENT_SAMPLES` and do not promote production weights.
+Alpha Caller Task 6: extend the existing research/scoring seams with a
+`CallerPerformanceProfile` covering sample adequacy, early-entry quality,
+executable wins, MFE/MAE, rug avoidance, consistency, specialization,
+smart-wallet confirmation and confidence intervals. Keep failed/rug calls,
+late callers and UNKNOWN evidence explicit; do not promote production weights.
