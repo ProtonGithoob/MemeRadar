@@ -11,17 +11,27 @@ from enum import Enum
 from types import MappingProxyType
 from uuid import UUID
 
-from memeradar_domain import Freshness, Provenance, QualityState, ReasonCode, require_solana_address
+from memeradar_domain import (
+    Chain,
+    Freshness,
+    Provenance,
+    QualityState,
+    ReasonCode,
+    normalize_chain,
+    require_chain_address,
+    require_solana_address,
+)
 from memeradar_domain.common import (
     bounded_decimal,
     ensure_utc,
+    freeze_mapping,
     normalize_texts,
     require_text,
     to_decimal,
 )
 from memeradar_domain.events import normalize_reason_codes
 
-from .call_performance import CallPerformanceSnapshot
+from .call_performance import CallPerformanceSnapshot, OutcomeHorizonState, SocialCallOutcome
 from .provider_contracts import SocialMention
 
 _QUALITY_PRIORITY = {
@@ -1318,6 +1328,1052 @@ class SocialVelocityScorer:
     analyze = score
 
 
+KOL_SPECIALIZATION_VERSION = "kol-specialization-v1"
+_MULTIPLE_THRESHOLDS = (
+    ("2x", Decimal("1")),
+    ("5x", Decimal("4")),
+    ("10x", Decimal("9")),
+    ("20x", Decimal("19")),
+    ("50x", Decimal("49")),
+    ("100x", Decimal("99")),
+)
+_DEFAULT_HORIZON_DURATIONS = {
+    "5m": timedelta(minutes=5),
+    "15m": timedelta(minutes=15),
+    "1h": timedelta(hours=1),
+    "6h": timedelta(hours=6),
+    "24h": timedelta(hours=24),
+}
+
+
+class ResearcherPromoterProfile(str, Enum):
+    """Historical call-timing cohort label; never an author trust tier."""
+
+    RESEARCHER = "RESEARCHER"
+    PROMOTER = "PROMOTER"
+    MIXED = "MIXED"
+    UNKNOWN = "UNKNOWN"
+
+
+class WalletLinkTiming(str, Enum):
+    """Explicit timing of a wallet observation relative to a social call."""
+
+    BEFORE_POST = "BEFORE_POST"
+    AFTER_POST = "AFTER_POST"
+
+
+class HistoricalOutcomeLabel(str, Enum):
+    """Research-only historical call labels, not live predictions."""
+
+    HIT_2X = "HIT_2X"
+    HIT_5X = "HIT_5X"
+    HIT_10X = "HIT_10X"
+    HIT_20X = "HIT_20X"
+    HIT_50X = "HIT_50X"
+    HIT_100X = "HIT_100X"
+    WINNER = "WINNER"
+    NON_WINNER = "NON_WINNER"
+    RUG = "RUG"
+    SEVERE_FAILURE = "SEVERE_FAILURE"
+    UNKNOWN = "UNKNOWN"
+
+
+def _dimension_text(value: object, field: str, *, upper: bool = False) -> str:
+    if isinstance(value, Enum):
+        value = value.value
+    if not isinstance(value, str):
+        raise TypeError(f"{field} must be a string")
+    normalized = require_text(value, field, max_length=128).strip()
+    if upper:
+        return normalized.upper().replace(" ", "_").replace("-", "_")
+    return normalized.casefold()
+
+
+def _dimension_values(
+    values: Sequence[object],
+    field: str,
+    *,
+    upper: bool = False,
+) -> tuple[str, ...]:
+    if isinstance(values, str | bytes | bytearray):
+        raise TypeError(f"{field} must be a sequence")
+    result: list[str] = []
+    for value in values:
+        normalized = _dimension_text(value, field, upper=upper)
+        if normalized not in result:
+            result.append(normalized)
+    return tuple(result)
+
+
+@dataclass(frozen=True, slots=True)
+class KOLWalletLinkage:
+    """Explicit, evidence-backed wallet/author linkage.
+
+    A username, handle or label is deliberately not accepted as a wallet
+    identity.  The caller must provide a canonical address and provenance.
+    """
+
+    author_id: str
+    wallet_address: str
+    chain: Chain | str
+    timing: WalletLinkTiming | str
+    confidence: Decimal
+    provenance: tuple[Provenance, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    as_of: datetime | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "author_id", require_text(self.author_id, "author_id"))
+        normalized_chain = normalize_chain(self.chain)
+        object.__setattr__(self, "chain", normalized_chain)
+        object.__setattr__(
+            self,
+            "wallet_address",
+            require_chain_address(self.wallet_address, normalized_chain, "wallet_address"),
+        )
+        object.__setattr__(self, "timing", WalletLinkTiming(self.timing))
+        object.__setattr__(
+            self,
+            "confidence",
+            bounded_decimal(self.confidence, "confidence", Decimal("0"), Decimal("1")),
+        )
+        object.__setattr__(self, "provenance", _provenance(self.provenance))
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(self.evidence_refs, "evidence_refs"),
+        )
+        if not self.provenance and not self.evidence_refs:
+            raise ValueError("wallet linkage evidence is required")
+        if self.as_of is not None:
+            object.__setattr__(self, "as_of", ensure_utc(self.as_of, "as_of"))
+
+
+@dataclass(frozen=True, slots=True)
+class KOLCallContext:
+    """Non-social context joined to one existing ``SocialCallOutcome``."""
+
+    call_id: str
+    chain: Chain | str
+    archetypes: tuple[str, ...] = ()
+    narrative_type: str | None = None
+    market_cap_at_call: Decimal | None = None
+    breakout_at: datetime | None = None
+    deleted_post: bool | None = None
+    edited_post: bool | None = None
+    paid_promotion: bool | None = None
+    provenance: tuple[Provenance, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    wallet_linkage: KOLWalletLinkage | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "call_id", require_text(self.call_id, "call_id"))
+        object.__setattr__(self, "chain", normalize_chain(self.chain))
+        object.__setattr__(
+            self,
+            "archetypes",
+            _dimension_values(self.archetypes, "archetypes", upper=True),
+        )
+        if self.narrative_type is not None:
+            object.__setattr__(
+                self,
+                "narrative_type",
+                _dimension_text(self.narrative_type, "narrative_type"),
+            )
+        if self.market_cap_at_call is not None:
+            market_cap = to_decimal(self.market_cap_at_call, "market_cap_at_call")
+            if market_cap < 0:
+                raise ValueError("market_cap_at_call must not be negative")
+            object.__setattr__(self, "market_cap_at_call", market_cap)
+        if self.breakout_at is not None:
+            object.__setattr__(self, "breakout_at", ensure_utc(self.breakout_at, "breakout_at"))
+        for field_name in ("deleted_post", "edited_post", "paid_promotion"):
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, bool):
+                raise TypeError(f"{field_name} must be a boolean or None")
+        object.__setattr__(self, "provenance", _provenance(self.provenance))
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(self.evidence_refs, "evidence_refs"),
+        )
+        if self.paid_promotion is not None and not self.provenance and not self.evidence_refs:
+            raise ValueError("paid-promotion evidence is required")
+        if self.wallet_linkage is not None and not isinstance(
+            self.wallet_linkage, KOLWalletLinkage
+        ):
+            raise TypeError("wallet_linkage must be a KOLWalletLinkage or None")
+
+
+def _optional_rate(value: Decimal | None, field: str) -> Decimal | None:
+    return None if value is None else bounded_decimal(value, field, Decimal("0"), Decimal("1"))
+
+
+def _optional_nonnegative(value: Decimal | None, field: str) -> Decimal | None:
+    if value is None:
+        return None
+    normalized = to_decimal(value, field)
+    if normalized < 0:
+        raise ValueError(f"{field} must not be negative")
+    return normalized
+
+
+def _optional_return(
+    value: Decimal | None,
+    field: str,
+    *,
+    lower: str,
+    upper: str,
+) -> Decimal | None:
+    return (
+        None
+        if value is None
+        else bounded_decimal(value, field, Decimal(lower), Decimal(upper))
+    )
+
+
+def _mapping_ints(values: Mapping[str, int], field: str) -> Mapping[str, int]:
+    normalized: dict[str, int] = {}
+    for key, value in values.items():
+        normalized_key = require_text(key, f"{field} key")
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"{field} values must be non-negative integers")
+        normalized[normalized_key] = value
+    return MappingProxyType(normalized)
+
+
+def _mapping_optional_rates(
+    values: Mapping[str, Decimal | None],
+    field: str,
+) -> Mapping[str, Decimal | None]:
+    normalized: dict[str, Decimal | None] = {}
+    for key, value in values.items():
+        normalized_key = require_text(key, f"{field} key")
+        normalized[normalized_key] = _optional_rate(value, f"{field} {normalized_key}")
+    return MappingProxyType(normalized)
+
+
+def _median_decimal(values: Sequence[Decimal]) -> Decimal | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return _quantize((ordered[middle - 1] + ordered[middle]) / Decimal("2"))
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalCallSlice:
+    """Aggregate historical quality measurements for one specialization bucket."""
+
+    call_count: int
+    matured_call_count: int
+    outcome_counts: Mapping[str, int]
+    multiple_hit_rates: Mapping[str, Decimal | None]
+    time_to_multiple_seconds: Mapping[str, Decimal | None]
+    median_market_cap_at_call: Decimal | None
+    median_token_age_seconds: Decimal | None
+    median_forward_return: Decimal | None
+    median_mfe: Decimal | None
+    median_mae: Decimal | None
+    severe_failure_rate: Decimal | None
+    rug_rate: Decimal | None
+    early_call_rate: Decimal | None
+    post_breakout_call_rate: Decimal | None
+    deleted_post_rate: Decimal | None
+    edited_post_rate: Decimal | None
+    paid_promotion_rate: Decimal | None
+    wallet_before_post_rate: Decimal | None
+    wallet_after_post_rate: Decimal | None
+    confidence: Decimal
+    quality_state: QualityState | str
+
+    def __post_init__(self) -> None:
+        for field_name in ("call_count", "matured_call_count"):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        if self.matured_call_count > self.call_count:
+            raise ValueError("matured_call_count cannot exceed call_count")
+        object.__setattr__(
+            self,
+            "outcome_counts",
+            _mapping_ints(self.outcome_counts, "outcome_counts"),
+        )
+        required_multiples = {label for label, _ in _MULTIPLE_THRESHOLDS}
+        if set(self.multiple_hit_rates) != required_multiples:
+            raise ValueError("multiple_hit_rates must contain every configured multiple")
+        if set(self.time_to_multiple_seconds) != required_multiples:
+            raise ValueError("time_to_multiple_seconds must contain every configured multiple")
+        object.__setattr__(
+            self,
+            "multiple_hit_rates",
+            _mapping_optional_rates(self.multiple_hit_rates, "multiple_hit_rates"),
+        )
+        object.__setattr__(
+            self,
+            "time_to_multiple_seconds",
+            _mapping_optional_nonnegative(self.time_to_multiple_seconds),
+        )
+        for field_name in ("median_market_cap_at_call", "median_token_age_seconds"):
+            object.__setattr__(
+                self,
+                field_name,
+                _optional_nonnegative(getattr(self, field_name), field_name),
+            )
+        for field_name, lower, upper in (
+            ("median_forward_return", "-1", "1000"),
+            ("median_mfe", "-1", "1000"),
+            ("median_mae", "-1", "0"),
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                _optional_return(
+                    getattr(self, field_name),
+                    field_name,
+                    lower=lower,
+                    upper=upper,
+                ),
+            )
+        for field_name in (
+            "severe_failure_rate",
+            "rug_rate",
+            "early_call_rate",
+            "post_breakout_call_rate",
+            "deleted_post_rate",
+            "edited_post_rate",
+            "paid_promotion_rate",
+            "wallet_before_post_rate",
+            "wallet_after_post_rate",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                _optional_rate(getattr(self, field_name), field_name),
+            )
+        object.__setattr__(
+            self,
+            "confidence",
+            bounded_decimal(self.confidence, "confidence", Decimal("0"), Decimal("1")),
+        )
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+
+    @property
+    def matured_sample_count(self) -> int:
+        return self.matured_call_count
+
+    @property
+    def hit_rates(self) -> Mapping[str, Decimal | None]:
+        return self.multiple_hit_rates
+
+
+def _mapping_optional_nonnegative(
+    values: Mapping[str, Decimal | None],
+) -> Mapping[str, Decimal | None]:
+    normalized: dict[str, Decimal | None] = {}
+    for key, value in values.items():
+        normalized_key = require_text(key, "time_to_multiple_seconds key")
+        normalized[normalized_key] = _optional_nonnegative(
+            value,
+            f"time_to_multiple_seconds {normalized_key}",
+        )
+    return MappingProxyType(normalized)
+
+
+@dataclass(frozen=True, slots=True)
+class KOLSpecializationProfile:
+    """Historical KOL/researcher profile; advisory and measurement-only."""
+
+    author_id: str
+    as_of: datetime
+    expires_at: datetime
+    overall: HistoricalCallSlice
+    by_chain: Mapping[str, HistoricalCallSlice]
+    by_archetype: Mapping[str, HistoricalCallSlice]
+    by_narrative: Mapping[str, HistoricalCallSlice]
+    profile: ResearcherPromoterProfile | str
+    profile_confidence: Decimal
+    wallet_linked_call_count: int
+    wallet_before_post_count: int
+    wallet_after_post_count: int
+    wallet_linkage_confidence: Decimal | None
+    provenance: tuple[Provenance, ...]
+    evidence_refs: tuple[str, ...]
+    reason_codes: tuple[ReasonCode | str, ...]
+    config_hash: str
+    quality_state: QualityState | str
+    version: str = KOL_SPECIALIZATION_VERSION
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "author_id", require_text(self.author_id, "author_id"))
+        as_of, expires_at = ensure_utc(self.as_of, "as_of"), ensure_utc(
+            self.expires_at,
+            "expires_at",
+        )
+        if expires_at <= as_of:
+            raise ValueError("expires_at must be later than as_of")
+        object.__setattr__(self, "as_of", as_of)
+        object.__setattr__(self, "expires_at", expires_at)
+        if not isinstance(self.overall, HistoricalCallSlice):
+            raise TypeError("overall must be a HistoricalCallSlice")
+        for field_name in ("by_chain", "by_archetype", "by_narrative"):
+            values = getattr(self, field_name)
+            if not isinstance(values, Mapping):
+                raise TypeError(f"{field_name} must be a mapping")
+            normalized: dict[str, HistoricalCallSlice] = {}
+            for key, value in values.items():
+                normalized_key = require_text(key, f"{field_name} key")
+                if not isinstance(value, HistoricalCallSlice):
+                    raise TypeError(f"{field_name} values must be HistoricalCallSlice values")
+                normalized[normalized_key] = value
+            object.__setattr__(self, field_name, MappingProxyType(normalized))
+        object.__setattr__(self, "profile", ResearcherPromoterProfile(self.profile))
+        object.__setattr__(
+            self,
+            "profile_confidence",
+            bounded_decimal(
+                self.profile_confidence,
+                "profile_confidence",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
+        for field_name in (
+            "wallet_linked_call_count",
+            "wallet_before_post_count",
+            "wallet_after_post_count",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        if (
+            self.wallet_before_post_count + self.wallet_after_post_count
+            > self.wallet_linked_call_count
+        ):
+            raise ValueError("wallet timing counts cannot exceed linked calls")
+        object.__setattr__(
+            self,
+            "wallet_linkage_confidence",
+            _optional_rate(self.wallet_linkage_confidence, "wallet_linkage_confidence"),
+        )
+        object.__setattr__(self, "provenance", _provenance(self.provenance))
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(self.evidence_refs, "evidence_refs"),
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            normalize_reason_codes(self.reason_codes, required=True),
+        )
+        object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+    @property
+    def call_count(self) -> int:
+        return self.overall.call_count
+
+    @property
+    def matured_call_count(self) -> int:
+        return self.overall.matured_call_count
+
+    @property
+    def outcome_counts(self) -> Mapping[str, int]:
+        return self.overall.outcome_counts
+
+    @property
+    def multiple_hit_rates(self) -> Mapping[str, Decimal | None]:
+        return self.overall.multiple_hit_rates
+
+    @property
+    def time_to_multiple_seconds(self) -> Mapping[str, Decimal | None]:
+        return self.overall.time_to_multiple_seconds
+
+    @property
+    def median_market_cap_at_call(self) -> Decimal | None:
+        return self.overall.median_market_cap_at_call
+
+    @property
+    def median_token_age_seconds(self) -> Decimal | None:
+        return self.overall.median_token_age_seconds
+
+    @property
+    def median_token_age_at_call_seconds(self) -> Decimal | None:
+        return self.overall.median_token_age_seconds
+
+    @property
+    def median_forward_return(self) -> Decimal | None:
+        return self.overall.median_forward_return
+
+    @property
+    def median_mfe(self) -> Decimal | None:
+        return self.overall.median_mfe
+
+    @property
+    def median_mae(self) -> Decimal | None:
+        return self.overall.median_mae
+
+    @property
+    def severe_failure_rate(self) -> Decimal | None:
+        return self.overall.severe_failure_rate
+
+    @property
+    def rug_rate(self) -> Decimal | None:
+        return self.overall.rug_rate
+
+    @property
+    def early_call_rate(self) -> Decimal | None:
+        return self.overall.early_call_rate
+
+    @property
+    def post_breakout_call_rate(self) -> Decimal | None:
+        return self.overall.post_breakout_call_rate
+
+    @property
+    def deleted_post_rate(self) -> Decimal | None:
+        return self.overall.deleted_post_rate
+
+    @property
+    def edited_post_rate(self) -> Decimal | None:
+        return self.overall.edited_post_rate
+
+    @property
+    def paid_promotion_rate(self) -> Decimal | None:
+        return self.overall.paid_promotion_rate
+
+    @property
+    def wallet_before_post_rate(self) -> Decimal | None:
+        return self.overall.wallet_before_post_rate
+
+    @property
+    def wallet_after_post_rate(self) -> Decimal | None:
+        return self.overall.wallet_after_post_rate
+
+    @property
+    def chain_specialization(self) -> Mapping[str, HistoricalCallSlice]:
+        return self.by_chain
+
+    @property
+    def archetype_specialization(self) -> Mapping[str, HistoricalCallSlice]:
+        return self.by_archetype
+
+    @property
+    def narrative_specialization(self) -> Mapping[str, HistoricalCallSlice]:
+        return self.by_narrative
+
+    @property
+    def confidence(self) -> Decimal:
+        return self.profile_confidence
+
+    @property
+    def freshness(self) -> Freshness:
+        return Freshness(self.as_of, self.expires_at, QualityState(self.quality_state))
+
+    @property
+    def classification(self) -> ResearcherPromoterProfile:
+        return ResearcherPromoterProfile(self.profile)
+
+    @property
+    def researcher_promoter_profile(self) -> ResearcherPromoterProfile:
+        return self.classification
+
+    def execution_eligible(self, at: datetime) -> bool:
+        del at
+        return False
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return freeze_mapping(
+            {
+                "author_id": self.author_id,
+                "as_of": self.as_of.isoformat(),
+                "expires_at": self.expires_at.isoformat(),
+                "call_count": self.call_count,
+                "matured_call_count": self.matured_call_count,
+                "profile": self.classification.value,
+                "profile_confidence": self.profile_confidence,
+                "overall": self.overall,
+                "by_chain": self.by_chain,
+                "by_archetype": self.by_archetype,
+                "by_narrative": self.by_narrative,
+                "wallet_linked_call_count": self.wallet_linked_call_count,
+                "wallet_before_post_count": self.wallet_before_post_count,
+                "wallet_after_post_count": self.wallet_after_post_count,
+                "wallet_linkage_confidence": self.wallet_linkage_confidence,
+                "provenance": self.provenance,
+                "evidence_refs": self.evidence_refs,
+                "reason_codes": tuple(
+                    reason.code if isinstance(reason, ReasonCode) else str(reason)
+                    for reason in self.reason_codes
+                ),
+                "config_hash": self.config_hash,
+                "quality_state": QualityState(self.quality_state).value,
+                "version": self.version,
+                "execution_eligible": False,
+            },
+            "kol specialization profile",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class KOLSpecializationPolicy:
+    """Bounded historical windows; values are not production score weights."""
+
+    evidence_ttl: timedelta = timedelta(minutes=15)
+    reference_horizon: str = "1h"
+    prior_sample_count: int = 1
+    minimum_classification_sample_count: int = 2
+    minimum_classification_confidence: Decimal = Decimal("0.60")
+    max_outcomes: int = 10_000
+    version: str = KOL_SPECIALIZATION_VERSION
+
+    def __post_init__(self) -> None:
+        if self.evidence_ttl <= timedelta(0):
+            raise ValueError("evidence_ttl must be positive")
+        object.__setattr__(
+            self,
+            "reference_horizon",
+            require_text(self.reference_horizon, "reference_horizon", max_length=32),
+        )
+        for field_name in (
+            "prior_sample_count",
+            "minimum_classification_sample_count",
+            "max_outcomes",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"{field_name} must be a positive integer")
+            if value > 100_000:
+                raise ValueError(f"{field_name} exceeds the configured bound")
+        object.__setattr__(
+            self,
+            "minimum_classification_confidence",
+            bounded_decimal(
+                self.minimum_classification_confidence,
+                "minimum_classification_confidence",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+
+@dataclass(frozen=True, slots=True)
+class _KOLSample:
+    outcome: SocialCallOutcome
+    context: KOLCallContext | None
+    future: bool
+    linkage_valid: bool
+
+
+class KOLSpecializationAnalyzer:
+    """Aggregate existing call outcomes into research-only author cohorts."""
+
+    def __init__(self, *, policy: KOLSpecializationPolicy | None = None) -> None:
+        self.policy = policy or KOLSpecializationPolicy()
+
+    @staticmethod
+    def _normalize_contexts(
+        contexts: Mapping[str, KOLCallContext] | Sequence[KOLCallContext],
+    ) -> Mapping[str, KOLCallContext]:
+        if isinstance(contexts, str | bytes | bytearray):
+            raise TypeError("contexts must be a mapping or sequence")
+        values: dict[str, KOLCallContext] = {}
+        items = (
+            contexts.items()
+            if isinstance(contexts, Mapping)
+            else ((None, item) for item in contexts)
+        )
+        for key, context in items:
+            if not isinstance(context, KOLCallContext):
+                raise TypeError("contexts must contain KOLCallContext values")
+            if key is not None and require_text(key, "context key") != context.call_id:
+                raise ValueError("context key must match call_id")
+            previous = values.get(context.call_id)
+            if previous is not None and previous != context:
+                raise ValueError("conflicting duplicate KOL call context")
+            values[context.call_id] = context
+        return MappingProxyType(values)
+
+    def analyze(
+        self,
+        outcomes: Sequence[SocialCallOutcome],
+        *,
+        contexts: Mapping[str, KOLCallContext] | Sequence[KOLCallContext] = (),
+        now: datetime,
+        config_hash: str,
+    ) -> tuple[KOLSpecializationProfile, ...]:
+        checked_at = ensure_utc(now, "now")
+        normalized_config_hash = require_text(config_hash, "config_hash")
+        if isinstance(outcomes, str | bytes | bytearray):
+            raise TypeError("outcomes must be a sequence")
+        if len(outcomes) > self.policy.max_outcomes:
+            raise ValueError("outcomes exceeded the configured bound")
+        normalized_contexts = self._normalize_contexts(contexts)
+        grouped: dict[str, list[_KOLSample]] = defaultdict(list)
+        seen: dict[str, SocialCallOutcome] = {}
+        for outcome in outcomes:
+            if not isinstance(outcome, SocialCallOutcome):
+                raise TypeError("outcomes must contain SocialCallOutcome values")
+            prior = seen.get(outcome.call_id)
+            if prior is not None:
+                if prior != outcome:
+                    raise ValueError("conflicting duplicate KOL call outcome")
+                continue
+            seen[outcome.call_id] = outcome
+            context = normalized_contexts.get(outcome.call_id)
+            future = outcome.as_of > checked_at or outcome.call.called_at > checked_at
+            future = future or any(
+                provenance.observed_at > checked_at for provenance in outcome.provenance
+            )
+            if context is not None:
+                future = future or (
+                    context.breakout_at is not None and context.breakout_at > checked_at
+                )
+                future = future or any(
+                    provenance.observed_at > checked_at for provenance in context.provenance
+                )
+                if context.wallet_linkage is not None and context.wallet_linkage.as_of is not None:
+                    future = future or context.wallet_linkage.as_of > checked_at
+            linkage_valid = context is not None and context.wallet_linkage is not None
+            if linkage_valid and context is not None and context.wallet_linkage is not None:
+                linkage_valid = context.wallet_linkage.author_id == outcome.call.author_id
+            grouped[outcome.call.author_id].append(
+                _KOLSample(
+                    outcome=outcome,
+                    context=context,
+                    future=future,
+                    linkage_valid=linkage_valid,
+                )
+            )
+        return tuple(
+            self._profile(
+                author_id,
+                tuple(samples),
+                now=checked_at,
+                config_hash=normalized_config_hash,
+            )
+            for author_id, samples in sorted(grouped.items())
+        )
+
+    profile = analyze
+
+    def _profile(
+        self,
+        author_id: str,
+        samples: tuple[_KOLSample, ...],
+        *,
+        now: datetime,
+        config_hash: str,
+    ) -> KOLSpecializationProfile:
+        overall = self._slice(samples)
+        chains: dict[str, list[_KOLSample]] = defaultdict(list)
+        archetypes: dict[str, list[_KOLSample]] = defaultdict(list)
+        narratives: dict[str, list[_KOLSample]] = defaultdict(list)
+        for sample in samples:
+            context = sample.context
+            chain = "UNKNOWN" if context is None else normalize_chain(context.chain).value
+            chains[chain].append(sample)
+            labels = (
+                ("UNKNOWN",)
+                if context is None or not context.archetypes
+                else context.archetypes
+            )
+            for label in labels:
+                archetypes[label].append(sample)
+            narrative = (
+                "UNKNOWN"
+                if context is None or context.narrative_type is None
+                else context.narrative_type
+            )
+            narratives[narrative].append(sample)
+        wallet_samples = [
+            sample
+            for sample in samples
+            if not sample.future and sample.linkage_valid and sample.context is not None
+        ]
+        before_count = sum(
+            sample.context is not None
+            and sample.context.wallet_linkage is not None
+            and sample.context.wallet_linkage.timing is WalletLinkTiming.BEFORE_POST
+            for sample in wallet_samples
+        )
+        after_count = sum(
+            sample.context is not None
+            and sample.context.wallet_linkage is not None
+            and sample.context.wallet_linkage.timing is WalletLinkTiming.AFTER_POST
+            for sample in wallet_samples
+        )
+        linkage_confidences = [
+            sample.context.wallet_linkage.confidence
+            for sample in wallet_samples
+            if sample.context is not None and sample.context.wallet_linkage is not None
+        ]
+        timing_known = sum(
+            sample.context is not None and sample.context.breakout_at is not None
+            for sample in samples
+            if not sample.future
+        )
+        timing_coverage = (
+            Decimal(timing_known) / Decimal(overall.call_count)
+            if overall.call_count
+            else Decimal("0")
+        )
+        profile_confidence = _quantize(overall.confidence * timing_coverage)
+        profile = self._classify(overall, profile_confidence)
+        reasons: list[str] = ["KOL_SPECIALIZATION_CALCULATED"]
+        if any(sample.context is None for sample in samples):
+            reasons.append("KOL_CONTEXT_MISSING")
+        if timing_known == 0:
+            reasons.append("KOL_CALL_TIMING_UNKNOWN")
+        if overall.matured_call_count < self.policy.minimum_classification_sample_count:
+            reasons.append("KOL_HISTORY_INSUFFICIENT")
+        if profile is ResearcherPromoterProfile.UNKNOWN:
+            reasons.append("KOL_PROFILE_UNKNOWN")
+        if any(sample.future for sample in samples):
+            reasons.append("KOL_FUTURE_EVIDENCE")
+        if any(sample.outcome.quality_state is not QualityState.FRESH for sample in samples):
+            reasons.append("KOL_OUTCOME_EVIDENCE_NOT_FRESH")
+        if wallet_samples:
+            reasons.append("KOL_WALLET_LINKAGE_EXPLICIT")
+        elif any(
+            sample.context is not None and sample.context.wallet_linkage is not None
+            for sample in samples
+        ):
+            reasons.append("KOL_WALLET_LINKAGE_AUTHOR_MISMATCH")
+        provenance: list[Provenance] = []
+        evidence_refs: list[str] = []
+        for sample in samples:
+            for provenance_value in sample.outcome.provenance:
+                if provenance_value not in provenance:
+                    provenance.append(provenance_value)
+            for reference in sample.outcome.evidence_refs:
+                if reference not in evidence_refs:
+                    evidence_refs.append(reference)
+            if sample.context is not None:
+                for provenance_value in sample.context.provenance:
+                    if provenance_value not in provenance:
+                        provenance.append(provenance_value)
+                for reference in sample.context.evidence_refs:
+                    if reference not in evidence_refs:
+                        evidence_refs.append(reference)
+                if sample.context.wallet_linkage is not None:
+                    for provenance_value in sample.context.wallet_linkage.provenance:
+                        if provenance_value not in provenance:
+                            provenance.append(provenance_value)
+                    for reference in sample.context.wallet_linkage.evidence_refs:
+                        if reference not in evidence_refs:
+                            evidence_refs.append(reference)
+        return KOLSpecializationProfile(
+            author_id=author_id,
+            as_of=now,
+            expires_at=now + self.policy.evidence_ttl,
+            overall=overall,
+            by_chain={key: self._slice(tuple(value)) for key, value in sorted(chains.items())},
+            by_archetype={
+                key: self._slice(tuple(value)) for key, value in sorted(archetypes.items())
+            },
+            by_narrative={
+                key: self._slice(tuple(value)) for key, value in sorted(narratives.items())
+            },
+            profile=profile,
+            profile_confidence=profile_confidence,
+            wallet_linked_call_count=len(wallet_samples),
+            wallet_before_post_count=before_count,
+            wallet_after_post_count=after_count,
+            wallet_linkage_confidence=_median_decimal(linkage_confidences),
+            provenance=tuple(provenance),
+            evidence_refs=tuple(evidence_refs),
+            reason_codes=tuple(dict.fromkeys(reasons)),
+            config_hash=config_hash,
+            quality_state=overall.quality_state,
+            version=self.policy.version,
+        )
+
+    def _classify(
+        self,
+        overall: HistoricalCallSlice,
+        confidence: Decimal,
+    ) -> ResearcherPromoterProfile:
+        if (
+            overall.call_count < self.policy.minimum_classification_sample_count
+            or confidence < self.policy.minimum_classification_confidence
+            or overall.early_call_rate is None
+            or overall.post_breakout_call_rate is None
+        ):
+            return ResearcherPromoterProfile.UNKNOWN
+        early, post = overall.early_call_rate, overall.post_breakout_call_rate
+        if early >= Decimal("0.60") and post < Decimal("0.40"):
+            return ResearcherPromoterProfile.RESEARCHER
+        if post >= Decimal("0.60") and early < Decimal("0.40"):
+            return ResearcherPromoterProfile.PROMOTER
+        return ResearcherPromoterProfile.MIXED
+
+    def _slice(self, samples: Sequence[_KOLSample]) -> HistoricalCallSlice:
+        states = [
+            QualityState.INVALID if sample.future else sample.outcome.quality_state
+            for sample in samples
+        ]
+        quality = _combined_quality(states)
+        matured = [sample for sample in samples if self._is_matured(sample)]
+        outcome_counts = {label.value: 0 for label in HistoricalOutcomeLabel}
+        hit_counts = {label: 0 for label, _ in _MULTIPLE_THRESHOLDS}
+        hit_times: dict[str, list[Decimal]] = {label: [] for label, _ in _MULTIPLE_THRESHOLDS}
+        returns: list[Decimal] = []
+        mfes: list[Decimal] = []
+        maes: list[Decimal] = []
+        market_caps: list[Decimal] = []
+        token_ages: list[Decimal] = []
+        rug_values: list[bool] = []
+        severe_values: list[bool] = []
+        for sample in samples:
+            if not self._is_matured(sample):
+                outcome_counts[HistoricalOutcomeLabel.UNKNOWN.value] += 1
+                continue
+            outcome_value = sample.outcome
+            returns.append(outcome_value.forward_returns[self.policy.reference_horizon])  # type: ignore[arg-type]
+            mfe = outcome_value.mfe.get(self.policy.reference_horizon)
+            mae = outcome_value.mae.get(self.policy.reference_horizon)
+            if mfe is not None:
+                mfes.append(mfe)
+            if mae is not None:
+                maes.append(mae)
+            if outcome_value.token_age_at_call_seconds is not None:
+                token_ages.append(outcome_value.token_age_at_call_seconds)
+            if sample.context is not None and sample.context.market_cap_at_call is not None:
+                market_caps.append(sample.context.market_cap_at_call)
+            for label, threshold in _MULTIPLE_THRESHOLDS:
+                reached, seconds = self._multiple_time(outcome_value, threshold)
+                if reached:
+                    hit_counts[label] += 1
+                    outcome_counts[f"HIT_{label[:-1]}X"] += 1
+                    if seconds is not None:
+                        hit_times[label].append(seconds)
+            hit_two, _ = self._multiple_time(outcome_value, Decimal("1"))
+            if hit_two:
+                outcome_counts[HistoricalOutcomeLabel.WINNER.value] += 1
+            else:
+                outcome_counts[HistoricalOutcomeLabel.NON_WINNER.value] += 1
+            rugged = outcome_value.rugged
+            severe = rugged is True or outcome_value.liquidity_collapsed is True
+            if rugged is not None:
+                rug_values.append(rugged)
+            if rugged is not None or outcome_value.liquidity_collapsed is not None:
+                severe_values.append(severe)
+            if rugged is True:
+                outcome_counts[HistoricalOutcomeLabel.RUG.value] += 1
+            if severe:
+                outcome_counts[HistoricalOutcomeLabel.SEVERE_FAILURE.value] += 1
+        early_values: list[bool] = []
+        deleted_values: list[bool] = []
+        edited_values: list[bool] = []
+        paid_values: list[bool] = []
+        wallet_timings: list[WalletLinkTiming] = []
+        for sample in samples:
+            if sample.future or sample.context is None:
+                continue
+            context = sample.context
+            if context.breakout_at is not None:
+                early_values.append(sample.outcome.call.called_at < context.breakout_at)
+            if context.deleted_post is not None:
+                deleted_values.append(context.deleted_post)
+            if context.edited_post is not None:
+                edited_values.append(context.edited_post)
+            if context.paid_promotion is not None:
+                paid_values.append(context.paid_promotion)
+            if sample.linkage_valid and context.wallet_linkage is not None:
+                wallet_timings.append(WalletLinkTiming(context.wallet_linkage.timing))
+        hit_rates = {
+            label: (
+                Decimal(count) / Decimal(len(matured)) if matured else None
+            )
+            for (label, _), count in zip(_MULTIPLE_THRESHOLDS, hit_counts.values(), strict=True)
+        }
+        time_to_multiple = {
+            label: _median_decimal(values) for label, values in hit_times.items()
+        }
+        return HistoricalCallSlice(
+            call_count=len(samples),
+            matured_call_count=len(matured),
+            outcome_counts=outcome_counts,
+            multiple_hit_rates=hit_rates,
+            time_to_multiple_seconds=time_to_multiple,
+            median_market_cap_at_call=_median_decimal(market_caps),
+            median_token_age_seconds=_median_decimal(token_ages),
+            median_forward_return=_median_decimal(returns),
+            median_mfe=_median_decimal(mfes),
+            median_mae=_median_decimal(maes),
+            severe_failure_rate=(
+                Decimal(sum(severe_values)) / Decimal(len(severe_values))
+                if severe_values
+                else None
+            ),
+            rug_rate=(
+                Decimal(sum(rug_values)) / Decimal(len(rug_values)) if rug_values else None
+            ),
+            early_call_rate=_true_rate(early_values),
+            post_breakout_call_rate=(
+                _true_rate([not value for value in early_values]) if early_values else None
+            ),
+            deleted_post_rate=_true_rate(deleted_values),
+            edited_post_rate=_true_rate(edited_values),
+            paid_promotion_rate=_true_rate(paid_values),
+            wallet_before_post_rate=(
+                Decimal(sum(value is WalletLinkTiming.BEFORE_POST for value in wallet_timings))
+                / Decimal(len(wallet_timings))
+                if wallet_timings
+                else None
+            ),
+            wallet_after_post_rate=(
+                Decimal(sum(value is WalletLinkTiming.AFTER_POST for value in wallet_timings))
+                / Decimal(len(wallet_timings))
+                if wallet_timings
+                else None
+            ),
+            confidence=(
+                _quantize(
+                    Decimal(len(matured))
+                    / Decimal(len(matured) + self.policy.prior_sample_count)
+                )
+                if matured and quality is QualityState.FRESH
+                else Decimal("0")
+            ),
+            quality_state=quality,
+        )
+
+    def _is_matured(self, sample: _KOLSample) -> bool:
+        if sample.future or sample.outcome.quality_state is not QualityState.FRESH:
+            return False
+        value = sample.outcome.forward_returns.get(self.policy.reference_horizon)
+        state = sample.outcome.horizon_states.get(self.policy.reference_horizon)
+        return value is not None and state is OutcomeHorizonState.COMPLETE
+
+    @staticmethod
+    def _multiple_time(
+        outcome: SocialCallOutcome,
+        threshold: Decimal,
+    ) -> tuple[bool, Decimal | None]:
+        candidates: list[Decimal] = []
+        for label, value in outcome.forward_returns.items():
+            state = outcome.horizon_states.get(label)
+            if state is not OutcomeHorizonState.COMPLETE or value is None or value < threshold:
+                continue
+            duration = _DEFAULT_HORIZON_DURATIONS.get(label)
+            if duration is None:
+                continue
+            candidates.append(Decimal(str(duration.total_seconds())))
+        if not candidates:
+            return False, None
+        return True, min(candidates)
+
+
+def _true_rate(values: Sequence[bool]) -> Decimal | None:
+    return Decimal(sum(values)) / Decimal(len(values)) if values else None
+
+
 def _normalize_count(value: int, cap: int) -> Decimal:
     return _quantize(_clamp(Decimal(value) / Decimal(cap) * Decimal("100")))
 
@@ -1329,8 +2385,18 @@ __all__ = [
     "AuthorTrustScorer",
     "AuthorTrustTier",
     "CoordinationCluster",
+    "HistoricalCallSlice",
+    "HistoricalOutcomeLabel",
+    "KOLCallContext",
+    "KOLSpecializationAnalyzer",
+    "KOLSpecializationPolicy",
+    "KOLSpecializationProfile",
+    "KOLWalletLinkage",
+    "KOL_SPECIALIZATION_VERSION",
+    "ResearcherPromoterProfile",
     "SocialAuthorRegistry",
     "SocialVelocityPolicy",
     "SocialVelocityScore",
     "SocialVelocityScorer",
+    "WalletLinkTiming",
 ]
