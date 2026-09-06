@@ -19,8 +19,10 @@ from .common import (
     freeze_mapping,
     normalize_texts,
     require_text,
+    to_decimal,
 )
-from .evidence import Provenance, QualityState
+from .events import ReasonCode, normalize_reason_codes
+from .evidence import Freshness, Provenance, QualityState
 from .identities import Chain, TokenIdentity, WalletIdentity, normalize_chain, require_chain_address
 
 
@@ -52,6 +54,16 @@ class IdentityLinkState(str, Enum):
     AMBIGUOUS = "AMBIGUOUS"
     CONFLICTED = "CONFLICTED"
     UNKNOWN = "UNKNOWN"
+
+
+class CallerMarketConductClassification(str, Enum):
+    """Bounded labels for caller/wallet temporal evidence."""
+
+    PRE_POSITIONING_CORRELATION = "PRE_POSITIONING_CORRELATION"
+    POST_CALL_DISTRIBUTION = "POST_CALL_DISTRIBUTION"
+    COORDINATED_CALL_CLUSTER = "COORDINATED_CALL_CLUSTER"
+    CALLER_SMART_MONEY_CONFIRMATION = "CALLER_SMART_MONEY_CONFIRMATION"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
 
 
 def _provenance(values: Sequence[Provenance], field_name: str) -> tuple[Provenance, ...]:
@@ -331,6 +343,152 @@ class CrossChainIdentityEvidence:
         return False
 
 
+@dataclass(frozen=True, slots=True)
+class CallerMarketConductEvidence:
+    """Retrospective caller/wallet correlation evidence, never an accusation."""
+
+    call: SocialCallObservation
+    as_of: datetime
+    expires_at: datetime
+    classifications: tuple[CallerMarketConductClassification | str, ...]
+    confidence: Decimal
+    wallet_link_confidence: Decimal
+    pre_call_net_flow: Decimal | None = None
+    post_call_net_flow: Decimal | None = None
+    pre_call_seconds: Decimal | None = None
+    distribution_seconds: Decimal | None = None
+    linked_wallet_ids: tuple[str, ...] = ()
+    coordinated_caller_ids: tuple[str, ...] = ()
+    follower_activity_count: int | None = None
+    liquidity_context: Mapping[str, object] = field(default_factory=dict)
+    quality_state: QualityState = QualityState.UNKNOWN
+    no_lookahead_verified: bool = True
+    provenance: tuple[Provenance, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    reason_codes: tuple[ReasonCode | str, ...] = ("CALLER_CONDUCT_EVIDENCE_INSUFFICIENT",)
+    config_hash: str = "caller-conduct-unknown"
+    version: str = "caller-conduct-v1"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.call, SocialCallObservation):
+            raise TypeError("call must be a SocialCallObservation")
+        as_of = ensure_utc(self.as_of, "as_of")
+        expires_at = ensure_utc(self.expires_at, "expires_at")
+        if expires_at <= as_of:
+            raise ValueError("expires_at must be later than as_of")
+        object.__setattr__(self, "as_of", as_of)
+        object.__setattr__(self, "expires_at", expires_at)
+        normalized_classifications: list[CallerMarketConductClassification] = []
+        for value in self.classifications:
+            classification = CallerMarketConductClassification(value)
+            if classification not in normalized_classifications:
+                normalized_classifications.append(classification)
+        if not normalized_classifications:
+            raise ValueError("classifications must not be empty")
+        object.__setattr__(self, "classifications", tuple(normalized_classifications))
+        object.__setattr__(
+            self,
+            "confidence",
+            bounded_decimal(self.confidence, "confidence", Decimal("0"), Decimal("1")),
+        )
+        object.__setattr__(
+            self,
+            "wallet_link_confidence",
+            bounded_decimal(
+                self.wallet_link_confidence,
+                "wallet_link_confidence",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
+        for field_name in (
+            "pre_call_net_flow",
+            "post_call_net_flow",
+            "pre_call_seconds",
+            "distribution_seconds",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                parsed = to_decimal(value, field_name)
+                if field_name.endswith("seconds") and parsed < 0:
+                    raise ValueError(f"{field_name} must not be negative")
+                object.__setattr__(self, field_name, parsed)
+        if self.follower_activity_count is not None and (
+            not isinstance(self.follower_activity_count, int)
+            or isinstance(self.follower_activity_count, bool)
+            or self.follower_activity_count < 0
+        ):
+            raise ValueError("follower_activity_count must be a non-negative integer or None")
+        object.__setattr__(
+            self,
+            "linked_wallet_ids",
+            normalize_texts(self.linked_wallet_ids, "linked_wallet_ids"),
+        )
+        object.__setattr__(
+            self,
+            "coordinated_caller_ids",
+            normalize_texts(self.coordinated_caller_ids, "coordinated_caller_ids"),
+        )
+        if not isinstance(self.liquidity_context, Mapping):
+            raise TypeError("liquidity_context must be a mapping")
+        object.__setattr__(
+            self,
+            "liquidity_context",
+            freeze_mapping(self.liquidity_context, "liquidity_context"),
+        )
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        if not isinstance(self.no_lookahead_verified, bool):
+            raise TypeError("no_lookahead_verified must be a boolean")
+        provenance = tuple(self.provenance)
+        if any(not isinstance(value, Provenance) for value in provenance):
+            raise TypeError("provenance must contain Provenance values")
+        object.__setattr__(self, "provenance", provenance)
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(self.evidence_refs, "evidence_refs"),
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            normalize_reason_codes(self.reason_codes, required=True),
+        )
+        object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+    @property
+    def freshness(self) -> Freshness:
+        return Freshness(self.as_of, self.expires_at, self.quality_state)
+
+    @property
+    def primary_classification(self) -> CallerMarketConductClassification:
+        return CallerMarketConductClassification(self.classifications[0])
+
+    @property
+    def wallet_linkage_confidence(self) -> Decimal:
+        """Compatibility spelling for callers using the design terminology."""
+
+        return self.wallet_link_confidence
+
+    @property
+    def pre_positioning_net_flow(self) -> Decimal | None:
+        return self.pre_call_net_flow
+
+    @property
+    def post_call_distribution_net_flow(self) -> Decimal | None:
+        return self.post_call_net_flow
+
+    @property
+    def distribution_timing_seconds(self) -> Decimal | None:
+        return self.distribution_seconds
+
+    def execution_eligible(self, at: datetime) -> bool:
+        """Conduct evidence never authorizes an order."""
+
+        del at
+        return False
+
+
 # Compatibility names for callers that prefer the longer specification wording.
 CallerPlatform = str
 CrossChainEvidenceType = IdentityEvidenceType
@@ -339,6 +497,8 @@ CrossChainEvidenceType = IdentityEvidenceType
 __all__ = [
     "CallIntent",
     "CallerIdentity",
+    "CallerMarketConductClassification",
+    "CallerMarketConductEvidence",
     "CallerPlatform",
     "CrossChainEvidenceType",
     "CrossChainIdentityEvidence",

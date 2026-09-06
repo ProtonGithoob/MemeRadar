@@ -349,6 +349,25 @@ leaves missing evidence nullable. It has no production score field, cannot
 promote strategy weights and is never execution-eligible; no physical migration
 is introduced for this projection.
 
+### caller_market_conduct_evidence (logical projection)
+- social call identity and chain-qualified asset
+- event-time `as_of`/`expires_at` and bounded conduct classifications
+- hard-linked wallet IDs and wallet-link confidence
+- pre-call and post-call net flows with temporal deltas
+- coordinated caller IDs and optional follower/liquidity context
+- quality state, no-lookahead marker, provenance, evidence references,
+  reason codes and config/version metadata
+
+`CallerMarketConductAnalyzer` extends the existing correlation seam over
+`CrossChainIdentityEvidence` and normalized `WalletActivity`. It only uses
+explicit fresh supported links (`is_hard_link`); weak, ambiguous, stale,
+future or conflicting evidence cannot create a wallet attribution. The
+projection distinguishes pre-positioning and post-call distribution
+correlations, caller clusters and smart-money confirmation, while
+`INSUFFICIENT_EVIDENCE` remains explicit when flow evidence is absent. It is
+retrospective measurement-only evidence, never an accusation, score input or
+execution authority; no physical migration is introduced.
+
 ## Wallet intelligence
 
 ### wallets

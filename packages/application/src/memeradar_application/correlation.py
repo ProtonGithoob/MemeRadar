@@ -15,6 +15,9 @@ from decimal import Decimal
 from types import MappingProxyType
 
 from memeradar_domain import (
+    CallerMarketConductClassification,
+    CallerMarketConductEvidence,
+    CrossChainIdentityEvidence,
     Freshness,
     Observation,
     PriceSemantics,
@@ -23,7 +26,11 @@ from memeradar_domain import (
     ReasonCode,
     RiskAssessment,
     RiskDisposition,
+    SocialCallObservation,
     TokenIdentity,
+    WalletIdentity,
+    normalize_chain,
+    require_chain_address,
     require_solana_address,
 )
 from memeradar_domain.common import (
@@ -609,6 +616,519 @@ class CorrelationSnapshot:
 
         del at
         return False
+
+
+CALLER_CONDUCT_VERSION = "caller-conduct-v1"
+
+
+@dataclass(frozen=True, slots=True)
+class CallerMarketConductPolicy:
+    """Bounded retrospective windows for caller/wallet correlation evidence."""
+
+    evidence_ttl: timedelta = timedelta(minutes=15)
+    pre_positioning_window: timedelta = timedelta(hours=1)
+    post_call_window: timedelta = timedelta(hours=6)
+    coordination_window: timedelta = timedelta(minutes=5)
+    max_identity_evidence: int = 1000
+    max_wallet_activities: int = 5000
+    max_related_calls: int = 5000
+    max_market_observations: int = 5000
+    version: str = CALLER_CONDUCT_VERSION
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "evidence_ttl",
+            "pre_positioning_window",
+            "post_call_window",
+            "coordination_window",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, timedelta) or value <= timedelta(0):
+                raise ValueError(f"{field_name} must be positive")
+        for field_name, maximum in (
+            ("max_identity_evidence", 10_000),
+            ("max_wallet_activities", 50_000),
+            ("max_related_calls", 50_000),
+            ("max_market_observations", 50_000),
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"{field_name} must be a positive integer")
+            if value > maximum:
+                raise ValueError(f"{field_name} exceeds the configured bound")
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+
+def _conduct_quality_at(
+    *,
+    quality_state: QualityState,
+    event_at: datetime,
+    observed_at: datetime,
+    ingested_at: datetime,
+    now: datetime,
+    ttl: timedelta,
+) -> tuple[QualityState, bool]:
+    if event_at > now or observed_at > now or ingested_at > now:
+        return QualityState.INVALID, True
+    if quality_state is not QualityState.FRESH:
+        return quality_state, False
+    if now >= observed_at + ttl:
+        return QualityState.STALE, False
+    return QualityState.FRESH, False
+
+
+def _conduct_amount(activity: WalletActivity) -> Decimal | None:
+    if activity.quote_amount is not None:
+        return activity.quote_amount
+    if activity.execution_price is not None:
+        return activity.quantity * activity.execution_price
+    return None
+
+
+class CallerMarketConductAnalyzer:
+    """Build retrospective caller/wallet correlations without identity claims."""
+
+    def __init__(self, *, policy: CallerMarketConductPolicy | None = None) -> None:
+        self.policy = policy or CallerMarketConductPolicy()
+
+    @staticmethod
+    def _bounded(
+        values: Sequence[object],
+        *,
+        field_name: str,
+        maximum: int,
+    ) -> tuple[object, ...]:
+        if isinstance(values, str | bytes | bytearray):
+            raise TypeError(f"{field_name} must be a sequence")
+        normalized = tuple(values)
+        if len(normalized) > maximum:
+            raise ValueError(f"{field_name} exceeds the configured bound")
+        return normalized
+
+    @staticmethod
+    def _append_evidence(
+        provenance: list[Provenance],
+        evidence_refs: list[str],
+        values: Sequence[Provenance],
+        refs: Sequence[str] = (),
+    ) -> None:
+        _append_provenance(provenance, values)
+        _append_unique(evidence_refs, refs)
+        _append_unique(evidence_refs, tuple(value.source_id for value in values))
+
+    def _result(
+        self,
+        call: SocialCallObservation,
+        *,
+        now: datetime,
+        config_hash: str,
+        classifications: Sequence[CallerMarketConductClassification],
+        confidence: Decimal,
+        wallet_link_confidence: Decimal,
+        pre_call_net_flow: Decimal | None = None,
+        post_call_net_flow: Decimal | None = None,
+        pre_call_seconds: Decimal | None = None,
+        distribution_seconds: Decimal | None = None,
+        linked_wallet_ids: Sequence[str] = (),
+        coordinated_caller_ids: Sequence[str] = (),
+        follower_activity_count: int | None = None,
+        liquidity_context: Mapping[str, object] | None = None,
+        quality_state: QualityState = QualityState.UNKNOWN,
+        no_lookahead_verified: bool = True,
+        provenance: Sequence[Provenance] = (),
+        evidence_refs: Sequence[str] = (),
+        reason_codes: Sequence[ReasonCode | str] = (),
+    ) -> CallerMarketConductEvidence:
+        normalized_classifications = tuple(classifications) or (
+            CallerMarketConductClassification.INSUFFICIENT_EVIDENCE,
+        )
+        normalized_reasons = tuple(reason_codes) or ("CALLER_CONDUCT_EVIDENCE_INSUFFICIENT",)
+        return CallerMarketConductEvidence(
+            call=call,
+            as_of=now,
+            expires_at=now + self.policy.evidence_ttl,
+            classifications=normalized_classifications,
+            confidence=confidence,
+            wallet_link_confidence=wallet_link_confidence,
+            pre_call_net_flow=pre_call_net_flow,
+            post_call_net_flow=post_call_net_flow,
+            pre_call_seconds=pre_call_seconds,
+            distribution_seconds=distribution_seconds,
+            linked_wallet_ids=tuple(linked_wallet_ids),
+            coordinated_caller_ids=tuple(coordinated_caller_ids),
+            follower_activity_count=follower_activity_count,
+            liquidity_context={} if liquidity_context is None else liquidity_context,
+            quality_state=quality_state,
+            no_lookahead_verified=no_lookahead_verified,
+            provenance=tuple(provenance),
+            evidence_refs=tuple(evidence_refs),
+            reason_codes=normalized_reasons,
+            config_hash=config_hash,
+            version=self.policy.version,
+        )
+
+    def analyze(
+        self,
+        call: SocialCallObservation,
+        identity_evidence: Sequence[CrossChainIdentityEvidence] = (),
+        wallet_activities: Sequence[WalletActivity] = (),
+        *,
+        related_calls: Sequence[SocialCallObservation] = (),
+        smart_money_wallets: Sequence[str | WalletIdentity] = (),
+        market_observations: Sequence[Observation] = (),
+        liquidity_context: Mapping[str, object] | None = None,
+        now: datetime,
+        config_hash: str,
+    ) -> CallerMarketConductEvidence:
+        if not isinstance(call, SocialCallObservation):
+            raise TypeError("call must be a SocialCallObservation")
+        checked_at = ensure_utc(now, "now")
+        if call.published_at > checked_at:
+            raise ValueError("call cannot be in the future")
+        normalized_config_hash = require_text(config_hash, "config_hash")
+        identity_values = self._bounded(
+            identity_evidence,
+            field_name="identity_evidence",
+            maximum=self.policy.max_identity_evidence,
+        )
+        activity_values = self._bounded(
+            wallet_activities,
+            field_name="wallet_activities",
+            maximum=self.policy.max_wallet_activities,
+        )
+        related_values = self._bounded(
+            related_calls,
+            field_name="related_calls",
+            maximum=self.policy.max_related_calls,
+        )
+        market_values = self._bounded(
+            market_observations,
+            field_name="market_observations",
+            maximum=self.policy.max_market_observations,
+        )
+        if isinstance(smart_money_wallets, str | bytes | bytearray):
+            raise TypeError("smart_money_wallets must be a sequence")
+
+        provenance: list[Provenance] = list(call.provenance)
+        evidence_refs: list[str] = list(call.evidence_refs)
+        _append_unique(evidence_refs, tuple(value.source_id for value in call.provenance))
+        reasons: list[ReasonCode | str] = ["CALLER_CONDUCT_ANALYZED"]
+        states: list[QualityState] = []
+        future_evidence = False
+        conflicting_duplicate = False
+
+        call_state, call_future = _conduct_quality_at(
+            quality_state=call.quality_state,
+            event_at=call.published_at,
+            observed_at=call.observed_at,
+            ingested_at=call.ingested_at,
+            now=checked_at,
+            ttl=self.policy.evidence_ttl,
+        )
+        states.append(call_state)
+        future_evidence = call_future
+
+        token = call.asset
+        token_chain = None if token is None else normalize_chain(token.chain)
+        matching_identity: list[CrossChainIdentityEvidence] = []
+        weak_link = False
+        linked: dict[str, CrossChainIdentityEvidence] = {}
+        if token is None:
+            reasons.append("CALLER_ASSET_IDENTITY_MISSING")
+        for raw in identity_values:
+            if not isinstance(raw, CrossChainIdentityEvidence):
+                raise TypeError("identity_evidence must contain CrossChainIdentityEvidence values")
+            if raw.caller_identity.canonical_id != call.caller_identity.canonical_id:
+                continue
+            matching_identity.append(raw)
+            self._append_evidence(provenance, evidence_refs, raw.provenance, raw.evidence_refs)
+            identity_state, identity_future = _conduct_quality_at(
+                quality_state=raw.quality_state,
+                event_at=raw.observed_at,
+                observed_at=raw.observed_at,
+                ingested_at=raw.observed_at,
+                now=checked_at,
+                ttl=self.policy.evidence_ttl,
+            )
+            states.append(identity_state)
+            future_evidence = future_evidence or identity_future
+            if raw.wallet is None or token_chain is None or raw.wallet.chain is not token_chain:
+                continue
+            if not raw.is_hard_link or identity_state is not QualityState.FRESH:
+                weak_link = True
+                continue
+            wallet_id = raw.wallet.canonical_id
+            prior = linked.get(wallet_id)
+            if prior is None or raw.confidence > prior.confidence:
+                linked[wallet_id] = raw
+
+        deduplicated_activities: dict[str, WalletActivity] = {}
+        matching_activities: list[tuple[WalletActivity, QualityState]] = []
+        if token is not None:
+            for raw in activity_values:
+                if not isinstance(raw, WalletActivity):
+                    raise TypeError("wallet_activities must contain WalletActivity values")
+                if raw.token != token:
+                    continue
+                self._append_evidence(
+                    provenance,
+                    evidence_refs,
+                    (raw.provenance,),
+                    (raw.source_id, *raw.evidence_refs),
+                )
+                activity_key = raw.canonical_trade_id or raw.source_id
+                prior_activity = deduplicated_activities.get(activity_key)
+                if prior_activity is not None:
+                    if prior_activity != raw:
+                        conflicting_duplicate = True
+                    continue
+                deduplicated_activities[activity_key] = raw
+                activity_state, activity_future = _conduct_quality_at(
+                    quality_state=raw.quality_state,
+                    event_at=raw.occurred_at,
+                    observed_at=raw.observed_at,
+                    ingested_at=raw.ingested_at,
+                    now=checked_at,
+                    ttl=self.policy.evidence_ttl,
+                )
+                states.append(activity_state)
+                future_evidence = future_evidence or activity_future
+                if not activity_future:
+                    matching_activities.append((raw, activity_state))
+
+        matching_related: list[tuple[SocialCallObservation, QualityState]] = []
+        for raw in related_values:
+            if not isinstance(raw, SocialCallObservation):
+                raise TypeError("related_calls must contain SocialCallObservation values")
+            if token is None or raw.asset != token:
+                continue
+            self._append_evidence(provenance, evidence_refs, raw.provenance, raw.evidence_refs)
+            related_state, related_future = _conduct_quality_at(
+                quality_state=raw.quality_state,
+                event_at=raw.published_at,
+                observed_at=raw.observed_at,
+                ingested_at=raw.ingested_at,
+                now=checked_at,
+                ttl=self.policy.evidence_ttl,
+            )
+            states.append(related_state)
+            future_evidence = future_evidence or related_future
+            if not related_future:
+                matching_related.append((raw, related_state))
+
+        fresh_market_events: list[Observation] = []
+        for raw in market_values:
+            if not isinstance(raw, Observation):
+                raise TypeError("market_observations must contain Observation values")
+            if token is None or raw.token_id != token.id or raw.occurred_at is None:
+                continue
+            self._append_evidence(
+                provenance,
+                evidence_refs,
+                (raw.provenance,),
+                (raw.provenance.source_id,),
+            )
+            market_state, market_future = _conduct_quality_at(
+                quality_state=raw.quality_state,
+                event_at=raw.occurred_at,
+                observed_at=raw.observed_at,
+                ingested_at=raw.ingested_at,
+                now=checked_at,
+                ttl=self.policy.evidence_ttl,
+            )
+            states.append(market_state)
+            future_evidence = future_evidence or market_future
+            if not market_future and market_state is QualityState.FRESH:
+                fresh_market_events.append(raw)
+
+        smart_wallet_ids: set[str] = set()
+        if token is not None:
+            for raw in smart_money_wallets:
+                if isinstance(raw, WalletIdentity):
+                    if raw.chain is token_chain:
+                        smart_wallet_ids.add(raw.canonical_id)
+                    continue
+                if not isinstance(raw, str):
+                    raise TypeError(
+                        "smart_money_wallets must contain addresses or WalletIdentity values"
+                    )
+                assert token_chain is not None
+                normalized_address = require_chain_address(raw, token_chain, "smart money wallet")
+                smart_wallet_ids.add(f"{token_chain.value}:{normalized_address}")
+
+        linked_wallet_ids = tuple(sorted(linked))
+        relevant = (
+            [
+                (activity, state)
+                for activity, state in matching_activities
+                if f"{token_chain.value}:{activity.wallet_address}" in linked
+                and state is QualityState.FRESH
+            ]
+            if token_chain is not None
+            else []
+        )
+        pre_start = call.published_at - self.policy.pre_positioning_window
+        pre_activities = [
+            activity
+            for activity, _ in relevant
+            if pre_start <= activity.occurred_at < call.published_at
+        ]
+        post_activities = [
+            activity
+            for activity, _ in relevant
+            if call.published_at < activity.occurred_at
+            <= call.published_at + self.policy.post_call_window
+        ]
+        pre_buys = [
+            activity for activity in pre_activities if activity.action is WalletAction.BUY
+        ]
+        post_sells = [
+            activity for activity in post_activities if activity.action is WalletAction.SELL
+        ]
+
+        def net_flow(values: Sequence[WalletActivity]) -> Decimal | None:
+            amounts = [_conduct_amount(value) for value in values]
+            if not amounts or any(value is None for value in amounts):
+                return None
+            total = Decimal("0")
+            for value, amount in zip(values, amounts, strict=True):
+                assert amount is not None
+                total += amount if value.action is WalletAction.BUY else -amount
+            return total
+
+        pre_call_net_flow = net_flow(pre_activities)
+        post_call_net_flow = net_flow(post_activities)
+        if (pre_activities and pre_call_net_flow is None) or (
+            post_activities and post_call_net_flow is None
+        ):
+            reasons.append("CALLER_FLOW_AMOUNT_PARTIAL")
+
+        classifications: list[CallerMarketConductClassification] = []
+        pre_seconds = (
+            Decimal(
+                str(
+                    (
+                        call.published_at - max(value.occurred_at for value in pre_buys)
+                    ).total_seconds()
+                )
+            )
+            if pre_buys
+            else None
+        )
+        distribution_seconds = (
+            Decimal(
+                str(
+                    (
+                        min(value.occurred_at for value in post_sells) - call.published_at
+                    ).total_seconds()
+                )
+            )
+            if post_sells
+            else None
+        )
+        wallet_link_confidence = max(
+            (value.confidence for value in linked.values()),
+            default=Decimal("0"),
+        )
+        if linked and pre_buys:
+            classifications.append(CallerMarketConductClassification.PRE_POSITIONING_CORRELATION)
+            reasons.append("CALLER_PRE_POSITIONING_CORRELATION")
+        if linked and post_sells:
+            classifications.append(CallerMarketConductClassification.POST_CALL_DISTRIBUTION)
+            reasons.append("CALLER_POST_CALL_DISTRIBUTION")
+
+        cluster_calls = [call, *(value for value, _ in matching_related)]
+        cluster_states = [call_state, *(state for _, state in matching_related)]
+        cluster_call_ids = tuple(
+            sorted(
+                {
+                    value.caller_identity.canonical_id
+                    for value, state in zip(cluster_calls, cluster_states, strict=True)
+                    if (
+                        abs(value.published_at - call.published_at)
+                        <= self.policy.coordination_window
+                    )
+                    and state is QualityState.FRESH
+                }
+            )
+        )
+        if len(cluster_call_ids) >= 2:
+            classifications.append(CallerMarketConductClassification.COORDINATED_CALL_CLUSTER)
+            reasons.append("CALLER_CLUSTER_DETECTED")
+
+        if linked and pre_buys and smart_wallet_ids.intersection(linked):
+            classifications.append(CallerMarketConductClassification.CALLER_SMART_MONEY_CONFIRMATION)
+            reasons.append("CALLER_SMART_MONEY_CONFIRMATION")
+
+        follower_activity_count = len(
+            [
+                value
+                for value in fresh_market_events
+                if (occurred_at := value.occurred_at) is not None
+                and call.published_at < occurred_at
+                <= call.published_at + self.policy.post_call_window
+            ]
+        )
+        if not activity_values:
+            reasons.append("CALLER_FLOW_EVIDENCE_MISSING")
+        elif not relevant:
+            reasons.append("CALLER_WALLET_ACTIVITY_MISSING")
+        if not matching_identity:
+            reasons.append("CALLER_WALLET_LINK_EVIDENCE_MISSING")
+        elif weak_link:
+            reasons.append("CALLER_WALLET_LINK_NOT_HARD")
+        if future_evidence:
+            reasons.append("CALLER_CONDUCT_FUTURE_EVIDENCE")
+        if conflicting_duplicate:
+            reasons.append("CALLER_CONDUCT_DUPLICATE_CONFLICT")
+
+        force_invalid = future_evidence or conflicting_duplicate
+        if force_invalid:
+            classifications = []
+            confidence = Decimal("0")
+            quality_state = QualityState.INVALID
+            no_lookahead_verified = False
+        elif not classifications:
+            confidence = Decimal("0")
+            quality_state = QualityState.UNKNOWN
+            no_lookahead_verified = True
+            reasons.append("CALLER_CONDUCT_EVIDENCE_INSUFFICIENT")
+        else:
+            quality_state = _combined_quality(states)
+            if quality_state is QualityState.FRESH:
+                cluster_confidence = min(
+                    (value.confidence for value in cluster_calls),
+                    default=Decimal("0"),
+                )
+                confidence = max(wallet_link_confidence, cluster_confidence)
+            else:
+                confidence = Decimal("0")
+            no_lookahead_verified = True
+
+        return self._result(
+            call,
+            now=checked_at,
+            config_hash=normalized_config_hash,
+            classifications=classifications,
+            confidence=confidence,
+            wallet_link_confidence=wallet_link_confidence,
+            pre_call_net_flow=pre_call_net_flow,
+            post_call_net_flow=post_call_net_flow,
+            pre_call_seconds=pre_seconds,
+            distribution_seconds=distribution_seconds,
+            linked_wallet_ids=linked_wallet_ids,
+            coordinated_caller_ids=cluster_call_ids,
+            follower_activity_count=follower_activity_count or None,
+            liquidity_context=liquidity_context,
+            quality_state=quality_state,
+            no_lookahead_verified=no_lookahead_verified,
+            provenance=provenance,
+            evidence_refs=evidence_refs,
+            reason_codes=reasons,
+        )
+
+
+CallerConductAnalyzer = CallerMarketConductAnalyzer
 
 
 @dataclass(frozen=True, slots=True)

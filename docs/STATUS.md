@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1033 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1039 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1357,10 +1357,13 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 6 TDD evidence: `tests/unit/test_alpha_caller_performance.py` first failed at collection with the expected missing `CallerPerformanceAnalyzer` export. After the minimal implementation, the focused profile suite passes `4 tests`; the combined caller/outcome/KOL/call-performance regression suite passes `30 tests`. Tests cover sparse `INSUFFICIENT_SAMPLES`, retained rug/failure calls, executable win-rate and confidence-interval evidence, explicit late-call timing, and future/unverified outcome exclusion. An import-cycle regression caused by eager replay loading was fixed with lazy reuse of the existing replay/Wilson seams; the focused suite and strict checks are green.
 - Alpha Caller Task 6 verification: Ruff passes; strict mypy passes (`118 source files`); `git diff --check` passes; `make verify` exits `0` with `1033 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with all four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, provider success, scraping dependency, persistence migration or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
 
+- Alpha Caller Task 7 checkpoint (2026-09-07): added the canonical immutable `CallerMarketConductEvidence` and bounded `CallerMarketConductClassification` contracts to the existing domain caller package, then extended `correlation.py` with `CallerMarketConductAnalyzer`/`CallerConductAnalyzer`. The analyzer reuses normalized `SocialCallObservation`, explicit `CrossChainIdentityEvidence`, chain-qualified `WalletIdentity` and existing `WalletActivity` evidence to report pre-call accumulation, post-call distribution, coordinated caller clusters and caller smart-money confirmation. It retains temporal deltas, signed quote-flow totals, hard-link confidence, linked/coordinated identities, optional follower/liquidity context, provenance, evidence references, reason codes, freshness, no-lookahead and config/version metadata. Direct normalized wallet activity now validates against its token's chain so the same seam covers Solana, BNB and Robinhood EVM identities.
+- Alpha Caller Task 7 TDD evidence: `tests/unit/test_caller_conduct.py` first failed at collection with the expected missing `CallerMarketConductAnalyzer` export. After the minimal implementation, the focused conduct suite passes `6 tests`; the combined conduct/correlation/flow regression passes `21 tests`. Fixtures cover buy-before-call and sell-after-call timing/net flow, unrelated wallets, ambiguous/weak linkage, clustered callers, smart-money confirmation, missing flow evidence, future-flow invalidation and BNB/Robinhood activity normalization. No weak link becomes a wallet attribution or misconduct assertion.
+- Alpha Caller Task 7 verification: Ruff passes; strict mypy passes (`118 source files`); `git diff --check` passes; full `make verify` exits `0` with `1039 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production scoring weight, persistence migration, provider success, scraping dependency or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 7: extend the existing wallet graph/flow/correlation seams
-with deterministic caller-linked conduct evidence for pre-positioning,
-post-call distribution, coordinated caller clusters and caller smart-money
-confirmation. Keep weak/ambiguous linkage as evidence only and fail closed on
-missing wallet-flow data.
+Alpha Caller Task 8: extend the existing opportunity/research discovery seams
+with bounded caller discovery and backfill from matured winners and negative
+controls, retaining failures, rugs, late calls and no-lookahead out-of-sample
+cohorts.

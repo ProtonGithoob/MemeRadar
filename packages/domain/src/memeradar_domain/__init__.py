@@ -2,6 +2,8 @@
 
 from .caller import (
     CallerIdentity,
+    CallerMarketConductClassification,
+    CallerMarketConductEvidence,
     CallerPlatform,
     CallIntent,
     CrossChainEvidenceType,
@@ -96,6 +98,8 @@ __all__ = [
     "CandidateState",
     "CallIntent",
     "CallerIdentity",
+    "CallerMarketConductClassification",
+    "CallerMarketConductEvidence",
     "CallerPlatform",
     "CashLedgerEntry",
     "CashLedgerEntryType",

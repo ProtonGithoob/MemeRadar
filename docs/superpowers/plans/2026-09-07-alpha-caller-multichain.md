@@ -116,9 +116,9 @@
 **Interfaces:**
 - Produces: `CallerMarketConductEvidence` classifications `PRE_POSITIONING_CORRELATION`, `POST_CALL_DISTRIBUTION`, `COORDINATED_CALL_CLUSTER`, `CALLER_SMART_MONEY_CONFIRMATION`, `INSUFFICIENT_EVIDENCE`.
 
-- [ ] Write failing tests for buy-before-call/sell-after-call, unrelated wallet, weak identity link, clustered callers and missing flow evidence.
-- [ ] Implement confidence-bounded temporal evidence; never assert misconduct or hard identity from weak linkage.
-- [ ] Run focused graph/flow tests, update STATUS and commit.
+- [x] Write failing tests for buy-before-call/sell-after-call, unrelated wallet, weak identity link, clustered callers and missing flow evidence.
+- [x] Implement confidence-bounded temporal evidence; never assert misconduct or hard identity from weak linkage.
+- [x] Run focused graph/flow tests, update STATUS and commit.
 
 ### Task 8: Caller discovery feedback loop
 

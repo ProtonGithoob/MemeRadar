@@ -10,6 +10,7 @@ from decimal import Decimal
 from enum import Enum
 
 from memeradar_domain import (
+    Chain,
     Freshness,
     Observation,
     PriceSemantics,
@@ -17,6 +18,7 @@ from memeradar_domain import (
     QualityState,
     ReasonCode,
     TokenIdentity,
+    require_chain_address,
     require_solana_address,
 )
 from memeradar_domain.common import (
@@ -275,7 +277,7 @@ class WalletActivity:
         object.__setattr__(
             self,
             "wallet_address",
-            require_solana_address(self.wallet_address, "wallet address"),
+            require_chain_address(self.wallet_address, self.token.chain, "wallet address"),
         )
         object.__setattr__(self, "action", WalletAction(self.action))
         quantity = to_decimal(self.quantity, "quantity")
@@ -623,11 +625,11 @@ def _parse_action(value: object) -> WalletAction:
     raise ValueError("wallet activity action must be BUY or SELL")
 
 
-def _parse_address(value: object) -> str:
+def _parse_address(value: object, chain: Chain | str) -> str:
     if not isinstance(value, str):
         raise ValueError("wallet address is required")
     try:
-        return require_solana_address(value, "wallet address")
+        return require_chain_address(value, chain, "wallet address")
     except (TypeError, ValueError) as exc:
         raise ValueError("wallet address must be canonical") from exc
 
@@ -685,7 +687,8 @@ class WalletTrackingAnalyzer:
     ) -> WalletActivity:
         payload = observation.normalized_payload
         address = _parse_address(
-            _field(payload, "wallet_address", "wallet", "trader", "maker", "owner", "user")
+            _field(payload, "wallet_address", "wallet", "trader", "maker", "owner", "user"),
+            token.chain,
         )
         try:
             registry.require_active(address)
