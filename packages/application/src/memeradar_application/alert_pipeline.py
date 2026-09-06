@@ -8,6 +8,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
+from time import perf_counter
 from typing import Protocol
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from .provider_contracts import (
     NotificationRequest,
     ProviderRequestContext,
 )
+from .reliability import LatencyMetric, emit_latency
 
 ALERT_PIPELINE_VERSION = "alert-pipeline-v1"
 MAX_TELEGRAM_TEXT_LENGTH = 4096
@@ -242,6 +244,185 @@ def _ultra_early_payload(payload: Mapping[str, object]) -> Mapping[str, object] 
     return None
 
 
+_OPPORTUNITY_MARKERS = frozenset(
+    {
+        "chain",
+        "address",
+        "winner_archetype",
+        "catalyst_summary",
+        "pre_token_attention_state",
+        "narrative_match_confidence",
+        "copycat_count",
+        "chain_heat",
+        "smart_wallet_independent_buyer_count",
+        "market_integrity_risk",
+        "provider_corroboration",
+    }
+)
+
+
+def _opportunity_payload(payload: Mapping[str, object]) -> Mapping[str, object] | None:
+    nested = payload.get("opportunity")
+    if isinstance(nested, Mapping):
+        return nested
+    if any(key in payload for key in _OPPORTUNITY_MARKERS):
+        return payload
+    return None
+
+
+def _opportunity_value(
+    payload: Mapping[str, object],
+    opportunity: Mapping[str, object],
+    *keys: str,
+) -> object | None:
+    for source in (opportunity, payload):
+        for key in keys:
+            value = source.get(key)
+            if value is not None:
+                return value
+    return None
+
+
+def _safe_opportunity_value(value: object) -> str:
+    if isinstance(value, Enum):
+        value = value.value
+    if isinstance(value, Mapping):
+        return _safe_display(_safe_metric_summary(value), max_length=256)
+    if isinstance(value, list | tuple):
+        return "; ".join(_safe_lines(value, max_items=4))
+    return _safe_display(value, max_length=256)
+
+
+def _opportunity_lines(
+    payload: Mapping[str, object],
+    opportunity: Mapping[str, object],
+) -> tuple[str, ...]:
+    lines: list[str] = []
+    field_specs = (
+        ("Chain", ("chain",)),
+        ("Token", ("token", "token_id")),
+        ("Address", ("address", "contract_address", "mint")),
+        ("Age", ("age", "age_seconds")),
+        ("Market cap", ("market_cap_usd", "market_cap", "market_cap_at_entry")),
+        ("Liquidity", ("liquidity_usd", "liquidity", "liquidity_at_entry")),
+        ("Winner archetype", ("winner_archetype", "archetype", "archetypes")),
+        ("Catalyst", ("catalyst_summary", "catalyst_type")),
+        ("Catalyst age", ("catalyst_age", "catalyst_age_seconds")),
+        (
+            "Pre-token attention",
+            ("pre_token_attention_state", "pre_token_attention", "attention_state"),
+        ),
+        ("Attention velocity", ("attention_velocity", "attention_slope")),
+        ("Source diversity", ("attention_source_diversity", "source_diversity")),
+        (
+            "Narrative match",
+            ("narrative_match_confidence", "match_confidence", "narrative_token_match"),
+        ),
+        ("Copycats", ("copycat_count", "candidate_count")),
+        ("Narrative dominance", ("narrative_dominance", "dominance")),
+        ("Chain heat", ("chain_heat",)),
+        (
+            "Ecosystem acceleration",
+            ("ecosystem_acceleration", "chain_opportunity_acceleration"),
+        ),
+        (
+            "Smart-wallet independent buyers",
+            (
+                "smart_wallet_independent_buyer_count",
+                "independent_buyer_count",
+                "raw_qualified_wallet_count",
+                "qualified_wallet_count",
+                "independent_cluster_count",
+                "cluster_adjusted_independent_wallet_count",
+            ),
+        ),
+        (
+            "Smart-wallet entries",
+            ("smart_wallet_entry_count", "raw_entry_wallet_count", "entry_wallet_count"),
+        ),
+        (
+            "First elite-wallet entry",
+            ("first_elite_wallet_entry_age", "elite_wallet_entry_age"),
+        ),
+        (
+            "First elite-wallet market cap",
+            (
+                "first_elite_wallet_entry_market_cap",
+                "elite_wallet_entry_market_cap",
+            ),
+        ),
+        ("Holder acceleration", ("holder_acceleration", "holder_growth")),
+        (
+            "Liquidity acceleration",
+            ("liquidity_acceleration", "liquidity_inflow_acceleration"),
+        ),
+        ("Protocol velocity", ("protocol_velocity", "protocol_usage_velocity")),
+        ("Fundamental velocity", ("fundamental_velocity",)),
+        ("Hard risk", ("hard_risk", "risk_disposition", "hard_risk_blocked")),
+        ("Market integrity", ("market_integrity_risk", "market_integrity")),
+        ("Contract/deployer risk", ("contract_deployer_risk", "deployer_risk")),
+        ("Liquidity/exit risk", ("liquidity_exit_risk", "exit_risk")),
+        ("Sellability", ("sellability", "sellability_state")),
+        (
+            "Provider corroboration",
+            ("provider_corroboration", "provider_evidence_state"),
+        ),
+        (
+            "Provider disagreement",
+            ("provider_disagreement", "provider_conflict"),
+        ),
+        ("Confidence", ("confidence", "evidence_confidence")),
+        ("Freshness", ("freshness", "quality_state", "evidence_quality_state")),
+        (
+            "Evidence timing",
+            ("evidence_timing", "as_of", "first_seen_at", "observed_at"),
+        ),
+        (
+            "Alert latency",
+            ("alert_latency_ms", "candidate_to_alert_ms", "alert_processing_ms"),
+        ),
+    )
+    for label, keys in field_specs:
+        value = _opportunity_value(payload, opportunity, *keys)
+        if value is None:
+            continue
+        display = _safe_opportunity_value(value)
+        if display:
+            lines.append(f"{label}: {display}")
+
+    entry_age = _opportunity_value(
+        payload,
+        opportunity,
+        "first_elite_wallet_entry_age",
+        "elite_wallet_entry_age",
+    )
+    entry_market_cap = _opportunity_value(
+        payload,
+        opportunity,
+        "first_elite_wallet_entry_market_cap",
+        "elite_wallet_entry_market_cap",
+    )
+    if entry_age is not None and entry_market_cap is not None:
+        age = _safe_opportunity_value(entry_age)
+        market_cap = _safe_opportunity_value(entry_market_cap)
+        combined = f"First elite-wallet entry: {age} / MC {market_cap}"
+        lines = [line for line in lines if not line.startswith("First elite-wallet entry:")]
+        lines = [line for line in lines if not line.startswith("First elite-wallet market cap:")]
+        lines.append(combined)
+
+    raw_refs = _opportunity_value(payload, opportunity, "evidence_refs")
+    refs = _safe_lines(raw_refs, max_items=8)
+    raw_count = _opportunity_value(payload, opportunity, "evidence_count")
+    if raw_count is None and refs:
+        raw_count = len(refs)
+    if raw_count is not None:
+        count = _safe_opportunity_value(raw_count)
+        if count:
+            lines.append(f"Evidence count: {count}")
+
+    return tuple(lines)
+
+
 class AlertRenderer:
     """Render typed alerts as bounded plain text safe for Telegram."""
 
@@ -275,6 +456,12 @@ class AlertRenderer:
             if delta:
                 score_line += f" ({delta if delta.startswith(('+', '-')) else '+' + delta})"
             lines.append(score_line)
+        opportunity = _opportunity_payload(payload)
+        if opportunity is not None:
+            opportunity_lines = _opportunity_lines(payload, opportunity)
+            if opportunity_lines:
+                lines.append("OPPORTUNITY EVIDENCE")
+                lines.extend(opportunity_lines)
         early_payload = _ultra_early_payload(payload)
         if early_payload is not None:
             lines.append("ULTRA EARLY SIGNAL")
@@ -334,15 +521,39 @@ class AlertRenderer:
         risks = _safe_lines(payload.get("top_risk_evidence"), max_items=4)
         if risks:
             lines.append("Risk evidence: " + "; ".join(risks))
-        reasons = tuple(reason.code for reason in alert.reason_codes[:4])
+        reasons = [reason.code for reason in alert.reason_codes]
+        if opportunity is not None:
+            reasons.extend(
+                reason
+                for reason in _safe_lines(
+                    _opportunity_value(payload, opportunity, "reason_codes"),
+                    max_items=8,
+                )
+                if reason not in reasons
+            )
+        reasons = list(dict.fromkeys(reasons))[:4]
         if reasons:
             lines.append("Reasons: " + ", ".join(reasons))
-        raw_references = payload.get("evidence_refs")
         references: list[str] = []
-        if isinstance(raw_references, list | tuple):
-            references.extend(value for value in raw_references if isinstance(value, str))
+        for raw_references in (
+            payload.get("evidence_refs"),
+            None if opportunity is None else opportunity.get("evidence_refs"),
+        ):
+            if isinstance(raw_references, str):
+                if safe_reference := _safe_display(raw_references, max_length=512):
+                    references.append(safe_reference)
+            elif isinstance(raw_references, list | tuple):
+                references.extend(
+                    safe_reference
+                    for value in raw_references
+                    if isinstance(value, str)
+                    and (safe_reference := _safe_display(value, max_length=512))
+                )
         references.extend(
-            reference for reason in alert.reason_codes for reference in reason.evidence_refs
+            safe_reference
+            for reason in alert.reason_codes
+            for reference in reason.evidence_refs
+            if (safe_reference := _safe_display(reference, max_length=512))
         )
         normalized_references = normalize_texts(references, "evidence_refs")[:8]
         if normalized_references:
@@ -719,6 +930,7 @@ class AlertDeliveryService:
         renderer: AlertRenderer | None = None,
         limiter: AlertRateLimiter | None = None,
         clock: Callable[[], datetime] | None = None,
+        telemetry: object | None = None,
     ) -> None:
         if not hasattr(notification, "send"):
             raise TypeError("notification must implement NotificationPort")
@@ -729,6 +941,7 @@ class AlertDeliveryService:
         self.renderer = renderer or AlertRenderer(max_length=self.policy.max_text_length)
         self.limiter = limiter or AlertRateLimiter(policy=self.policy)
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._telemetry = telemetry
 
     async def handle_event(self, event: EventEnvelope) -> AlertDeliveryResult:
         alert = AlertEventProjector().project(event)
@@ -777,11 +990,20 @@ class AlertDeliveryService:
             assert reservation.retry_at is not None
             raise AlertDeliveryDeferred(reservation.retry_at)
 
-        request = self.renderer.to_request(
-            alert,
-            context=context,
-            destination=self.destination,
-        )
+        rendering_started = perf_counter()
+        try:
+            request = self.renderer.to_request(
+                alert,
+                context=context,
+                destination=self.destination,
+            )
+        finally:
+            emit_latency(
+                self._telemetry,
+                LatencyMetric.ALERT_RENDERING,
+                round((perf_counter() - rendering_started) * 1000, 3),
+                source="internal",
+            )
         try:
             receipt = await self._notification.send(request)
             if not isinstance(receipt, DeliveryReceipt):

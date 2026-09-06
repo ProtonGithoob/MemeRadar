@@ -566,6 +566,11 @@ Record latency separately for provider/network and internal processing. At minim
 - duplicate/conflict counts;
 - candidate-to-alert latency.
 
+The existing alert delivery service may additionally emit the internal
+`alert_rendering_ms` stage when reliability telemetry is wired. This measures
+the richer read-only Telegram rendering work without replacing the existing
+candidate-to-alert or outbox-processing measurements.
+
 Use histograms/percentiles where appropriate. Latency optimization is not accepted if it bypasses normalization, risk or idempotency.
 
 Phase 11.1 adds the provider-independent `ReliabilityMetrics` collector in

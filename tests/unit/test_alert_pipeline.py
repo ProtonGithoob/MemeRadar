@@ -23,6 +23,7 @@ from memeradar_application.provider_contracts import (
     NotificationPort,
     NotificationRequest,
 )
+from memeradar_application.reliability import LatencyMetric
 from memeradar_domain import (
     Alert,
     AlertSeverity,
@@ -128,6 +129,171 @@ def test_renderer_projects_ultra_early_fields_and_keeps_auto_execution_locked() 
     assert "Auto execution: LOCKED" in rendered
     assert "submit" not in rendered.lower()
     assert "signer" not in rendered.lower()
+
+
+@pytest.mark.parametrize(
+    ("chain", "address"),
+    (
+        ("solana", "So11111111111111111111111111111111111111112"),
+        ("bnb", "0x1111111111111111111111111111111111111111"),
+        ("robinhood", "0x2222222222222222222222222222222222222222"),
+    ),
+)
+def test_renderer_explains_multichain_opportunity_evidence(
+    chain: str,
+    address: str,
+) -> None:
+    alert = Alert(
+        type=AlertType.STRONG_SETUP,
+        severity=AlertSeverity.INFO,
+        payload={
+            "symbol": "WIN",
+            "score": "91",
+            "opportunity": {
+                "chain": chain,
+                "address": address,
+                "winner_archetype": "REAL_WORLD_MEME",
+                "catalyst_summary": "external launch",
+                "catalyst_age_seconds": 42,
+                "pre_token_attention_state": "ORGANIC_PRE_TOKEN",
+                "attention_velocity": "2.5/min",
+                "attention_source_diversity": 4,
+                "narrative_match_confidence": "0.88",
+                "copycat_count": 3,
+                "narrative_dominance": "0.70",
+                "chain_heat": "ACCELERATING",
+                "ecosystem_acceleration": "1.4x",
+                "smart_wallet_independent_buyer_count": 5,
+                "first_elite_wallet_entry_age": "18s",
+                "first_elite_wallet_entry_market_cap": "120k",
+                "holder_acceleration": "0.42",
+                "liquidity_acceleration": "0.31",
+                "protocol_velocity": "UNKNOWN",
+                "hard_risk": "UNKNOWN",
+                "market_integrity_risk": "UNKNOWN",
+                "sellability": "UNKNOWN",
+                "provider_corroboration": "DISAGREEMENT",
+                "confidence": "0.82",
+                "freshness": "FRESH",
+                "evidence_refs": ("catalyst:1", "wallet:1"),
+            },
+        },
+        dedupe_key=f"alert:opportunity:{chain}",
+        requested_at=NOW,
+        candidate_id=CANDIDATE_ID,
+    )
+
+    rendered = AlertRenderer().render(alert)
+
+    assert "OPPORTUNITY EVIDENCE" in rendered
+    assert f"Chain: {chain}" in rendered
+    assert f"Address: {address}" in rendered
+    assert "Winner archetype: REAL_WORLD_MEME" in rendered
+    assert "Catalyst: external launch" in rendered
+    assert "Catalyst age: 42" in rendered
+    assert "Pre-token attention: ORGANIC_PRE_TOKEN" in rendered
+    assert "Attention velocity: 2.5/min" in rendered
+    assert "Source diversity: 4" in rendered
+    assert "Narrative match: 0.88" in rendered
+    assert "Copycats: 3" in rendered
+    assert "Narrative dominance: 0.70" in rendered
+    assert "Chain heat: ACCELERATING" in rendered
+    assert "Smart-wallet independent buyers: 5" in rendered
+    assert "First elite-wallet entry: 18s / MC 120k" in rendered
+    assert "Holder acceleration: 0.42" in rendered
+    assert "Liquidity acceleration: 0.31" in rendered
+    assert "Protocol velocity: UNKNOWN" in rendered
+    assert "Hard risk: UNKNOWN" in rendered
+    assert "Market integrity: UNKNOWN" in rendered
+    assert "Sellability: UNKNOWN" in rendered
+    assert "Provider corroboration: DISAGREEMENT" in rendered
+    assert "Confidence: 0.82" in rendered
+    assert "Freshness: FRESH" in rendered
+    assert "Evidence count: 2" in rendered
+    assert "Auto execution: LOCKED" in rendered
+
+
+def test_opportunity_payload_preserves_state_transition_dedupe_and_replay_metadata() -> None:
+    payload = {
+        "candidate_id": str(CANDIDATE_ID),
+        "from_state": "WATCH",
+        "to_state": "STRONG_SETUP",
+        "symbol": "WIN",
+        "opportunity": {
+            "chain": "robinhood",
+            "address": "0x2222222222222222222222222222222222222222",
+            "smart_wallet_independent_buyer_count": 2,
+        },
+    }
+    source = event("CandidateStateChanged", "opportunity-transition", payload)
+
+    first = AlertEventProjector().project(source)
+    second = AlertEventProjector().project(source)
+
+    assert first is not None
+    assert second is not None
+    assert first.type is AlertType.STRONG_SETUP
+    assert first.dedupe_key == second.dedupe_key
+    assert first.payload["event_id"] == str(source.id)
+    assert first.payload["opportunity"] == payload["opportunity"]
+    assert "SMART_WALLET_CONVERGENCE_HIGH" not in {
+        reason.code for reason in first.reason_codes
+    }
+
+
+class RecordingLatencyTelemetry:
+    def __init__(self) -> None:
+        self.latencies: list[tuple[str, float, str]] = []
+
+    def observe_latency(
+        self,
+        metric: str,
+        milliseconds: float,
+        *,
+        source: str,
+        provider: str | None = None,
+    ) -> None:
+        del provider
+        self.latencies.append((metric, milliseconds, source))
+
+
+def test_rich_alert_rendering_records_its_added_processing_latency() -> None:
+    store = FakeAlertStore()
+    notification = FakeNotification()
+    telemetry = RecordingLatencyTelemetry()
+    service = AlertDeliveryService(
+        store,
+        notification,
+        policy=AlertPolicy(max_messages=10),
+        destination="chat:opportunities",
+        clock=lambda: NOW,
+        telemetry=telemetry,
+    )
+    source = event(
+        "CandidateStateChanged",
+        "opportunity-latency",
+        {
+            "candidate_id": str(CANDIDATE_ID),
+            "from_state": "WATCH",
+            "to_state": "STRONG_SETUP",
+            "opportunity": {
+                "chain": "bnb",
+                "address": "0x1111111111111111111111111111111111111111",
+                "winner_archetype": "PROTOCOL_TOKEN",
+            },
+        },
+    )
+
+    result = asyncio.run(service.handle_event(source))
+
+    assert result.status is AlertDeliveryStatus.DELIVERED
+    assert (LatencyMetric.ALERT_RENDERING.value, 0.0, "internal") not in telemetry.latencies
+    assert any(
+        metric == LatencyMetric.ALERT_RENDERING.value
+        and milliseconds >= 0
+        and source_name == "internal"
+        for metric, milliseconds, source_name in telemetry.latencies
+    )
 
 
 def test_event_projector_only_projects_meaningful_decision_and_degradation_events() -> None:

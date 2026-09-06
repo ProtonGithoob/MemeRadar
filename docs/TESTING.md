@@ -502,7 +502,10 @@ Phase 11.1 adds bounded p50/p95/p99 reports for chain/social ingest, feature,
 decision and candidate-alert stages, with explicit provider-network versus
 internal attribution and no silent sample eviction. The report includes a
 synthetic-local method marker and defers SLO/Rust decisions until real
-analysis-only provider measurements are available.
+analysis-only provider measurements are available. Alert delivery can also
+record the internal `alert_rendering_ms` stage through the existing telemetry
+seam; this is diagnostic and does not replace candidate-to-alert or outbox
+processing latency.
 
 Sprint 6.1 adds credential-free feature-window replay and persistence checks:
 the fixture must reproduce identical `1m`/`5m`/`15m` snapshot IDs, values,

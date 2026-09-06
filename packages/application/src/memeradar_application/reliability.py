@@ -33,6 +33,7 @@ class LatencyMetric(str, Enum):
     FEATURE_TO_DECISION = "feature_to_decision_ms"
     CHAIN_EVENT_TO_DECISION = "chain_event_to_decision_ms"
     CANDIDATE_TO_ALERT = "candidate_to_alert_ms"
+    ALERT_RENDERING = "alert_rendering_ms"
     PROVIDER_REQUEST = "provider_request_ms"
     OUTBOX_PROCESSING = "outbox_processing_ms"
     BACKFILL = "backfill_latency_ms"
