@@ -330,6 +330,25 @@ minimum sample/confidence gates. These snapshots are advisory evidence only;
 they cannot promote a registry tier, clear a risk gate or authorize execution.
 No physical migration is introduced for the keyless checkpoint.
 
+### caller_performance_profiles (logical projection)
+- caller identity/platform
+- as_of/expires_at and 'EVALUATED'/'INSUFFICIENT_SAMPLES' status
+- sample/matured/known-outcome counts and evidence coverage
+- event-time early-entry percentile/quality and call market-cap/age summaries
+- executable win rates by horizon/multiple and median executable MFE/MAE
+- rug/failure retention, rug avoidance, consistency and recency stability
+- chain/venue/narrative specialization counts
+- smart-wallet confirmation rate and edit/delete/promotion disclosure rates
+- Wilson confidence intervals, confidence/uncertainty and quality state
+- provenance/evidence_refs/reason_codes, no-lookahead marker and config/version
+
+'CallerPerformanceProfile' is computed by the existing application research
+boundary over 'HistoricalCallerOutcome' values. It excludes future or
+no-lookahead-unverified outcomes, keeps failed/rug calls in the sample and
+leaves missing evidence nullable. It has no production score field, cannot
+promote strategy weights and is never execution-eligible; no physical migration
+is introduced for this projection.
+
 ## Wallet intelligence
 
 ### wallets

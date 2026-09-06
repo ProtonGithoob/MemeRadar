@@ -32,6 +32,11 @@ from memeradar_domain.common import (
 from memeradar_domain.events import normalize_reason_codes
 
 from .call_performance import CallPerformanceSnapshot, OutcomeHorizonState, SocialCallOutcome
+from .caller_outcomes import (
+    CallerPerformanceAnalyzer,
+    CallerPerformancePolicy,
+    CallerPerformanceProfile,
+)
 from .provider_contracts import SocialMention
 
 _QUALITY_PRIORITY = {
@@ -2499,6 +2504,9 @@ __all__ = [
     "AuthorTrustScore",
     "AuthorTrustScorer",
     "AuthorTrustTier",
+    "CallerPerformanceAnalyzer",
+    "CallerPerformancePolicy",
+    "CallerPerformanceProfile",
     "CoordinationCluster",
     "HistoricalCallSlice",
     "HistoricalOutcomeLabel",

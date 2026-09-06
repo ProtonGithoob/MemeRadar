@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1029 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1033 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1353,10 +1353,14 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 5 TDD evidence: the initial focused collection failed with the expected missing `memeradar_application.caller_outcomes` module. After the minimal implementation, `tests/unit/test_alpha_caller_outcomes.py` passes `4 tests`; the combined caller-outcome/call-performance/replay/extreme-winner regression set passes `22 tests`. Tests cover event-time snapshot isolation from late/future mutations, horizon and multiple labels, executable MFE/MAE, thin-liquidity mark wicks, partial/missing evidence and explicit no-lookahead verification.
 - Alpha Caller Task 5 verification: Ruff passes; strict mypy passes (`118 source files`); `git diff --check` passes; `make verify` exits `0` with `1029 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with the four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, provider success, scraping dependency or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
 
+- Alpha Caller Task 6 checkpoint (2026-09-07): extended the existing provider-independent caller research seam with `CallerPerformancePolicy`, `CallerPerformanceProfile` and `CallerPerformanceAnalyzer` in `packages/application/src/memeradar_application/caller_outcomes.py`, re-exported through `social_intelligence.py`. Profiles retain all non-future, no-lookahead-verified calls including failures/rugs; report sample adequacy, matured/evidence coverage, event-time early-entry market-cap/age quality, executable win rates by horizon/multiple, executable MFE/MAE, rug avoidance, consistency/recency stability, chain/venue/narrative specialization, smart-wallet confirmation and edit/delete/promotion disclosure evidence. Explicit breakout timing records late-call penalty evidence, while missing/stale/unknown inputs remain nullable or non-fresh. Wilson intervals, confidence/uncertainty, provenance, reasons, config/version and a no-lookahead marker are retained; the profile has no production score and is permanently non-promoting/non-executable.
+- Alpha Caller Task 6 TDD evidence: `tests/unit/test_alpha_caller_performance.py` first failed at collection with the expected missing `CallerPerformanceAnalyzer` export. After the minimal implementation, the focused profile suite passes `4 tests`; the combined caller/outcome/KOL/call-performance regression suite passes `30 tests`. Tests cover sparse `INSUFFICIENT_SAMPLES`, retained rug/failure calls, executable win-rate and confidence-interval evidence, explicit late-call timing, and future/unverified outcome exclusion. An import-cycle regression caused by eager replay loading was fixed with lazy reuse of the existing replay/Wilson seams; the focused suite and strict checks are green.
+- Alpha Caller Task 6 verification: Ruff passes; strict mypy passes (`118 source files`); `git diff --check` passes; `make verify` exits `0` with `1033 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with all four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, provider success, scraping dependency, persistence migration or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 6: extend the existing research/scoring seams with a
-`CallerPerformanceProfile` covering sample adequacy, early-entry quality,
-executable wins, MFE/MAE, rug avoidance, consistency, specialization,
-smart-wallet confirmation and confidence intervals. Keep failed/rug calls,
-late callers and UNKNOWN evidence explicit; do not promote production weights.
+Alpha Caller Task 7: extend the existing wallet graph/flow/correlation seams
+with deterministic caller-linked conduct evidence for pre-positioning,
+post-call distribution, coordinated caller clusters and caller smart-money
+confirmation. Keep weak/ambiguous linkage as evidence only and fail closed on
+missing wallet-flow data.

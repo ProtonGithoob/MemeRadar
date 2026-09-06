@@ -33,9 +33,9 @@
 - Consumes: existing chain identity, social, wallet graph, opportunity, replay and paper-execution contracts.
 - Produces: documented mapping from each new contract to the exact existing module/repository/service that will own it.
 
-- [ ] Inspect existing implementations for chain identity, normalized social observations, wallet intelligence, smart-money convergence, opportunity evidence, replay labels and paper execution.
-- [ ] Record reuse-vs-new decisions in `docs/STATUS.md`; explicitly reject duplicate engines.
-- [ ] Run `git diff --check` and commit the mapping checkpoint.
+- [x] Inspect existing implementations for chain identity, normalized social observations, wallet intelligence, smart-money convergence, opportunity evidence, replay labels and paper execution.
+- [x] Record reuse-vs-new decisions in `docs/STATUS.md`; explicitly reject duplicate engines.
+- [x] Run `git diff --check` and commit the mapping checkpoint.
 
 ### Task 2: Canonical caller and social-call contracts
 
@@ -46,10 +46,10 @@
 **Interfaces:**
 - Produces: `CallerIdentity`, `SocialCallObservation`, `CrossChainIdentityEvidence` with chain-qualified asset/wallet references, timestamps, confidence and provenance.
 
-- [ ] Write failing deterministic tests proving symbols cannot become canonical identity, EVM/Solana identities normalize correctly, ambiguous wallet linkage remains evidence, and published time is distinct from ingestion time.
-- [ ] Run focused tests and confirm failure.
-- [ ] Implement the smallest immutable contracts using existing project conventions.
-- [ ] Run focused tests, lint/typecheck relevant files, update STATUS, commit.
+- [x] Write failing deterministic tests proving symbols cannot become canonical identity, EVM/Solana identities normalize correctly, ambiguous wallet linkage remains evidence, and published time is distinct from ingestion time.
+- [x] Run focused tests and confirm failure.
+- [x] Implement the smallest immutable contracts using existing project conventions.
+- [x] Run focused tests, lint/typecheck relevant files, update STATUS, commit.
 
 ### Task 3: Persistence and idempotency
 
@@ -61,10 +61,10 @@
 - Consumes: Task 2 contracts.
 - Produces: idempotent storage keyed by provider/source message identity plus canonical caller/asset references.
 
-- [ ] Write failing tests for duplicate delivery, edit-state update, unresolved asset evidence, cross-chain address separation and provenance retention.
-- [ ] Confirm failures.
-- [ ] Implement schema/repository migration without weakening existing data constraints.
-- [ ] Run migration/repository tests and existing migration gate; update STATUS and commit.
+- [x] Write failing tests for duplicate delivery, edit-state update, unresolved asset evidence, cross-chain address separation and provenance retention.
+- [x] Confirm failures.
+- [x] Implement schema/repository migration without weakening existing data constraints.
+- [x] Run migration/repository tests and existing migration gate; update STATUS and commit.
 
 ### Task 4: Telegram and social-provider normalization
 
@@ -75,10 +75,10 @@
 **Interfaces:**
 - Produces: normalized `SocialCallObservation` streams from Telegram and configured compliant social/X provider seams.
 
-- [ ] Write failing fixtures/tests for contract-address calls, unresolved ticker-only calls, bullish/watch intent, edit/delete evidence where supplied, malformed messages, duplicate messages and provider outage.
-- [ ] Confirm failures.
-- [ ] Implement bounded parsers/adapters with parser version and provenance; no arbitrary runtime scraping dependency.
-- [ ] Run focused provider tests/doctors where available; classify external blockers honestly; update STATUS and commit.
+- [x] Write failing fixtures/tests for contract-address calls, unresolved ticker-only calls, bullish/watch intent, edit/delete evidence where supplied, malformed messages, duplicate messages and provider outage.
+- [x] Confirm failures.
+- [x] Implement bounded parsers/adapters with parser version and provenance; no arbitrary runtime scraping dependency.
+- [x] Run focused provider tests/doctors where available; classify external blockers honestly; update STATUS and commit.
 
 ### Task 5: Event-time snapshot and historical caller outcomes
 
@@ -89,10 +89,10 @@
 **Interfaces:**
 - Produces: `HistoricalCallerOutcome` for 5m/15m/1h/6h/24h/7d with executable MFE/MAE and 2x..100x research labels.
 
-- [ ] Write failing no-lookahead tests where future price/liquidity mutations cannot alter call-time features.
-- [ ] Add thin-liquidity wick fixture that must not count as executable multiple.
-- [ ] Implement caller outcome projection by composing existing canonical replay/outcome logic.
-- [ ] Run focused replay/no-lookahead tests, update STATUS and commit.
+- [x] Write failing no-lookahead tests where future price/liquidity mutations cannot alter call-time features.
+- [x] Add thin-liquidity wick fixture that must not count as executable multiple.
+- [x] Implement caller outcome projection by composing existing canonical replay/outcome logic.
+- [x] Run focused replay/no-lookahead tests, update STATUS and commit.
 
 ### Task 6: Caller performance research profile
 
@@ -103,9 +103,9 @@
 **Interfaces:**
 - Produces: `CallerPerformanceProfile` with sample adequacy, early-entry quality, executable win cohorts, MFE/MAE, rug avoidance, consistency, specialization, smart-wallet confirmation and confidence intervals.
 
-- [ ] Write failing tests for sparse sample => `INSUFFICIENT_SAMPLES`, failed/rug calls retained, late caller penalty evidence and no future leakage.
-- [ ] Implement metrics without production weighting or automatic promotion.
-- [ ] Run focused tests, lint/typecheck, update STATUS and commit.
+- [x] Write failing tests for sparse sample => `INSUFFICIENT_SAMPLES`, failed/rug calls retained, late caller penalty evidence and no future leakage.
+- [x] Implement metrics without production weighting or automatic promotion.
+- [x] Run focused tests, lint/typecheck, update STATUS and commit.
 
 ### Task 7: Caller-linked wallet conduct evidence
 
