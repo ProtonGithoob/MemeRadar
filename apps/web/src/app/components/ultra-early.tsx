@@ -99,6 +99,15 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
       <td><Pill label={entry.holderRisk} tone={evidenceTone(entry.holderRisk)} /></td>
       <td className="num">{entry.smartMoneyConfluence === null ? "UNKNOWN" : formatScore(entry.smartMoneyConfluence)}</td>
       <td><Pill label={entry.sellability} tone={evidenceTone(entry.sellability)} /></td>
+      <td className="dt-reasons" title={formatCompactMap(entry.upsideEvidence, 6)}>
+        {formatCompactMap(entry.upsideEvidence, 3)}
+      </td>
+      <td><Pill label={entry.marketIntegrityRisk} tone={evidenceTone(entry.marketIntegrityRisk)} /></td>
+      <td><Pill label={entry.contractDeployerRisk} tone={evidenceTone(entry.contractDeployerRisk)} /></td>
+      <td><Pill label={entry.liquidityExitRisk} tone={evidenceTone(entry.liquidityExitRisk)} /></td>
+      <td className="num">{entry.executionQuality === null ? "UNKNOWN" : displayMetric(entry.executionQuality)}</td>
+      <td className="num">{formatConfidence(entry.evidenceConfidence)}</td>
+      <td><Pill label={entry.evidenceQualityState} tone={evidenceTone(entry.evidenceQualityState)} /></td>
       <td className="num">{entry.firstSeenLatencyMs === null ? "UNKNOWN" : `${displayMetric(entry.firstSeenLatencyMs)}ms`}</td>
     </tr>
   );
@@ -106,7 +115,9 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
 
 const TABLE_HEAD = [
   "Token", "Age", "Score", "Conf", "State", "Risk", "Liquidity", "Impact bps",
-  "Buy velocity", "Creator", "Bundle", "Holder", "Smart $", "Sellable", "1st-seen latency"
+  "Buy velocity", "Creator", "Bundle", "Holder", "Smart $", "Sellable", "Upside evidence",
+  "Market integrity", "Contract / deployer", "Liquidity / exit", "Exec quality", "Evidence conf",
+  "Evidence freshness", "1st-seen latency"
 ];
 
 export function UltraEarlyWorkspace({

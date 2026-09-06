@@ -278,6 +278,13 @@ class EarlyRadarResponse(_StrictModel):
     external_call_lead_time_ms: Decimal | None = None
     hard_block_reasons: list[str] = Field(default_factory=list)
     latency_ms: dict[str, object] = Field(default_factory=dict)
+    upside_evidence: dict[str, object] = Field(default_factory=dict)
+    market_integrity_risk: str = "UNKNOWN"
+    contract_deployer_risk: str = "UNKNOWN"
+    liquidity_exit_risk: str = "UNKNOWN"
+    execution_quality: Decimal | None = None
+    evidence_confidence: Decimal | None = None
+    evidence_quality_state: QualityState = QualityState.UNKNOWN
     evidence_refs: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
     execution_eligible: bool = False
@@ -630,6 +637,13 @@ def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
         external_call_lead_time_ms=cast(Decimal | None, value.external_call_lead_time_ms),
         hard_block_reasons=list(value.hard_block_reasons),
         latency_ms=_mapping(value.latency_ms),
+        upside_evidence=_mapping(value.upside_evidence),
+        market_integrity_risk=cast(str, value.market_integrity_risk),
+        contract_deployer_risk=cast(str, value.contract_deployer_risk),
+        liquidity_exit_risk=cast(str, value.liquidity_exit_risk),
+        execution_quality=cast(Decimal | None, value.execution_quality),
+        evidence_confidence=cast(Decimal | None, value.evidence_confidence),
+        evidence_quality_state=QualityState(value.evidence_quality_state),
         evidence_refs=list(value.evidence_refs),
         reason_codes=list(value.reason_codes),
         execution_eligible=False,

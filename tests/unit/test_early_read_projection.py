@@ -29,6 +29,14 @@ def early_view(
     score: str | None = "91",
     state: EarlyDecisionState = EarlyDecisionState.ENTRY_READY,
     quality: QualityState = QualityState.FRESH,
+    risk_disposition: str = "UNKNOWN",
+    upside_evidence: dict[str, object] | None = None,
+    market_integrity_risk: str | None = None,
+    contract_deployer_risk: str | None = None,
+    liquidity_exit_risk: str | None = None,
+    execution_quality: Decimal | None = None,
+    evidence_confidence: Decimal | None = None,
+    evidence_quality_state: QualityState | None = None,
 ) -> EarlyRadarView:
     return EarlyRadarView(
         candidate_id=uuid4() if candidate_id == "random" else UUID(candidate_id),
@@ -44,6 +52,7 @@ def early_view(
         early_score=None if score is None else Decimal(score),
         early_score_confidence=None if score is None else Decimal("0.84"),
         early_state=state,
+        risk_disposition=risk_disposition,
         buy_velocity={"1s": Decimal("4"), "5s": Decimal("2")},
         buy_acceleration={"1s": Decimal("1.5")},
         unique_buyers={"1s": 4, "5s": 9},
@@ -61,6 +70,13 @@ def early_view(
         latency_ms={"first_seen_to_entry_ready": Decimal("300")},
         evidence_refs=("chain:fixture",),
         reason_codes=("EARLY_SCORE_V1",),
+        upside_evidence={} if upside_evidence is None else upside_evidence,
+        market_integrity_risk=market_integrity_risk,
+        contract_deployer_risk=contract_deployer_risk,
+        liquidity_exit_risk=liquidity_exit_risk,
+        execution_quality=execution_quality,
+        evidence_confidence=evidence_confidence,
+        evidence_quality_state=evidence_quality_state,
     )
 
 
@@ -104,6 +120,34 @@ def test_early_radar_api_returns_explainable_fields_and_stays_get_only() -> None
     assert item["execution_eligible"] is False
     assert item["auto_execution"] == "LOCKED"
     assert client.post("/v1/early-radar").status_code == 405
+
+
+def test_early_radar_keeps_upside_and_risk_evidence_separate() -> None:
+    view = early_view(
+        "00000000-0000-4000-8000-000000000004",
+        risk_disposition="PASS",
+        upside_evidence={"narrative": "CONVERGENT", "smart_wallets": 4},
+        market_integrity_risk="UNKNOWN",
+        contract_deployer_risk="HIGH",
+        liquidity_exit_risk="WARN",
+        execution_quality=Decimal("78"),
+        evidence_confidence=Decimal("0.84"),
+        evidence_quality_state=QualityState.STALE,
+    )
+    service = InMemoryReadQueryService(early_radar=(view,))
+    client = TestClient(create_app(Settings.from_env({}), read_service=service))
+
+    item = client.get("/v1/early-radar", params={"limit": 1}).json()["items"][0]
+
+    assert item["upside_evidence"] == {"narrative": "CONVERGENT", "smart_wallets": 4}
+    assert item["market_integrity_risk"] == "UNKNOWN"
+    assert item["contract_deployer_risk"] == "HIGH"
+    assert item["liquidity_exit_risk"] == "WARN"
+    assert item["execution_quality"] == "78"
+    assert item["evidence_confidence"] == "0.84"
+    assert item["evidence_quality_state"] == "STALE"
+    assert item["risk_disposition"] == "PASS"
+    assert item["execution_eligible"] is False
 
 
 @pytest.mark.parametrize(

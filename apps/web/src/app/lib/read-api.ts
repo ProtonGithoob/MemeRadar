@@ -109,6 +109,13 @@ export interface EarlyRadarRecord {
   externalCallLeadTimeMs: number | null;
   hardBlockReasons: string[];
   latencyMs: Record<string, unknown>;
+  upsideEvidence: Record<string, unknown>;
+  marketIntegrityRisk: string;
+  contractDeployerRisk: string;
+  liquidityExitRisk: string;
+  executionQuality: number | null;
+  evidenceConfidence: number | null;
+  evidenceQualityState: CandidateQuality;
   evidenceRefs: string[];
   reasonCodes: string[];
   asymmetricAlpha?: AsymmetricAlphaProjectionRecord | null;
@@ -654,6 +661,13 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
   const externalCallLeadTimeMs = optionalFiniteNumber(value.external_call_lead_time_ms, 0, 1e12);
   const hardBlockReasons = stringArray(value.hard_block_reasons, 128);
   const latencyMs = safePayload(value.latency_ms ?? {});
+  const upsideEvidence = safePayload(value.upside_evidence ?? {});
+  const marketIntegrityRisk = boundedString(value.market_integrity_risk ?? "UNKNOWN", 32);
+  const contractDeployerRisk = boundedString(value.contract_deployer_risk ?? "UNKNOWN", 32);
+  const liquidityExitRisk = boundedString(value.liquidity_exit_risk ?? "UNKNOWN", 32);
+  const executionQuality = optionalFiniteNumber(value.execution_quality, 0, 100);
+  const evidenceConfidence = optionalFiniteNumber(value.evidence_confidence, 0, 1);
+  const evidenceQualityState = optionalQuality(value.evidence_quality_state ?? "UNKNOWN");
   const evidenceRefs = stringArray(value.evidence_refs, 256);
   const reasonCodes = stringArray(value.reason_codes, 128);
 
@@ -668,7 +682,10 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
     liquidityUsd === undefined || priceImpactBps === undefined || creatorRisk === null ||
     bundleRisk === null || holderRisk === null || smartMoneyConfluence === undefined ||
     sellability === null || shadowEntryStatus === null || externalCallLeadTimeMs === undefined ||
-    hardBlockReasons === null || latencyMs === null || evidenceRefs === null || reasonCodes === null ||
+    hardBlockReasons === null || latencyMs === null || upsideEvidence === null ||
+    marketIntegrityRisk === null || contractDeployerRisk === null || liquidityExitRisk === null ||
+    executionQuality === undefined || evidenceConfidence === undefined || evidenceQualityState === null ||
+    evidenceQualityState === undefined || evidenceRefs === null || reasonCodes === null ||
     value.execution_eligible === true || value.auto_execution !== "LOCKED"
   ) {
     return null;
@@ -727,6 +744,13 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
     externalCallLeadTimeMs,
     hardBlockReasons,
     latencyMs,
+    upsideEvidence,
+    marketIntegrityRisk,
+    contractDeployerRisk,
+    liquidityExitRisk,
+    executionQuality,
+    evidenceConfidence,
+    evidenceQualityState: evidenceQualityState as CandidateQuality,
     evidenceRefs,
     reasonCodes,
     asymmetricAlpha

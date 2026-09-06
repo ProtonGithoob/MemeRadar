@@ -34,6 +34,13 @@ const entry: EarlyRadarRecord = {
   externalCallLeadTimeMs: 15000,
   hardBlockReasons: [],
   latencyMs: { first_seen_to_entry_ready: 300 },
+  upsideEvidence: { narrative: "CONVERGENT", smart_wallets: 4 },
+  marketIntegrityRisk: "UNKNOWN",
+  contractDeployerRisk: "LOW",
+  liquidityExitRisk: "PASS",
+  executionQuality: 78,
+  evidenceConfidence: 0.84,
+  evidenceQualityState: "FRESH",
   evidenceRefs: ["chain:fixture"],
   reasonCodes: ["EARLY_SCORE_V1"]
 };
@@ -57,6 +64,9 @@ describe("UltraEarlyPanel", () => {
     expect(screen.getByText("91")).toBeInTheDocument();
     expect(screen.getByText("$12.0K")).toBeInTheDocument();
     expect(screen.getByText("125ms")).toBeInTheDocument();
+    expect(screen.getByText("narrative=CONVERGENT smart_wallets=4")).toBeInTheDocument();
+    expect(screen.getByText("Market integrity")).toBeInTheDocument();
+    expect(screen.getByText("Evidence freshness")).toBeInTheDocument();
     expect(screen.getByText("ENTRY_READY")).toBeInTheDocument();
   });
 

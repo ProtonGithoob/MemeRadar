@@ -127,6 +127,13 @@ describe("RadarExplorer", () => {
       externalCallLeadTimeMs: null,
       hardBlockReasons: [],
       latencyMs: {},
+      upsideEvidence: {},
+      marketIntegrityRisk: "UNKNOWN",
+      contractDeployerRisk: "LOW",
+      liquidityExitRisk: "PASS",
+      executionQuality: null,
+      evidenceConfidence: 0.5,
+      evidenceQualityState: "FRESH",
       evidenceRefs: [],
       reasonCodes: []
     };

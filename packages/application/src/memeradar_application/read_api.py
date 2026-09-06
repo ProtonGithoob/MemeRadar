@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, Protocol, TypeVar, cast
 from uuid import UUID
 
 from memeradar_domain import (
@@ -683,6 +683,13 @@ class EarlyRadarView:
     reason_codes: tuple[str, ...] = ()
     execution_eligible: bool = False
     asymmetric_alpha: AsymmetricAlphaProjection | Mapping[str, object] | None = None
+    upside_evidence: Mapping[str, object] = field(default_factory=dict)
+    market_integrity_risk: str | None = None
+    contract_deployer_risk: str | None = None
+    liquidity_exit_risk: str | None = None
+    execution_quality: Decimal | int | float | str | None = None
+    evidence_confidence: Decimal | int | float | str | None = None
+    evidence_quality_state: QualityState | str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.candidate_id, UUID) or not isinstance(self.token_id, UUID):
@@ -770,11 +777,92 @@ class EarlyRadarView:
             "unique_buyers",
             "quote_inflow",
             "latency_ms",
+            "upside_evidence",
         ):
             value = getattr(self, field_name)
             if not isinstance(value, Mapping):
                 raise TypeError(f"{field_name} must be a mapping")
             object.__setattr__(self, field_name, safe_read_payload(value))
+        alpha = self.asymmetric_alpha
+        if not self.upside_evidence:
+            derived_upside: dict[str, object] = {}
+            if self.smart_money_confluence is not None:
+                derived_upside["smart_money_confluence"] = self.smart_money_confluence
+            if self.external_call_lead_time_ms is not None:
+                derived_upside["external_call_lead_time_ms"] = self.external_call_lead_time_ms
+            if isinstance(alpha, AsymmetricAlphaProjection):
+                derived_upside["upside_evidence_score"] = alpha.upside_evidence_score
+            elif isinstance(alpha, Mapping) and alpha.get("upside_evidence_score") is not None:
+                derived_upside["upside_evidence_score"] = alpha["upside_evidence_score"]
+            object.__setattr__(self, "upside_evidence", safe_read_payload(derived_upside))
+        for field_name, fallback in (
+            ("market_integrity_risk", self.bundle_risk),
+            ("contract_deployer_risk", self.creator_risk),
+            ("liquidity_exit_risk", self.sellability),
+        ):
+            value = getattr(self, field_name)
+            object.__setattr__(
+                self,
+                field_name,
+                require_text(
+                    fallback if value is None else value,
+                    field_name,
+                    max_length=32,
+                ).upper(),
+            )
+        alpha_execution_quality: Decimal | int | float | str | None = None
+        alpha_confidence: Decimal | int | float | str | None = None
+        if isinstance(alpha, AsymmetricAlphaProjection):
+            alpha_execution_quality = alpha.execution_quality
+            alpha_confidence = alpha.evidence_confidence
+        elif isinstance(alpha, Mapping):
+            alpha_execution_quality = cast(
+                Decimal | int | float | str | None,
+                alpha.get("execution_quality"),
+            )
+            alpha_confidence = cast(
+                Decimal | int | float | str | None,
+                alpha.get("evidence_confidence"),
+            )
+        execution_quality = self.execution_quality
+        if execution_quality is None:
+            execution_quality = alpha_execution_quality
+        object.__setattr__(
+            self,
+            "execution_quality",
+            None
+            if execution_quality is None
+            else bounded_decimal(
+                execution_quality,
+                "execution_quality",
+                Decimal("0"),
+                Decimal("100"),
+            ),
+        )
+        evidence_confidence = self.evidence_confidence
+        if evidence_confidence is None:
+            evidence_confidence = self.early_score_confidence
+        if evidence_confidence is None:
+            evidence_confidence = alpha_confidence
+        object.__setattr__(
+            self,
+            "evidence_confidence",
+            None
+            if evidence_confidence is None
+            else bounded_decimal(
+                evidence_confidence,
+                "evidence_confidence",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
+        object.__setattr__(
+            self,
+            "evidence_quality_state",
+            QualityState(self.first_seen_quality)
+            if self.evidence_quality_state is None
+            else QualityState(self.evidence_quality_state),
+        )
         object.__setattr__(
             self,
             "hard_block_reasons",
@@ -829,6 +917,13 @@ class EarlyRadarView:
                 "external_call_lead_time_ms": self.external_call_lead_time_ms,
                 "hard_block_reasons": self.hard_block_reasons,
                 "latency_ms": self.latency_ms,
+                "upside_evidence": self.upside_evidence,
+                "market_integrity_risk": self.market_integrity_risk,
+                "contract_deployer_risk": self.contract_deployer_risk,
+                "liquidity_exit_risk": self.liquidity_exit_risk,
+                "execution_quality": self.execution_quality,
+                "evidence_confidence": self.evidence_confidence,
+                "evidence_quality_state": QualityState(self.evidence_quality_state).value,
                 "evidence_refs": self.evidence_refs,
                 "reason_codes": self.reason_codes,
                 "execution_eligible": False,
