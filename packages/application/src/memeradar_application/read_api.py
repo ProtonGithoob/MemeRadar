@@ -1830,6 +1830,7 @@ class InMemoryReadQueryService:
         config_versions: Sequence[ConfigVersionView] = (),
         positions: Sequence[PositionView] = (),
         creator_graph: CreatorOutcomeGraph | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.candidates = tuple(candidates)
         self.early_radar = tuple(early_radar)
@@ -1845,6 +1846,7 @@ class InMemoryReadQueryService:
         self.config_versions = tuple(config_versions)
         self.positions = tuple(positions)
         self._creator_graph = creator_graph or CreatorOutcomeGraph()
+        self._clock = clock or (lambda: datetime.now(UTC))
         if any(not isinstance(value, CandidateView) for value in self.candidates):
             raise TypeError("candidates must contain CandidateView values")
         if any(not isinstance(value, EarlyRadarView) for value in self.early_radar):
@@ -1945,13 +1947,21 @@ class InMemoryReadQueryService:
     ) -> Page[ChainOpportunitySnapshot]:
         if not isinstance(query, ChainOpportunityQuery):
             raise TypeError("query must be a ChainOpportunityQuery")
-        values = [
-            value
-            for value in self.chain_opportunities
-            if (query.chain is None or value.chain is query.chain)
-            and (query.quality_state is None or value.quality_state is query.quality_state)
-            and (query.as_of is None or value.as_of <= query.as_of)
-        ]
+        checked_at = query.as_of or ensure_utc(self._clock(), "read_at")
+        values: list[ChainOpportunitySnapshot] = []
+        for value in self.chain_opportunities:
+            if query.chain is not None and value.chain is not query.chain:
+                continue
+            if query.as_of is not None and value.as_of > query.as_of:
+                continue
+            quality_state = value.freshness.state_at(checked_at)
+            if query.quality_state is not None and quality_state is not query.quality_state:
+                continue
+            values.append(
+                value
+                if quality_state is value.quality_state
+                else replace(value, quality_state=quality_state)
+            )
         values.sort(
             key=lambda value: (
                 -value.confidence,

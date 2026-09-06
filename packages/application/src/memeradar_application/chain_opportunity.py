@@ -315,7 +315,16 @@ class ChainOpportunitySnapshot:
                 "id",
                 uuid5(
                     NAMESPACE_URL,
-                    f"{self.version}:{normalized_chain.value}:{as_of.isoformat()}",
+                    json.dumps(
+                        (
+                            self.version,
+                            normalized_chain.value,
+                            as_of.isoformat(),
+                            self.config_hash,
+                        ),
+                        separators=(",", ":"),
+                        ensure_ascii=True,
+                    ),
                 ),
             )
         elif not isinstance(self.id, UUID):
@@ -420,6 +429,18 @@ def _unique_addresses(
     return len(values) if values else None
 
 
+def _supports_opportunity_record(record: _Record, chain: Chain) -> bool:
+    if record.event_type in _TOKEN_TYPES:
+        return _address(record.payload, _TOKEN_FIELDS, chain) is not None
+    if record.event_type in _POOL_TYPES:
+        return _address(record.payload, _POOL_FIELDS, chain) is not None or _decimal(
+            _field(record.payload, _LIQUIDITY_FIELDS),
+            "opportunity liquidity",
+            signed=True,
+        ) is not None
+    return record.event_type in _TRADE_TYPES | _LAUNCH_TYPES | _GRADUATION_TYPES
+
+
 def _sum_field(
     records: Sequence[_Record],
     event_types: frozenset[str],
@@ -516,7 +537,7 @@ class ChainOpportunityAnalyzer:
         chain: Chain,
         observations: Sequence[Observation],
         as_of: datetime,
-    ) -> tuple[tuple[_Record, ...], bool, bool]:
+    ) -> tuple[tuple[_Record, ...], tuple[_Record, ...], bool, bool]:
         if isinstance(observations, str | bytes | bytearray):
             raise TypeError("observations must be a sequence")
         if len(observations) > self.policy.max_observations:
@@ -544,7 +565,8 @@ class ChainOpportunityAnalyzer:
                 continue
             records.append(_Record(observation, _event_type(observation), event_at))
         deduplicated, conflict = _deduplicate(records)
-        return deduplicated, future, conflict
+        trace_records = tuple(sorted(records, key=_record_order_key))
+        return deduplicated, trace_records, future, conflict
 
     def _snapshot(
         self,
@@ -620,14 +642,26 @@ class ChainOpportunityAnalyzer:
         graduation_count = _count(current_5m, _GRADUATION_TYPES)
         successful_ratio = (
             None
-            if launch_count is None or graduation_count is None
+            if (
+                launch_count is None
+                or graduation_count is None
+                or graduation_count > launch_count
+            )
             else Decimal(graduation_count) / Decimal(launch_count)
         )
         evidence_records = tuple(
             record
             for record in _window(records, as_of, duration_24h)
         )
-        providers = tuple(sorted({record.provider for record in current_5m}))
+        providers = tuple(
+            sorted(
+                {
+                    record.provider
+                    for record in current_5m
+                    if _supports_opportunity_record(record, chain)
+                }
+            )
+        )
         source_diversity_confidence = min(
             Decimal("1"), Decimal(len(providers)) / Decimal(self.policy.source_diversity_target)
         )
@@ -647,6 +681,12 @@ class ChainOpportunityAnalyzer:
         if quality_state is not QualityState.FRESH:
             confidence = Decimal("0")
         reason_values = list(reason_codes)
+        if (
+            launch_count is not None
+            and graduation_count is not None
+            and graduation_count > launch_count
+        ):
+            reason_values.append(_reason("CHAIN_OPPORTUNITY_LAUNCH_OUTCOME_CONFLICT"))
         if not current_24h or known_components == 0:
             reason_values.append(_reason("CHAIN_OPPORTUNITY_EVIDENCE_MISSING"))
         if len(providers) < self.policy.source_diversity_target:
@@ -705,7 +745,11 @@ class ChainOpportunityAnalyzer:
         normalized_chain = normalize_chain(chain)
         checked_at = ensure_utc(as_of, "as_of")
         normalized_config_hash = require_text(config_hash, "config_hash")
-        records, future, conflict = self._records(normalized_chain, observations, checked_at)
+        records, trace_records, future, conflict = self._records(
+            normalized_chain,
+            observations,
+            checked_at,
+        )
         if future:
             return self._snapshot(
                 chain=normalized_chain,
@@ -713,7 +757,7 @@ class ChainOpportunityAnalyzer:
                 config_hash=normalized_config_hash,
                 quality_state=QualityState.INVALID,
                 reason_codes=(_reason("CHAIN_OPPORTUNITY_FUTURE_EVIDENCE"),),
-                records=records,
+                records=trace_records,
                 force_empty=True,
             )
         if conflict:
@@ -723,7 +767,7 @@ class ChainOpportunityAnalyzer:
                 config_hash=normalized_config_hash,
                 quality_state=QualityState.CONFLICTED,
                 reason_codes=(_reason("CHAIN_OPPORTUNITY_DUPLICATE_CONFLICT"),),
-                records=records,
+                records=trace_records,
                 force_empty=True,
             )
         relevant = tuple(

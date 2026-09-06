@@ -237,6 +237,8 @@ def test_chain_opportunity_quality_conflicts_are_order_independent() -> None:
     assert first.quality_state is QualityState.CONFLICTED
     assert first.transaction_count_5m is None
     assert first.provenance == second.provenance
+    assert len(first.provenance) == 2
+    assert first.evidence_refs == ("fixture-chain:same-source",)
     assert first.to_mapping() == second.to_mapping()
 
 
@@ -331,16 +333,50 @@ def test_chain_opportunity_source_diversity_uses_current_window_evidence() -> No
         )
         for index in (1, 2)
     )
+    irrelevant = observation(
+        "irrelevant",
+        "unrecognized_event",
+        NOW - timedelta(seconds=1),
+        provider="irrelevant-provider",
+    )
 
     snapshot = ChainOpportunityAnalyzer().build(
         "bnb",
-        observations=(current, *older),
+        observations=(current, *older, irrelevant),
         as_of=NOW,
         config_hash="fixture-opportunity-v1",
     )
 
     assert snapshot.source_independence_count == 1
     assert snapshot.source_diversity_confidence == Decimal("0.3333333333333333333333333333")
+
+
+def test_chain_opportunity_returns_unknown_for_impossible_launch_outcomes() -> None:
+    events = (
+        observation("launch", "launch", NOW - timedelta(seconds=2)),
+        observation("graduation-1", "graduation", NOW - timedelta(seconds=1)),
+        observation("graduation-2", "graduation", NOW - timedelta(seconds=1)),
+    )
+
+    snapshot = ChainOpportunityAnalyzer().build(
+        "bnb",
+        observations=events,
+        as_of=NOW,
+        config_hash="fixture-opportunity-v1",
+    )
+
+    assert snapshot.launchpad_launch_count_5m == 1
+    assert snapshot.launchpad_graduation_count_5m == 2
+    assert snapshot.successful_launch_ratio_5m is None
+    assert "CHAIN_OPPORTUNITY_LAUNCH_OUTCOME_CONFLICT" in snapshot.reason_code_values
+
+
+def test_chain_opportunity_snapshot_identity_includes_config_hash() -> None:
+    analyzer = ChainOpportunityAnalyzer()
+    first = analyzer.build("bnb", as_of=NOW, config_hash="config-a")
+    second = analyzer.build("bnb", as_of=NOW, config_hash="config-b")
+
+    assert first.id != second.id
 
 
 def test_chain_opportunity_keeps_stale_evidence_traceable_without_counting_it() -> None:

@@ -66,6 +66,7 @@ def _snapshot(
 def test_chain_opportunity_route_exposes_components_and_provenance() -> None:
     service = InMemoryReadQueryService(
         chain_opportunities=(_snapshot("bnb", "0.8"), _snapshot("solana", "0.6")),
+        clock=lambda: NOW,
     )
     client = TestClient(create_app(Settings.from_env({}), read_service=service))
 
@@ -138,6 +139,7 @@ def test_chain_opportunity_route_paginates_and_applies_event_time_and_quality_fi
                 quality_state=QualityState.STALE,
             ),
         ),
+        clock=lambda: NOW,
     )
     client = TestClient(create_app(Settings.from_env({}), read_service=service))
 
@@ -163,3 +165,25 @@ def test_chain_opportunity_route_paginates_and_applies_event_time_and_quality_fi
     assert second.json()["items"][0]["chain"] == "solana"
     assert [item["chain"] for item in bounded.json()["items"]] == ["solana"]
     assert [item["chain"] for item in fresh.json()["items"]] == ["bnb", "solana"]
+
+
+def test_chain_opportunity_route_resolves_expired_freshness() -> None:
+    service = InMemoryReadQueryService(
+        chain_opportunities=(
+            _snapshot("bnb", "0.8"),
+            _snapshot(
+                "robinhood",
+                "0.7",
+                as_of=NOW - timedelta(minutes=10),
+            ),
+        ),
+        clock=lambda: NOW,
+    )
+    client = TestClient(create_app(Settings.from_env({}), read_service=service))
+
+    response = client.get("/v1/chain-opportunities")
+    fresh = client.get("/v1/chain-opportunities", params={"quality_state": "FRESH"})
+
+    assert response.status_code == fresh.status_code == 200
+    assert response.json()["items"][1]["quality_state"] == "STALE"
+    assert [item["chain"] for item in fresh.json()["items"]] == ["bnb"]
