@@ -229,6 +229,26 @@ def test_outcomes_use_only_post_call_prices_and_are_order_independent() -> None:
     assert outcome.execution_eligible(NOW) is False
 
 
+def test_outcomes_preserve_first_multiple_crossing_time_from_market_path() -> None:
+    current_call = call("post-crossing", "author-1", NOW - timedelta(hours=2))
+    observations = (
+        market("price-baseline", current_call.called_at + timedelta(minutes=1), "1.00"),
+        market("price-crossing", current_call.called_at + timedelta(minutes=30), "2.00"),
+        market("price-after-crossing", current_call.called_at + timedelta(minutes=45), "1.20"),
+    )
+
+    outcome = CallPerformanceAnalyzer(policy=policy()).reconstruct_outcomes(
+        (current_call,),
+        observations,
+        now=NOW,
+        config_hash="call-performance-test",
+    )[0]
+
+    assert outcome.mfe["1h"] == Decimal("1.00")
+    assert outcome.forward_returns["1h"] == Decimal("0.20")
+    assert outcome.time_to_multiple_seconds["2x"] == Decimal("1800.00")
+
+
 def test_missing_market_and_risk_evidence_remains_nullable_and_unknown() -> None:
     current_call = call("post-1", "author-1", NOW - timedelta(minutes=10))
     outcome = CallPerformanceAnalyzer(policy=policy()).reconstruct_outcomes(

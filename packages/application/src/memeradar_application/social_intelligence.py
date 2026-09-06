@@ -707,6 +707,22 @@ def _provenance(values: Sequence[Provenance]) -> tuple[Provenance, ...]:
     return tuple(result)
 
 
+def _sorted_provenance(values: Sequence[Provenance]) -> tuple[Provenance, ...]:
+    return tuple(
+        sorted(
+            _provenance(values),
+            key=lambda value: (
+                value.provider,
+                value.source_id,
+                value.observed_at,
+                value.parser_version,
+                value.raw_payload_hash or "",
+                value.raw_payload_ref or "",
+            ),
+        )
+    )
+
+
 def _decimal_mapping(values: Mapping[str, Decimal], field: str) -> Mapping[str, Decimal]:
     if not isinstance(values, Mapping):
         raise TypeError(f"{field} must be a mapping")
@@ -1337,15 +1353,6 @@ _MULTIPLE_THRESHOLDS = (
     ("50x", Decimal("49")),
     ("100x", Decimal("99")),
 )
-_DEFAULT_HORIZON_DURATIONS = {
-    "5m": timedelta(minutes=5),
-    "15m": timedelta(minutes=15),
-    "1h": timedelta(hours=1),
-    "6h": timedelta(hours=6),
-    "24h": timedelta(hours=24),
-}
-
-
 class ResearcherPromoterProfile(str, Enum):
     """Historical call-timing cohort label; never an author trust tier."""
 
@@ -1421,6 +1428,7 @@ class KOLWalletLinkage:
     provenance: tuple[Provenance, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     as_of: datetime | None = None
+    observed_at: datetime | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "author_id", require_text(self.author_id, "author_id"))
@@ -1443,10 +1451,13 @@ class KOLWalletLinkage:
             "evidence_refs",
             normalize_texts(self.evidence_refs, "evidence_refs"),
         )
-        if not self.provenance and not self.evidence_refs:
-            raise ValueError("wallet linkage evidence is required")
+        if not self.provenance:
+            raise ValueError("wallet linkage evidence provenance is required")
         if self.as_of is not None:
             object.__setattr__(self, "as_of", ensure_utc(self.as_of, "as_of"))
+        if self.observed_at is None:
+            raise ValueError("wallet observation timestamp is required")
+        object.__setattr__(self, "observed_at", ensure_utc(self.observed_at, "observed_at"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1499,10 +1510,18 @@ class KOLCallContext:
         )
         if self.paid_promotion is not None and not self.provenance and not self.evidence_refs:
             raise ValueError("paid-promotion evidence is required")
+        if (
+            (self.deleted_post is not None or self.edited_post is not None)
+            and not self.provenance
+            and not self.evidence_refs
+        ):
+            raise ValueError("post-state evidence is required")
         if self.wallet_linkage is not None and not isinstance(
             self.wallet_linkage, KOLWalletLinkage
         ):
             raise TypeError("wallet_linkage must be a KOLWalletLinkage or None")
+        if self.wallet_linkage is not None and self.wallet_linkage.chain is not self.chain:
+            raise ValueError("wallet linkage chain must match call context chain")
 
 
 def _optional_rate(value: Decimal | None, field: str) -> Decimal | None:
@@ -1927,6 +1946,7 @@ class KOLSpecializationPolicy:
     prior_sample_count: int = 1
     minimum_classification_sample_count: int = 2
     minimum_classification_confidence: Decimal = Decimal("0.60")
+    classification_rate_threshold: Decimal = Decimal("0.60")
     max_outcomes: int = 10_000
     version: str = KOL_SPECIALIZATION_VERSION
 
@@ -1958,6 +1978,16 @@ class KOLSpecializationPolicy:
                 Decimal("1"),
             ),
         )
+        object.__setattr__(
+            self,
+            "classification_rate_threshold",
+            bounded_decimal(
+                self.classification_rate_threshold,
+                "classification_rate_threshold",
+                Decimal("0"),
+                Decimal("1"),
+            ),
+        )
         object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
 
 
@@ -1967,6 +1997,7 @@ class _KOLSample:
     context: KOLCallContext | None
     future: bool
     linkage_valid: bool
+    context_chain_valid: bool
 
 
 class KOLSpecializationAnalyzer:
@@ -2025,7 +2056,10 @@ class KOLSpecializationAnalyzer:
                 continue
             seen[outcome.call_id] = outcome
             context = normalized_contexts.get(outcome.call_id)
+            linkage = None if context is None else context.wallet_linkage
             future = outcome.as_of > checked_at or outcome.call.called_at > checked_at
+            future = future or outcome.call.observed_at > checked_at
+            future = future or outcome.call.ingested_at > checked_at
             future = future or any(
                 provenance.observed_at > checked_at for provenance in outcome.provenance
             )
@@ -2036,17 +2070,37 @@ class KOLSpecializationAnalyzer:
                 future = future or any(
                     provenance.observed_at > checked_at for provenance in context.provenance
                 )
-                if context.wallet_linkage is not None and context.wallet_linkage.as_of is not None:
-                    future = future or context.wallet_linkage.as_of > checked_at
-            linkage_valid = context is not None and context.wallet_linkage is not None
-            if linkage_valid and context is not None and context.wallet_linkage is not None:
-                linkage_valid = context.wallet_linkage.author_id == outcome.call.author_id
+                if linkage is not None:
+                    if linkage.as_of is not None:
+                        future = future or linkage.as_of > checked_at
+                    if linkage.observed_at is not None:
+                        future = future or linkage.observed_at > checked_at
+            context_chain_valid = (
+                context is not None and context.chain is outcome.call.chain
+            )
+            linkage_valid = (
+                context_chain_valid and linkage is not None
+            )
+            if linkage_valid and linkage is not None:
+                linkage_valid = linkage.author_id == outcome.call.author_id
+                if linkage.observed_at is None:
+                    linkage_valid = False
+                else:
+                    derived_timing = (
+                        WalletLinkTiming.BEFORE_POST
+                        if linkage.observed_at < outcome.call.called_at
+                        else WalletLinkTiming.AFTER_POST
+                        if linkage.observed_at > outcome.call.called_at
+                        else None
+                    )
+                    linkage_valid = linkage_valid and derived_timing is linkage.timing
             grouped[outcome.call.author_id].append(
                 _KOLSample(
                     outcome=outcome,
                     context=context,
                     future=future,
                     linkage_valid=linkage_valid,
+                    context_chain_valid=context_chain_valid,
                 )
             )
         return tuple(
@@ -2069,31 +2123,33 @@ class KOLSpecializationAnalyzer:
         now: datetime,
         config_hash: str,
     ) -> KOLSpecializationProfile:
-        overall = self._slice(samples)
+        overall = self._slice(samples, now=now)
         chains: dict[str, list[_KOLSample]] = defaultdict(list)
         archetypes: dict[str, list[_KOLSample]] = defaultdict(list)
         narratives: dict[str, list[_KOLSample]] = defaultdict(list)
         for sample in samples:
             context = sample.context
-            chain = "UNKNOWN" if context is None else normalize_chain(context.chain).value
+            if context is not None and sample.context_chain_valid and not sample.future:
+                chain = normalize_chain(context.chain).value
+                labels = context.archetypes or ("UNKNOWN",)
+                narrative = context.narrative_type or "UNKNOWN"
+            else:
+                chain = "UNKNOWN"
+                labels = ("UNKNOWN",)
+                narrative = "UNKNOWN"
             chains[chain].append(sample)
-            labels = (
-                ("UNKNOWN",)
-                if context is None or not context.archetypes
-                else context.archetypes
-            )
             for label in labels:
                 archetypes[label].append(sample)
-            narrative = (
-                "UNKNOWN"
-                if context is None or context.narrative_type is None
-                else context.narrative_type
-            )
             narratives[narrative].append(sample)
         wallet_samples = [
             sample
             for sample in samples
-            if not sample.future and sample.linkage_valid and sample.context is not None
+            if (
+                not sample.future
+                and sample.context_chain_valid
+                and sample.linkage_valid
+                and sample.context is not None
+            )
         ]
         before_count = sum(
             sample.context is not None
@@ -2115,11 +2171,11 @@ class KOLSpecializationAnalyzer:
         timing_known = sum(
             sample.context is not None and sample.context.breakout_at is not None
             for sample in samples
-            if not sample.future
+            if self._is_matured(sample, now)
         )
         timing_coverage = (
-            Decimal(timing_known) / Decimal(overall.call_count)
-            if overall.call_count
+            Decimal(timing_known) / Decimal(overall.matured_call_count)
+            if overall.matured_call_count
             else Decimal("0")
         )
         profile_confidence = _quantize(overall.confidence * timing_coverage)
@@ -2137,10 +2193,26 @@ class KOLSpecializationAnalyzer:
             reasons.append("KOL_FUTURE_EVIDENCE")
         if any(sample.outcome.quality_state is not QualityState.FRESH for sample in samples):
             reasons.append("KOL_OUTCOME_EVIDENCE_NOT_FRESH")
+        if any(
+            sample.context is not None
+            and sample.context.wallet_linkage is not None
+            and not sample.linkage_valid
+            for sample in samples
+        ):
+            reasons.append("KOL_WALLET_LINKAGE_INVALID")
+        if any(
+            sample.context is not None
+            and not sample.context_chain_valid
+            for sample in samples
+        ):
+            reasons.append("KOL_CONTEXT_CHAIN_MISMATCH")
         if wallet_samples:
             reasons.append("KOL_WALLET_LINKAGE_EXPLICIT")
         elif any(
-            sample.context is not None and sample.context.wallet_linkage is not None
+            sample.context is not None
+            and sample.context.wallet_linkage is not None
+            and sample.context.wallet_linkage.author_id
+            != sample.outcome.call.author_id
             for sample in samples
         ):
             reasons.append("KOL_WALLET_LINKAGE_AUTHOR_MISMATCH")
@@ -2172,12 +2244,17 @@ class KOLSpecializationAnalyzer:
             as_of=now,
             expires_at=now + self.policy.evidence_ttl,
             overall=overall,
-            by_chain={key: self._slice(tuple(value)) for key, value in sorted(chains.items())},
+            by_chain={
+                key: self._slice(tuple(value), now=now)
+                for key, value in sorted(chains.items())
+            },
             by_archetype={
-                key: self._slice(tuple(value)) for key, value in sorted(archetypes.items())
+                key: self._slice(tuple(value), now=now)
+                for key, value in sorted(archetypes.items())
             },
             by_narrative={
-                key: self._slice(tuple(value)) for key, value in sorted(narratives.items())
+                key: self._slice(tuple(value), now=now)
+                for key, value in sorted(narratives.items())
             },
             profile=profile,
             profile_confidence=profile_confidence,
@@ -2185,8 +2262,8 @@ class KOLSpecializationAnalyzer:
             wallet_before_post_count=before_count,
             wallet_after_post_count=after_count,
             wallet_linkage_confidence=_median_decimal(linkage_confidences),
-            provenance=tuple(provenance),
-            evidence_refs=tuple(evidence_refs),
+            provenance=_sorted_provenance(provenance),
+            evidence_refs=tuple(sorted(evidence_refs)),
             reason_codes=tuple(dict.fromkeys(reasons)),
             config_hash=config_hash,
             quality_state=overall.quality_state,
@@ -2199,26 +2276,32 @@ class KOLSpecializationAnalyzer:
         confidence: Decimal,
     ) -> ResearcherPromoterProfile:
         if (
-            overall.call_count < self.policy.minimum_classification_sample_count
+            overall.matured_call_count < self.policy.minimum_classification_sample_count
             or confidence < self.policy.minimum_classification_confidence
             or overall.early_call_rate is None
             or overall.post_breakout_call_rate is None
         ):
             return ResearcherPromoterProfile.UNKNOWN
         early, post = overall.early_call_rate, overall.post_breakout_call_rate
-        if early >= Decimal("0.60") and post < Decimal("0.40"):
+        threshold = self.policy.classification_rate_threshold
+        if early >= threshold and post < Decimal("1") - threshold:
             return ResearcherPromoterProfile.RESEARCHER
-        if post >= Decimal("0.60") and early < Decimal("0.40"):
+        if post >= threshold and early < Decimal("1") - threshold:
             return ResearcherPromoterProfile.PROMOTER
         return ResearcherPromoterProfile.MIXED
 
-    def _slice(self, samples: Sequence[_KOLSample]) -> HistoricalCallSlice:
+    def _slice(
+        self,
+        samples: Sequence[_KOLSample],
+        *,
+        now: datetime,
+    ) -> HistoricalCallSlice:
         states = [
-            QualityState.INVALID if sample.future else sample.outcome.quality_state
+            self._sample_quality(sample, now)
             for sample in samples
         ]
         quality = _combined_quality(states)
-        matured = [sample for sample in samples if self._is_matured(sample)]
+        matured = [sample for sample in samples if self._is_matured(sample, now)]
         outcome_counts = {label.value: 0 for label in HistoricalOutcomeLabel}
         hit_counts = {label: 0 for label, _ in _MULTIPLE_THRESHOLDS}
         hit_times: dict[str, list[Decimal]] = {label: [] for label, _ in _MULTIPLE_THRESHOLDS}
@@ -2230,7 +2313,7 @@ class KOLSpecializationAnalyzer:
         rug_values: list[bool] = []
         severe_values: list[bool] = []
         for sample in samples:
-            if not self._is_matured(sample):
+            if not self._is_matured(sample, now):
                 outcome_counts[HistoricalOutcomeLabel.UNKNOWN.value] += 1
                 continue
             outcome_value = sample.outcome
@@ -2257,6 +2340,8 @@ class KOLSpecializationAnalyzer:
                 outcome_counts[HistoricalOutcomeLabel.WINNER.value] += 1
             else:
                 outcome_counts[HistoricalOutcomeLabel.NON_WINNER.value] += 1
+            if self._risk_quality(sample, now) is not QualityState.FRESH:
+                continue
             rugged = outcome_value.rugged
             severe = rugged is True or outcome_value.liquidity_collapsed is True
             if rugged is not None:
@@ -2273,7 +2358,11 @@ class KOLSpecializationAnalyzer:
         paid_values: list[bool] = []
         wallet_timings: list[WalletLinkTiming] = []
         for sample in samples:
-            if sample.future or sample.context is None:
+            if (
+                not self._is_matured(sample, now)
+                or sample.context is None
+                or not sample.context_chain_valid
+            ):
                 continue
             context = sample.context
             if context.breakout_at is not None:
@@ -2344,8 +2433,30 @@ class KOLSpecializationAnalyzer:
             quality_state=quality,
         )
 
-    def _is_matured(self, sample: _KOLSample) -> bool:
-        if sample.future or sample.outcome.quality_state is not QualityState.FRESH:
+    @staticmethod
+    def _market_quality(sample: _KOLSample, now: datetime) -> QualityState:
+        if sample.future:
+            return QualityState.INVALID
+        return sample.outcome.freshness.state_at(now)
+
+    @classmethod
+    def _risk_quality(cls, sample: _KOLSample, now: datetime) -> QualityState:
+        market_quality = cls._market_quality(sample, now)
+        if market_quality is not QualityState.FRESH:
+            return market_quality
+        return sample.outcome.risk_quality_state
+
+    @classmethod
+    def _sample_quality(cls, sample: _KOLSample, now: datetime) -> QualityState:
+        return _combined_quality(
+            (
+                cls._market_quality(sample, now),
+                cls._risk_quality(sample, now),
+            )
+        )
+
+    def _is_matured(self, sample: _KOLSample, now: datetime) -> bool:
+        if self._market_quality(sample, now) is not QualityState.FRESH:
             return False
         value = sample.outcome.forward_returns.get(self.policy.reference_horizon)
         state = sample.outcome.horizon_states.get(self.policy.reference_horizon)
@@ -2356,18 +2467,22 @@ class KOLSpecializationAnalyzer:
         outcome: SocialCallOutcome,
         threshold: Decimal,
     ) -> tuple[bool, Decimal | None]:
-        candidates: list[Decimal] = []
-        for label, value in outcome.forward_returns.items():
-            state = outcome.horizon_states.get(label)
+        multiple_label = next(
+            (label for label, configured_threshold in _MULTIPLE_THRESHOLDS
+             if configured_threshold == threshold),
+            None,
+        )
+        for horizon_label, value in outcome.mfe.items():
+            state = outcome.horizon_states.get(horizon_label)
             if state is not OutcomeHorizonState.COMPLETE or value is None or value < threshold:
                 continue
-            duration = _DEFAULT_HORIZON_DURATIONS.get(label)
-            if duration is None:
-                continue
-            candidates.append(Decimal(str(duration.total_seconds())))
-        if not candidates:
-            return False, None
-        return True, min(candidates)
+            crossing_time = (
+                None
+                if multiple_label is None
+                else outcome.time_to_multiple_seconds.get(multiple_label)
+            )
+            return True, crossing_time
+        return False, None
 
 
 def _true_rate(values: Sequence[bool]) -> Decimal | None:

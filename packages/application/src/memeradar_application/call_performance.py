@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
@@ -11,13 +11,15 @@ from types import MappingProxyType
 from uuid import UUID
 
 from memeradar_domain import (
+    Chain,
     ExternalCallBenchmark,
     Freshness,
     Observation,
     Provenance,
     QualityState,
     ReasonCode,
-    require_solana_address,
+    normalize_chain,
+    require_chain_address,
 )
 from memeradar_domain.common import (
     bounded_decimal,
@@ -54,6 +56,14 @@ _CREATION_KINDS = frozenset(
         "onchain.token_metadata",
     }
 )
+_MULTIPLE_THRESHOLDS = (
+    ("2x", Decimal("1")),
+    ("5x", Decimal("4")),
+    ("10x", Decimal("9")),
+    ("20x", Decimal("19")),
+    ("50x", Decimal("49")),
+    ("100x", Decimal("99")),
+)
 _QUALITY_PRIORITY = {
     QualityState.FRESH: 0,
     QualityState.STALE: 1,
@@ -84,6 +94,7 @@ class SocialCall:
     source_post_ids: tuple[str, ...] = ()
     token_id: UUID | None = None
     referenced_mint: str | None = None
+    chain: Chain | str = Chain.SOLANA
     quality_state: QualityState = QualityState.FRESH
     source_post_id: str | None = None
     evidence_refs: tuple[str, ...] = ()
@@ -93,6 +104,8 @@ class SocialCall:
             raise TypeError("provenance must be a Provenance")
         if not isinstance(self.token_id, UUID | type(None)):
             raise TypeError("token_id must be a UUID or None")
+        normalized_chain = normalize_chain(self.chain)
+        object.__setattr__(self, "chain", normalized_chain)
         occurred, observed, ingested = ensure_ordered_timestamps(
             self.called_at,
             self.observed_at,
@@ -110,7 +123,7 @@ class SocialCall:
             object.__setattr__(
                 self,
                 "referenced_mint",
-                require_solana_address(self.referenced_mint, "referenced_mint"),
+                require_chain_address(self.referenced_mint, normalized_chain, "referenced_mint"),
             )
         if self.token_id is None and self.referenced_mint is None:
             raise ValueError("token identity is required")
@@ -258,6 +271,7 @@ class SocialCallOutcome:
     version: str = "call-performance-v1"
     rug_exposure: bool | None = None
     liquidity_collapse: bool | None = None
+    time_to_multiple_seconds: Mapping[str, Decimal | None] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.call, SocialCall):
@@ -298,6 +312,16 @@ class SocialCallOutcome:
         object.__setattr__(self, "mfe", normalized_mfe)
         object.__setattr__(self, "mae", normalized_mae)
         object.__setattr__(self, "horizon_states", normalized_states)
+        object.__setattr__(
+            self,
+            "time_to_multiple_seconds",
+            _horizon_decimal_mapping(
+                self.time_to_multiple_seconds,
+                "time_to_multiple_seconds",
+                lower=Decimal("0"),
+                upper=Decimal("315360000"),
+            ),
+        )
         rugged = _resolve_optional_bool_alias(
             self.rugged,
             self.rug_exposure,
@@ -1025,6 +1049,9 @@ class CallPerformanceAnalyzer:
         mfe: dict[str, Decimal | None] = {}
         mae: dict[str, Decimal | None] = {}
         horizon_states: dict[str, OutcomeHorizonState] = {}
+        time_to_multiple_seconds: dict[str, Decimal | None] = {
+            label: None for label, _ in _MULTIPLE_THRESHOLDS
+        }
         baseline = valid_market[0][2] if valid_market else None
         if baseline is None:
             reasons.append("FORWARD_OUTCOME_EVIDENCE_MISSING")
@@ -1054,6 +1081,16 @@ class CallPerformanceAnalyzer:
                 if call.called_at + duration <= now
                 else OutcomeHorizonState.PARTIAL
             )
+        if baseline is not None:
+            maximum_time = call.called_at + self.policy.horizons[-1][1]
+            for label, threshold in _MULTIPLE_THRESHOLDS:
+                crossing_times = [
+                    Decimal(str((event_at - call.called_at).total_seconds()))
+                    for event_at, _observation, price in valid_market
+                    if event_at <= maximum_time and (price / baseline) - Decimal("1") >= threshold
+                ]
+                if crossing_times:
+                    time_to_multiple_seconds[label] = _quantize(min(crossing_times))
         reference_return = forward_returns[self.policy.reference_horizon]
         if reference_return is None:
             states.append(QualityState.UNKNOWN)
@@ -1124,6 +1161,7 @@ class CallPerformanceAnalyzer:
             quality_state=quality,
             risk_quality_state=risk_quality,
             version=self.policy.version,
+            time_to_multiple_seconds=time_to_multiple_seconds,
         )
 
     def _risk_flags(
