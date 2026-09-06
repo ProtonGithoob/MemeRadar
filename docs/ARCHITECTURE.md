@@ -229,6 +229,7 @@ Each provider adapter implements a small port such as:
 - MarketDataPort
 - OnChainPort
 - SocialDataPort
+- SocialCallPort
 - RiskDataPort
 - QuotePort
 - ExecutionPort

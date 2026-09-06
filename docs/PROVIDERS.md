@@ -19,6 +19,7 @@ execution modes.
 | `PAIR_DISCOVERY` | DexScreener | Birdeye | enabled chain and token identity are required; coverage can be UNKNOWN |
 | `SOCIAL_METADATA` | DexScreener declared links | existing compliant provider | metadata only; no X scraping |
 | `SOCIAL_ANALYTICS` | unavailable | existing external social provider | no fabricated counts, sentiment or velocity |
+| `SOCIAL_CALLS` | unavailable unless configured | compliant social/X and Telegram Bot API call adapters | public caller evidence only; unresolved symbols remain UNKNOWN |
 | `RISK_SUMMARY` | local deterministic checks | public/authenticated RugCheck evidence | third-party scores never replace local gates |
 | `WALLET_ENRICHMENT` | local tracking/scoring/graphs/flows | external wallet enrichment | labels remain corroborating evidence |
 | `NARRATIVE` | local Ollama or disabled | explicitly configured external LLM | advisory output only |
@@ -191,17 +192,19 @@ Sprint 2.1 defines the provider ports in `packages/application/src/memeradar_app
 
 Shared request contexts carry a bounded correlation ID and optional deadline. The keyless provider framework in `packages/providers/src/memeradar_providers/` supplies callback-based transport resilience, health/quota/freshness projections, recursively redacted fixture recording and deterministic fake responses. These seams are tested without provider credentials; live acceptance remains a separate adapter-phase concern.
 
-## Telegram notification adapter
+## Telegram notification and caller adapter
 
 Sprint 7.1 implements `TelegramNotificationAdapter` in
 `packages/providers/src/memeradar_providers/telegram.py`. It is an
-HTTPS-only, bounded adapter for Telegram Bot API `sendMessage` and `getMe`,
-using the shared transport timeout/retry/rate-limit policy and forwarding a
-bounded correlation ID. It validates destination/text fields, keeps the bot
-token out of representations and error messages, and maps authentication,
-rate-limit, timeout, transport and schema failures to provider error classes
-without retaining response bodies or raw provider text. A successful send
-returns only a safe provider message ID and delivery timestamp.
+HTTPS-only, bounded adapters for Telegram Bot API `sendMessage`, `getMe` and
+read-only `getUpdates`, using the shared transport timeout/retry/rate-limit
+policy and forwarding a bounded correlation ID. `TelegramCallAdapter` extends
+the existing notification adapter rather than creating another provider
+framework. It normalizes messages and channel posts into
+`SocialCallObservation`, preserves chat/message identity, published versus
+observed/ingested timestamps, caller, chain-qualified address or unresolved
+reference, intent and supplied edit/delete evidence, and deduplicates exact
+updates. It never scrapes Telegram pages or authorizes execution.
 
 `FixtureNotificationAdapter` provides deterministic credential-free delivery
 for replay and local integration tests. `make telegram-doctor` reports only
@@ -209,8 +212,8 @@ configuration presence, safe health metadata and protected modes; missing
 endpoint/token/chat configuration is `BLOCKED_EXTERNAL`, while configured
 health failures are classified without printing credentials. The current
 checkout has no Telegram configuration, so no live provider success is
-claimed. Telegram notification state remains downstream of deterministic
-analysis and cannot authorize execution.
+claimed. Telegram notification and caller evidence remain downstream of
+deterministic analysis and cannot authorize execution.
 
 The Sprint 7.2 read API is not a provider adapter. Its application
 `ReadQueryPort` consumes normalized views, and the SQLAlchemy implementation
@@ -698,6 +701,14 @@ of token identity. URL/mention-insensitive SHA-256 text fingerprints identify
 copied-text clusters; exact duplicate source IDs are collapsed while
 conflicting duplicates fail as schema errors. All normalized mentions remain
 freshness-aware advisory evidence and carry no execution authority.
+
+The same adapter also exposes `search_calls` through `SocialCallPort`. Its
+shared call normalizer accepts explicit Solana, BNB and Robinhood-compatible
+EVM chain/address fields, retains ticker/name/address references when an asset
+cannot be resolved, and extracts bounded intent, entry/target, disclosure and
+edit/delete evidence. It uses only the configured compliant `/v1/search` seam;
+missing configuration and provider outages remain optional/degraded and never
+become a boot dependency.
 
 `make social-doctor` performs one bounded read-only `/health` call when both
 `SOCIAL_API_URL` and `SOCIAL_API_KEY` are configured. The redacted JSON report

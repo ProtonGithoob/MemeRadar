@@ -47,7 +47,7 @@ from .narrative import (
 from .rugcheck import RugCheckRestAdapter
 from .social import SocialRestAdapter
 from .solana_rpc import SolanaRpcAdapter
-from .telegram import TelegramNotificationAdapter
+from .telegram import TelegramCallAdapter
 from .transport import CapabilityUnavailableError, ProviderError, ProviderTransport
 
 LOGGER = logging.getLogger(__name__)
@@ -510,7 +510,7 @@ def build_provider_bundle(
         narrative = BoundedNarrativeFallback((ollama, DisabledNarrativeAdapter()))
 
     telegram = (
-        TelegramNotificationAdapter(
+        TelegramCallAdapter(
             cast(str, settings.telegram_api_url),
             bot_token=cast(str, settings.telegram_bot_token),
             client=client,

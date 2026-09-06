@@ -21,6 +21,7 @@ from memeradar_domain import (
     Provenance,
     QualityState,
     ReasonCode,
+    SocialCallObservation,
     TokenIdentity,
     normalize_chain,
     require_chain_address,
@@ -50,6 +51,12 @@ class ProviderCapability(str, Enum):
     PAIR_DISCOVERY = "pair_discovery"
     SOCIAL_METADATA = "social_metadata"
     SOCIAL_ANALYTICS = "social_analytics"
+    SOCIAL_CALLS = "social_calls"
+    CALLER_HISTORY = "caller_history"
+    WALLET_ACTIVITY = "wallet_activity"
+    CROSS_CHAIN_IDENTITY_EVIDENCE = "cross_chain_identity_evidence"
+    TOKEN_SECURITY = "token_security"
+    EXECUTION_QUOTE = "execution_quote"
     RISK_SUMMARY = "risk_summary"
     WALLET_ENRICHMENT = "wallet_enrichment"
     ALERT_DELIVERY = "alert_delivery"
@@ -921,6 +928,14 @@ class SocialDataPort(Protocol):
     ) -> Sequence[GlobalEvent] | GlobalEventFamilyStatus: ...
 
 
+class SocialCallPort(Protocol):
+    """Read-only provider port for normalized public social calls."""
+
+    provider_name: str
+
+    async def search_calls(self, request: SocialDataRequest) -> Sequence[SocialCallObservation]: ...
+
+
 class SocialMetadataPort(Protocol):
     provider_name: str
 
@@ -993,6 +1008,7 @@ __all__ = [
     "RiskSeverity",
     "SocialDataPort",
     "SocialDataRequest",
+    "SocialCallPort",
     "SocialMetadata",
     "SocialMetadataPort",
     "SocialMention",

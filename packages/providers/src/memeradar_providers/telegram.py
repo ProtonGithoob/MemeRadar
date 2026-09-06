@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from types import TracebackType
 from typing import cast
@@ -17,9 +17,13 @@ from memeradar_application.provider_contracts import (
     NotificationPort,
     NotificationRequest,
     ProviderRequestContext,
+    SocialCallPort,
+    SocialDataRequest,
 )
+from memeradar_domain import SocialCallObservation
 from memeradar_domain.common import ensure_utc, require_text
 
+from .social import deduplicate_social_calls, normalize_social_call
 from .transport import (
     ProviderAuthenticationError,
     ProviderError,
@@ -35,6 +39,7 @@ TELEGRAM_PROVIDER = "telegram"
 TELEGRAM_FIXTURE_PROVIDER = "fixture-telegram"
 TELEGRAM_API_URL = "https://api.telegram.org"
 TELEGRAM_SEND_MESSAGE_METHOD = "sendMessage"
+TELEGRAM_GET_UPDATES_METHOD = "getUpdates"
 TELEGRAM_HEALTH_METHOD = "getMe"
 MAX_MESSAGE_LENGTH = 4096
 Clock = Callable[[], datetime]
@@ -134,6 +139,57 @@ def _optional_bool(value: object, field: str) -> bool | None:
     if not isinstance(value, bool):
         raise TypeError(f"{field} must be a boolean")
     return value
+
+
+def _telegram_update_payload(value: object) -> tuple[dict[str, object], int] | None:
+    if not isinstance(value, Mapping):
+        raise ProviderSchemaError("telegram update was invalid")
+    update_id = value.get("update_id")
+    if isinstance(update_id, bool) or not isinstance(update_id, int) or update_id < 0:
+        raise ProviderSchemaError("telegram update ID was invalid")
+    message_field: str | None = None
+    message: Mapping[str, object] | None = None
+    for candidate_field in (
+        "edited_message",
+        "edited_channel_post",
+        "message",
+        "channel_post",
+        "deleted_message",
+        "deleted_channel_post",
+    ):
+        candidate = value.get(candidate_field)
+        if candidate is not None:
+            if not isinstance(candidate, Mapping):
+                raise ProviderSchemaError("telegram message was invalid")
+            message_field = candidate_field
+            message = candidate
+            break
+    if message is None or message_field is None:
+        return None
+    chat = message.get("chat")
+    if not isinstance(chat, Mapping):
+        raise ProviderSchemaError("telegram message chat was invalid")
+    try:
+        chat_id = _chat_id(chat.get("id"))
+    except (TypeError, ValueError) as exc:
+        raise ProviderSchemaError("telegram message chat ID was invalid") from exc
+    message_id = message.get("message_id")
+    if isinstance(message_id, bool) or not isinstance(message_id, int) or message_id < 1:
+        raise ProviderSchemaError("telegram message ID was invalid")
+    author = message.get("from")
+    if not isinstance(author, Mapping):
+        author = {
+            "id": f"channel:{chat_id}",
+            "username": chat.get("username"),
+            "title": chat.get("title"),
+        }
+    payload = dict(message)
+    payload["id"] = f"{chat_id}:{message_id}"
+    payload["author"] = author
+    payload["edited"] = message_field.startswith("edited_") or "edit_date" in message
+    if message_field.startswith("deleted_") and "deleted" not in payload:
+        payload["deleted"] = True
+    return payload, update_id
 
 
 class TelegramNotificationAdapter(NotificationPort):
@@ -323,6 +379,88 @@ class TelegramNotificationAdapter(NotificationPort):
         )
 
 
+class TelegramCallAdapter(TelegramNotificationAdapter, SocialCallPort):
+    """Read-only Telegram Bot API polling adapter for normalized call evidence."""
+
+    capabilities = frozenset({"alert_delivery", "notification", "social_calls"})
+
+    def __init__(
+        self,
+        base_url: str = TELEGRAM_API_URL,
+        *,
+        bot_token: str,
+        client: httpx.AsyncClient | None = None,
+        transport: ProviderTransport | None = None,
+        clock: Clock | None = None,
+    ) -> None:
+        super().__init__(
+            base_url,
+            bot_token=bot_token,
+            client=client,
+            transport=transport,
+            clock=clock,
+        )
+        self._last_next_cursor: str | None = None
+
+    @property
+    def last_next_cursor(self) -> str | None:
+        return self._last_next_cursor
+
+    async def search_calls(self, request: SocialDataRequest) -> Sequence[SocialCallObservation]:
+        if not isinstance(request, SocialDataRequest):
+            raise TypeError("request must be a SocialDataRequest")
+        body: dict[str, object] = {
+            "limit": min(request.limit, 100),
+            "timeout": 0,
+        }
+        if request.cursor is not None:
+            try:
+                offset = int(request.cursor)
+            except ValueError as exc:
+                raise ProviderSchemaError("telegram update cursor was invalid") from exc
+            if offset < 0:
+                raise ProviderSchemaError("telegram update cursor was invalid")
+            body["offset"] = offset
+        result = await self._request(
+            TELEGRAM_GET_UPDATES_METHOD,
+            context=request.context,
+            payload=body,
+        )
+        if not isinstance(result, Mapping) or result.get("ok") is not True:
+            raise ProviderSchemaError("telegram updates response was invalid")
+        updates = result.get("result")
+        if not isinstance(updates, Sequence) or isinstance(updates, str | bytes | bytearray):
+            raise ProviderSchemaError("telegram updates result was invalid")
+        if len(updates) > min(request.limit, 100):
+            raise ProviderSchemaError("telegram updates exceeded requested bound")
+        observed_at = ensure_utc(self._clock(), "observed_at")
+        calls: list[SocialCallObservation] = []
+        next_update_id: int | None = None
+        for update in updates:
+            prepared = _telegram_update_payload(update)
+            if prepared is None:
+                continue
+            payload, update_id = prepared
+            next_update_id = (
+                update_id + 1
+                if next_update_id is None
+                else max(next_update_id, update_id + 1)
+            )
+            calls.append(
+                normalize_social_call(
+                    payload,
+                    source=self.provider_name,
+                    platform="telegram",
+                    token=request.token,
+                    observed_at=observed_at,
+                    ingested_at=observed_at,
+                    parser_version="telegram-call-v1",
+                )
+            )
+        self._last_next_cursor = None if next_update_id is None else str(next_update_id)
+        return deduplicate_social_calls(calls)
+
+
 class FixtureNotificationAdapter(NotificationPort):
     """Deterministic credential-free NotificationPort for replay and tests."""
 
@@ -371,7 +509,9 @@ __all__ = [
     "TELEGRAM_API_URL",
     "TELEGRAM_FIXTURE_PROVIDER",
     "TELEGRAM_HEALTH_METHOD",
+    "TELEGRAM_GET_UPDATES_METHOD",
     "TELEGRAM_PROVIDER",
     "TELEGRAM_SEND_MESSAGE_METHOD",
+    "TelegramCallAdapter",
     "TelegramNotificationAdapter",
 ]

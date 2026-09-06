@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report](FREE_FIRST_PROVIDER_MIGRATION_RESULTS.md)
 
@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 879 Python tests (11 skipped), 45 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1025 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1344,10 +1344,15 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 3 TDD evidence: the initial persistence collection failed with the expected missing repository export; after the minimal model/migration/repository implementation, the focused persistence, migration, multi-chain and core contract suite passes `17 tests`. It covers row round-trips, provenance/raw references, unresolved assets, duplicate social delivery, edit-state refresh, conflicting caller identity, deterministic source/chain/address keys and BNB/Robinhood separation.
 - Alpha Caller Task 3 verification: Ruff and strict mypy pass (`117 source files`); `git diff --check` passes; `scripts/check_migrations.py` reports `{"heads": ["0008_alpha_caller_intelligence"], "table_count": 25}`. `make verify` exits `0` with `1019 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, security review `PASS` with all four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, provider, scraping dependency or execution authority changed; the four pre-existing untracked WIP files remain untouched.
 
+- Alpha Caller Task 4 checkpoint (2026-09-07): extended the existing application provider boundary with `SocialCallPort` and the documented provider capability names, then reused the existing compliant social REST adapter for normalized X/social `SocialCallObservation` output. A shared bounded normalizer preserves platform-qualified caller identity, published/observed/ingested timestamps, BNB/Robinhood/Solana address semantics, unresolved ticker/name/address references, `DISCOVERY`/`BULLISH`/`BEARISH`/`WATCH`/`UNKNOWN` intent, declared entry/targets, disclosure, edit/delete state, quality, confidence, parser version and provenance. The legacy `SocialMention`/social-intelligence path remains unchanged.
+- Telegram call ingestion reuses the existing Telegram Bot API adapter and notification path through read-only `getUpdates`; no arbitrary page scraping or second provider framework was added. Telegram messages and channel posts normalize through the same shared call path, derive stable chat/message source IDs, preserve edit/delete evidence, and expose bounded pagination cursors. Exact duplicate calls are idempotently deduplicated; conflicting duplicates and malformed caller/message data fail with `ProviderSchemaError`; provider transport outages retain the existing typed timeout/unavailable classification. Configured Telegram composition now uses the call-capable notification adapter without changing alert delivery.
+- Alpha Caller Task 4 TDD evidence: `tests/contract/test_alpha_caller_providers.py` first failed at collection with the expected missing `SocialCallPort` import; after the minimal implementation, the focused provider suite passes `6 tests`, and the combined social/Telegram/provider contract suite passes `47 tests`. Coverage includes resolved BNB and Robinhood contract calls, ticker-only unresolved evidence, intent/edit/delete/disclosure fields, malformed payloads, exact duplicates, channel callers, cursor progression and provider timeout classification.
+- Alpha Caller Task 4 verification: Ruff passes; strict mypy passes (`117 source files`); `make verify` exits `0` with `1025 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with the four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, external provider success, scraping dependency or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 4: extend the existing social/Telegram provider seams to
-normalize X/Telegram call observations. Begin with failing fixture tests for
-contract-address calls, unresolved ticker-only calls, intent, edit/delete
-evidence, malformed/duplicate messages and provider outage; retain provenance,
-parser versions and explicit UNKNOWN states without making scraping required.
+Alpha Caller Task 5: compose existing canonical replay/outcome logic into
+event-time caller outcome projections. Begin with failing tests for horizon
+labels, executable MFE/MAE, mature versus partial evidence, failed/rug calls,
+and strict no-lookahead separation; keep sparse results
+`INSUFFICIENT_SAMPLES` and do not promote production weights.
