@@ -7,6 +7,8 @@ COMPOSE_FILE ?= infra/compose/docker-compose.yml
 COMPOSE ?= docker compose -f $(COMPOSE_FILE)
 REPLAY_INPUT ?= fixtures/research/replay_dataset.json
 REPLAY_OUTPUT ?=
+OPPORTUNITY_RESEARCH_INPUT ?= fixtures/research/opportunity_case_studies.json
+OPPORTUNITY_RESEARCH_OUTPUT ?=
 BACKTEST_INPUT ?= $(REPLAY_INPUT)
 BACKTEST_OUTPUT ?=
 BACKTEST_ENTRY_SCORE_THRESHOLD ?= 50
@@ -31,7 +33,7 @@ SBOM_OUTPUT ?=
 	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
 	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-	backtest-replay calibrate-score winner-vs-rug-optimizer reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
+backtest-replay opportunity-research calibrate-score winner-vs-rug-optimizer reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
 	security-review security-review-external sbom shadow-start shadow-status
 
 
@@ -51,6 +53,10 @@ test:
 
 replay-dataset:
 	$(PYTHON) scripts/replay_dataset.py --input $(REPLAY_INPUT) $(if $(REPLAY_OUTPUT),--output $(REPLAY_OUTPUT),)
+
+opportunity-research:
+	$(PYTHON) scripts/opportunity_research.py --input $(OPPORTUNITY_RESEARCH_INPUT) \
+		$(if $(OPPORTUNITY_RESEARCH_OUTPUT),--output $(OPPORTUNITY_RESEARCH_OUTPUT),)
 
 profile-replay:
 	$(PYTHON) scripts/profile_replay.py --input $(REPLAY_INPUT) --iterations $(PROFILE_ITERATIONS)

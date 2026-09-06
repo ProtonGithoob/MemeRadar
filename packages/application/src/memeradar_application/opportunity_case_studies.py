@@ -61,6 +61,7 @@ class OpportunityCaseStudy:
     checkpoint_id: UUID
     cohort: str
     chain: Chain
+    archetype: str
     evidence_class: str
     historical_status: str
     evidence_scope: Mapping[str, str]
@@ -74,6 +75,7 @@ class OpportunityCaseStudy:
             "checkpoint_id": str(self.checkpoint_id),
             "cohort": self.cohort,
             "chain": self.chain.value,
+            "archetype": self.archetype,
             "evidence_class": self.evidence_class,
             "historical_status": self.historical_status,
             "evidence_scope": dict(self.evidence_scope),
@@ -201,6 +203,7 @@ def _case(value: object, dataset: ReplayDataset) -> OpportunityCaseStudy:
         checkpoint_id=checkpoint_id,
         cohort=_text(raw.get("cohort"), "case study cohort", max_length=64),
         chain=raw_chain,
+        archetype=_text(raw.get("archetype"), "case study archetype", max_length=64).upper(),
         evidence_class=_text(raw.get("evidence_class"), "case study evidence_class", max_length=64),
         historical_status=_text(
             raw.get("historical_status"), "case study historical_status", max_length=32

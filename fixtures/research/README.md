@@ -27,3 +27,14 @@ Run the same canonical replay path with:
 ```text
 make replay-dataset REPLAY_INPUT=fixtures/research/opportunity_case_studies.json
 ```
+
+The research report is generated with:
+
+```text
+make opportunity-research
+```
+
+The checked-in report remains `INSUFFICIENT_SAMPLES` for this seven-case
+synthetic bundle. It reports the split, feature-family ablation shape,
+chain/archetype/age/market-cap/regime segments and explicit non-promotion;
+it is not evidence for production weight changes.

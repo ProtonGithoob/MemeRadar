@@ -308,7 +308,13 @@ inside the replay dataset and require unavailable historical fields to remain
 ```text
 ./.venv/bin/pytest tests/unit/test_opportunity_case_studies.py -q
 make replay-dataset REPLAY_INPUT=fixtures/research/opportunity_case_studies.json
+make opportunity-research
 ```
+
+The opportunity research report keeps TRAIN/VALIDATION/TEST selection separate
+from final TEST metrics, reports feature-family lift, false-positive cost,
+confidence intervals and segmentation, and returns `INSUFFICIENT_SAMPLES` for
+sparse cohorts. It is permanently non-promoting and non-executable.
 
 ## Phase 9.1 paper execution
 

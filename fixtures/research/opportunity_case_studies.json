@@ -932,6 +932,7 @@
       "checkpoint_id": "00000000-0000-0000-0000-000000002001",
       "cohort": "EXTREME_WINNER",
       "chain": "solana",
+      "archetype": "PURE_MEME",
       "evidence_class": "SYNTHETIC_REDACTED",
       "historical_status": "UNKNOWN",
       "evidence_scope": {
@@ -970,6 +971,7 @@
       "checkpoint_id": "00000000-0000-0000-0000-000000002002",
       "cohort": "HIGH_VIRALITY_NON_WINNER",
       "chain": "solana",
+      "archetype": "PURE_MEME",
       "evidence_class": "SYNTHETIC_REDACTED",
       "historical_status": "UNKNOWN",
       "evidence_scope": {
@@ -1008,6 +1010,7 @@
       "checkpoint_id": "00000000-0000-0000-0000-000000002003",
       "cohort": "RUG_SEVERE_FAILURE",
       "chain": "solana",
+      "archetype": "PURE_MEME",
       "evidence_class": "SYNTHETIC_REDACTED",
       "historical_status": "UNKNOWN",
       "evidence_scope": {
@@ -1046,6 +1049,7 @@
       "checkpoint_id": "00000000-0000-0000-0000-000000002004",
       "cohort": "ORDINARY_WINNER",
       "chain": "bnb",
+      "archetype": "PURE_MEME",
       "evidence_class": "SYNTHETIC_REDACTED",
       "historical_status": "UNKNOWN",
       "evidence_scope": {
@@ -1084,6 +1088,7 @@
       "checkpoint_id": "00000000-0000-0000-0000-000000002005",
       "cohort": "COPYCAT_FAILURE",
       "chain": "bnb",
+      "archetype": "PURE_MEME",
       "evidence_class": "SYNTHETIC_REDACTED",
       "historical_status": "UNKNOWN",
       "evidence_scope": {
@@ -1122,6 +1127,7 @@
       "checkpoint_id": "00000000-0000-0000-0000-000000002006",
       "cohort": "FUNDAMENTAL_NO_REPRICING",
       "chain": "robinhood",
+      "archetype": "PROTOCOL_TOKEN",
       "evidence_class": "SYNTHETIC_REDACTED",
       "historical_status": "UNKNOWN",
       "evidence_scope": {
@@ -1160,6 +1166,7 @@
       "checkpoint_id": "00000000-0000-0000-0000-000000002007",
       "cohort": "WEAK_FUNDAMENTAL_REPRICING",
       "chain": "robinhood",
+      "archetype": "PROTOCOL_TOKEN",
       "evidence_class": "SYNTHETIC_REDACTED",
       "historical_status": "UNKNOWN",
       "evidence_scope": {
