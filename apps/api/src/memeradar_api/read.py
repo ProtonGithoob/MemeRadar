@@ -11,6 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from memeradar_application.chain_opportunity import ChainOpportunitySnapshot
 from memeradar_application.control import ControlAction
 from memeradar_application.early_scoring import AsymmetricAlphaProjection
 from memeradar_application.read_api import (
@@ -21,6 +22,7 @@ from memeradar_application.read_api import (
     AuditQuery,
     CandidateQuery,
     CandidateView,
+    ChainOpportunityQuery,
     ClosedTradeExplanationView,
     ClusterGraphQuery,
     ConfigQuery,
@@ -57,6 +59,7 @@ from memeradar_domain import (
     PositionMode,
     PositionState,
     QualityState,
+    normalize_chain,
 )
 
 from .auth import RoleTokenAuthenticator
@@ -91,6 +94,14 @@ class EarlyRadarQueryParams(_StrictModel):
     min_score: Decimal | None = Field(default=None, ge=0, le=100)
     risk_quality_state: QualityState | None = None
     risk_disposition: _RISK_DISPOSITIONS | None = None
+
+
+class ChainOpportunityQueryParams(_StrictModel):
+    cursor: str | None = Field(default=None, max_length=MAX_CURSOR_LENGTH)
+    limit: int = Field(default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT)
+    chain: str | None = Field(default=None, min_length=1, max_length=32)
+    quality_state: QualityState | None = None
+    as_of: datetime | None = None
 
 
 class TimelineQueryParams(_StrictModel):
@@ -280,6 +291,42 @@ class ProvenanceResponse(_StrictModel):
     observed_at: datetime
     parser_version: str
     raw_payload_hash: str | None = None
+
+
+class ChainOpportunityResponse(_StrictModel):
+    chain: str
+    as_of: datetime
+    expires_at: datetime
+    new_token_count_5m: int | None
+    new_token_count_1h: int | None
+    new_token_count_24h: int | None
+    new_pool_count_5m: int | None
+    new_pool_count_1h: int | None
+    new_pool_count_24h: int | None
+    active_wallet_count_5m: int | None
+    active_wallet_acceleration: Decimal | None
+    transaction_count_5m: int | None
+    transaction_count_1h: int | None
+    transaction_acceleration: Decimal | None
+    dex_volume_5m: Decimal | None
+    dex_volume_1h: Decimal | None
+    dex_volume_acceleration: Decimal | None
+    liquidity_inflow_5m: Decimal | None
+    liquidity_inflow_1h: Decimal | None
+    liquidity_inflow_acceleration: Decimal | None
+    launchpad_launch_count_5m: int | None
+    launchpad_graduation_count_5m: int | None
+    successful_launch_ratio_5m: Decimal | None
+    provenance: list[ProvenanceResponse] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+    source_independence_count: int
+    source_diversity_confidence: Decimal
+    confidence: Decimal
+    config_hash: str
+    quality_state: QualityState
+    version: str
+    execution_eligible: bool = False
 
 
 class TimelineEntryResponse(_StrictModel):
@@ -637,6 +684,53 @@ def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
                 else None
             )
         ),
+    )
+
+
+def _chain_opportunity_response(value: ChainOpportunitySnapshot) -> ChainOpportunityResponse:
+    return ChainOpportunityResponse(
+        chain=normalize_chain(value.chain).value,
+        as_of=value.as_of,
+        expires_at=value.expires_at,
+        new_token_count_5m=value.new_token_count_5m,
+        new_token_count_1h=value.new_token_count_1h,
+        new_token_count_24h=value.new_token_count_24h,
+        new_pool_count_5m=value.new_pool_count_5m,
+        new_pool_count_1h=value.new_pool_count_1h,
+        new_pool_count_24h=value.new_pool_count_24h,
+        active_wallet_count_5m=value.active_wallet_count_5m,
+        active_wallet_acceleration=value.active_wallet_acceleration,
+        transaction_count_5m=value.transaction_count_5m,
+        transaction_count_1h=value.transaction_count_1h,
+        transaction_acceleration=value.transaction_acceleration,
+        dex_volume_5m=value.dex_volume_5m,
+        dex_volume_1h=value.dex_volume_1h,
+        dex_volume_acceleration=value.dex_volume_acceleration,
+        liquidity_inflow_5m=value.liquidity_inflow_5m,
+        liquidity_inflow_1h=value.liquidity_inflow_1h,
+        liquidity_inflow_acceleration=value.liquidity_inflow_acceleration,
+        launchpad_launch_count_5m=value.launchpad_launch_count_5m,
+        launchpad_graduation_count_5m=value.launchpad_graduation_count_5m,
+        successful_launch_ratio_5m=value.successful_launch_ratio_5m,
+        provenance=[
+            ProvenanceResponse(
+                provider=item.provider,
+                source_id=item.source_id,
+                observed_at=item.observed_at,
+                parser_version=item.parser_version,
+                raw_payload_hash=item.raw_payload_hash,
+            )
+            for item in value.provenance
+        ],
+        evidence_refs=list(value.evidence_refs),
+        reason_codes=list(value.reason_code_values),
+        source_independence_count=value.source_independence_count,
+        source_diversity_confidence=value.source_diversity_confidence,
+        confidence=value.confidence,
+        config_hash=value.config_hash,
+        quality_state=QualityState(value.quality_state),
+        version=value.version,
+        execution_eligible=False,
     )
 
 
@@ -1017,6 +1111,17 @@ def build_read_router(
         page = await _call(_require_service(service).list_early_radar(query))
         return _page_response(page, _early_radar_response)
 
+    @router.get(
+        "/chain-opportunities",
+        response_model=PageResponse[ChainOpportunityResponse],
+    )
+    async def list_chain_opportunities(
+        params: Annotated[ChainOpportunityQueryParams, Query()],
+    ) -> PageResponse[ChainOpportunityResponse]:
+        query = _build(lambda: ChainOpportunityQuery(**params.model_dump()))
+        page = await _call(_require_service(service).list_chain_opportunities(query))
+        return _page_response(page, _chain_opportunity_response)
+
     @router.get("/candidates/{candidate_id}", response_model=CandidateResponse)
     async def get_candidate(candidate_id: UUID) -> CandidateResponse:
         value = await _call(_require_service(service).get_candidate(candidate_id))
@@ -1169,6 +1274,8 @@ def build_read_router(
 __all__ = [
     "AuditEventResponse",
     "AuditQueryParams",
+    "ChainOpportunityQueryParams",
+    "ChainOpportunityResponse",
     "CandidateQueryParams",
     "CandidateResponse",
     "ClosedTradeExplanationResponse",

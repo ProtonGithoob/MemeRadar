@@ -35,6 +35,7 @@ def test_business_routes_use_v1_and_mutations_are_explicitly_allow_listed() -> N
         "/v1/audit/events",
         "/v1/candidates",
         "/v1/candidates/{candidate_id}",
+        "/v1/chain-opportunities",
         "/v1/config/versions",
         "/v1/control/analysis-kill-switch",
         "/v1/control/config",

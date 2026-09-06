@@ -17,11 +17,13 @@ from uuid import UUID
 
 from memeradar_domain import (
     CandidateState,
+    Chain,
     EarlyDecisionState,
     Position,
     PositionMode,
     PositionState,
     QualityState,
+    normalize_chain,
     require_solana_address,
 )
 from memeradar_domain.common import (
@@ -33,6 +35,7 @@ from memeradar_domain.common import (
     to_decimal,
 )
 
+from .chain_opportunity import ChainOpportunitySnapshot
 from .creator_graph import CreatorOutcomeGraph
 from .early_scoring import AsymmetricAlphaProjection
 from .exit_engine import ExitEvaluation
@@ -304,6 +307,29 @@ class EarlyRadarQuery:
             "risk_disposition",
             None if disposition is None else disposition.upper(),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ChainOpportunityQuery:
+    """Bounded filters for raw chain-opportunity evidence."""
+
+    cursor: str | None = None
+    limit: int = DEFAULT_PAGE_LIMIT
+    chain: Chain | str | None = None
+    quality_state: QualityState | str | None = None
+    as_of: datetime | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "cursor", _optional_cursor(self.cursor))
+        object.__setattr__(self, "limit", _bounded_limit(self.limit))
+        object.__setattr__(
+            self,
+            "chain",
+            None if self.chain is None else normalize_chain(self.chain),
+        )
+        object.__setattr__(self, "quality_state", _optional_quality(self.quality_state))
+        if self.as_of is not None:
+            object.__setattr__(self, "as_of", ensure_utc(self.as_of, "as_of"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1669,6 +1695,10 @@ class ReadQueryPort(Protocol):
 
     async def list_early_radar(self, query: EarlyRadarQuery) -> Page[EarlyRadarView]: ...
 
+    async def list_chain_opportunities(
+        self, query: ChainOpportunityQuery
+    ) -> Page[ChainOpportunitySnapshot]: ...
+
     async def get_candidate(self, candidate_id: UUID) -> CandidateView | None: ...
 
     async def get_token(self, token_id: UUID) -> TokenView | None: ...
@@ -1746,6 +1776,15 @@ def _early_radar_cursor(value: EarlyRadarView) -> tuple[str, ...]:
     )
 
 
+def _chain_opportunity_cursor(value: ChainOpportunitySnapshot) -> tuple[str, ...]:
+    return (
+        str(value.confidence),
+        normalize_chain(value.chain).value,
+        value.as_of.isoformat(),
+        str(value.id),
+    )
+
+
 def _timeline_cursor(value: TimelineEntryView) -> tuple[str, ...]:
     return (value.occurred_at.isoformat(), str(value.id))
 
@@ -1782,6 +1821,7 @@ class InMemoryReadQueryService:
         *,
         candidates: Sequence[CandidateView] = (),
         early_radar: Sequence[EarlyRadarView] = (),
+        chain_opportunities: Sequence[ChainOpportunitySnapshot] = (),
         tokens: Sequence[TokenView] = (),
         timelines: Mapping[UUID, Sequence[TimelineEntryView]] | None = None,
         wallets: Sequence[WalletView] = (),
@@ -1793,6 +1833,7 @@ class InMemoryReadQueryService:
     ) -> None:
         self.candidates = tuple(candidates)
         self.early_radar = tuple(early_radar)
+        self.chain_opportunities = tuple(chain_opportunities)
         self.tokens = tuple(tokens)
         self._timelines = {
             token_id: tuple(entries)
@@ -1808,6 +1849,11 @@ class InMemoryReadQueryService:
             raise TypeError("candidates must contain CandidateView values")
         if any(not isinstance(value, EarlyRadarView) for value in self.early_radar):
             raise TypeError("early_radar must contain EarlyRadarView values")
+        if any(
+            not isinstance(value, ChainOpportunitySnapshot)
+            for value in self.chain_opportunities
+        ):
+            raise TypeError("chain_opportunities must contain ChainOpportunitySnapshot values")
         if any(not isinstance(value, TokenView) for value in self.tokens):
             raise TypeError("tokens must contain TokenView values")
         if any(not isinstance(value, PositionView) for value in self.positions):
@@ -1892,6 +1938,34 @@ class InMemoryReadQueryService:
             limit=query.limit,
             cursor=query.cursor,
             cursor_values=_early_radar_cursor,
+        )
+
+    async def list_chain_opportunities(
+        self, query: ChainOpportunityQuery
+    ) -> Page[ChainOpportunitySnapshot]:
+        if not isinstance(query, ChainOpportunityQuery):
+            raise TypeError("query must be a ChainOpportunityQuery")
+        values = [
+            value
+            for value in self.chain_opportunities
+            if (query.chain is None or value.chain is query.chain)
+            and (query.quality_state is None or value.quality_state is query.quality_state)
+            and (query.as_of is None or value.as_of <= query.as_of)
+        ]
+        values.sort(
+            key=lambda value: (
+                -value.confidence,
+                normalize_chain(value.chain).value,
+                -value.as_of.timestamp(),
+                str(value.id),
+            )
+        )
+        return _page(
+            "chain-opportunities",
+            values,
+            limit=query.limit,
+            cursor=query.cursor,
+            cursor_values=_chain_opportunity_cursor,
         )
 
     async def get_candidate(self, candidate_id: UUID) -> CandidateView | None:
@@ -2207,6 +2281,7 @@ __all__ = [
     "AuditQuery",
     "CandidateQuery",
     "CandidateView",
+    "ChainOpportunityQuery",
     "ClusterGraphQuery",
     "ConfigQuery",
     "ConfigVersionView",

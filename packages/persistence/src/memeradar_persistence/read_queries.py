@@ -11,12 +11,14 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from memeradar_application.chain_opportunity import ChainOpportunitySnapshot
 from memeradar_application.exit_engine import ExitEvaluation
 from memeradar_application.read_api import (
     AuditEventView,
     AuditQuery,
     CandidateQuery,
     CandidateView,
+    ChainOpportunityQuery,
     ClusterGraphQuery,
     ConfigQuery,
     ConfigVersionView,
@@ -416,6 +418,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         engine: AsyncEngine,
         *,
         early_radar: Sequence[EarlyRadarView] = (),
+        chain_opportunities: Sequence[ChainOpportunitySnapshot] = (),
         wallets: Sequence[WalletView] = (),
         provider_health: Sequence[ProviderHealthView] = (),
         audit_events: Sequence[AuditEventView] = (),
@@ -429,6 +432,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         self._engine = engine
         self._catalog = InMemoryReadQueryService(
             early_radar=early_radar,
+            chain_opportunities=chain_opportunities,
             wallets=wallets,
             provider_health=provider_health,
             audit_events=audit_events,
@@ -479,6 +483,13 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         """Return the optional bounded early-radar catalog without mutating storage."""
 
         return await self._catalog.list_early_radar(query)
+
+    async def list_chain_opportunities(
+        self, query: ChainOpportunityQuery
+    ) -> Page[ChainOpportunitySnapshot]:
+        """Return the optional bounded opportunity catalog without mutating storage."""
+
+        return await self._catalog.list_chain_opportunities(query)
 
     async def get_candidate(self, candidate_id: UUID) -> CandidateView | None:
         if not isinstance(candidate_id, UUID):

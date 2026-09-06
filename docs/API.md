@@ -25,6 +25,7 @@ unknown and invalid states:
 GET  /v1/audit/events
 GET  /v1/candidates
 GET  /v1/candidates/{candidate_id}
+GET  /v1/chain-opportunities
 GET  /v1/config/versions
 GET  /v1/control/config
 GET  /v1/control/state

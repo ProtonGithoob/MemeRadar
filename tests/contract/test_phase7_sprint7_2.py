@@ -134,6 +134,7 @@ def test_read_api_route_surface_is_bounded_get_only_and_provider_free_at_applica
         "/v1/wallet-graph/clusters/{cluster_id}",
         "/v1/wallet-graph/shortest-path",
         "/v1/early-radar",
+        "/v1/chain-opportunities",
         "/v1/providers/health",
         "/v1/audit/events",
         "/v1/config/versions",
