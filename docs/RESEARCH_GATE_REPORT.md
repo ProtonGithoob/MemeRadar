@@ -12,6 +12,24 @@ This report evaluates the full product-level research gate for MemeRadar followi
 
 All performance figures, expectancies, and candidate policy rankings reported herein are explicitly labeled by evidence class (`SYNTHETIC_FIXTURE` vs `HISTORICAL_REAL` vs `LIVE_SHADOW` vs `INSUFFICIENT_SAMPLES`). Synthetic replay results (such as `+3.575x` paper expectancy) represent calibrated synthetic candidate evidence (`SYNTHETIC_FIXTURE`) and must never be claimed as production-proven live performance.
 
+## Opportunity Discovery acceptance addendum — 2026-09-06
+
+The mandatory `SOLANA + BNB + ROBINHOOD` opportunity-discovery fixture is a
+seven-case `SYNTHETIC_REDACTED` bundle. `make opportunity-research` regenerates
+`fixtures/research/opportunity_research_report.json` through the existing
+canonical replay harness. The report verifies no-lookahead replay, records a
+`TRAIN=3`, `VALIDATION=1`, `TEST=3` split, and remains
+`INSUFFICIENT_SAMPLES` with reason codes
+`INSUFFICIENT_SAMPLES` and `RESEARCH_ONLY_NOT_PROMOTED`.
+
+`promotion_allowed` and `execution_eligible` are both `false`; no production
+score weight, strategy candidate or execution permission was changed. Real
+historical opportunity cases, paper fills and provider-backed sample size are
+not available in this environment, so chain opportunity, narrative attention,
+KOL, smart-money and protocol evidence remain measurement-only. This addendum
+does not promote the synthetic results or supersede the existing
+human-reviewed strategy-promotion gate.
+
 ---
 
 ## Evaluation of 11 Key Product Questions

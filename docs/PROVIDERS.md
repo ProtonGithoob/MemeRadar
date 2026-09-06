@@ -56,6 +56,19 @@ provider error; an unsupported capability is not silently converted into an
 unrelated provider result. Normalized observations and quotes retain provider,
 chain, token/pair identity, timestamps, freshness and provenance.
 
+### Opportunity discovery evidence
+
+Opportunity discovery observes `SOLANA`, `BNB` and `ROBINHOOD` through the
+existing normalized event, market, wallet and social seams. Robinhood reuses
+the generic EVM identity/RPC and market primitives and remains read-only; no
+chain-specific scoring or execution adapter is introduced. Chain heat,
+narrative/pre-token attention, KOL and smart-money convergence are
+measurement-only evidence until canonical no-lookahead replay, independent
+TRAIN/VALIDATION/TEST ablation, sufficient real samples and the existing
+human-reviewed promotion gate demonstrate incremental out-of-sample value.
+Missing provider evidence is `UNKNOWN`, not zero or safe; provider labels and
+LLM narratives cannot authorize `ENTRY_READY`.
+
 The shared `DexScreenerAdapter` normalizes market pairs for all enabled
 discovery chains. It sends Solana requests with `solana`, BNB requests with
 DexScreener's `bsc` identifier, and Robinhood requests with `robinhood`, while

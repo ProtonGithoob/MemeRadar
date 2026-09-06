@@ -39,6 +39,22 @@ GET  /v1/wallets
 GET  /v1/wallets/{address}
 ```
 
+## Opportunity discovery and research semantics
+
+`GET /v1/chain-opportunities` is the read-only chain-heat projection for the
+mandatory `SOLANA`, `BNB` and `ROBINHOOD` discovery chains. It preserves
+chain-qualified identities, provenance, timestamps, freshness and explicit
+`UNKNOWN`/degraded states; its response is advisory and always has
+`execution_eligible: false`.
+
+The opportunity case-study and ablation outputs are cold-path research
+artifacts, not API decisions. `fixtures/research/opportunity_research_report.json`
+is generated from canonical replay prefixes with TRAIN/VALIDATION/TEST
+metadata, no-lookahead verification and independent feature-family metrics.
+The checked-in seven-case synthetic/redacted artifact is
+`INSUFFICIENT_SAMPLES`, so it cannot change production score weights or pass
+the strategy-promotion gate.
+
 Explicitly authenticated mutation routes are limited to the control/manual
 surface:
 
