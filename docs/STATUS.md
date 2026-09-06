@@ -1336,11 +1336,15 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
   - Explicitly rejected: duplicate chain, wallet, graph, social/caller, scoring, replay, alert, provider-routing or UI decision engines. All new caller/conduct/convergence data remains measurement-only until the existing no-lookahead TRAIN/VALIDATION/TEST ablation and strategy-promotion gate establish out-of-sample value. All four protected modes remain unchanged.
   - Task 1 evidence: `git diff --check` passes; the four pre-existing untracked WIP files remain untouched. This mapping is the durable interface checkpoint for Alpha Caller Task 2.
 
+- Alpha Caller Task 2 checkpoint (2026-09-07): added immutable provider-independent `CallerIdentity`, `SocialCallObservation` and `CrossChainIdentityEvidence` contracts in `packages/domain/src/memeradar_domain/caller.py`, exported through `memeradar_domain`. Caller identity is platform-qualified and never a wallet; social calls preserve source/message identity, published/observed/ingested timestamps, exact chain-qualified assets or addresses, unresolved symbol/name references, intent, edit/delete state, disclosure/targets, confidence, quality and provenance. Cross-chain evidence uses existing `WalletIdentity` normalization, explicit evidence/link states, confidence and provenance; ambiguous/unknown/conflicted links remain evidence and `is_hard_link` is false. Every new contract is permanently execution-ineligible.
+- Alpha Caller Task 2 TDD evidence: the new focused collection first failed at import with the expected missing `CallerIdentity` contract; after the minimal implementation, `tests/unit/test_caller_contracts.py` passes `5 tests`. The tests cover ticker-only non-identity, Solana/EVM/BNB/Robinhood chain-qualified normalization, ambiguous wallet linkage, distinct timestamp ordering and explicit UNKNOWN/fail-closed behavior.
+- Alpha Caller Task 2 verification: focused Ruff and mypy pass; `git diff --check` passes. `make verify` exits `0` with `1012 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, strict mypy on `117 source files`, frontend `17 files / 50 tests`, migration head `0007_multichain_identity` with `22` tables, security review `PASS` with all four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, provider, persistence or execution behavior changed; the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 2: add the smallest immutable `CallerIdentity`,
-`SocialCallObservation` and `CrossChainIdentityEvidence` contracts using the
-mapped domain/application seams. Begin with failing deterministic tests for
-chain-qualified identity, symbol/name non-identity, ambiguous wallet linkage,
-published-versus-ingested timestamps, provenance and explicit UNKNOWN state;
-keep all four protected modes unchanged.
+Alpha Caller Task 3: add idempotent persistence for the new caller/social-call
+and cross-chain identity evidence contracts using the existing repositories,
+unit-of-work and Alembic chain after `0007_multichain_identity`. Begin with
+failing tests for duplicate delivery, edit-state update, unresolved assets,
+cross-chain address separation and provenance retention; keep all four
+protected modes unchanged.

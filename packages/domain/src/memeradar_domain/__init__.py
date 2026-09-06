@@ -1,5 +1,15 @@
 """Provider-independent domain package."""
 
+from .caller import (
+    CallerIdentity,
+    CallerPlatform,
+    CallIntent,
+    CrossChainEvidenceType,
+    CrossChainIdentityEvidence,
+    IdentityEvidenceType,
+    IdentityLinkState,
+    SocialCallObservation,
+)
 from .chain import (
     ChainCommitment,
     ChainCursor,
@@ -84,6 +94,9 @@ __all__ = [
     "AlertType",
     "Candidate",
     "CandidateState",
+    "CallIntent",
+    "CallerIdentity",
+    "CallerPlatform",
     "CashLedgerEntry",
     "CashLedgerEntryType",
     "Chain",
@@ -92,6 +105,8 @@ __all__ = [
     "ChainCursor",
     "ChainRecoveryState",
     "CommitmentState",
+    "CrossChainEvidenceType",
+    "CrossChainIdentityEvidence",
     "EventEnvelope",
     "GlobalEvent",
     "GlobalEventFamilyStatus",
@@ -104,6 +119,8 @@ __all__ = [
     "FeatureSnapshot",
     "Freshness",
     "IdempotencyConflict",
+    "IdentityEvidenceType",
+    "IdentityLinkState",
     "InvalidTransition",
     "Observation",
     "NormalizedChainEvent",
@@ -124,6 +141,7 @@ __all__ = [
     "RiskAssessment",
     "RiskDisposition",
     "ScoreSnapshot",
+    "SocialCallObservation",
     "StateTransition",
     "StreamGap",
     "StreamGapStatus",
