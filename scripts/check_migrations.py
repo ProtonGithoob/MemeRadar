@@ -25,6 +25,9 @@ def main() -> int:
     expected_tables = {
         "tokens",
         "pools",
+        "caller_identities",
+        "social_call_observations",
+        "cross_chain_identity_evidence",
         "candidates",
         "observations",
         "feature_snapshots",
@@ -49,9 +52,9 @@ def main() -> int:
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0007_multichain_identity"]:
+    if heads != ["0008_alpha_caller_intelligence"]:
         print(
-            "migration_error: expected exactly one 0007_multichain_identity head",
+            "migration_error: expected exactly one 0008_alpha_caller_intelligence head",
             file=sys.stderr,
         )
         return 1

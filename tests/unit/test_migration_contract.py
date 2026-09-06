@@ -19,5 +19,5 @@ def test_migration_check_reports_one_current_head() -> None:
 
     assert result.returncode == 0, result.stderr
     report = json.loads(result.stdout)
-    assert report["heads"] == ["0007_multichain_identity"]
-    assert report["table_count"] == 22
+    assert report["heads"] == ["0008_alpha_caller_intelligence"]
+    assert report["table_count"] == 25

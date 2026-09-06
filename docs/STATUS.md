@@ -1340,11 +1340,14 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 2 TDD evidence: the new focused collection first failed at import with the expected missing `CallerIdentity` contract; after the minimal implementation, `tests/unit/test_caller_contracts.py` passes `5 tests`. The tests cover ticker-only non-identity, Solana/EVM/BNB/Robinhood chain-qualified normalization, ambiguous wallet linkage, distinct timestamp ordering and explicit UNKNOWN/fail-closed behavior.
 - Alpha Caller Task 2 verification: focused Ruff and mypy pass; `git diff --check` passes. `make verify` exits `0` with `1012 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, strict mypy on `117 source files`, frontend `17 files / 50 tests`, migration head `0007_multichain_identity` with `22` tables, security review `PASS` with all four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, provider, persistence or execution behavior changed; the four pre-existing untracked WIP files remain untouched.
 
+- Alpha Caller Task 3 checkpoint (2026-09-07): added Alembic revision `0008_alpha_caller_intelligence` after `0007_multichain_identity`, with `caller_identities`, `social_call_observations` and `cross_chain_identity_evidence` tables. The existing SQLAlchemy repository/UoW boundary now owns deterministic UUID identities, provenance-preserving row mappers, idempotent duplicate delivery, edit-state updates and conflict detection. Social calls retain unresolved asset references without creating token rows; cross-chain evidence keys retain wallet chain/address so BNB and Robinhood cannot collapse the same EVM address. `SqlAlchemyUnitOfWork` exposes the three repositories; protected modes and execution boundaries are unchanged.
+- Alpha Caller Task 3 TDD evidence: the initial persistence collection failed with the expected missing repository export; after the minimal model/migration/repository implementation, the focused persistence, migration, multi-chain and core contract suite passes `17 tests`. It covers row round-trips, provenance/raw references, unresolved assets, duplicate social delivery, edit-state refresh, conflicting caller identity, deterministic source/chain/address keys and BNB/Robinhood separation.
+- Alpha Caller Task 3 verification: Ruff and strict mypy pass (`117 source files`); `git diff --check` passes; `scripts/check_migrations.py` reports `{"heads": ["0008_alpha_caller_intelligence"], "table_count": 25}`. `make verify` exits `0` with `1019 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, security review `PASS` with all four protected modes unchanged, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production score weight, provider, scraping dependency or execution authority changed; the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 3: add idempotent persistence for the new caller/social-call
-and cross-chain identity evidence contracts using the existing repositories,
-unit-of-work and Alembic chain after `0007_multichain_identity`. Begin with
-failing tests for duplicate delivery, edit-state update, unresolved assets,
-cross-chain address separation and provenance retention; keep all four
-protected modes unchanged.
+Alpha Caller Task 4: extend the existing social/Telegram provider seams to
+normalize X/Telegram call observations. Begin with failing fixture tests for
+contract-address calls, unresolved ticker-only calls, intent, edit/delete
+evidence, malformed/duplicate messages and provider outage; retain provenance,
+parser versions and explicit UNKNOWN states without making scraping required.

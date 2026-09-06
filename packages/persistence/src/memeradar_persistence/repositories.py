@@ -6,7 +6,7 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,20 +18,28 @@ from memeradar_domain import (
     AlertSeverity,
     AlertState,
     AlertType,
+    CallerIdentity,
+    CallIntent,
     Candidate,
     CandidateState,
     Chain,
+    CrossChainIdentityEvidence,
     EventEnvelope,
     FeatureSnapshot,
     IdempotencyConflict,
+    IdentityEvidenceType,
+    IdentityLinkState,
     PoolIdentity,
     QualityState,
     ReasonCode,
     RiskAssessment,
     RiskDisposition,
     ScoreSnapshot,
+    SocialCallObservation,
     StateTransition,
     TokenIdentity,
+    WalletIdentity,
+    normalize_chain,
 )
 from memeradar_domain.common import ensure_utc, require_text
 
@@ -41,12 +49,15 @@ from .models import (
     OUTBOX_PENDING,
     OUTBOX_PROCESSING,
     AlertRow,
+    CallerIdentityRow,
     CandidateRow,
+    CrossChainIdentityEvidenceRow,
     DomainEventRow,
     FeatureSnapshotRow,
     OutboxRow,
     RiskAssessmentRow,
     ScoreSnapshotRow,
+    SocialCallObservationRow,
     StateTransitionRow,
     TokenRow,
 )
@@ -61,6 +72,419 @@ from .serialization import (
 
 class OutboxLeaseLost(RuntimeError):
     """Raised when a delivery update no longer owns the row lease."""
+
+
+_CALLER_IDENTITY_NAMESPACE = "https://memeradar.local/caller/"
+_SOCIAL_CALL_NAMESPACE = "https://memeradar.local/social-call/"
+_CROSS_CHAIN_EVIDENCE_NAMESPACE = "https://memeradar.local/cross-chain-evidence/"
+
+
+def _caller_identity_id(identity: CallerIdentity) -> UUID:
+    return uuid5(
+        NAMESPACE_URL,
+        f"{_CALLER_IDENTITY_NAMESPACE}{identity.platform}:{identity.author_id}",
+    )
+
+
+def caller_identity_to_row(identity: CallerIdentity) -> CallerIdentityRow:
+    """Map one public caller identity to its deterministic persistence row."""
+
+    if not isinstance(identity, CallerIdentity):
+        raise TypeError("identity must be a CallerIdentity")
+    return CallerIdentityRow(
+        id=_caller_identity_id(identity),
+        platform=identity.platform,
+        author_id=identity.author_id,
+        handle=identity.handle,
+        display_name=identity.display_name,
+        confidence=identity.confidence,
+        quality_state=identity.quality_state.value,
+    )
+
+
+def caller_identity_from_row(row: CallerIdentityRow) -> CallerIdentity:
+    """Rehydrate one caller identity row."""
+
+    if not isinstance(row, CallerIdentityRow):
+        raise TypeError("row must be a CallerIdentityRow")
+    identity = CallerIdentity(
+        platform=row.platform,
+        author_id=row.author_id,
+        handle=row.handle,
+        display_name=row.display_name,
+        confidence=row.confidence,
+        quality_state=QualityState(row.quality_state),
+    )
+    if row.id != _caller_identity_id(identity):
+        raise ValueError("caller identity row ID does not match its public identity")
+    return identity
+
+
+def _social_call_id(observation: SocialCallObservation) -> UUID:
+    provider = observation.provenance[0].provider
+    return uuid5(
+        NAMESPACE_URL,
+        f"{_SOCIAL_CALL_NAMESPACE}{provider}:{observation.source}:{observation.message_id}",
+    )
+
+
+def social_call_observation_to_row(
+    observation: SocialCallObservation,
+    caller_identity_id: UUID,
+) -> SocialCallObservationRow:
+    """Map one social call while retaining unresolved references and provenance."""
+
+    if not isinstance(observation, SocialCallObservation):
+        raise TypeError("observation must be a SocialCallObservation")
+    if not isinstance(caller_identity_id, UUID):
+        raise TypeError("caller_identity_id must be a UUID")
+    return SocialCallObservationRow(
+        id=_social_call_id(observation),
+        provider=observation.provenance[0].provider,
+        source=observation.source,
+        message_id=observation.message_id,
+        caller_identity_id=caller_identity_id,
+        published_at=observation.published_at,
+        observed_at=observation.observed_at,
+        ingested_at=observation.ingested_at,
+        chain=(
+            None
+            if observation.chain is None
+            else normalize_chain(observation.chain).value
+        ),
+        asset_address=None if observation.asset is None else observation.asset.address,
+        asset_token_program=(
+            None if observation.asset is None else observation.asset.token_program
+        ),
+        referenced_address=observation.referenced_address,
+        unresolved_references=list(observation.unresolved_references),
+        intent=CallIntent(observation.intent).value,
+        declared_entry=observation.declared_entry,
+        declared_targets=list(observation.declared_targets),
+        disclosure=json_safe(observation.disclosure),
+        edited=observation.edited,
+        deleted=observation.deleted,
+        confidence=observation.confidence,
+        quality_state=observation.quality_state.value,
+        evidence_refs=list(observation.evidence_refs),
+        provenance=provenance_to_json(observation.provenance),
+    )
+
+
+def social_call_observation_from_row(
+    row: SocialCallObservationRow,
+    caller_identity: CallerIdentity,
+) -> SocialCallObservation:
+    """Rehydrate one persisted social call with its canonical caller identity."""
+
+    if not isinstance(row, SocialCallObservationRow):
+        raise TypeError("row must be a SocialCallObservationRow")
+    if not isinstance(caller_identity, CallerIdentity):
+        raise TypeError("caller_identity must be a CallerIdentity")
+    if row.caller_identity_id != _caller_identity_id(caller_identity):
+        raise ValueError("social call row is bound to a different caller identity")
+    asset = None
+    if row.asset_address is not None:
+        if row.chain is None:
+            raise ValueError("social call asset row is missing its chain")
+        token_program = row.asset_token_program
+        if token_program is None:
+            token_program = "spl-token" if row.chain == Chain.SOLANA.value else "erc20"
+        asset = TokenIdentity(
+            mint_address=row.asset_address,
+            chain=row.chain,
+            token_program=token_program,
+        )
+    return SocialCallObservation(
+        source=row.source,
+        message_id=row.message_id,
+        caller_identity=caller_identity,
+        published_at=row.published_at,
+        observed_at=row.observed_at,
+        ingested_at=row.ingested_at,
+        provenance=provenance_from_json(row.provenance),
+        asset=asset,
+        chain=row.chain,
+        referenced_address=row.referenced_address,
+        unresolved_references=tuple(row.unresolved_references),
+        intent=row.intent,
+        declared_entry=row.declared_entry,
+        declared_targets=tuple(row.declared_targets),
+        disclosure=row.disclosure,
+        edited=row.edited,
+        deleted=row.deleted,
+        confidence=row.confidence,
+        quality_state=QualityState(row.quality_state),
+        evidence_refs=tuple(row.evidence_refs),
+    )
+
+
+def _cross_chain_evidence_id(evidence: CrossChainIdentityEvidence) -> UUID:
+    provenance = evidence.provenance[0]
+    wallet_key = (
+        ""
+        if evidence.wallet is None
+        else f"{normalize_chain(evidence.wallet.chain).value}:{evidence.wallet.address}"
+    )
+    cluster_key = "" if evidence.cluster_id is None else evidence.cluster_id
+    return uuid5(
+        NAMESPACE_URL,
+        f"{_CROSS_CHAIN_EVIDENCE_NAMESPACE}{provenance.provider}:{provenance.source_id}:"
+        f"{wallet_key}:{cluster_key}",
+    )
+
+
+def cross_chain_identity_evidence_to_row(
+    evidence: CrossChainIdentityEvidence,
+    caller_identity_id: UUID,
+) -> CrossChainIdentityEvidenceRow:
+    """Map cross-chain evidence while keeping wallet chain/address explicit."""
+
+    if not isinstance(evidence, CrossChainIdentityEvidence):
+        raise TypeError("evidence must be a CrossChainIdentityEvidence")
+    if not isinstance(caller_identity_id, UUID):
+        raise TypeError("caller_identity_id must be a UUID")
+    return CrossChainIdentityEvidenceRow(
+        id=_cross_chain_evidence_id(evidence),
+        provider=evidence.provenance[0].provider,
+        source_id=evidence.provenance[0].source_id,
+        caller_identity_id=caller_identity_id,
+        evidence_type=IdentityEvidenceType(evidence.evidence_type).value,
+        link_state=IdentityLinkState(evidence.link_state).value,
+        wallet_chain=(
+            None
+            if evidence.wallet is None
+            else normalize_chain(evidence.wallet.chain).value
+        ),
+        wallet_address=None if evidence.wallet is None else evidence.wallet.address,
+        cluster_id=evidence.cluster_id,
+        confidence=evidence.confidence,
+        observed_at=evidence.observed_at,
+        quality_state=evidence.quality_state.value,
+        evidence_refs=list(evidence.evidence_refs),
+        provenance=provenance_to_json(evidence.provenance),
+    )
+
+
+def cross_chain_identity_evidence_from_row(
+    row: CrossChainIdentityEvidenceRow,
+    caller_identity: CallerIdentity,
+) -> CrossChainIdentityEvidence:
+    """Rehydrate cross-chain evidence without turning it into ownership."""
+
+    if not isinstance(row, CrossChainIdentityEvidenceRow):
+        raise TypeError("row must be a CrossChainIdentityEvidenceRow")
+    if not isinstance(caller_identity, CallerIdentity):
+        raise TypeError("caller_identity must be a CallerIdentity")
+    if row.caller_identity_id != _caller_identity_id(caller_identity):
+        raise ValueError("cross-chain evidence row is bound to a different caller identity")
+    wallet = None
+    if row.wallet_address is not None:
+        if row.wallet_chain is None:
+            raise ValueError("cross-chain evidence wallet row is missing its chain")
+        wallet = WalletIdentity(address=row.wallet_address, chain=row.wallet_chain)
+    return CrossChainIdentityEvidence(
+        caller_identity=caller_identity,
+        evidence_type=IdentityEvidenceType(row.evidence_type),
+        confidence=row.confidence,
+        observed_at=row.observed_at,
+        provenance=provenance_from_json(row.provenance),
+        wallet=wallet,
+        cluster_id=row.cluster_id,
+        link_state=IdentityLinkState(row.link_state),
+        quality_state=QualityState(row.quality_state),
+        evidence_refs=tuple(row.evidence_refs),
+    )
+
+
+def _update_caller_identity_row(row: CallerIdentityRow, identity: CallerIdentity) -> None:
+    if row.platform != identity.platform or row.author_id != identity.author_id:
+        raise IdempotencyConflict("caller identity conflicts with its deterministic identity")
+    row.handle = identity.handle
+    row.display_name = identity.display_name
+    row.confidence = identity.confidence
+    row.quality_state = identity.quality_state.value
+
+
+async def _ensure_caller_identity_row(
+    session: AsyncSession,
+    identity: CallerIdentity,
+) -> CallerIdentityRow:
+    row = await session.get(CallerIdentityRow, _caller_identity_id(identity))
+    if row is None:
+        row = caller_identity_to_row(identity)
+        session.add(row)
+    else:
+        _update_caller_identity_row(row, identity)
+    return row
+
+
+def _social_call_identity_matches(
+    row: SocialCallObservationRow,
+    observation: SocialCallObservation,
+) -> bool:
+    return (
+        row.provider == observation.provenance[0].provider
+        and row.source == observation.source
+        and row.message_id == observation.message_id
+        and row.published_at == observation.published_at
+    )
+
+
+def _update_social_call_row(
+    row: SocialCallObservationRow,
+    observation: SocialCallObservation,
+) -> None:
+    replacement = social_call_observation_to_row(observation, row.caller_identity_id)
+    for field_name in (
+        "observed_at",
+        "ingested_at",
+        "chain",
+        "asset_address",
+        "asset_token_program",
+        "referenced_address",
+        "unresolved_references",
+        "intent",
+        "declared_entry",
+        "declared_targets",
+        "disclosure",
+        "edited",
+        "deleted",
+        "confidence",
+        "quality_state",
+        "evidence_refs",
+        "provenance",
+    ):
+        setattr(row, field_name, getattr(replacement, field_name))
+
+
+def _cross_chain_identity_matches(
+    row: CrossChainIdentityEvidenceRow,
+    evidence: CrossChainIdentityEvidence,
+) -> bool:
+    provider = evidence.provenance[0].provider
+    source_id = evidence.provenance[0].source_id
+    return (
+        row.provider == provider
+        and row.source_id == source_id
+        and row.evidence_type == IdentityEvidenceType(evidence.evidence_type).value
+        and row.wallet_chain
+        == (
+            None
+            if evidence.wallet is None
+            else normalize_chain(evidence.wallet.chain).value
+        )
+        and row.wallet_address == (None if evidence.wallet is None else evidence.wallet.address)
+        and row.cluster_id == evidence.cluster_id
+    )
+
+
+def _update_cross_chain_identity_row(
+    row: CrossChainIdentityEvidenceRow,
+    evidence: CrossChainIdentityEvidence,
+) -> None:
+    replacement = cross_chain_identity_evidence_to_row(evidence, row.caller_identity_id)
+    for field_name in (
+        "link_state",
+        "confidence",
+        "observed_at",
+        "quality_state",
+        "evidence_refs",
+        "provenance",
+    ):
+        setattr(row, field_name, getattr(replacement, field_name))
+
+
+class CallerIdentityRepository:
+    """Persist public caller identities with deterministic idempotent IDs."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, identity: CallerIdentity) -> CallerIdentityRow:
+        row = await _ensure_caller_identity_row(self._session, identity)
+        await self._session.flush()
+        return row
+
+    async def get(self, identity_id: UUID) -> CallerIdentity | None:
+        row = await self._session.get(CallerIdentityRow, identity_id)
+        return None if row is None else caller_identity_from_row(row)
+
+
+class SocialCallObservationRepository:
+    """Persist social calls, updating provider-observed edit state on replay."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, observation: SocialCallObservation) -> SocialCallObservationRow:
+        if not isinstance(observation, SocialCallObservation):
+            raise TypeError("observation must be a SocialCallObservation")
+        row = await self._session.get(SocialCallObservationRow, _social_call_id(observation))
+        caller_id = _caller_identity_id(observation.caller_identity)
+        if row is not None and row.caller_identity_id != caller_id:
+            raise IdempotencyConflict("social call conflicts with its caller identity")
+        if row is not None and not _social_call_identity_matches(row, observation):
+            raise IdempotencyConflict("social call conflicts with persisted message identity")
+        await _ensure_caller_identity_row(self._session, observation.caller_identity)
+        if row is None:
+            row = social_call_observation_to_row(observation, caller_id)
+            self._session.add(row)
+        else:
+            _update_social_call_row(row, observation)
+        await self._session.flush()
+        return row
+
+    async def save(self, observation: SocialCallObservation) -> SocialCallObservationRow:
+        """Compatibility alias for callers that use mutable-ingest terminology."""
+
+        return await self.add(observation)
+
+    async def get(self, observation_id: UUID) -> SocialCallObservation | None:
+        row = await self._session.get(SocialCallObservationRow, observation_id)
+        if row is None:
+            return None
+        caller_row = await self._session.get(CallerIdentityRow, row.caller_identity_id)
+        if caller_row is None:
+            raise ValueError("social call row is missing its caller identity")
+        return social_call_observation_from_row(row, caller_identity_from_row(caller_row))
+
+
+class CrossChainIdentityEvidenceRepository:
+    """Persist chain-qualified caller/wallet evidence without asserting ownership."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, evidence: CrossChainIdentityEvidence) -> CrossChainIdentityEvidenceRow:
+        if not isinstance(evidence, CrossChainIdentityEvidence):
+            raise TypeError("evidence must be a CrossChainIdentityEvidence")
+        row = await self._session.get(
+            CrossChainIdentityEvidenceRow,
+            _cross_chain_evidence_id(evidence),
+        )
+        caller_id = _caller_identity_id(evidence.caller_identity)
+        if row is not None and row.caller_identity_id != caller_id:
+            raise IdempotencyConflict("cross-chain evidence conflicts with its caller identity")
+        if row is not None and not _cross_chain_identity_matches(row, evidence):
+            raise IdempotencyConflict("cross-chain evidence conflicts with persisted identity")
+        await _ensure_caller_identity_row(self._session, evidence.caller_identity)
+        if row is None:
+            row = cross_chain_identity_evidence_to_row(evidence, caller_id)
+            self._session.add(row)
+        else:
+            _update_cross_chain_identity_row(row, evidence)
+        await self._session.flush()
+        return row
+
+    async def get(self, evidence_id: UUID) -> CrossChainIdentityEvidence | None:
+        row = await self._session.get(CrossChainIdentityEvidenceRow, evidence_id)
+        if row is None:
+            return None
+        caller_row = await self._session.get(CallerIdentityRow, row.caller_identity_id)
+        if caller_row is None:
+            raise ValueError("cross-chain evidence row is missing its caller identity")
+        return cross_chain_identity_evidence_from_row(row, caller_identity_from_row(caller_row))
 
 
 def alert_to_row(alert: Alert) -> AlertRow:

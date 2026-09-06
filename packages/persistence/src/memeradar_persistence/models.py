@@ -67,6 +67,107 @@ class TokenRow(Base):
     pools: Mapped[list[PoolRow]] = relationship(back_populates="token")
 
 
+class CallerIdentityRow(Base):
+    """Persist one public/social caller identity independently from wallets."""
+
+    __tablename__ = "caller_identities"
+    __table_args__ = (
+        UniqueConstraint("platform", "author_id", name="uq_caller_identities_platform_author"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    platform: Mapped[str] = mapped_column(String(64), nullable=False)
+    author_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    handle: Mapped[str | None] = mapped_column(String(128))
+    display_name: Mapped[str | None] = mapped_column(String(256))
+    confidence: Mapped[Decimal] = mapped_column(Numeric(6, 5), nullable=False)
+    quality_state: Mapped[str] = mapped_column(String(16), nullable=False)
+
+
+class SocialCallObservationRow(Base):
+    """Persist normalized social calls keyed by provider/source message identity."""
+
+    __tablename__ = "social_call_observations"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "source",
+            "message_id",
+            name="uq_social_call_observations_message",
+        ),
+        Index("ix_social_call_observations_caller_published", "caller_identity_id", "published_at"),
+        Index("ix_social_call_observations_chain_published", "chain", "published_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    provider: Mapped[str] = mapped_column(String(128), nullable=False)
+    source: Mapped[str] = mapped_column(String(128), nullable=False)
+    message_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    caller_identity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("caller_identities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    chain: Mapped[str | None] = mapped_column(String(32))
+    asset_address: Mapped[str | None] = mapped_column(String(64))
+    asset_token_program: Mapped[str | None] = mapped_column(String(64))
+    referenced_address: Mapped[str | None] = mapped_column(String(64))
+    unresolved_references: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    intent: Mapped[str] = mapped_column(String(16), nullable=False)
+    declared_entry: Mapped[str | None] = mapped_column(String(256))
+    declared_targets: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    disclosure: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    edited: Mapped[bool | None] = mapped_column(Boolean)
+    deleted: Mapped[bool | None] = mapped_column(Boolean)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(6, 5), nullable=False)
+    quality_state: Mapped[str] = mapped_column(String(16), nullable=False)
+    evidence_refs: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    provenance: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+
+
+class CrossChainIdentityEvidenceRow(Base):
+    """Persist caller/wallet evidence with chain-qualified identity keys."""
+
+    __tablename__ = "cross_chain_identity_evidence"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "source_id",
+            "wallet_chain",
+            "wallet_address",
+            "cluster_id",
+            name="uq_cross_chain_identity_evidence_source_identity",
+        ),
+        Index(
+            "ix_cross_chain_identity_evidence_caller_observed",
+            "caller_identity_id",
+            "observed_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    provider: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    caller_identity_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("caller_identities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    evidence_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    link_state: Mapped[str] = mapped_column(String(16), nullable=False)
+    wallet_chain: Mapped[str | None] = mapped_column(String(32))
+    wallet_address: Mapped[str | None] = mapped_column(String(64))
+    cluster_id: Mapped[str | None] = mapped_column(String(256))
+    confidence: Mapped[Decimal] = mapped_column(Numeric(6, 5), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    quality_state: Mapped[str] = mapped_column(String(16), nullable=False)
+    evidence_refs: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    provenance: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+
+
 class PoolRow(Base):
     __tablename__ = "pools"
     __table_args__ = (

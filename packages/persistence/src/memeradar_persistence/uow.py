@@ -18,11 +18,14 @@ from memeradar_domain import Alert
 
 from .repositories import (
     AlertRepository,
+    CallerIdentityRepository,
     CandidateRepository,
+    CrossChainIdentityEvidenceRepository,
     FeatureSnapshotRepository,
     OutboxRepository,
     RiskAssessmentRepository,
     ScoreSnapshotRepository,
+    SocialCallObservationRepository,
 )
 
 
@@ -42,6 +45,9 @@ class SqlAlchemyUnitOfWork:
         )
         self._session: AsyncSession | None = None
         self.candidates: CandidateRepository
+        self.callers: CallerIdentityRepository
+        self.social_calls: SocialCallObservationRepository
+        self.cross_chain_identity_evidence: CrossChainIdentityEvidenceRepository
         self.alerts: AlertRepository
         self.features: FeatureSnapshotRepository
         self.risks: RiskAssessmentRepository
@@ -51,6 +57,9 @@ class SqlAlchemyUnitOfWork:
     async def __aenter__(self) -> Self:
         self._session = self._session_factory()
         self.candidates = CandidateRepository(self._session)
+        self.callers = CallerIdentityRepository(self._session)
+        self.social_calls = SocialCallObservationRepository(self._session)
+        self.cross_chain_identity_evidence = CrossChainIdentityEvidenceRepository(self._session)
         self.alerts = AlertRepository(self._session)
         self.features = FeatureSnapshotRepository(self._session)
         self.risks = RiskAssessmentRepository(self._session)
