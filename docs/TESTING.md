@@ -298,6 +298,18 @@ make profile-replay PROFILE_ITERATIONS=25
 The fixture is redacted and provider-free; missing external market/Telegram
 acceptance remains `BLOCKED_EXTERNAL`.
 
+The bounded opportunity case-study fixture reuses that same dataset and
+replay harness for seven winner/negative-control cohorts across Solana, BNB
+and Robinhood. Its research-only 2x/5x/10x/20x/50x/100x targets are structurally
+separate from normalized evidence; loader tests reject future-label fields
+inside the replay dataset and require unavailable historical fields to remain
+`UNKNOWN`.
+
+```text
+./.venv/bin/pytest tests/unit/test_opportunity_case_studies.py -q
+make replay-dataset REPLAY_INPUT=fixtures/research/opportunity_case_studies.json
+```
+
 ## Phase 9.1 paper execution
 
 The keyless paper suite covers Decimal risk-budget sizing, quote freshness and
