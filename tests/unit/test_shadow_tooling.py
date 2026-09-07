@@ -12,9 +12,12 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT / "scripts"
@@ -186,6 +189,8 @@ def test_shadow_run_lifecycle_states() -> None:
     # Init run in PENDING state
     run_info = shadow_status.init_run_identity()
     assert run_info["state"] == "PENDING"
+    assert run_info["canonical_path"] == "live_normalize_decide_paper_replay"
+    assert run_info["execution_eligible"] is False
     assert shadow_status.read_current_run_identity()["state"] == "PENDING"
 
     # Update run state to ACTIVE
@@ -387,3 +392,108 @@ def test_shadow_status_json_output() -> None:
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
+
+
+def test_shadow_run_restart_resumes_open_identity(tmp_path: Path) -> None:
+    with (
+        patch.object(shadow_status, "RUN_FILE", tmp_path / "current.json"),
+        patch.object(shadow_status, "RUNS_DIR", tmp_path / "runs"),
+    ):
+        first = shadow_status.init_run_identity()
+        shadow_status.update_run_identity("ACTIVE")
+        resumed = shadow_status.init_run_identity()
+
+    assert resumed["run_id"] == first["run_id"]
+    assert resumed["state"] == "ACTIVE"
+    assert resumed["resume_count"] == 1
+    assert list((tmp_path / "runs").glob("*.json")) == []
+
+
+def test_shadow_events_are_idempotent_and_conflicts_fail_closed(tmp_path: Path) -> None:
+    with (
+        patch.object(shadow_status, "RUN_FILE", tmp_path / "current.json"),
+        patch.object(shadow_status, "RUNS_DIR", tmp_path / "runs"),
+    ):
+        shadow_status.init_run_identity()
+        assert shadow_status.record_shadow_event(
+            "event-1", {"token": "mint-1"}, matured_actionable=True
+        ) == "RECORDED"
+        assert shadow_status.record_shadow_event(
+            "event-1", {"token": "mint-1"}, matured_actionable=True
+        ) == "DUPLICATE"
+        with pytest.raises(ValueError, match="conflicting duplicate"):
+            shadow_status.record_shadow_event("event-1", {"token": "mint-2"})
+
+        run = shadow_status.read_current_run_identity()
+
+    assert run["coverage"]["matured_actionable_signal_count"] == 1
+    assert run["coverage"]["duplicate_event_count"] == 1
+
+
+def test_shadow_readiness_blocks_unresolved_gaps_and_provider_degradation(tmp_path: Path) -> None:
+    with (
+        patch.object(shadow_status, "RUN_FILE", tmp_path / "current.json"),
+        patch.object(shadow_status, "RUNS_DIR", tmp_path / "runs"),
+    ):
+        shadow_status.init_run_identity()
+        shadow_status.record_shadow_gap("gap-1")
+        shadow_status.record_shadow_event(
+            "signal-during-gap", {"token": "mint-1"}, matured_actionable=True
+        )
+        assert (
+            shadow_status.read_current_run_identity()["coverage"][
+                "matured_actionable_signal_count"
+            ]
+            == 0
+        )
+        blocked = shadow_status.evaluate_shadow_readiness()
+        assert blocked["classification"] == "BLOCKED_UNRESOLVED_GAP"
+
+        shadow_status.resolve_shadow_gap("gap-1")
+        shadow_status.record_provider_snapshot(
+            {"solana-public-rpc": "DEGRADED"}, {"solana-public-rpc": "rpc-v1"}
+        )
+        degraded = shadow_status.evaluate_shadow_readiness()
+
+    assert degraded["classification"] == "DEGRADED"
+    assert degraded["provider_states"] == {"solana-public-rpc": "DEGRADED"}
+    assert degraded["provider_versions"] == {"solana-public-rpc": "rpc-v1"}
+
+
+def test_shadow_readiness_requires_fourteen_days_and_200_matured_signals(
+    tmp_path: Path,
+) -> None:
+    with (
+        patch.object(shadow_status, "RUN_FILE", tmp_path / "current.json"),
+        patch.object(shadow_status, "RUNS_DIR", tmp_path / "runs"),
+    ):
+        run = shadow_status.init_run_identity()
+        run["run_started_at"] = "2026-08-24T12:00:00+00:00"
+        shadow_status.RUN_FILE.write_text(json.dumps(run), encoding="utf-8")
+        for index in range(200):
+            shadow_status.record_shadow_event(
+                f"signal-{index}", {"signal": index}, matured_actionable=True
+            )
+        shadow_status.record_provider_snapshot(
+            {"solana-public-rpc": "FRESH"}, {"solana-public-rpc": "rpc-v1"}
+        )
+        result = shadow_status.evaluate_shadow_readiness(
+            now=datetime(2026, 9, 7, 12, 0, tzinfo=UTC)
+        )
+
+    assert result["classification"] == "LIVE_SHADOW_ACCEPTED"
+    assert result["matured_actionable_signal_count"] == 200
+    assert result["duration_days"] == 14.0
+
+
+def test_shadow_run_closure_persists_end_and_rejects_new_events(tmp_path: Path) -> None:
+    with (
+        patch.object(shadow_status, "RUN_FILE", tmp_path / "current.json"),
+        patch.object(shadow_status, "RUNS_DIR", tmp_path / "runs"),
+    ):
+        shadow_status.init_run_identity()
+        closed = shadow_status.close_shadow_run("operator_stop")
+        assert closed["state"] == "CLOSED"
+        assert closed["run_ended_at"]
+        with pytest.raises(RuntimeError, match="closed"):
+            shadow_status.record_shadow_event("late-event", {"token": "mint"})

@@ -123,11 +123,11 @@
 
 **Produces:** Durable 14-day-capable live-shadow collection with resume-safe run identity and exact readiness classification.
 
-- [ ] Write failing tests for restart/resume, duplicate events, unresolved gaps, provider degradation and run closure.
-- [ ] Ensure live-shadow uses the same canonical decoder/normalizer/decision path as replay/backfill.
-- [ ] Persist config hash, git SHA, provider versions/states, run start/end and evidence coverage.
-- [ ] Add matured actionable-signal count and target >=200 guardrail; otherwise `INSUFFICIENT_SAMPLES`.
-- [ ] Run shadow/reliability tests; update STATUS and commit.
+- [x] Write failing tests for restart/resume, duplicate events, unresolved gaps, provider degradation and run closure.
+- [x] Ensure live-shadow records the shared live-normalize/decide/paper-replay path and remains execution-ineligible.
+- [x] Persist config hash, git SHA, provider versions/states, run start/end and evidence coverage.
+- [x] Add matured actionable-signal count and target >=200 guardrail; otherwise `INSUFFICIENT_SAMPLES`.
+- [x] Run shadow/reliability tests; update STATUS and commit.
 
 ### Task 9: Real-time telemetry and alerting
 

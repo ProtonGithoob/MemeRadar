@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1094 Python tests (11 skipped), 55 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1099 Python tests (11 skipped), 55 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1414,14 +1414,18 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Real Alpha Production Readiness Task 7 checkpoint (2026-09-07): extended the existing caller performance/read path with explicit `evidence_class` propagation and a read-only caller leaderboard. The endpoint retains confidence ordering, bounded filters and cursor pagination; the UI now renders sample adequacy, executable multiple rates, executable MFE/MAE, rug/failure counts, specialization, confidence, evidence class, provenance and no-lookahead state. `HISTORICAL_REAL`, `SYNTHETIC_REDACTED`, `MIXED` and `UNKNOWN` remain explicit; no provider-name or confidence inference is used. No duplicate caller score, persistence, UI decision engine, production scoring weight or execution/follow/copy control was added.
 - Task 7 TDD/verification evidence: the initial backend read contract failed on the absent evidence-class field. After the minimal extension, the focused backend profile/read suite passes `8 tests`, the caller gateway passes `2 tests`, and the leaderboard UI passes `3 tests`; `make lint`, strict `make typecheck` over `121 source files` and `git diff --check` pass. Full `make verify` exits `0` with `1094` Python tests passed, `11` skipped, `1` warning, `55` Vitest tests passed, migration head `0008_alpha_caller_intelligence` / `25` tables, security review PASS and the existing `581`-component SBOM digest. No historical-real/provider/live-shadow success or production-ready classification is fabricated; protected modes remain exact and all four unrelated WIP files remain untouched.
 
+- Real Alpha Production Readiness Task 8 checkpoint (2026-09-07): extended the existing `scripts/start-shadow.sh` / `scripts/shadow_status.py` run seam with resume-safe identity pinned to git SHA and config hash, archival of incompatible/terminal runs, persisted provider states/versions, canonical live-normalize/decide/paper-replay path, explicit `execution_eligible=false`, event coverage, duplicate/conflict fingerprints, unresolved gap lifecycle, provider degradation classification and terminal closure. Maturation is idempotent by normalized event identity and fail-closed while an unresolved gap exists. `LIVE_SHADOW_ACCEPTED` requires both 14 elapsed calendar days and 200 matured actionable signals; otherwise the run remains `INSUFFICIENT_SAMPLES`, `DEGRADED`, `BLOCKED_EXTERNAL` or `BLOCKED_UNRESOLVED_GAP` as applicable. No duplicate decoder/replay/paper engine or production scoring weight was added.
+- Task 8 TDD/verification evidence: the initial focused collection failed with the expected five missing resume/event/gap/readiness/closure contracts. After implementation, `tests/unit/test_shadow_tooling.py` passes `24 tests`; the adjacent shadow-entry/reliability suite passes `35 tests`; Ruff, Python compilation and `git diff --check` pass. Real provider snapshots, historical-real calls and matured live-shadow outcomes remain unavailable, so PR-4 remains `INSUFFICIENT_SAMPLES` and no production-ready classification is claimed. Protected modes remain exact and the four pre-existing unrelated WIP files remain untouched.
+- Current read-only status evidence: `python3 scripts/shadow_status.py` exits `0` with `STACK_READY / BLOCKED_EXTERNAL`, `START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE` evidence and `0` matured outcomes; no real shadow collection is claimed.
+
 ## Next task
 
-Real Alpha Production Readiness Task 8: extend the existing live-shadow run
-controller and evidence durability path for restart/resume, duplicate events,
-unresolved gaps, provider degradation, run closure, config/git/provider
-provenance and the >=200 matured actionable-signal guardrail. Keep
-`INSUFFICIENT_SAMPLES` fail-closed when the 14-day/200-signal evidence target
-cannot be met.
+Real Alpha Production Readiness Task 9: extend the existing reliability,
+metrics, health and alerting seams for provider success/error/rate-limit/stale
+states, ingestion lag, queue age/depth, idempotency, stream gaps, parsing and
+resolution, quote freshness, decision/alert latency, Telegram failure and
+DB/Redis/API/worker health. Add fail-closed operational alert contracts
+without claiming measured production SLOs until real evidence exists.
 No production weights or protected modes change; current social/Telegram access
 remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`.
 Protected modes remain

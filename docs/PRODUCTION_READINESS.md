@@ -1,6 +1,6 @@
 # MemeRadar Production Readiness
 
-**Current checkpoint:** Real Alpha Production Readiness Task 7 complete; the repository remains synchronized on `main` with protected modes unchanged.
+**Current checkpoint:** Real Alpha Production Readiness Task 8 complete; the repository remains synchronized on `main` with protected modes unchanged.
 
 **Current classification:** `NOT_PRODUCTION_READY` for real-alpha or live-money claims. Engineering verification is strong, but checked-in alpha evidence remains `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES` and real X/Telegram/provider/live-shadow evidence is still externally incomplete.
 
@@ -32,7 +32,7 @@ AUTO_EXECUTION=false
 | PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | `PARTIAL` | Task 7 checkpoint `make verify` passed with `1094` Python tests, `11` skipped and `55` Vitest tests; migration/security/SBOM gates pass locally. `.github/workflows/ci.yml` exists, but no hosted run, release artifact or tested rollback is evidenced yet. |
 | PR-2 Provider/evidence | Required real chain/market/social/Telegram capabilities with freshness/provenance and stable doctors | `BLOCKED_EXTERNAL/PARTIAL` | `make free-provider-doctor` reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors report `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`. Configure compliant real access and prove bounded reads. |
 | PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | `INSUFFICIENT_SAMPLES` | `fixtures/research/opportunity_research_report.json` remains `SYNTHETIC_REDACTED`; the new `historical_real_dataset_validation.json` reports zero matured calls/outcomes and no historical-real evidence. Collect real calls/outcomes and rerun the canonical gate. |
-| PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | `INSUFFICIENT_SAMPLES` | `python3 scripts/shadow_status.py` reports `STACK_OFFLINE`, `START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE` evidence and unknown matured outcomes; run a durable real shadow window. |
+| PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | `INSUFFICIENT_SAMPLES` | Task 8 now provides restart-safe run identity, idempotent normalized-event fingerprints, unresolved-gap blocking, provider snapshots, closure and `14 days + 200 matured actionable signals` classification. No real shadow window or matured live evidence exists yet. |
 | PR-5 Operations | Backups/restore, monitoring/alerts, soak/failure tests, deployment/rollback runbooks | `PARTIAL/NOT_VERIFIED` | Runbooks and keyless contracts exist; `reliability-doctor` reports `backup_restore=DOCUMENTED_ONLY`. Execute restore, soak and failure acceptance. |
 | PR-6 PROD_READ_ONLY | PR-1 + PR-2 + PR-5 PASS | `NOT_ACCEPTED` | Complete its three prerequisite gates; PR-3/PR-4 may remain insufficient while collecting evidence. |
 | PR-7 PROD_PAPER_AUTO | PR-1..PR-5 PASS plus real-environment paper-auto fail-closed acceptance | `NOT_ACCEPTED` | Complete all evidence and operational gates in a real deployment. |
@@ -263,6 +263,39 @@ the existing `581`-component SBOM digest passes. No historical-real or
 live-shadow success is claimed; the checked-in fixture remains
 `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES`, and compliant X/Telegram access
 remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`.
+
+## Task 8 evidence snapshot — 2026-09-07
+
+The existing `scripts/start-shadow.sh` and `scripts/shadow_status.py` seam now
+resumes an open run only when its pinned git SHA and configuration hash still
+match; incompatible or terminal runs are archived before a new identity is
+created. The run record persists provider states/versions, start/end times,
+canonical live-normalize/decide/paper-replay path, `execution_eligible=false`,
+event coverage, duplicate/conflict fingerprints and unresolved stream gaps.
+
+Matured actionable signals are counted only once by normalized event identity,
+and are not matured while an unresolved gap exists. Provider degradation,
+unknown capability state and unresolved gaps classify the run fail-closed;
+`LIVE_SHADOW_ACCEPTED` requires both `14` elapsed calendar days and `200`
+matured actionable signals. A closed run records its end time and rejects
+late events. These are keyless contracts; they do not claim real provider or
+live-shadow success.
+
+Evidence for this slice:
+
+- The initial TDD run failed on the missing resume/event/gap/closure APIs with
+  `5` failures; after implementation, the focused shadow tooling suite passes
+  `24 tests` and the adjacent shadow-entry/reliability suite passes `35 tests`.
+- The current read-only status command exits `0` with
+  `STACK_READY / BLOCKED_EXTERNAL`, run state `START_FAILED`, collection
+  `NOT_ACTIVE`, evidence `NOT_AVAILABLE` and `0` matured outcomes. This is
+  not a live-shadow success claim.
+- Ruff, Python compilation and `git diff --check` pass for the touched files.
+- Real provider snapshots, historical-real calls and matured live-shadow
+  outcomes remain unavailable; PR-2/PR-4 therefore remain externally blocked
+  or `INSUFFICIENT_SAMPLES` as recorded above.
+- Protected modes remain exact and no signer, live execution capability,
+  scoring weight or duplicate replay/decoder engine was added.
 
 ## Minimum evidence targets
 
