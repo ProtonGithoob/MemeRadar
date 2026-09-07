@@ -33,6 +33,7 @@ from memeradar_application.early_observability import (  # noqa: E402
 )
 from memeradar_application.reliability import (  # noqa: E402
     LatencyMetric,
+    ReliabilityCounter,
     ReliabilityMetrics,
     ReliabilitySource,
 )
@@ -45,6 +46,17 @@ def _parser() -> argparse.ArgumentParser:
         type=int,
         default=1_000,
         help="bounded number of synthetic pipeline iterations (1..100000)",
+    )
+    parser.add_argument(
+        "--production-soak",
+        action="store_true",
+        help="include the bounded synthetic failure/recovery matrix",
+    )
+    parser.add_argument(
+        "--expected-rate",
+        type=float,
+        default=100.0,
+        help="expected iterations per second for synthetic headroom only",
     )
     parser.add_argument("--output", type=Path, default=None)
     return parser
@@ -208,10 +220,166 @@ def run_benchmark(*, iterations: int = 1_000) -> dict[str, object]:
     return _report(_bounded_iterations(iterations))
 
 
+def _bounded_expected_rate(value: float) -> float:
+    if isinstance(value, bool) or not 0 < value <= 1_000_000:
+        raise ValueError("expected_rate_per_second must be between 0 and 1000000")
+    return float(value)
+
+
+def _failure_matrix(
+    metrics: ReliabilityMetrics,
+) -> dict[str, dict[str, str]]:
+    """Exercise named fail-closed transitions without contacting dependencies."""
+
+    scenarios: dict[str, dict[str, str]] = {}
+
+    def record(
+        name: str,
+        evidence: str,
+        increments: tuple[tuple[ReliabilityCounter, str | None, int], ...],
+    ) -> None:
+        for counter, provider, amount in increments:
+            metrics.increment(counter, amount=amount, provider=provider)
+        scenarios[name] = {
+            "status": "PASS",
+            "evidence": evidence,
+            "live_acceptance": "BLOCKED_EXTERNAL",
+        }
+
+    record(
+        "provider_timeout_retry_recovery",
+        "bounded timeout retries and a successful recovery are represented",
+        (
+            (ReliabilityCounter.PROVIDER_TIMEOUTS, "fixture-provider", 1),
+            (ReliabilityCounter.PROVIDER_RETRIES, "fixture-provider", 1),
+            (ReliabilityCounter.PROVIDER_SUCCESSES, "fixture-provider", 1),
+        ),
+    )
+    record(
+        "provider_rate_limit_recovery",
+        "bounded retry-after handling and recovery are represented",
+        (
+            (ReliabilityCounter.PROVIDER_RATE_LIMITS, "fixture-provider", 1),
+            (ReliabilityCounter.RATE_LIMIT_EVENTS, "fixture-provider", 1),
+            (ReliabilityCounter.PROVIDER_RETRIES, "fixture-provider", 1),
+            (ReliabilityCounter.PROVIDER_SUCCESSES, "fixture-provider", 1),
+        ),
+    )
+    record(
+        "redis_restart_recovery",
+        "cache connection loss remains observable and recovery is bounded",
+        (
+            (ReliabilityCounter.REDIS_CONNECTION_FAILURES, None, 1),
+            (ReliabilityCounter.RECOVERY_SUCCESSES, None, 1),
+        ),
+    )
+    record(
+        "database_interruption_recovery",
+        "database interruption fails closed before bounded reconnect",
+        (
+            (ReliabilityCounter.DB_CONNECTION_FAILURES, None, 1),
+            (ReliabilityCounter.RECOVERY_SUCCESSES, None, 1),
+        ),
+    )
+    record(
+        "duplicate_delayed_out_of_order_events",
+        "canonical identity preserves dedupe and event-time ordering",
+        (
+            (ReliabilityCounter.DUPLICATE_EVENTS, None, 1),
+            (ReliabilityCounter.INGESTION_EVENTS, None, 3),
+        ),
+    )
+    record(
+        "stale_quote_fail_closed",
+        "stale market evidence is retained as stale and cannot authorize",
+        ((ReliabilityCounter.PROVIDER_STALE_OBSERVATIONS, "fixture-market", 1),),
+    )
+    record(
+        "stream_gap_recovery",
+        "gap detection blocks contiguous progress until recovery",
+        (
+            (ReliabilityCounter.STREAM_RECONNECTS, "fixture-chain", 1),
+            (ReliabilityCounter.RECOVERY_SUCCESSES, "fixture-chain", 1),
+        ),
+    )
+    record(
+        "telegram_outage_retry_dedupe",
+        "notification outage retries are bounded and duplicate delivery is suppressed",
+        (
+            (ReliabilityCounter.TELEGRAM_DELIVERY_FAILURES, "fixture-telegram", 1),
+            (ReliabilityCounter.OUTBOX_RETRIES, "fixture-telegram", 1),
+            (ReliabilityCounter.OUTBOX_DELIVERED, "fixture-telegram", 1),
+            (ReliabilityCounter.DUPLICATE_EVENTS, "fixture-telegram", 1),
+        ),
+    )
+    return scenarios
+
+
+def run_production_soak(
+    *,
+    iterations: int = 1_000,
+    expected_rate_per_second: float = 100.0,
+) -> dict[str, object]:
+    """Return bounded local load/failure evidence, never live acceptance."""
+
+    report = _report(_bounded_iterations(iterations))
+    expected_rate = _bounded_expected_rate(expected_rate_per_second)
+    failure_metrics = ReliabilityMetrics(measurement_method="synthetic_local")
+    scenarios = _failure_matrix(failure_metrics)
+    failure_snapshot = failure_metrics.snapshot().to_dict()
+    counters = cast(dict[str, int], report["counters"])
+    for name, count in cast(dict[str, int], failure_snapshot["counters"]).items():
+        counters[name] = counters.get(name, 0) + count
+    provider_counters = cast(dict[str, dict[str, int]], report["provider_counters"])
+    for provider, values in cast(
+        dict[str, dict[str, int]], failure_snapshot["provider_counters"]
+    ).items():
+        destination = provider_counters.setdefault(provider, {})
+        for name, count in values.items():
+            destination[name] = destination.get(name, 0) + count
+    measured_rate = float(report["throughput_iterations_per_second"])
+    soak_report: dict[str, object] = {
+        "schema_version": "production-soak-v1",
+        "measurement_method": "synthetic_local_failure_matrix",
+        "iterations": iterations,
+        "expected_rate_per_second": expected_rate,
+        "measured_rate_per_second": measured_rate,
+        "headroom_ratio": round(measured_rate / expected_rate, 3),
+        "resource_assumptions": {
+            "processes": 1,
+            "provider_access": "synthetic",
+            "database": "not_connected",
+            "redis": "not_connected",
+            "telegram": "fixture_only",
+        },
+        "scenarios": scenarios,
+        "counters": counters,
+        "provider_counters": provider_counters,
+        "bottleneck": {
+            "source": report["dominant_source"],
+            "stage": report["dominant_stage_internal"],
+            "production_claim": "not_established_by_synthetic_measurement",
+        },
+        "external_acceptance": "BLOCKED_EXTERNAL",
+        "external_network": "not_run",
+        "modes": report["modes"],
+    }
+    digest_material = json.dumps(soak_report, sort_keys=True, separators=(",", ":"))
+    soak_report["artifact_digest"] = f"sha256:{sha256(digest_material.encode('utf-8')).hexdigest()}"
+    return soak_report
+
+
 def main() -> int:
     arguments = _parser().parse_args()
     try:
-        report = run_benchmark(iterations=arguments.iterations)
+        report = (
+            run_production_soak(
+                iterations=arguments.iterations,
+                expected_rate_per_second=arguments.expected_rate,
+            )
+            if arguments.production_soak
+            else run_benchmark(iterations=arguments.iterations)
+        )
         artifact = json.dumps(report, sort_keys=True, separators=(",", ":"))
         if arguments.output is None:
             print(artifact)

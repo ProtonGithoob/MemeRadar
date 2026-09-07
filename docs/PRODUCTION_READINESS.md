@@ -1,6 +1,6 @@
 # MemeRadar Production Readiness
 
-**Current checkpoint:** Real Alpha Production Readiness Task 12 locally implemented; hosted verification is pending and protected modes remain unchanged.
+**Current checkpoint:** Real Alpha Production Readiness Task 13 locally implemented; hosted/provider soak verification is pending and protected modes remain unchanged.
 
 **Current classification:** `NOT_PRODUCTION_READY` for real-alpha or live-money claims. Engineering verification is strong, but checked-in alpha evidence remains `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES` and real X/Telegram/provider/live-shadow evidence is still externally incomplete.
 
@@ -33,7 +33,7 @@ AUTO_EXECUTION=false
 | PR-2 Provider/evidence | Required real chain/market/social/Telegram capabilities with freshness/provenance and stable doctors | `BLOCKED_EXTERNAL/PARTIAL` | `make free-provider-doctor` reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors report `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`. Configure compliant real access and prove bounded reads. |
 | PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | `INSUFFICIENT_SAMPLES` | `fixtures/research/opportunity_research_report.json` remains `SYNTHETIC_REDACTED`; the new `historical_real_dataset_validation.json` reports zero matured calls/outcomes and no historical-real evidence. Collect real calls/outcomes and rerun the canonical gate. |
 | PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | `INSUFFICIENT_SAMPLES` | Task 8 now provides restart-safe run identity, idempotent normalized-event fingerprints, unresolved-gap blocking, provider snapshots, closure and `14 days + 200 matured actionable signals` classification. No real shadow window or matured live evidence exists yet. |
-| PR-5 Operations | Backups/restore, monitoring/alerts, soak/failure tests, deployment/rollback runbooks | `PARTIAL/NOT_VERIFIED` | Task 10 proves a disposable migration/apply/dump/restore drill, 11 restored-database integration tests, index/query-plan use and explicit pool/timeouts. Managed backup scheduling, real deployment restore objectives and soak/failure acceptance remain unverified. |
+| PR-5 Operations | Backups/restore, monitoring/alerts, soak/failure tests, deployment/rollback runbooks | `PARTIAL/BLOCKED_EXTERNAL` | Tasks 10 and 13 provide disposable restore evidence, telemetry contracts and a bounded synthetic failure matrix. Managed backup scheduling, real deployment restore objectives, dependency restarts and production-like soak acceptance remain unverified. |
 | PR-6 PROD_READ_ONLY | PR-1 + PR-2 + PR-5 PASS | `NOT_ACCEPTED` | Complete its three prerequisite gates; PR-3/PR-4 may remain insufficient while collecting evidence. |
 | PR-7 PROD_PAPER_AUTO | PR-1..PR-5 PASS plus real-environment paper-auto fail-closed acceptance | `NOT_ACCEPTED` | Complete all evidence and operational gates in a real deployment. |
 | PR-8 LIVE_MONEY_CANDIDATE | Separate future operator-approved design plus all prior evidence | `OUT_OF_SCOPE` | Never auto-enable from this roadmap. |
@@ -431,6 +431,44 @@ Evidence for this slice:
   internal test PASS or FAIL. A real deployment rollback remains unverified.
   PR-1 therefore stays `PARTIAL/BLOCKED_EXTERNAL`; no remote-CI PASS is
   claimed.
+
+## Task 13 evidence snapshot — 2026-09-07
+
+The existing reliability benchmark now exposes a bounded
+`production-soak-v1` report rather than adding another provider, stream or
+alert engine. It reuses `ReliabilityMetrics` and records eight deterministic
+failure/recovery scenarios: provider timeout/retry/recovery, provider
+rate-limit recovery, Redis restart, database interruption,
+duplicate/delayed/out-of-order events, stale quote fail-closed behavior, stream
+gap recovery and Telegram outage/retry/dedupe. The report separates synthetic
+throughput/headroom from alpha quality and records one-process, no-database,
+no-Redis, synthetic-provider and fixture-only Telegram assumptions.
+
+Evidence for this slice:
+
+- The new production-soak contract initially failed at collection because the
+  report entry point and Make target were absent. After the minimal extension,
+  the focused contract suite passes `2 tests`; the existing reliability,
+  transport, Telegram, stream, alert and Phase 11 contract suite passes `53
+  tests`.
+- `make production-soak SOAK_ITERATIONS=1000 SOAK_EXPECTED_RATE=100` reports
+  `schema_version=production-soak-v1`, eight scenarios,
+  `measured_rate_per_second=3054.806`, `headroom_ratio=30.548` and artifact
+  digest `sha256:00dfef6825ca25f28eb88a0f23fc2a314765d7e04f340c955e8663811f5f2ddb`.
+  These are bounded synthetic-local measurements, not production capacity or
+  provider SLO claims.
+- `make lint`, strict `make typecheck` over `121 source files`, the full
+  `make verify` gate (`1111` Python tests passed, `11` skipped, `1` warning;
+  `55` Vitest tests passed), Compose, secret scan, migrations, security review
+  and the existing `581`-component SBOM pass. The protected modes remain
+  exactly `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
+  `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
+- No real provider, Redis, database or Telegram restart/outage was executed by
+  this keyless checkpoint. External soak acceptance remains
+  `BLOCKED_EXTERNAL`; managed backup scheduling, deployment restore objectives,
+  resource headroom under real load and remote CI remain unverified. No
+  production-ready classification is claimed and the four pre-existing
+  unrelated WIP files remain untouched.
 
 ## Minimum evidence targets
 

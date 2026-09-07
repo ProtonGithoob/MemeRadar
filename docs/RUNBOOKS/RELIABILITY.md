@@ -32,6 +32,26 @@ samples are labelled `synthetic_local`; they must not be used as live provider
 SLO evidence. Do not add an SLO or extract Rust/Yellowstone based only on this
 keyless report.
 
+## Bounded production-like soak
+
+Run the keyless failure matrix with an explicitly bounded load and expected
+rate:
+
+```bash
+make production-soak SOAK_ITERATIONS=1000 SOAK_EXPECTED_RATE=100 \
+  SOAK_OUTPUT=/tmp/memeradar-production-soak.json
+```
+
+The report is `production-soak-v1` and covers provider timeout/rate-limit
+recovery, Redis restart, database interruption, duplicate/delayed/out-of-order
+events, stale quotes, stream gaps and Telegram outage/retry/dedupe. Its
+`measured_rate_per_second`, `headroom_ratio`, resource assumptions and
+`bottleneck` are local synthetic measurements only. A PASS scenario means the
+existing fail-closed contract is represented by the deterministic matrix; it
+does not mean that the external dependency was restarted or accepted traffic.
+Real dependency acceptance remains `BLOCKED_EXTERNAL` until bounded tests run
+against the configured provider, database, Redis and Telegram environments.
+
 ## Provider and stream outage
 
 1. Inspect the latest reliability snapshot and the existing provider doctor.

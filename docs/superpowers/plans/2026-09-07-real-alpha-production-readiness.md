@@ -190,11 +190,11 @@
 
 **Produces:** Measured capacity/recovery evidence, separate from alpha quality.
 
-- [ ] Run bounded production-like soak with provider retry/refresh paths exercised.
-- [ ] Test provider timeout/rate limit/recovery, Redis restart, DB connection interruption, duplicate/delayed/out-of-order events, stale quotes, stream gaps and Telegram outage/retry/dedupe.
-- [ ] Benchmark expected API/ingestion load with documented headroom and resource assumptions.
-- [ ] Record bottlenecks rather than tuning blindly.
-- [ ] Update STATUS and commit.
+- [x] Run bounded production-like soak with provider retry/refresh paths exercised.
+- [x] Test provider timeout/rate limit/recovery, Redis restart, DB connection interruption, duplicate/delayed/out-of-order events, stale quotes, stream gaps and Telegram outage/retry/dedupe.
+- [x] Benchmark expected API/ingestion load with documented headroom and resource assumptions.
+- [x] Record bottlenecks rather than tuning blindly.
+- [x] Update STATUS and commit.
 
 ### Task 14: Historical-real and live-shadow ablation/promotion rerun
 

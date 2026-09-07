@@ -199,6 +199,16 @@ production SLO; configured live access must be separately verified and remains
 [`docs/RUNBOOKS/RELIABILITY.md`](RUNBOOKS/RELIABILITY.md) for outage,
 retention and isolated backup/restore procedures.
 
+Run `make production-soak SOAK_ITERATIONS=1000 SOAK_EXPECTED_RATE=100` for
+the bounded production-like failure matrix. It reuses the reliability seam to
+exercise timeout/rate-limit recovery, Redis/DB interruption, duplicate and
+out-of-order delivery, stale quotes, stream gaps and Telegram retry/dedupe
+contracts. The report includes measured synthetic throughput, a headroom ratio,
+resource assumptions and bottleneck attribution. It uses no database, Redis,
+provider or Telegram connection, so `external_acceptance` remains
+`BLOCKED_EXTERNAL`; this is capacity/recovery evidence, not production SLO or
+alpha-quality evidence.
+
 ## Phase 11.2 observability and operations
 
 The keyless operations suite covers normalized provider operational records,

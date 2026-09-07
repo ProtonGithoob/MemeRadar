@@ -25,6 +25,9 @@ WINNER_VS_RUG_INPUT ?= fixtures/providers/winner_vs_rug/replay.json
 WINNER_VS_RUG_OUTPUT ?=
 RELIABILITY_ITERATIONS ?= 1000
 RELIABILITY_OUTPUT ?=
+SOAK_ITERATIONS ?= 1000
+SOAK_EXPECTED_RATE ?= 100
+SOAK_OUTPUT ?=
 EARLY_DETECTION_ITERATIONS ?= 100
 EARLY_DETECTION_OUTPUT ?=
 SBOM_OUTPUT ?=
@@ -35,7 +38,7 @@ SBOM_OUTPUT ?=
 	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
 	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-backtest-replay opportunity-research historical-dataset calibrate-score winner-vs-rug-optimizer reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
+backtest-replay opportunity-research historical-dataset calibrate-score winner-vs-rug-optimizer reliability-benchmark production-soak early-detection-benchmark early-live-doctor reliability-doctor \
 	security-review security-review-external sbom release-identity shadow-start shadow-status
 
 
@@ -87,6 +90,11 @@ winner-vs-rug-optimizer:
 reliability-benchmark:
 	$(PYTHON) scripts/reliability_benchmark.py --iterations $(RELIABILITY_ITERATIONS) \
 		$(if $(RELIABILITY_OUTPUT),--output $(RELIABILITY_OUTPUT),)
+
+production-soak:
+	$(PYTHON) scripts/reliability_benchmark.py --production-soak \
+		--iterations $(SOAK_ITERATIONS) --expected-rate $(SOAK_EXPECTED_RATE) \
+		$(if $(SOAK_OUTPUT),--output $(SOAK_OUTPUT),)
 
 early-detection-benchmark:
 	$(PYTHON) scripts/early_detection_benchmark.py --iterations $(EARLY_DETECTION_ITERATIONS) \
