@@ -46,10 +46,10 @@
 
 **Produces:** Required production capability set with states `READY`, `DEGRADED`, `RATE_LIMITED`, `STALE`, `CONFIGURATION_MISSING`, `BLOCKED_EXTERNAL`, `UNSUPPORTED`.
 
-- [ ] Write failing tests proving application health and evidence-capability health are distinct.
-- [ ] Add/verify bounded timeout, retry/backoff, freshness and rate-limit semantics for historical/live social, Telegram, market quote, execution quote and chain reads.
-- [ ] Ensure optional providers never block boot unless explicitly configured as required for the selected production profile.
-- [ ] Run focused tests/doctors; document real external blockers, update STATUS and commit.
+- [x] Write failing tests proving application health and evidence-capability health are distinct.
+- [x] Add/verify bounded timeout, retry/backoff, freshness and rate-limit semantics for historical/live social, Telegram, market quote, execution quote and chain reads.
+- [x] Ensure optional providers never block boot unless explicitly configured as required for the selected production profile.
+- [x] Run focused tests/doctors; document real external blockers, update STATUS and commit.
 
 ### Task 3: Historical X/social and Telegram real-evidence collectors
 

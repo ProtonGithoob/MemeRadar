@@ -85,6 +85,24 @@ mark.
 ## Live Read-Only Acceptance & Readiness
 
 See `LIVE_READONLY_CHECKLIST.md` for full environment setup, doctor commands, and degraded mode behavior. A successful free core is reported as `READY_FOR_FREE_READ_ONLY_SHADOW`; it is never full-provider or live-money readiness.
+
+Production capability health is explicit and separate from application health.
+The aggregate free-first doctor and `/v1/providers/health` expose the
+canonical states `READY`, `DEGRADED`, `RATE_LIMITED`, `STALE`,
+`CONFIGURATION_MISSING`, `BLOCKED_EXTERNAL` and `UNSUPPORTED`; unprobed health
+is `UNKNOWN`. `/health/live` and `/health/ready` report only the API process
+and its configured database/Redis dependencies, so optional social, Telegram
+or enrichment outages do not become application boot failures or silently
+become evidence readiness. Capability readiness is read from the provider
+health endpoint/doctor instead.
+
+All provider calls continue through the shared bounded transport: request
+deadlines, bounded retries/backoff, rate-limit waits and circuit-open behavior
+are preserved for chain, market/reference quote, execution-quote, social and
+Telegram adapters. Optional providers remain non-blocking when absent; an
+explicitly configured provider reports its concrete configuration, rate-limit,
+freshness or external failure state without being relabeled as `READY`.
+
 All provider ports operate under strict fail-closed boundaries:
 - Missing optional API keys or endpoints report `UNCONFIGURED_OPTIONAL`; configured network failures report `BLOCKED_EXTERNAL`/`DEGRADED`. The free core uses keyless adapters or explicit `QualityState.UNKNOWN` without crashing.
 - Stream gaps or unverified protocol routing reduce quality to `DEGRADED` or `UNKNOWN` and cannot authorize `ENTRY_READY` or inflate `AlphaScore`.

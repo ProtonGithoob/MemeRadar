@@ -11,6 +11,7 @@ from scripts.dexscreener_doctor import run_doctor as run_dexscreener_doctor
 from scripts.free_provider_doctor import run_free_provider_doctor
 from scripts.solana_rpc_doctor import run_doctor as run_solana_doctor
 
+from memeradar_application.provider_contracts import ProviderCapabilityStatus
 from memeradar_providers.dexscreener import SOLANA_NATIVE_MINT
 from memeradar_providers.transport import ProviderTransport, RetryPolicy, TransportTimeouts
 
@@ -122,3 +123,20 @@ def test_free_provider_doctor_keyless_mode_keeps_optional_absence_out_of_core() 
         "manual_execution": False,
         "auto_execution": False,
     }
+
+
+def test_free_provider_doctor_exposes_canonical_capability_states() -> None:
+    report = run_free_provider_doctor(probe=False)
+
+    assert report["core"]["solana_rpc"]["capability_status"] == (
+        ProviderCapabilityStatus.UNKNOWN.value
+    )
+    assert report["core"]["local_wallet_intelligence"]["capability_status"] == (
+        ProviderCapabilityStatus.READY.value
+    )
+    assert report["optional"]["social_analytics"]["capability_status"] == (
+        ProviderCapabilityStatus.CONFIGURATION_MISSING.value
+    )
+    assert report["optional"]["ollama"]["capability_status"] == (
+        ProviderCapabilityStatus.UNSUPPORTED.value
+    )

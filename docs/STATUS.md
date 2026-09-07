@@ -1396,16 +1396,18 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Real Alpha Production Readiness Task 1 checkpoint (2026-09-07): completed the current-state gap inventory in `docs/PRODUCTION_READINESS.md` using the actual CI workflow, Make targets, provider/paper/reliability doctors, migration head, security/SBOM results, shadow run state, runbooks and checked-in Alpha Caller artifact. PR-1 is `PARTIAL` because local `make verify` is green but hosted CI, release identity and tested rollback are not evidenced; PR-2 is `BLOCKED_EXTERNAL/PARTIAL` because the free core doctor reaches `READY_FOR_FREE_READ_ONLY_SHADOW` while social, Telegram and stream capability doctors report missing configuration; PR-3 is `INSUFFICIENT_SAMPLES` with seven `SYNTHETIC_REDACTED` cases and no historical-real samples; PR-4 is `INSUFFICIENT_SAMPLES` because the latest shadow run is `START_FAILED`/`STACK_OFFLINE` with no matured outcomes; PR-5 is `PARTIAL/NOT_VERIFIED` because backup/restore is documented but not drilled and production-like soak/failure acceptance is not recorded. No production-ready classification was made.
 - Task 1 verification evidence: `make free-provider-doctor` exits `0` with `CORE_FREE_READINESS=READY_FOR_FREE_READ_ONLY_SHADOW`, `make paper-trading-doctor` exits `0` with `paper_auto_gate=PASS`, `make migration-check` reports head `0008_alpha_caller_intelligence`/`25` tables, `make security-review` exits `0` with `PASS` and external scans `NOT_RUN`, `make sbom` exits `0` with the existing `581`-component digest, `make compose-config` exits `0`, and `python3 scripts/shadow_status.py` reports `STACK_OFFLINE`, `START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE` evidence and unknown matured outcomes. `make social-doctor`, `make telegram-doctor`, `make stream-integrity-doctor` and `make reliability-doctor` honestly report configuration/external blockers. `git diff --check` passes; protected modes remain exact and the four unrelated WIP files remain untouched.
 
+- Real Alpha Production Readiness Task 2 checkpoint (2026-09-07): added the provider-neutral `ProviderCapabilityStatus` contract and shared normalizer, then extended the existing free-first doctor items and `/v1/providers/health` response with canonical capability health while preserving the legacy provider `state` for compatibility. `READY` is only emitted after a successful probe/local capability; configuration absence is `CONFIGURATION_MISSING`, rate-limit and stale evidence remain distinct, external failures remain `BLOCKED_EXTERNAL`, unsupported capabilities remain `UNSUPPORTED`, and unprobed state remains `UNKNOWN`. `/health/live` and `/health/ready` remain application/dependency health only; a focused route test proves provider capability status is not folded into application readiness. No provider SDK, second transport, scoring weight or execution path was added.
+- Task 2 TDD/verification evidence: the new doctor contract first failed at collection because `ProviderCapabilityStatus` was absent; the API contract then failed with the expected missing `capability_status` field. After the minimal shared implementation, the focused provider/transport/health/doctor/read suites pass (`49 tests`, `1` existing Starlette deprecation warning), `make lint` passes, and strict `make typecheck` passes (`119 source files`). Existing transport tests continue to cover bounded timeout, retry, rate-limit and circuit behavior; optional provider configuration remains non-blocking in the application readiness tests. `./.venv/bin/python scripts/free_provider_doctor.py --no-network` exits `0` with the free core readiness tier intact and optional capabilities explicitly unconfigured/unsupported; no live provider success is fabricated. The full `make verify` checkpoint exits `0` with `1081` Python tests passed, `11` skipped, `1` warning and `54` Vitest tests passed; Compose, secret scan, migration check, security review and SBOM also pass. Protected modes remain exact and all four unrelated WIP files remain untouched.
+
 ## Next task
 
-Real Alpha Production Readiness Task 2: harden the required-provider contract
-and doctor state model for the production capability set. Start with failing
-tests proving application health and evidence-capability health remain
-separate, then extend bounded timeout/retry/backoff/freshness/rate-limit
-semantics for historical/live social, Telegram, market/execution quote and
-chain reads. Keep optional providers non-blocking unless explicitly required;
-current social, Telegram, stream and reliability access remains
-`BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, while the free core remains
-`READY_FOR_FREE_READ_ONLY_SHADOW`. Protected modes remain
+Real Alpha Production Readiness Task 3: implement compliant historical X/social
+and Telegram real-evidence collectors on the existing caller/Telegram seams.
+Start with failing deterministic tests for duplicate IDs, edit/delete state,
+out-of-order messages, unresolved ticker-only calls, chain-qualified calls and
+bounded provider retry/rate-limit behavior. Preserve explicit timestamps,
+provenance, freshness, parser/provider versions and UNKNOWN semantics; current
+social, Telegram and stream access remains `BLOCKED_EXTERNAL`/
+`CONFIGURATION_MISSING` until configured and verified. Protected modes remain
 `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`,
 `AUTO_EXECUTION=false`.

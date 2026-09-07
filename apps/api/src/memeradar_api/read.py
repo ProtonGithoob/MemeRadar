@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from memeradar_application.chain_opportunity import ChainOpportunitySnapshot
 from memeradar_application.control import ControlAction
 from memeradar_application.early_scoring import AsymmetricAlphaProjection
+from memeradar_application.provider_contracts import ProviderCapabilityStatus
 from memeradar_application.read_api import (
     DEFAULT_PAGE_LIMIT,
     MAX_CURSOR_LENGTH,
@@ -577,6 +578,7 @@ class ProviderHealthResponse(_StrictModel):
     freshness_state: QualityState | None = None
     error_class: str | None = None
     consecutive_failures: int
+    capability_status: str
 
 
 class AuditEventResponse(_StrictModel):
@@ -1133,6 +1135,12 @@ def _creator_reputation_response(value: CreatorReputationView) -> CreatorReputat
 
 
 def _provider_health_response(value: ProviderHealthView) -> ProviderHealthResponse:
+    assert value.capability_status is not None
+    capability_status = (
+        value.capability_status.value
+        if isinstance(value.capability_status, ProviderCapabilityStatus)
+        else value.capability_status
+    )
     return ProviderHealthResponse(
         provider=value.provider,
         capability=value.capability,
@@ -1145,6 +1153,7 @@ def _provider_health_response(value: ProviderHealthView) -> ProviderHealthRespon
         ),
         error_class=value.error_class,
         consecutive_failures=value.consecutive_failures,
+        capability_status=capability_status,
     )
 
 

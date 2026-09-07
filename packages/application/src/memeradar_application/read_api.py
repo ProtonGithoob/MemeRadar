@@ -45,6 +45,7 @@ from .chain_opportunity import ChainOpportunitySnapshot
 from .creator_graph import CreatorOutcomeGraph
 from .early_scoring import AsymmetricAlphaProjection
 from .exit_engine import ExitEvaluation
+from .provider_contracts import ProviderCapabilityStatus, provider_capability_status
 from .smart_money_convergence import CallerConvergenceEvidence, CallerConvergenceState
 
 READ_API_VERSION = "read-api-v1"
@@ -1924,6 +1925,7 @@ class ProviderHealthView:
     freshness_state: QualityState | str | None = None
     error_class: str | None = None
     consecutive_failures: int = 0
+    capability_status: ProviderCapabilityStatus | str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1932,7 +1934,8 @@ class ProviderHealthView:
         object.__setattr__(
             self, "capability", require_text(self.capability, "capability", max_length=128)
         )
-        object.__setattr__(self, "state", ReadProviderHealthState(self.state))
+        normalized_state = ReadProviderHealthState(self.state)
+        object.__setattr__(self, "state", normalized_state)
         object.__setattr__(self, "checked_at", ensure_utc(self.checked_at, "checked_at"))
         if self.latency_ms is not None and (
             isinstance(self.latency_ms, bool)
@@ -1942,12 +1945,25 @@ class ProviderHealthView:
         ):
             raise ValueError("latency_ms must be between 0 and 300000")
         object.__setattr__(self, "quota", safe_read_payload(self.quota))
-        object.__setattr__(self, "freshness_state", _optional_quality(self.freshness_state))
+        normalized_freshness = _optional_quality(self.freshness_state)
+        object.__setattr__(self, "freshness_state", normalized_freshness)
         if self.error_class is not None:
             normalized_error = require_text(self.error_class, "error_class", max_length=128)
             if _ERROR_CLASS.fullmatch(normalized_error) is None:
                 raise ValueError("error_class must be a safe class name")
             object.__setattr__(self, "error_class", normalized_error)
+        normalized_capability_status = (
+            provider_capability_status(
+                normalized_state.value,
+                reason=self.error_class,
+                freshness_state=(
+                    None if normalized_freshness is None else normalized_freshness.value
+                ),
+            )
+            if self.capability_status is None
+            else ProviderCapabilityStatus(self.capability_status)
+        )
+        object.__setattr__(self, "capability_status", normalized_capability_status)
         if (
             isinstance(self.consecutive_failures, bool)
             or not isinstance(self.consecutive_failures, int)

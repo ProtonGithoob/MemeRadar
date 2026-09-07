@@ -90,6 +90,43 @@ Telegram Bot API/channel access where authorized, any selected paid provider
 credentials, a reachable production-like database/restore target, and a
 hosted CI/release run. Secret values must remain outside reports and git.
 
+### Task 2 evidence snapshot — 2026-09-07
+
+The required-provider contract now has one provider-neutral status vocabulary:
+`READY`, `DEGRADED`, `RATE_LIMITED`, `STALE`, `CONFIGURATION_MISSING`,
+`BLOCKED_EXTERNAL`, `UNSUPPORTED`, plus explicit `UNKNOWN` for unprobed or
+missing evidence. The shared `ProviderCapabilityStatus` normalizer is used by
+the aggregate free-first doctor and read-only `/v1/providers/health`; the
+legacy provider health state remains available for compatibility.
+
+The application/evidence boundary is tested: `/health/live` and `/health/ready`
+report only API/dependency health, while `/v1/providers/health` reports
+capability status. Optional provider absence does not block application
+readiness. Existing shared transport tests cover bounded deadlines, retries,
+backoff, rate-limit waits, circuit-open behavior and freshness degradation for
+the chain, market/reference quote, execution-quote, social and Telegram
+adapter seams.
+
+Evidence for this slice:
+
+- focused provider/transport/health/doctor/read suites: `49 passed`, one
+  existing Starlette deprecation warning;
+- `make lint`: PASS;
+- `make typecheck`: PASS, strict mypy over `119` source files;
+- `./.venv/bin/python scripts/free_provider_doctor.py --no-network`: the free core remains
+  `READY_FOR_FREE_READ_ONLY_SHADOW`; optional social, Telegram, stream and
+  enrichment access remains unconfigured or externally blocked;
+- `make verify`: PASS with `1081` Python tests, `11` skipped, `1` warning and
+  `54` Vitest tests; Ruff, strict mypy over `119` source files, Compose config,
+  secret scan, migration check, security review and the `581`-component SBOM
+  also pass;
+- no live provider, historical-real dataset or live-shadow success is claimed;
+  PR-2 therefore remains `BLOCKED_EXTERNAL/PARTIAL`.
+
+The four pre-existing unrelated WIP files remain untracked and untouched. The
+protected modes remain exactly `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
+`MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
+
 ## Minimum evidence targets
 
 These are initial versioned guardrails for sample adequacy, not profitability promises:

@@ -165,6 +165,7 @@ def test_all_read_routes_return_bounded_safe_envelopes() -> None:
     wallets = client.get("/v1/wallets")
     wallet = client.get(f"/v1/wallets/{WALLET}")
     health = client.get("/v1/providers/health")
+    readiness = client.get("/health/ready")
     audit = client.get("/v1/audit/events")
     config = client.get("/v1/config/versions")
     creator = client.get(f"/v1/creator-reputation/{WALLET}")
@@ -184,6 +185,10 @@ def test_all_read_routes_return_bounded_safe_envelopes() -> None:
     assert wallet.status_code == 200
     assert health.status_code == 200
     assert health.json()["items"][0]["state"] == "UNKNOWN"
+    assert health.json()["items"][0]["capability_status"] == "UNKNOWN"
+    assert readiness.status_code == 200
+    assert readiness.json()["status"] == "ready"
+    assert "capability_status" not in readiness.json()
     assert audit.status_code == 200
     assert config.status_code == 200
     assert creator.status_code == 200

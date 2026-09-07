@@ -72,6 +72,53 @@ class ProviderCapability(str, Enum):
     EXTERNAL_WALLET_INTELLIGENCE = "external_wallet_intelligence"
 
 
+class ProviderCapabilityStatus(str, Enum):
+    """Operational status for an evidence capability, separate from app health."""
+
+    READY = "READY"
+    DEGRADED = "DEGRADED"
+    RATE_LIMITED = "RATE_LIMITED"
+    STALE = "STALE"
+    CONFIGURATION_MISSING = "CONFIGURATION_MISSING"
+    BLOCKED_EXTERNAL = "BLOCKED_EXTERNAL"
+    UNSUPPORTED = "UNSUPPORTED"
+    UNKNOWN = "UNKNOWN"
+
+
+def provider_capability_status(
+    status: str,
+    *,
+    reason: str | None = None,
+    freshness_state: str | None = None,
+) -> ProviderCapabilityStatus:
+    """Normalize doctor/health labels without conflating app readiness."""
+
+    if reason in {"RATE_LIMITED", "ProviderRateLimitedError"} or status == (
+        "ProviderRateLimitedError"
+    ):
+        return ProviderCapabilityStatus.RATE_LIMITED
+    if reason == "STALE" or freshness_state == "STALE":
+        return ProviderCapabilityStatus.STALE
+    if reason in {
+        "OPTIONAL_CONFIGURATION_MISSING",
+        "CREDENTIAL_CONFIGURATION_MISSING",
+        "CONFIGURATION_INVALID",
+        "AUTHENTICATION_FAILED",
+    } or status == "UNCONFIGURED_OPTIONAL":
+        return ProviderCapabilityStatus.CONFIGURATION_MISSING
+    if reason in {"EXTERNAL_UNAVAILABLE", "CORE_EXTERNAL_BLOCKER"} or status == "DOWN":
+        return ProviderCapabilityStatus.BLOCKED_EXTERNAL
+    if reason == "UNSUPPORTED_CAPABILITY" or status in {"OPTIONAL_UNAVAILABLE", "DISABLED"}:
+        return ProviderCapabilityStatus.UNSUPPORTED
+    if freshness_state == "UNKNOWN" or status == "UNKNOWN":
+        return ProviderCapabilityStatus.UNKNOWN
+    if status in {"PASS", "HEALTHY"}:
+        return ProviderCapabilityStatus.READY
+    if status in {"DEGRADED", "FAIL"}:
+        return ProviderCapabilityStatus.DEGRADED
+    return ProviderCapabilityStatus.UNKNOWN
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderRequestContext:
     """Bounded correlation and deadline metadata shared by provider requests."""
@@ -997,6 +1044,8 @@ __all__ = [
     "OnChainPort",
     "OnChainRequest",
     "ProviderCapability",
+    "ProviderCapabilityStatus",
+    "provider_capability_status",
     "ProviderRequestContext",
     "QuoteMarketContext",
     "QuotePort",

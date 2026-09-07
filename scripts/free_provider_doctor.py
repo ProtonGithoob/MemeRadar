@@ -34,7 +34,10 @@ for source_root in (
         sys.path.insert(0, source_root_text)
 
 from memeradar_application.config import Settings  # noqa: E402
-from memeradar_application.provider_contracts import ProviderRequestContext  # noqa: E402
+from memeradar_application.provider_contracts import (  # noqa: E402
+    ProviderRequestContext,
+    provider_capability_status,
+)
 from memeradar_domain import TokenIdentity  # noqa: E402
 from memeradar_providers.birdeye import BirdeyeRestAdapter  # noqa: E402
 from memeradar_providers.dexscreener import (  # noqa: E402
@@ -136,8 +139,10 @@ def _item(
     schema: str = "not_checked",
     latency_ms: float | None = None,
 ) -> dict[str, object]:
+    capability_status = provider_capability_status(status, reason=reason)
     result: dict[str, object] = {
         "status": status,
+        "capability_status": capability_status.value,
         "reason": reason,
         "network": network,
         "authentication": authentication,
