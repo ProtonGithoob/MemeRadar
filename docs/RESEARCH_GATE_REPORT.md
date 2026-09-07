@@ -58,6 +58,33 @@ smart-money and opportunity features remain measurement-only. Protected modes
 remain `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
 `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
 
+## Real Alpha Production Readiness Task 14 evidence rerun — 2026-09-07
+
+The canonical opportunity analyzer and historical-dataset validator were
+rerun at the current checkpoint using the checked-in evidence bundle. All six
+caller families (`caller_only`, `smart_money_only`, `opportunity_only`,
+`caller_plus_smart_money`, `caller_plus_opportunity` and `full_fusion`) retain
+the same event-time TRAIN/VALIDATION/TEST path and report
+`INSUFFICIENT_SAMPLES`. The report remains `SYNTHETIC_REDACTED`,
+`no_lookahead_verified=true`, `promotion_allowed=false` and
+`execution_eligible=false`; no TEST or synthetic result was tuned into a
+production weight.
+
+The historical-dataset validation remains `INSUFFICIENT_SAMPLES` with evidence
+class `SYNTHETIC_REDACTED`, `0` matured calls, `0` matured token outcomes, `0`
+caller identities and `0` negative controls. The explicit reason codes remain
+`MATURED_CALLS_REQUIRED`, `CALLER_IDENTITIES_REQUIRED`,
+`MATURED_TOKEN_OUTCOMES_REQUIRED`, `NEGATIVE_CONTROLS_REQUIRED`,
+`REQUIRED_COHORTS_MISSING` and `HISTORICAL_REAL_EVIDENCE_REQUIRED`.
+
+The read-only shadow status remains `STACK_OFFLINE` / `START_FAILED`,
+`NOT_AVAILABLE` provider readiness, `NOT_ACTIVE` collection, no evidence
+class and `0` matured outcomes. Consequently, the real historical and
+live-shadow ablation gates are `BLOCKED_EXTERNAL` / `INSUFFICIENT_SAMPLES`,
+not PASS. The existing no-lookahead/survivorship mutation suite passes and
+all results remain research-only. No caller, smart-money, opportunity or
+fusion score weight changed; the protected modes remain unchanged.
+
 ---
 
 ## Evaluation of 11 Key Product Questions

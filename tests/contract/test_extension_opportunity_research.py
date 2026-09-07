@@ -49,3 +49,14 @@ def test_opportunity_research_cli_and_artifact_are_non_executable() -> None:
         "market_cap_bucket",
         "market_regime",
     }
+
+
+def test_real_alpha_task14_report_keeps_real_evidence_blocked() -> None:
+    report = (ROOT / "docs" / "RESEARCH_GATE_REPORT.md").read_text(encoding="utf-8")
+
+    assert "Real Alpha Production Readiness Task 14" in report
+    assert "HISTORICAL_REAL" in report
+    assert "LIVE_SHADOW" in report
+    assert "INSUFFICIENT_SAMPLES" in report
+    assert "BLOCKED_EXTERNAL" in report
+    assert "promotion_allowed=false" in report

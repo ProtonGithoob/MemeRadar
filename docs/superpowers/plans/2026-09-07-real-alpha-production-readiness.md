@@ -204,12 +204,12 @@
 
 **Produces:** Baseline/caller/smart-money/opportunity/fusion out-of-sample comparison using real evidence where available.
 
-- [ ] Run six Alpha Caller ablation families on historical-real TRAIN/VALIDATION/TEST evidence.
-- [ ] Run the same version/config against matured live-shadow data.
-- [ ] Report false-positive cost, precision/recall, confidence intervals, chain/caller/regime slices, executable net expectancy and drawdown.
-- [ ] Require no-lookahead/survivorship mutation suites to pass.
-- [ ] If evidence is sparse/uncertain/non-positive, retain `INSUFFICIENT_SAMPLES`/not promoted; never tune TEST results into production.
-- [ ] Update STATUS and commit.
+- [ ] Run six Alpha Caller ablation families on historical-real TRAIN/VALIDATION/TEST evidence. Current canonical rerun is `SYNTHETIC_REDACTED` with `INSUFFICIENT_SAMPLES`; real evidence is `BLOCKED_EXTERNAL`.
+- [ ] Run the same version/config against matured live-shadow data. Current shadow status is `STACK_OFFLINE`/`START_FAILED` with `0` matured outcomes; real collection is `BLOCKED_EXTERNAL`.
+- [x] Report false-positive cost, precision/recall, confidence intervals, chain/caller/regime slices, executable net expectancy and drawdown when evidence exists, retaining explicit null/UNKNOWN fields for the sparse bundle.
+- [x] Require no-lookahead/survivorship mutation suites to pass.
+- [x] If evidence is sparse/uncertain/non-positive, retain `INSUFFICIENT_SAMPLES`/not promoted; never tune TEST results into production.
+- [x] Update STATUS and commit.
 
 ### Task 15: Production acceptance and staged deployment
 

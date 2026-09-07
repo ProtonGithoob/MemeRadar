@@ -1,6 +1,6 @@
 # MemeRadar Production Readiness
 
-**Current checkpoint:** Real Alpha Production Readiness Task 13 locally implemented; hosted/provider soak verification is pending and protected modes remain unchanged.
+**Current checkpoint:** Real Alpha Production Readiness Task 14 evidence rerun is complete; historical-real/live-shadow evidence is externally blocked and protected modes remain unchanged.
 
 **Current classification:** `NOT_PRODUCTION_READY` for real-alpha or live-money claims. Engineering verification is strong, but checked-in alpha evidence remains `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES` and real X/Telegram/provider/live-shadow evidence is still externally incomplete.
 
@@ -469,6 +469,42 @@ Evidence for this slice:
   resource headroom under real load and remote CI remain unverified. No
   production-ready classification is claimed and the four pre-existing
   unrelated WIP files remain untouched.
+
+## Task 14 evidence snapshot — 2026-09-07
+
+The canonical `make opportunity-research` and `make historical-dataset`
+generators were rerun against the checked-in bundle, and the existing
+`shadow_status.py` report was inspected. The six Alpha Caller ablation
+families remain present and no-lookahead verified, but the available evidence
+is not historical-real or live-shadow evidence.
+
+Evidence for this slice:
+
+- The focused opportunity/historical/shadow suite passes `39 tests`, including
+  the new report contract. The initial report contract failed because the
+  Task 14 evidence addendum was absent; it now verifies explicit
+  `HISTORICAL_REAL`, `LIVE_SHADOW`, `INSUFFICIENT_SAMPLES`,
+  `BLOCKED_EXTERNAL` and `promotion_allowed=false` language.
+- The regenerated opportunity report is `opportunity-research-v1`,
+  `SYNTHETIC_REDACTED`, `INSUFFICIENT_SAMPLES`,
+  `no_lookahead_verified=true`, `promotion_allowed=false` and
+  `execution_eligible=false`. Each six-family caller ablation has `sample_count=3`
+  and no precision, recall, executable expectancy or false-positive estimate.
+- Historical validation remains `INSUFFICIENT_SAMPLES` with `0` matured calls,
+  `0` matured token outcomes, `0` caller identities, `0` negative controls and
+  `HISTORICAL_REAL_EVIDENCE_REQUIRED`. Shadow status remains
+  `STACK_OFFLINE`/`START_FAILED`, provider readiness `NOT_AVAILABLE`,
+  collection `NOT_ACTIVE`, evidence class `NOT_AVAILABLE` and `0` matured
+  outcomes.
+- The full `make verify` gate passes with `1112` Python tests passed, `11`
+  skipped, `1` warning and `55` Vitest tests passed; Ruff, strict mypy over
+  `121 source files`, Compose, secret scan, migrations, security review and
+  the existing `581`-component SBOM also pass.
+- No real X/Telegram/provider historical backfill or matured live-shadow
+  run is available in this environment. Real-data ablation and promotion are
+  therefore `BLOCKED_EXTERNAL`/`INSUFFICIENT_SAMPLES`; no production score
+  weight or promotion record changed. Task 14 remains the exact unfinished
+  evidence task until compliant access and sufficient real samples exist.
 
 ## Minimum evidence targets
 
