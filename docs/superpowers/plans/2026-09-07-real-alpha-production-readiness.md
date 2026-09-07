@@ -180,7 +180,7 @@
 - [x] Inspect existing workflows; write/update CI so canonical `make verify` or equivalent mandatory gates run on PR/push/release candidate without weakening checks.
 - [x] Persist/report git SHA, migration head, config/schema/app version and SBOM/build identity for the candidate artifact.
 - [x] Add release-candidate checklist and rollback procedure.
-- [ ] Confirm an actual remote workflow run succeeds; if GitHub Actions permissions/network are external blockers, mark PR-1 `PARTIAL/BLOCKED_EXTERNAL` rather than claiming PASS.
+- [x] Confirm the actual remote workflow result for the pushed candidate; run `34117264094` is classified `BLOCKED_EXTERNAL_GITHUB_ACTIONS` because all prerequisite jobs completed with zero executed steps, so PR-1 remains `PARTIAL/BLOCKED_EXTERNAL` and no remote PASS is claimed.
 - [x] Update STATUS and commit/push.
 
 ### Task 13: Production-like soak, load and chaos/failure tests

@@ -421,9 +421,16 @@ Evidence for this slice:
 - `make lint`, strict `make typecheck` over `121 source files`,
   `make migration-check`, `make sbom`, `make compose-config`,
   `make release-identity`, CI YAML parsing and `git diff --check` pass.
-- Hosted GitHub Actions success for the exact pushed candidate SHA and a real
-  deployment rollback remain pending. Until observed, PR-1 stays
-  `PARTIAL/BLOCKED_EXTERNAL`; no remote-CI PASS is claimed.
+- GitHub Actions run `34117264094`
+  ([workflow run](https://github.com/Rasman1234/MemeRadar/actions/runs/34117264094))
+  observed the exact pushed SHA `5d18935993281ff427cca85926360db019a945f5`
+  but completed `failure` with zero executed steps in Backend quality,
+  Frontend quality, Compose contract and Secret scan; Release candidate
+  identity was skipped. This is classified
+  `BLOCKED_EXTERNAL_GITHUB_ACTIONS` (runner/account restriction), not an
+  internal test PASS or FAIL. A real deployment rollback remains unverified.
+  PR-1 therefore stays `PARTIAL/BLOCKED_EXTERNAL`; no remote-CI PASS is
+  claimed.
 
 ## Minimum evidence targets
 
