@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1102 Python tests (11 skipped), 55 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1106 Python tests (11 skipped), 55 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1426,13 +1426,10 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 
 ## Next task
 
-Real Alpha Production Readiness Task 11: perform the release-grade security and
-secret-boundary audit across repository history/artifacts/config examples,
-frontend bundles, auth/RBAC, request bounds/rate limits, unsafe modes,
-container privileges, CORS, dependency/SBOM findings and log redaction.
-Preserve external-scan blockers honestly and keep all protected modes unchanged.
-No production weights or protected modes change; current social/Telegram access
-remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`.
-Protected modes remain
-`ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`,
-`AUTO_EXECUTION=false`.
+- Task 11 checkpoint (2026-09-07): extended the existing keyless secret/security tooling to scan tracked configuration examples, bounded release artifacts/logs and release-relevant frontend bundle output, plus reachable git-history blobs. Findings expose only safe rule/path metadata. The existing API/operator boundaries remain authoritative: role-token RBAC, bounded control payloads, bounded runtime configuration, protected-mode startup validation and allow-listed structured-log redaction are now included in the release deployment contract. Local Compose ports bind to loopback, and the review rejects privileged containers, host networking, added capabilities, public `0.0.0.0` bindings and wildcard CORS.
+- Task 11 TDD/verification evidence: the focused secret/security suite passes `11 tests`, including synthetic frontend-bundle/history leak detection and public-port/wildcard-origin rejection. `make secret-scan`, `make compose-config`, `make security-review`, `make lint`, strict `make typecheck` over `121 source files` and `git diff --check` pass. The security report is `PASS`; external pip/npm/container vulnerability scans remain explicitly `NOT_RUN`/`BLOCKED_EXTERNAL`, and no provider, Telegram or operator credentials were printed or committed. Protected modes remain exactly `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`; the four pre-existing unrelated WIP files remain untouched.
+
+Real Alpha Production Readiness Task 12: inspect/strengthen remote CI and
+reproducible release identity, add release-candidate/rollback evidence, and
+classify hosted GitHub Actions results honestly without claiming remote success
+when access is unavailable.

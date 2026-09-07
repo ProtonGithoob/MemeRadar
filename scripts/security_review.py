@@ -34,7 +34,12 @@ for source_root in (
         sys.path.insert(0, source_root_text)
 
 from memeradar_application.config import Settings  # noqa: E402
-from scripts.secret_scan import scan_files, tracked_files  # noqa: E402
+from scripts.secret_scan import (  # noqa: E402
+    scan_artifacts,
+    scan_files,
+    scan_git_history,
+    tracked_files,
+)
 
 
 class CheckStatus(str, Enum):
@@ -349,15 +354,80 @@ def check_container_contracts(root: Path) -> SecurityCheck:
     return _pass("container_runtime_contracts", "versioned base images and non-root users verified")
 
 
-def check_tracked_file_secrets(root: Path) -> SecurityCheck:
-    """Run the existing high-confidence scanner without exposing findings."""
+def check_secret_boundaries(root: Path) -> SecurityCheck:
+    """Scan tracked files, bounded artifacts/logs and reachable git history."""
 
-    findings = scan_files(tracked_files(root))
+    findings = list(scan_artifacts(root))
+    if (root / ".git").exists():
+        findings.extend(scan_files(tracked_files(root)))
+        findings.extend(scan_git_history(root))
     if findings:
-        return _fail("tracked_file_secret_scan", "tracked-file secret scan found material")
+        return _fail(
+            "secret_boundary_scan",
+            "secret scan found material in tracked, artifact or history content",
+        )
     return _pass(
-        "tracked_file_secret_scan",
-        "tracked-file secret scan found no high-confidence material",
+        "secret_boundary_scan",
+        "tracked, artifact/log and reachable-history scans found no high-confidence material",
+    )
+
+
+def check_deployment_security(root: Path) -> SecurityCheck:
+    """Verify local exposure, CORS, request bounds and redaction contracts."""
+
+    compose = _read(root, "infra/compose/docker-compose.yml")
+    api_source = _read(root, "apps/api/src/memeradar_api/main.py")
+    control_source = _read(root, "apps/api/src/memeradar_api/control.py")
+    config_source = _read(root, "packages/application/src/memeradar_application/config.py")
+    logging_source = _read(root, "packages/telemetry/src/memeradar_telemetry/logging.py")
+    if any(
+        value is None
+        for value in (compose, api_source, control_source, config_source, logging_source)
+    ):
+        return _fail(
+            "deployment_security_contracts",
+            "required deployment security source is missing",
+        )
+    assert compose is not None
+    assert api_source is not None
+    assert control_source is not None
+    assert config_source is not None
+    assert logging_source is not None
+    lowered_compose = compose.lower()
+    if any(
+        marker in lowered_compose
+        for marker in ("privileged: true", "network_mode: host", "cap_add:")
+    ):
+        return _fail("deployment_security_contracts", "compose grants privileged container access")
+    if "0.0.0.0:" in compose:
+        return _fail("deployment_security_contracts", "compose publishes a host port publicly")
+    if "corsmiddleware" in api_source.lower() and re.search(
+        r"allow_origins\s*=\s*\[\s*[\"']\*[\"']", api_source, re.IGNORECASE
+    ):
+        return _fail("deployment_security_contracts", "CORS allows every origin")
+    required = (
+        "Field(min_length=1, max_length=512)",
+        "Field(min_length=1, max_length=6)",
+        "role_authenticator.require",
+        "_parse_int",
+    )
+    if any(
+        marker.lower() not in control_source.lower() for marker in required[:3]
+    ):
+        return _fail(
+            "deployment_security_contracts",
+            "operator auth or request bounds are incomplete",
+        )
+    if required[3].lower() not in config_source.lower():
+        return _fail("deployment_security_contracts", "configuration bounds are incomplete")
+    if any(
+        marker not in logging_source
+        for marker in ("_SECRET_ASSIGNMENT", "[REDACTED]", "_SAFE_EXTRA_FIELDS")
+    ):
+        return _fail("deployment_security_contracts", "log redaction allow-list is incomplete")
+    return _pass(
+        "deployment_security_contracts",
+        "privilege, host exposure, CORS, request bounds and log redaction contracts verified",
     )
 
 
@@ -515,9 +585,10 @@ def run_review(
     checks = (
         check_dependency_locks(normalized_root),
         check_container_contracts(normalized_root),
-        check_tracked_file_secrets(normalized_root),
+        check_secret_boundaries(normalized_root),
         check_source_contracts(normalized_root),
         check_llm_contracts(normalized_root),
+        check_deployment_security(normalized_root),
         mode_check,
     )
     external_scans = (

@@ -163,12 +163,12 @@
 
 **Produces:** Release-grade security acceptance evidence.
 
-- [ ] Run/extend secret scans including history/artifacts/config examples; ensure no secrets in frontend bundle/logs.
-- [ ] Verify operator/control endpoint auth/RBAC and request bounds/rate limits.
-- [ ] Verify unsafe mode combinations fail startup.
-- [ ] Review container privileges, exposed ports, CORS/origins, dependency/SBOM findings and log redaction.
-- [ ] Do not print actual provider/Telegram credentials in reports.
-- [ ] Run security gates; update STATUS and commit.
+- [x] Run/extend secret scans including history/artifacts/config examples; ensure no secrets in frontend bundle/logs.
+- [x] Verify operator/control endpoint auth/RBAC and request bounds/rate limits.
+- [x] Verify unsafe mode combinations fail startup.
+- [x] Review container privileges, exposed ports, CORS/origins, dependency/SBOM findings and log redaction.
+- [x] Do not print actual provider/Telegram credentials in reports.
+- [x] Run security gates; update STATUS and commit.
 
 ### Task 12: Remote CI and reproducible release gate
 

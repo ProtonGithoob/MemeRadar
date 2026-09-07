@@ -1,6 +1,6 @@
 # MemeRadar Production Readiness
 
-**Current checkpoint:** Real Alpha Production Readiness Task 10 complete; the repository remains synchronized on `main` with protected modes unchanged.
+**Current checkpoint:** Real Alpha Production Readiness Task 11 complete; the repository remains synchronized on `main` with protected modes unchanged.
 
 **Current classification:** `NOT_PRODUCTION_READY` for real-alpha or live-money claims. Engineering verification is strong, but checked-in alpha evidence remains `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES` and real X/Telegram/provider/live-shadow evidence is still externally incomplete.
 
@@ -29,7 +29,7 @@ AUTO_EXECUTION=false
 
 | Gate | Requirement | Current status | Evidence / what closes it |
 |---|---|---|---|
-| PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | `PARTIAL` | Task 7 checkpoint `make verify` passed with `1094` Python tests, `11` skipped and `55` Vitest tests; migration/security/SBOM gates pass locally. `.github/workflows/ci.yml` exists, but no hosted run, release artifact or tested rollback is evidenced yet. |
+| PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | `PARTIAL` | Task 11 local security boundary audit and canonical gates pass; `.github/workflows/ci.yml` exists, but no hosted run, release artifact or tested rollback is evidenced yet. |
 | PR-2 Provider/evidence | Required real chain/market/social/Telegram capabilities with freshness/provenance and stable doctors | `BLOCKED_EXTERNAL/PARTIAL` | `make free-provider-doctor` reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors report `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`. Configure compliant real access and prove bounded reads. |
 | PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | `INSUFFICIENT_SAMPLES` | `fixtures/research/opportunity_research_report.json` remains `SYNTHETIC_REDACTED`; the new `historical_real_dataset_validation.json` reports zero matured calls/outcomes and no historical-real evidence. Collect real calls/outcomes and rerun the canonical gate. |
 | PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | `INSUFFICIENT_SAMPLES` | Task 8 now provides restart-safe run identity, idempotent normalized-event fingerprints, unresolved-gap blocking, provider snapshots, closure and `14 days + 200 matured actionable signals` classification. No real shadow window or matured live evidence exists yet. |
@@ -359,6 +359,42 @@ Evidence for this slice:
   off-host retention/encryption, production RPO/RTO and soak/failure evidence
   remain deployment-specific and unverified. No secrets or credentials were
   recorded.
+
+## Task 11 evidence snapshot — 2026-09-07
+
+The release security boundary now reuses the existing secret scanner and
+security-review report. It scans tracked content, `.env.example` and other
+tracked configuration examples, bounded release/artifact/log roots, the
+release-relevant frontend output (`.next/static`, `.next/server` and bounded
+Next logs), and reachable git history blobs. Reports contain only rule/path
+metadata and never secret values. The history scan is cached per checkout so
+repeated review checks do not rescan the same object graph.
+
+The local deployment contract binds Compose-published ports to loopback and
+fails on privileged containers, host networking, added capabilities or
+public `0.0.0.0` bindings. The API has no wildcard CORS middleware; if CORS is
+introduced, the review rejects wildcard origins. Existing role-token RBAC,
+bounded control request fields, bounded runtime configuration, protected-mode
+startup validation and allow-listed redaction remain required review markers.
+
+Evidence for this slice:
+
+- The focused secret/security suite passes `11 tests`, including synthetic
+  release-bundle and reachable-history leaks, public-port/wildcard-origin
+  rejection, protected-mode failure and the existing RBAC boundary tests.
+- `make secret-scan`, `make compose-config`, `make security-review`, `make
+  lint`, `make typecheck` and `git diff --check` pass. The local security
+  report is `PASS` with checks for dependency locks, non-root/versioned
+  containers, tracked/artifact/history secret boundaries, RBAC/auth,
+  advisory LLM handling, deployment security and protected modes.
+- External `pip-audit`, npm audit and container vulnerability scans remain
+  `NOT_RUN`/`BLOCKED_EXTERNAL` when the required tools or vulnerability
+  databases are unavailable. The checked-in SBOM remains the existing 581
+  component artifact; no external vulnerability success is claimed.
+- No provider, Telegram or operator credential was printed or committed. The
+  protected modes remain exactly `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
+  `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`, and no execution authority
+  was added. The four pre-existing unrelated WIP files remain untouched.
 
 ## Minimum evidence targets
 

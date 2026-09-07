@@ -10,6 +10,8 @@ from scripts.security_review import (
     CheckStatus,
     check_container_contracts,
     check_dependency_locks,
+    check_deployment_security,
+    check_secret_boundaries,
     run_review,
 )
 
@@ -29,9 +31,10 @@ def test_keyless_review_reports_each_local_boundary_and_does_not_claim_external_
     assert {check.name for check in report.checks} == {
         "dependency_lock_metadata",
         "container_runtime_contracts",
-        "tracked_file_secret_scan",
+        "secret_boundary_scan",
         "rbac_auth_session_contracts",
         "llm_prompt_data_contracts",
+        "deployment_security_contracts",
         "protected_operating_modes",
     }
     assert report.to_dict()["modes"] == {
@@ -102,3 +105,39 @@ def test_protected_mode_override_fails_closed() -> None:
     assert report.status is CheckStatus.FAIL
     assert report.checks[-1].name == "protected_operating_modes"
     assert report.checks[-1].status is CheckStatus.FAIL
+
+
+def test_secret_boundary_review_includes_history_and_artifacts(tmp_path: Path) -> None:
+    check = check_secret_boundaries(tmp_path)
+
+    assert check.status is CheckStatus.PASS
+    assert "history" in check.detail.lower()
+    assert "artifact" in check.detail.lower()
+
+
+def test_deployment_review_rejects_publicly_bound_compose_port(tmp_path: Path) -> None:
+    compose_dir = tmp_path / "infra" / "compose"
+    compose_dir.mkdir(parents=True)
+    (compose_dir / "docker-compose.yml").write_text(
+        "services:\n  api:\n    ports:\n      - '0.0.0.0:18000:8000'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "apps" / "api" / "src" / "memeradar_api").mkdir(parents=True)
+    (tmp_path / "apps" / "api" / "src" / "memeradar_api" / "main.py").write_text(
+        "from fastapi.middleware.cors import CORSMiddleware\n"
+        "allow_origins=['*']\n",
+        encoding="utf-8",
+    )
+    for relative in (
+        "apps/api/src/memeradar_api/control.py",
+        "packages/application/src/memeradar_application/config.py",
+        "packages/telemetry/src/memeradar_telemetry/logging.py",
+    ):
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, destination)
+
+    check = check_deployment_security(tmp_path)
+
+    assert check.status is CheckStatus.FAIL
+    assert "port" in check.detail.lower() or "cors" in check.detail.lower()

@@ -431,6 +431,27 @@ The versioned threat model, residual risks and review evidence are maintained
 in [`docs/THREAT_MODEL.md`](THREAT_MODEL.md). Safe response procedures are in
 [`docs/RUNBOOKS/SECURITY_REVIEW.md`](RUNBOOKS/SECURITY_REVIEW.md).
 
+## Task 11 release boundary audit — 2026-09-07
+
+The release security gate scans tracked files and configuration examples,
+bounded generated artifacts/logs, the release-relevant frontend bundle and
+reachable git history blobs. It emits only rule/path metadata; secret values,
+provider bodies and credentials are never printed. The checked-in scan passed
+with no high-confidence findings.
+
+The security review also verifies versioned non-root containers, the absence
+of privileged/host-network/capability grants, loopback-only local Compose
+ports, no wildcard CORS, authenticated role-separated control routes,
+bounded request/configuration fields, protected-mode startup validation and
+the existing allow-listed log redaction formatter. Dependency locks and the
+existing SBOM are reviewed locally; external vulnerability tools remain
+explicitly `NOT_RUN`/`BLOCKED_EXTERNAL` when unavailable.
+
+Task 11 focused tests pass (`11` tests), and the local secret scan, Compose
+config, security review, lint, strict typecheck and diff checks pass. This is
+local release-boundary evidence, not a claim of hosted vulnerability-scan or
+remote-CI success.
+
 ## Kill switch behavior
 
 Global execution kill switch must prevent all new live submissions immediately while preserving monitoring/reconciliation. It must not blindly abandon already-submitted transactions. A separate analysis pause may stop ingestion if needed.
