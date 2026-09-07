@@ -129,9 +129,9 @@
 - Consumes: matured winner and negative-control outcomes plus historical social observations.
 - Produces: research watch cohorts of candidate callers evaluated out-of-sample.
 
-- [ ] Write failing tests proving earliest-call discovery includes negative controls, failures, rugs and late callers and prevents winner-only survivorship selection.
-- [ ] Implement bounded historical caller discovery/backfill orchestration using existing provider seams.
-- [ ] Run focused tests, update STATUS and commit.
+- [x] Write failing tests proving earliest-call discovery includes negative controls, failures, rugs and late callers and prevents winner-only survivorship selection.
+- [x] Implement bounded historical caller discovery/backfill orchestration using existing provider seams.
+- [x] Run focused tests, update STATUS and commit.
 
 ### Task 9: Caller convergence fusion
 

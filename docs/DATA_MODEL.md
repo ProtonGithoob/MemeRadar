@@ -368,6 +368,22 @@ correlations, caller clusters and smart-money confirmation, while
 retrospective measurement-only evidence, never an accusation, score input or
 execution authority; no physical migration is introduced.
 
+### caller_research_watch_cohorts (logical projection)
+- explicitly labelled matured winner and negative-control anchor IDs/counts
+- chain-qualified discovered caller identities and source call IDs
+- earliest-call, late-call, contradictory-call and prior-call backfill context
+- post-cutoff out-of-sample call IDs kept separate from discovery inputs
+- quality state, no-lookahead marker, provenance, evidence references,
+  reason codes and config/version metadata
+
+`CallerDiscoveryAnalyzer` reuses normalized social calls and historical caller
+outcomes. It rejects winner-only cohorts, retains failures/rugs/late and
+contradictory calls, and never matches ticker/name-only references. Prior calls
+are bounded by each caller's discovery timestamp; later calls are held out for
+future evaluation. The cohort is research-only and cannot promote caller
+quality, alter production weights or authorize execution; no physical
+migration is introduced.
+
 ## Wallet intelligence
 
 ### wallets

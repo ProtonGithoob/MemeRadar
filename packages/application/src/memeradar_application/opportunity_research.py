@@ -5,13 +5,24 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 from typing import cast
 
-from memeradar_domain.common import ensure_utc, require_text, to_decimal
+from memeradar_domain import (
+    CallerIdentity,
+    CallIntent,
+    Provenance,
+    QualityState,
+    ReasonCode,
+    SocialCallObservation,
+)
+from memeradar_domain.common import ensure_utc, normalize_texts, require_text, to_decimal
+from memeradar_domain.events import normalize_reason_codes
 
+from .call_performance import OutcomeHorizonState
+from .caller_outcomes import HistoricalCallerOutcome
 from .opportunity_case_studies import OpportunityCaseStudyBundle
 from .replay_harness import ResearchReplayResult
 
@@ -39,6 +50,16 @@ _MARKET_KINDS = frozenset(
     {"market.snapshot", "market.market_data", "market.observation", "market.quote"}
 )
 _LAUNCH_KINDS = frozenset({"protocol.lifecycle", "launch.lifecycle", "chain.launch"})
+CALLER_DISCOVERY_VERSION = "caller-discovery-v1"
+_DISCOVERY_WINNER_MARKERS = frozenset({"WINNER", "EXTREME_WINNER", "ORDINARY_WINNER"})
+_DISCOVERY_UNKNOWN_COHORTS = frozenset({"", "UNKNOWN", "UNLABELED"})
+_QUALITY_PRIORITY = {
+    QualityState.FRESH: 0,
+    QualityState.STALE: 1,
+    QualityState.UNKNOWN: 2,
+    QualityState.CONFLICTED: 3,
+    QualityState.INVALID: 4,
+}
 
 
 def _empty_family_scores() -> dict[str, Decimal | None]:
@@ -836,7 +857,688 @@ def samples_from_case_studies(
     return tuple(samples)
 
 
+@dataclass(frozen=True, slots=True)
+class CallerDiscoveryAnchor:
+    """A matured, explicitly labelled outcome used only to discover callers."""
+
+    outcome: HistoricalCallerOutcome
+    cohort: str
+    matured_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.outcome, HistoricalCallerOutcome):
+            raise TypeError("outcome must be a HistoricalCallerOutcome")
+        object.__setattr__(
+            self,
+            "cohort",
+            require_text(self.cohort, "cohort", max_length=64).upper(),
+        )
+        matured_at = self.outcome.as_of if self.matured_at is None else self.matured_at
+        matured_at = ensure_utc(matured_at, "matured_at")
+        if matured_at < self.outcome.call.published_at:
+            raise ValueError("matured_at must not precede the anchor call")
+        object.__setattr__(self, "matured_at", matured_at)
+
+    @property
+    def anchor_id(self) -> str:
+        return self.outcome.call.canonical_id
+
+    @property
+    def asset_id(self) -> str | None:
+        return self.outcome.call.canonical_asset_id
+
+    @property
+    def is_winner(self) -> bool:
+        return self.cohort in _DISCOVERY_WINNER_MARKERS or any(
+            marker in self.cohort for marker in ("20X", "50X", "100X")
+        )
+
+    @property
+    def is_negative_control(self) -> bool:
+        return not self.is_winner and self.cohort not in _DISCOVERY_UNKNOWN_COHORTS
+
+    @property
+    def is_matured(self) -> bool:
+        return bool(self.outcome.horizons) and self.outcome.no_lookahead_verified and all(
+            horizon.state is OutcomeHorizonState.COMPLETE for horizon in self.outcome.horizons
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CallerDiscoveryCandidate:
+    """One caller source retained for research watch-cohort evaluation."""
+
+    caller_identity: CallerIdentity
+    discovery_call_ids: tuple[str, ...]
+    earliest_call_ids: tuple[str, ...]
+    late_call_ids: tuple[str, ...]
+    backfilled_call_ids: tuple[str, ...]
+    out_of_sample_call_ids: tuple[str, ...]
+    anchor_cohort_counts: Mapping[str, int]
+    discovered_at: datetime
+    earliest_call_at: datetime
+    contradictory_call_count: int
+    quality_state: QualityState
+    no_lookahead_verified: bool
+    provenance: tuple[Provenance, ...]
+    evidence_refs: tuple[str, ...]
+    reason_codes: tuple[ReasonCode, ...]
+    config_hash: str
+    version: str = CALLER_DISCOVERY_VERSION
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.caller_identity, CallerIdentity):
+            raise TypeError("caller_identity must be a CallerIdentity")
+        for field_name in (
+            "discovery_call_ids",
+            "earliest_call_ids",
+            "late_call_ids",
+            "backfilled_call_ids",
+            "out_of_sample_call_ids",
+            "evidence_refs",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                normalize_texts(getattr(self, field_name), field_name),
+            )
+        discovery_ids = set(self.discovery_call_ids)
+        if not set(self.earliest_call_ids) <= discovery_ids:
+            raise ValueError("earliest_call_ids must come from discovery_call_ids")
+        if not set(self.late_call_ids) <= discovery_ids:
+            raise ValueError("late_call_ids must come from discovery_call_ids")
+        counts: dict[str, int] = {}
+        for key, value in self.anchor_cohort_counts.items():
+            normalized_key = require_text(str(key), "anchor cohort")
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError("anchor cohort counts must be non-negative integers")
+            counts[normalized_key] = value
+        object.__setattr__(
+            self,
+            "anchor_cohort_counts",
+            MappingProxyType(dict(sorted(counts.items()))),
+        )
+        discovered_at = ensure_utc(self.discovered_at, "discovered_at")
+        earliest_call_at = ensure_utc(self.earliest_call_at, "earliest_call_at")
+        if earliest_call_at > discovered_at:
+            raise ValueError("earliest_call_at must not follow discovered_at")
+        object.__setattr__(self, "discovered_at", discovered_at)
+        object.__setattr__(self, "earliest_call_at", earliest_call_at)
+        if (
+            not isinstance(self.contradictory_call_count, int)
+            or isinstance(self.contradictory_call_count, bool)
+            or self.contradictory_call_count < 0
+        ):
+            raise ValueError("contradictory_call_count must be a non-negative integer")
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        if not isinstance(self.no_lookahead_verified, bool):
+            raise TypeError("no_lookahead_verified must be a boolean")
+        provenance = tuple(self.provenance)
+        if any(not isinstance(value, Provenance) for value in provenance):
+            raise TypeError("provenance must contain Provenance values")
+        object.__setattr__(self, "provenance", provenance)
+        object.__setattr__(self, "reason_codes", normalize_reason_codes(self.reason_codes))
+        object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+    @property
+    def caller_id(self) -> str:
+        return self.caller_identity.canonical_id
+
+    @property
+    def historical_call_ids(self) -> tuple[str, ...]:
+        """Compatibility alias for the bounded prior-call backfill."""
+
+        return self.backfilled_call_ids
+
+    @property
+    def call_count(self) -> int:
+        return len(self.backfilled_call_ids)
+
+    @property
+    def out_of_sample_call_count(self) -> int:
+        return len(self.out_of_sample_call_ids)
+
+    @property
+    def earliest_caller(self) -> bool:
+        return bool(self.earliest_call_ids)
+
+    @property
+    def promotion_allowed(self) -> bool:
+        return False
+
+    def execution_eligible(self, at: datetime) -> bool:
+        del at
+        return False
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "caller_id": self.caller_id,
+            "caller_identity": {
+                "platform": self.caller_identity.platform,
+                "author_id": self.caller_identity.author_id,
+                "handle": self.caller_identity.handle,
+            },
+            "discovery_call_ids": list(self.discovery_call_ids),
+            "earliest_call_ids": list(self.earliest_call_ids),
+            "late_call_ids": list(self.late_call_ids),
+            "backfilled_call_ids": list(self.backfilled_call_ids),
+            "out_of_sample_call_ids": list(self.out_of_sample_call_ids),
+            "anchor_cohort_counts": dict(self.anchor_cohort_counts),
+            "discovered_at": self.discovered_at.isoformat(),
+            "earliest_call_at": self.earliest_call_at.isoformat(),
+            "contradictory_call_count": self.contradictory_call_count,
+            "quality_state": self.quality_state.value,
+            "no_lookahead_verified": self.no_lookahead_verified,
+            "evidence_refs": list(self.evidence_refs),
+            "reason_codes": [value.code for value in self.reason_codes],
+            "config_hash": self.config_hash,
+            "version": self.version,
+            "promotion_allowed": False,
+            "execution_eligible": False,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CallerResearchWatchCohort:
+    """Research-only caller cohort with future calls held out of selection."""
+
+    as_of: datetime
+    candidates: tuple[CallerDiscoveryCandidate, ...]
+    anchor_ids: tuple[str, ...]
+    anchor_cohort_counts: Mapping[str, int]
+    winner_anchor_count: int
+    negative_control_anchor_count: int
+    historical_call_count: int
+    out_of_sample_call_count: int
+    status: str
+    quality_state: QualityState
+    no_lookahead_verified: bool
+    provenance: tuple[Provenance, ...]
+    evidence_refs: tuple[str, ...]
+    reason_codes: tuple[ReasonCode, ...]
+    config_hash: str
+    version: str = CALLER_DISCOVERY_VERSION
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "as_of", ensure_utc(self.as_of, "as_of"))
+        candidates = tuple(self.candidates)
+        if any(not isinstance(value, CallerDiscoveryCandidate) for value in candidates):
+            raise TypeError("candidates must contain CallerDiscoveryCandidate values")
+        if tuple(sorted(candidates, key=lambda value: value.caller_id)) != candidates:
+            raise ValueError("candidates must be sorted by caller ID")
+        object.__setattr__(self, "candidates", candidates)
+        object.__setattr__(self, "anchor_ids", normalize_texts(self.anchor_ids, "anchor_ids"))
+        counts: dict[str, int] = {}
+        for key, value in self.anchor_cohort_counts.items():
+            normalized_key = require_text(str(key), "anchor cohort")
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError("anchor cohort counts must be non-negative integers")
+            counts[normalized_key] = value
+        object.__setattr__(
+            self,
+            "anchor_cohort_counts",
+            MappingProxyType(dict(sorted(counts.items()))),
+        )
+        for field_name in (
+            "winner_anchor_count",
+            "negative_control_anchor_count",
+            "historical_call_count",
+            "out_of_sample_call_count",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        object.__setattr__(self, "status", require_text(self.status, "status", max_length=64))
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        if not isinstance(self.no_lookahead_verified, bool):
+            raise TypeError("no_lookahead_verified must be a boolean")
+        provenance = tuple(self.provenance)
+        if any(not isinstance(value, Provenance) for value in provenance):
+            raise TypeError("provenance must contain Provenance values")
+        object.__setattr__(self, "provenance", provenance)
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(self.evidence_refs, "evidence_refs"),
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            normalize_reason_codes(self.reason_codes, required=True),
+        )
+        object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+    @property
+    def cohort_id(self) -> str:
+        return f"caller-watch:{self.as_of.isoformat()}:{self.config_hash}"
+
+    @property
+    def candidate_ids(self) -> tuple[str, ...]:
+        return tuple(value.caller_id for value in self.candidates)
+
+    @property
+    def promotion_allowed(self) -> bool:
+        return False
+
+    @property
+    def execution_eligible(self) -> bool:
+        return False
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "cohort_id": self.cohort_id,
+            "as_of": self.as_of.isoformat(),
+            "candidates": [value.to_json_dict() for value in self.candidates],
+            "anchor_ids": list(self.anchor_ids),
+            "anchor_cohort_counts": dict(self.anchor_cohort_counts),
+            "winner_anchor_count": self.winner_anchor_count,
+            "negative_control_anchor_count": self.negative_control_anchor_count,
+            "historical_call_count": self.historical_call_count,
+            "out_of_sample_call_count": self.out_of_sample_call_count,
+            "status": self.status,
+            "quality_state": self.quality_state.value,
+            "no_lookahead_verified": self.no_lookahead_verified,
+            "evidence_refs": list(self.evidence_refs),
+            "reason_codes": [value.code for value in self.reason_codes],
+            "config_hash": self.config_hash,
+            "version": self.version,
+            "promotion_allowed": False,
+            "execution_eligible": False,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CallerDiscoveryPolicy:
+    """Safety bounds for retrospective caller discovery."""
+
+    minimum_anchor_count: int = 2
+    minimum_winner_anchor_count: int = 1
+    minimum_negative_control_anchor_count: int = 1
+    late_call_after: timedelta = timedelta(minutes=5)
+    max_anchors: int = 10_000
+    max_calls: int = 100_000
+    max_candidates: int = 5_000
+    version: str = CALLER_DISCOVERY_VERSION
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "minimum_anchor_count",
+            "minimum_winner_anchor_count",
+            "minimum_negative_control_anchor_count",
+            "max_anchors",
+            "max_calls",
+            "max_candidates",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"{field_name} must be a positive integer")
+        if not isinstance(self.late_call_after, timedelta) or self.late_call_after < timedelta(0):
+            raise ValueError("late_call_after must be non-negative")
+        if self.minimum_winner_anchor_count > self.minimum_anchor_count:
+            raise ValueError("minimum_winner_anchor_count cannot exceed minimum_anchor_count")
+        if self.minimum_negative_control_anchor_count > self.minimum_anchor_count:
+            raise ValueError(
+                "minimum_negative_control_anchor_count cannot exceed minimum_anchor_count"
+            )
+        if (
+            self.max_anchors > 1_000_000
+            or self.max_calls > 1_000_000
+            or self.max_candidates > 100_000
+        ):
+            raise ValueError("caller discovery bound is too large")
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+
+@dataclass(slots=True)
+class _CallerDiscoveryState:
+    identity: CallerIdentity
+    discovered_at: datetime
+    earliest_call_at: datetime
+    discovery_ids: list[str] = field(default_factory=list)
+    earliest_ids: list[str] = field(default_factory=list)
+    late_ids: list[str] = field(default_factory=list)
+    anchor_cohorts: dict[str, int] = field(default_factory=dict)
+    anchor_seen: set[tuple[str, str]] = field(default_factory=set)
+    contradictory: int = 0
+    quality: list[QualityState] = field(default_factory=list)
+    provenance: list[Provenance] = field(default_factory=list)
+    evidence_refs: list[str] = field(default_factory=list)
+
+
+class CallerDiscoveryAnalyzer:
+    """Discover caller research cohorts without selecting on future calls."""
+
+    def __init__(self, *, policy: CallerDiscoveryPolicy | None = None) -> None:
+        self.policy = policy or CallerDiscoveryPolicy()
+
+    def discover(
+        self,
+        anchors: Sequence[CallerDiscoveryAnchor],
+        historical_calls: Sequence[SocialCallObservation],
+        *,
+        as_of: datetime,
+        config_hash: str,
+    ) -> CallerResearchWatchCohort:
+        if isinstance(anchors, str | bytes | bytearray):
+            raise TypeError("anchors must be a sequence")
+        if isinstance(historical_calls, str | bytes | bytearray):
+            raise TypeError("historical_calls must be a sequence")
+        if len(anchors) > self.policy.max_anchors:
+            raise ValueError("anchors exceeded configured bound")
+        if len(historical_calls) > self.policy.max_calls:
+            raise ValueError("historical_calls exceeded configured bound")
+        checked_as_of = ensure_utc(as_of, "as_of")
+        normalized_hash = require_text(config_hash, "config_hash")
+        unique_anchors = self._unique_anchors(anchors)
+        calls = self._unique_calls(historical_calls)
+        reasons: list[ReasonCode] = [ReasonCode("CALLER_DISCOVERY_RESEARCH_ONLY")]
+        valid_anchors: list[CallerDiscoveryAnchor] = []
+        for anchor in unique_anchors:
+            if anchor.cohort in _DISCOVERY_UNKNOWN_COHORTS:
+                _append_reason(reasons, ReasonCode("UNKNOWN_OUTCOME_COHORT"))
+                continue
+            matured_at = anchor.matured_at
+            if (
+                matured_at is None
+                or matured_at > checked_as_of
+                or anchor.outcome.as_of > checked_as_of
+            ):
+                _append_reason(reasons, ReasonCode("FUTURE_OUTCOME_EXCLUDED"))
+                continue
+            if not anchor.is_matured:
+                _append_reason(reasons, ReasonCode("OUTCOME_NOT_MATURED"))
+                continue
+            if anchor.outcome.quality_state in {QualityState.INVALID, QualityState.CONFLICTED}:
+                _append_reason(reasons, ReasonCode("OUTCOME_EVIDENCE_INVALID"))
+                continue
+            valid_anchors.append(anchor)
+
+        anchor_cohort_counts = _count_anchor_cohorts(valid_anchors)
+        winner_count = sum(anchor.is_winner for anchor in valid_anchors)
+        negative_count = sum(anchor.is_negative_control for anchor in valid_anchors)
+        sufficient_anchors = (
+            len(valid_anchors) >= self.policy.minimum_anchor_count
+            and winner_count >= self.policy.minimum_winner_anchor_count
+            and negative_count >= self.policy.minimum_negative_control_anchor_count
+        )
+        if not sufficient_anchors:
+            _append_reason(reasons, ReasonCode("INSUFFICIENT_SAMPLES"))
+            if winner_count < self.policy.minimum_winner_anchor_count:
+                _append_reason(reasons, ReasonCode("WINNER_ANCHORS_REQUIRED"))
+            if negative_count < self.policy.minimum_negative_control_anchor_count:
+                _append_reason(reasons, ReasonCode("NEGATIVE_CONTROLS_REQUIRED"))
+        discovered = self._discover_candidates(valid_anchors, calls, reasons)
+        if len(discovered) > self.policy.max_candidates:
+            raise ValueError("caller discovery candidates exceeded configured bound")
+        candidates = (
+            tuple(
+                self._candidate(value, calls, checked_as_of, normalized_hash)
+                for value in discovered.values()
+            )
+            if sufficient_anchors
+            else ()
+        )
+        if sufficient_anchors and not candidates:
+            _append_reason(reasons, ReasonCode("CALLER_DISCOVERY_CALLERS_UNKNOWN"))
+        if any(call.published_at > checked_as_of for call in calls):
+            _append_reason(reasons, ReasonCode("FUTURE_CALLS_HELD_OUT"))
+        provenance = _sorted_provenance(
+            [value for anchor in valid_anchors for value in anchor.outcome.provenance]
+            + [value for candidate in candidates for value in candidate.provenance]
+        )
+        evidence_refs = tuple(
+            sorted(
+                {
+                    reference
+                    for anchor in valid_anchors
+                    for reference in (
+                        *anchor.outcome.evidence_refs,
+                        *anchor.outcome.call.evidence_refs,
+                    )
+                }
+                | {
+                    reference
+                    for candidate in candidates
+                    for reference in candidate.evidence_refs
+                }
+            )
+        )
+        quality = _discovery_quality(valid_anchors, calls, checked_as_of)
+        status = "EVALUATED" if sufficient_anchors and candidates else "INSUFFICIENT_SAMPLES"
+        return CallerResearchWatchCohort(
+            as_of=checked_as_of,
+            candidates=tuple(sorted(candidates, key=lambda value: value.caller_id)),
+            anchor_ids=tuple(sorted(anchor.anchor_id for anchor in valid_anchors)),
+            anchor_cohort_counts=anchor_cohort_counts,
+            winner_anchor_count=winner_count,
+            negative_control_anchor_count=negative_count,
+            historical_call_count=len(
+                {call_id for candidate in candidates for call_id in candidate.backfilled_call_ids}
+            ),
+            out_of_sample_call_count=len(
+                {
+                    call_id
+                    for candidate in candidates
+                    for call_id in candidate.out_of_sample_call_ids
+                }
+            ),
+            status=status,
+            quality_state=quality,
+            no_lookahead_verified=True,
+            provenance=provenance,
+            evidence_refs=evidence_refs,
+            reason_codes=tuple(reasons),
+            config_hash=normalized_hash,
+            version=self.policy.version,
+        )
+
+    analyze = discover
+    build = discover
+
+    @staticmethod
+    def _unique_anchors(
+        anchors: Sequence[CallerDiscoveryAnchor],
+    ) -> tuple[CallerDiscoveryAnchor, ...]:
+        seen: dict[str, CallerDiscoveryAnchor] = {}
+        for anchor in anchors:
+            if not isinstance(anchor, CallerDiscoveryAnchor):
+                raise TypeError("anchors must contain CallerDiscoveryAnchor values")
+            previous = seen.get(anchor.anchor_id)
+            if previous is not None and previous != anchor:
+                raise ValueError("conflicting duplicate caller discovery anchor")
+            seen[anchor.anchor_id] = anchor
+        return tuple(
+            sorted(
+                seen.values(),
+                key=lambda value: (value.outcome.call.published_at, value.anchor_id),
+            )
+        )
+
+    @staticmethod
+    def _unique_calls(
+        historical_calls: Sequence[SocialCallObservation],
+    ) -> tuple[SocialCallObservation, ...]:
+        seen: dict[str, SocialCallObservation] = {}
+        for call in historical_calls:
+            if not isinstance(call, SocialCallObservation):
+                raise TypeError("historical_calls must contain SocialCallObservation values")
+            previous = seen.get(call.canonical_id)
+            if previous is not None and previous != call:
+                raise ValueError("conflicting duplicate historical social call")
+            seen[call.canonical_id] = call
+        return tuple(sorted(seen.values(), key=_call_sort_key))
+
+    def _discover_candidates(
+        self,
+        anchors: Sequence[CallerDiscoveryAnchor],
+        calls: Sequence[SocialCallObservation],
+        reasons: list[ReasonCode],
+    ) -> Mapping[str, _CallerDiscoveryState]:
+        discovered: dict[str, _CallerDiscoveryState] = {}
+        for anchor in anchors:
+            asset_id = anchor.asset_id
+            if asset_id is None:
+                _append_reason(reasons, ReasonCode("UNRESOLVED_ANCHOR_ASSET"))
+                continue
+            asset_calls = [
+                call
+                for call in calls
+                if call.canonical_asset_id == asset_id
+                and call.published_at <= anchor.outcome.call.published_at
+                and call.observed_at <= anchor.outcome.call.published_at
+                and call.ingested_at <= anchor.outcome.call.published_at
+            ]
+            if not asset_calls:
+                _append_reason(reasons, ReasonCode("CALLER_DISCOVERY_CALLERS_UNKNOWN"))
+                continue
+            earliest_at = min(call.published_at for call in asset_calls)
+            earliest_ids = {
+                call.canonical_id for call in asset_calls if call.published_at == earliest_at
+            }
+            for call in asset_calls:
+                caller_id = call.caller_identity.canonical_id
+                state = discovered.setdefault(
+                    caller_id,
+                    _CallerDiscoveryState(
+                        identity=call.caller_identity,
+                        discovered_at=anchor.outcome.call.published_at,
+                        earliest_call_at=call.published_at,
+                    ),
+                )
+                _append_unique_text(state.discovery_ids, call.canonical_id)
+                if call.canonical_id in earliest_ids:
+                    _append_unique_text(state.earliest_ids, call.canonical_id)
+                if call.published_at - earliest_at >= self.policy.late_call_after:
+                    _append_unique_text(state.late_ids, call.canonical_id)
+                if call.intent is CallIntent.BEARISH:
+                    state.contradictory += 1
+                anchor_key = (anchor.anchor_id, anchor.cohort)
+                if anchor_key not in state.anchor_seen:
+                    state.anchor_seen.add(anchor_key)
+                    state.anchor_cohorts[anchor.cohort] = (
+                        state.anchor_cohorts.get(anchor.cohort, 0) + 1
+                    )
+                state.discovered_at = min(state.discovered_at, anchor.outcome.call.published_at)
+                state.earliest_call_at = min(state.earliest_call_at, call.published_at)
+                state.quality.append(call.quality_state)
+                state.provenance.extend(call.provenance)
+                for reference in call.evidence_refs:
+                    _append_unique_text(state.evidence_refs, reference)
+        return discovered
+
+    @staticmethod
+    def _candidate(
+        state: _CallerDiscoveryState,
+        calls: Sequence[SocialCallObservation],
+        as_of: datetime,
+        config_hash: str,
+    ) -> CallerDiscoveryCandidate:
+        identity = state.identity
+        discovered_at = state.discovered_at
+        caller_id = identity.canonical_id
+        backfilled = tuple(
+            call.canonical_id
+            for call in calls
+            if call.caller_identity.canonical_id == caller_id
+            and call.published_at <= discovered_at
+            and call.observed_at <= discovered_at
+            and call.ingested_at <= discovered_at
+        )
+        out_of_sample = tuple(
+            call.canonical_id
+            for call in calls
+            if call.caller_identity.canonical_id == caller_id and call.published_at > as_of
+        )
+        provenance = _sorted_provenance(state.provenance)
+        evidence_refs = tuple(sorted(set(state.evidence_refs)))
+        return CallerDiscoveryCandidate(
+            caller_identity=identity,
+            discovery_call_ids=tuple(sorted(state.discovery_ids)),
+            earliest_call_ids=tuple(sorted(state.earliest_ids)),
+            late_call_ids=tuple(sorted(state.late_ids)),
+            backfilled_call_ids=backfilled,
+            out_of_sample_call_ids=out_of_sample,
+            anchor_cohort_counts=state.anchor_cohorts,
+            discovered_at=discovered_at,
+            earliest_call_at=state.earliest_call_at,
+            contradictory_call_count=state.contradictory,
+            quality_state=_combine_quality(state.quality),
+            no_lookahead_verified=True,
+            provenance=provenance,
+            evidence_refs=evidence_refs,
+            reason_codes=(ReasonCode("CALLER_DISCOVERY_RESEARCH_ONLY"),),
+            config_hash=config_hash,
+        )
+
+
+def _append_reason(target: list[ReasonCode], value: ReasonCode) -> None:
+    if value.code not in {item.code for item in target}:
+        target.append(value)
+
+
+def _append_unique_text(target: list[str], value: str) -> None:
+    if value not in target:
+        target.append(value)
+
+
+def _call_sort_key(call: SocialCallObservation) -> tuple[object, ...]:
+    return (call.published_at, call.observed_at, call.ingested_at, call.canonical_id)
+
+
+def _count_anchor_cohorts(anchors: Sequence[CallerDiscoveryAnchor]) -> Mapping[str, int]:
+    counts: dict[str, int] = {}
+    for anchor in anchors:
+        counts[anchor.cohort] = counts.get(anchor.cohort, 0) + 1
+    return MappingProxyType(dict(sorted(counts.items())))
+
+
+def _combine_quality(values: Sequence[QualityState]) -> QualityState:
+    return (
+        max(values, key=lambda value: _QUALITY_PRIORITY[value])
+        if values
+        else QualityState.UNKNOWN
+    )
+
+
+def _sorted_provenance(values: Sequence[Provenance]) -> tuple[Provenance, ...]:
+    return tuple(
+        sorted(
+            set(values),
+            key=lambda value: (value.observed_at, value.provider, value.source_id),
+        )
+    )
+
+
+def _discovery_quality(
+    anchors: Sequence[CallerDiscoveryAnchor],
+    calls: Sequence[SocialCallObservation],
+    as_of: datetime,
+) -> QualityState:
+    states = [anchor.outcome.quality_state for anchor in anchors]
+    states.extend(
+        call.quality_state
+        for call in calls
+        if call.published_at <= as_of and call.observed_at <= as_of and call.ingested_at <= as_of
+    )
+    return _combine_quality(states)
+
+
+# Compatibility names for the research-watch wording used by downstream callers.
+CallerResearchWatchCandidate = CallerDiscoveryCandidate
+CallerDiscoveryWatchCohort = CallerResearchWatchCohort
+
+
 __all__ = [
+    "CALLER_DISCOVERY_VERSION",
+    "CallerDiscoveryAnchor",
+    "CallerDiscoveryAnalyzer",
+    "CallerDiscoveryCandidate",
+    "CallerDiscoveryPolicy",
+    "CallerDiscoveryWatchCohort",
+    "CallerResearchWatchCandidate",
+    "CallerResearchWatchCohort",
     "FEATURE_FAMILY_KEYS",
     "OpportunityResearchAnalyzer",
     "OpportunityResearchConfig",

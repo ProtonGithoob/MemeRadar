@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1039 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1042 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1361,9 +1361,13 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 7 TDD evidence: `tests/unit/test_caller_conduct.py` first failed at collection with the expected missing `CallerMarketConductAnalyzer` export. After the minimal implementation, the focused conduct suite passes `6 tests`; the combined conduct/correlation/flow regression passes `21 tests`. Fixtures cover buy-before-call and sell-after-call timing/net flow, unrelated wallets, ambiguous/weak linkage, clustered callers, smart-money confirmation, missing flow evidence, future-flow invalidation and BNB/Robinhood activity normalization. No weak link becomes a wallet attribution or misconduct assertion.
 - Alpha Caller Task 7 verification: Ruff passes; strict mypy passes (`118 source files`); `git diff --check` passes; full `make verify` exits `0` with `1039 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production scoring weight, persistence migration, provider success, scraping dependency or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
 
+- Alpha Caller Task 8 checkpoint (2026-09-07): extended the existing opportunity-research seam with bounded `CallerDiscoveryAnchor`, `CallerDiscoveryCandidate`, `CallerResearchWatchCohort`, `CallerDiscoveryPolicy` and `CallerDiscoveryAnalyzer`. The projection consumes explicitly labelled matured outcomes plus normalized `SocialCallObservation` history, requires both winner and negative-control anchors, resolves callers only from chain-qualified assets, records earliest and late calls, retains contradictory calls and rug/failure control associations, backfills each discovered caller's prior event-time-available calls, and keeps post-cutoff calls in a separate out-of-sample set. No provider scraping, duplicate discovery engine, caller score, promotion or execution authority was added.
+- Alpha Caller Task 8 TDD evidence: the initial focused collection failed with the expected missing `CallerDiscoveryAnchor` import; after the minimal implementation, `tests/unit/test_alpha_caller_discovery.py` passes `3 tests`, and the combined discovery/opportunity/outcome/profile suite passes `15 tests`. Tests prove winner-only input returns `INSUFFICIENT_SAMPLES` with no selected survivors, negative controls/rugs/failures/late/contradictory callers remain represented, unresolved references do not create sources, prior calls are bounded by the caller's discovery timestamp, and future calls are held out without changing the discovered candidate set.
+- Alpha Caller Task 8 verification: Ruff and strict mypy pass (`118 source files`); `git diff --check` passes; full `make verify` exits `0` with `1042 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production scoring weight, persistence migration, external provider success, scraping dependency or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 8: extend the existing opportunity/research discovery seams
-with bounded caller discovery and backfill from matured winners and negative
-controls, retaining failures, rugs, late calls and no-lookahead out-of-sample
-cohorts.
+Alpha Caller Task 9: extend the existing smart-money/opportunity convergence
+seam with measurement-only caller convergence evidence, independent and
+cluster-adjusted caller counts, temporal dispersion, smart-wallet confirmation,
+narrative alignment and contradictory/distribution evidence.
