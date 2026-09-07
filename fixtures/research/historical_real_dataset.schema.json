@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "historical-real-dataset-validation-v1",
+  "title": "MemeRadar historical dataset validation artifact",
+  "type": "object",
+  "required": [
+    "artifact",
+    "schema_version",
+    "input_dataset_id",
+    "input_dataset_version",
+    "input_dataset_digest",
+    "manifest",
+    "validation"
+  ],
+  "properties": {
+    "artifact": {"const": "historical-dataset-validation"},
+    "schema_version": {"const": 1},
+    "input_dataset_id": {"type": "string"},
+    "input_dataset_version": {"type": "string"},
+    "input_dataset_digest": {"type": "string", "pattern": "^sha256:"},
+    "manifest": {"type": "object"},
+    "validation": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "dataset_version",
+        "status",
+        "reason_codes",
+        "sample_count",
+        "matured_call_count",
+        "caller_identity_count",
+        "matured_token_outcome_count",
+        "negative_control_count",
+        "negative_control_ratio",
+        "partition_strategy",
+        "partition_counts",
+        "partition_event_time_bounds",
+        "test_caller_counts",
+        "test_caller_share",
+        "cohort_counts",
+        "chain_counts",
+        "archetype_counts",
+        "market_regime_counts",
+        "no_lookahead_verified",
+        "evidence_classes"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "dataset_version": {"type": "string"},
+        "status": {"enum": ["VALID", "INSUFFICIENT_SAMPLES", "INVALID"]},
+        "reason_codes": {"type": "array", "items": {"type": "string"}},
+        "sample_count": {"type": "integer", "minimum": 0},
+        "matured_call_count": {"type": "integer", "minimum": 0},
+        "caller_identity_count": {"type": "integer", "minimum": 0},
+        "matured_token_outcome_count": {"type": "integer", "minimum": 0},
+        "negative_control_count": {"type": "integer", "minimum": 0},
+        "negative_control_ratio": {"type": "string"},
+        "partition_strategy": {"const": "CHRONOLOGICAL_50_25_25"},
+        "partition_counts": {"type": "object"},
+        "partition_event_time_bounds": {"type": "object"},
+        "test_caller_counts": {"type": "object"},
+        "test_caller_share": {"type": ["string", "null"]},
+        "cohort_counts": {"type": "object"},
+        "chain_counts": {"type": "object"},
+        "archetype_counts": {"type": "object"},
+        "market_regime_counts": {"type": "object"},
+        "no_lookahead_verified": {"type": "boolean"},
+        "evidence_classes": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

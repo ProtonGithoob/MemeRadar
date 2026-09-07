@@ -9,6 +9,8 @@ REPLAY_INPUT ?= fixtures/research/replay_dataset.json
 REPLAY_OUTPUT ?=
 OPPORTUNITY_RESEARCH_INPUT ?= fixtures/research/opportunity_case_studies.json
 OPPORTUNITY_RESEARCH_OUTPUT ?=
+HISTORICAL_DATASET_INPUT ?= $(OPPORTUNITY_RESEARCH_INPUT)
+HISTORICAL_DATASET_OUTPUT ?=
 BACKTEST_INPUT ?= $(REPLAY_INPUT)
 BACKTEST_OUTPUT ?=
 BACKTEST_ENTRY_SCORE_THRESHOLD ?= 50
@@ -33,7 +35,7 @@ SBOM_OUTPUT ?=
 	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
 	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-backtest-replay opportunity-research calibrate-score winner-vs-rug-optimizer reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
+backtest-replay opportunity-research historical-dataset calibrate-score winner-vs-rug-optimizer reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
 	security-review security-review-external sbom shadow-start shadow-status
 
 
@@ -57,6 +59,10 @@ replay-dataset:
 opportunity-research:
 	$(PYTHON) scripts/opportunity_research.py --input $(OPPORTUNITY_RESEARCH_INPUT) \
 		$(if $(OPPORTUNITY_RESEARCH_OUTPUT),--output $(OPPORTUNITY_RESEARCH_OUTPUT),)
+
+historical-dataset:
+	$(PYTHON) scripts/historical_dataset.py --input $(HISTORICAL_DATASET_INPUT) \
+		$(if $(HISTORICAL_DATASET_OUTPUT),--output $(HISTORICAL_DATASET_OUTPUT),)
 
 profile-replay:
 	$(PYTHON) scripts/profile_replay.py --input $(REPLAY_INPUT) --iterations $(PROFILE_ITERATIONS)

@@ -73,11 +73,11 @@
 
 **Produces:** Reproducible leakage-safe dataset with winners, ordinary outcomes, flats, severe losers, rugs, false positives, late callers and failed calls.
 
-- [ ] Write failing tests rejecting winner-only datasets and partitions where one caller dominates TEST above the configured cap.
-- [ ] Implement versioned sample-adequacy checks: target >=1000 matured calls, >=50 caller identities, >=500 matured token outcomes and >=40% negative controls; insufficient evidence remains `INSUFFICIENT_SAMPLES`.
-- [ ] Preserve chain/caller/archetype/regime labels and chronological/leakage-safe partition metadata.
-- [ ] Never check future target fields into event-time observations.
-- [ ] Run dataset validator/replay tests; update STATUS and commit.
+- [x] Write failing tests rejecting winner-only datasets and partitions where one caller dominates TEST above the configured cap.
+- [x] Implement versioned sample-adequacy checks: target >=1000 matured calls, >=50 caller identities, >=500 matured token outcomes and >=40% negative controls; insufficient evidence remains `INSUFFICIENT_SAMPLES`.
+- [x] Preserve chain/caller/archetype/regime labels and chronological/leakage-safe partition metadata.
+- [x] Never check future target fields into event-time observations.
+- [x] Run dataset validator/replay tests; update STATUS and commit.
 
 ### Task 5: Winner-first reverse caller discovery on real evidence
 

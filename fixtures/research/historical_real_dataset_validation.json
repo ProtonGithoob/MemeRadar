@@ -1,0 +1,89 @@
+{
+  "artifact": "historical-dataset-validation",
+  "input_dataset_digest": "sha256:3f00cde5f9b697ce832e5fc56000ccffdad57ea6d688518574b43f00c21fc9c4",
+  "input_dataset_id": "opportunity-case-studies",
+  "input_dataset_version": "case-study-v1",
+  "manifest": {
+    "as_of": "2026-08-31T12:00:00+00:00",
+    "config_hash": "config-fixture",
+    "dataset_digest": "sha256:3f00cde5f9b697ce832e5fc56000ccffdad57ea6d688518574b43f00c21fc9c4",
+    "dataset_id": "opportunity-case-studies",
+    "dataset_version": "case-study-v1",
+    "event_schema_version": 1,
+    "feature_window": "1m",
+    "outcome_policy_version": "outcome-labels-v1",
+    "parser_version": "case-study-fixture-v1",
+    "registry_version": "registry-v1",
+    "schema_version": 1,
+    "signal_hardening_version": "signal-hardening-v1",
+    "strategy_name": "none",
+    "strategy_version": "none-v1"
+  },
+  "schema_version": 1,
+  "validation": {
+    "archetype_counts": {
+      "PROTOCOL_TOKEN": 2,
+      "PURE_MEME": 5
+    },
+    "caller_identity_count": 0,
+    "chain_counts": {
+      "bnb": 2,
+      "robinhood": 2,
+      "solana": 3
+    },
+    "cohort_counts": {
+      "COPYCAT_FAILURE": 1,
+      "EXTREME_WINNER": 1,
+      "FUNDAMENTAL_NO_REPRICING": 1,
+      "HIGH_VIRALITY_NON_WINNER": 1,
+      "ORDINARY_WINNER": 1,
+      "RUG_SEVERE_FAILURE": 1,
+      "WEAK_FUNDAMENTAL_REPRICING": 1
+    },
+    "dataset_version": "historical-real-dataset-v1",
+    "evidence_classes": [
+      "SYNTHETIC_REDACTED"
+    ],
+    "market_regime_counts": {
+      "DEEP_RELATIVE_LIQUIDITY": 7
+    },
+    "matured_call_count": 0,
+    "matured_token_outcome_count": 0,
+    "negative_control_count": 0,
+    "negative_control_ratio": "0",
+    "no_lookahead_verified": true,
+    "partition_counts": {
+      "TEST": 3,
+      "TRAIN": 3,
+      "VALIDATION": 1
+    },
+    "partition_event_time_bounds": {
+      "TEST": {
+        "first": "2026-08-31T12:00:00+00:00",
+        "last": "2026-08-31T12:00:00+00:00"
+      },
+      "TRAIN": {
+        "first": "2026-08-31T12:00:00+00:00",
+        "last": "2026-08-31T12:00:00+00:00"
+      },
+      "VALIDATION": {
+        "first": "2026-08-31T12:00:00+00:00",
+        "last": "2026-08-31T12:00:00+00:00"
+      }
+    },
+    "partition_strategy": "CHRONOLOGICAL_50_25_25",
+    "reason_codes": [
+      "MATURED_CALLS_REQUIRED",
+      "CALLER_IDENTITIES_REQUIRED",
+      "MATURED_TOKEN_OUTCOMES_REQUIRED",
+      "NEGATIVE_CONTROLS_REQUIRED",
+      "REQUIRED_COHORTS_MISSING",
+      "HISTORICAL_REAL_EVIDENCE_REQUIRED"
+    ],
+    "sample_count": 7,
+    "schema_version": 1,
+    "status": "INSUFFICIENT_SAMPLES",
+    "test_caller_counts": {},
+    "test_caller_share": null
+  }
+}

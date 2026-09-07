@@ -31,7 +31,7 @@ AUTO_EXECUTION=false
 |---|---|---|---|
 | PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | `PARTIAL` | `make verify` passed at `2acf261`; migration/security/SBOM gates pass locally. `.github/workflows/ci.yml` exists, but no hosted run, release artifact or tested rollback is evidenced yet. |
 | PR-2 Provider/evidence | Required real chain/market/social/Telegram capabilities with freshness/provenance and stable doctors | `BLOCKED_EXTERNAL/PARTIAL` | `make free-provider-doctor` reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors report `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`. Configure compliant real access and prove bounded reads. |
-| PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | `INSUFFICIENT_SAMPLES` | `fixtures/research/opportunity_research_report.json` is `SYNTHETIC_REDACTED`, seven cases, all six caller families `INSUFFICIENT_SAMPLES`; collect real calls/outcomes and rerun the canonical gate. |
+| PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | `INSUFFICIENT_SAMPLES` | `fixtures/research/opportunity_research_report.json` remains `SYNTHETIC_REDACTED`; the new `historical_real_dataset_validation.json` reports zero matured calls/outcomes and no historical-real evidence. Collect real calls/outcomes and rerun the canonical gate. |
 | PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | `INSUFFICIENT_SAMPLES` | `python3 scripts/shadow_status.py` reports `STACK_OFFLINE`, `START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE` evidence and unknown matured outcomes; run a durable real shadow window. |
 | PR-5 Operations | Backups/restore, monitoring/alerts, soak/failure tests, deployment/rollback runbooks | `PARTIAL/NOT_VERIFIED` | Runbooks and keyless contracts exist; `reliability-doctor` reports `backup_restore=DOCUMENTED_ONLY`. Execute restore, soak and failure acceptance. |
 | PR-6 PROD_READ_ONLY | PR-1 + PR-2 + PR-5 PASS | `NOT_ACCEPTED` | Complete its three prerequisite gates; PR-3/PR-4 may remain insufficient while collecting evidence. |
@@ -160,6 +160,29 @@ Evidence for this slice:
 The four unrelated WIP files remain untouched and protected modes remain
 exactly `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`,
 `AUTO_EXECUTION=false`.
+
+## Task 4 evidence snapshot — 2026-09-07
+
+The existing opportunity case-study/replay path now has a versioned
+`HistoricalDatasetValidator` and read-only `scripts/historical_dataset.py`
+artifact. It reuses the existing chronological TRAIN/VALIDATION/TEST split,
+preserves chain/archetype/market-regime/cohort counts and event-time bounds,
+tracks caller/source concentration in TEST, and records explicit maturity and
+negative-control counts. Future outcome targets remain outside event-time
+samples; no scoring weight or replay engine was added.
+
+The focused TDD suite passes `5 tests`: the initial validator import failed as
+expected, then winner-only data remained `INSUFFICIENT_SAMPLES`, caller
+concentration above the `10%` TEST cap was rejected, and chronological
+metadata/no-lookahead artifact contracts passed. `make lint` passes and strict
+`make typecheck` passes over `121 source files`. The generated
+`fixtures/research/historical_real_dataset_validation.json` honestly reports
+`INSUFFICIENT_SAMPLES`, `0` matured calls, `0` matured token outcomes, `0`
+caller identities, evidence class `SYNTHETIC_REDACTED`, and missing required
+historical-real cohorts. This is a validation contract, not real-data proof.
+
+The external blocker is unchanged: compliant X/social and Telegram history/live
+access is not configured, so no historical-real samples are fabricated.
 
 ## Minimum evidence targets
 
