@@ -77,6 +77,12 @@ submit a transaction. The fixture adapter and doctor make the path testable
 without credentials; live Telegram acceptance is `BLOCKED_EXTERNAL` when
 configuration is absent.
 
+Caller-intelligence alert rendering reuses this notification boundary. It
+allow-lists bounded caller/profile/convergence evidence, preserves explicit
+UNKNOWN and provenance values, redacts secret-shaped display text and emits
+only research/paper wording with `Auto execution: LOCKED`; caller quality or
+convergence cannot authorize a buy, copy trade, swap or execution mode change.
+
 Sprint 7.2 keeps the operator read surface strictly GET-only and behind the
 application `ReadQueryPort`. Query DTOs reject unknown parameters, oversized
 limits, malformed cursors and unbounded time windows. Responses are mapped

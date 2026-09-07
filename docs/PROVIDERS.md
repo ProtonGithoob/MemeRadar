@@ -216,6 +216,17 @@ checkout has no Telegram configuration, so no live provider success is
 claimed. Telegram notification and caller evidence remain downstream of
 deterministic analysis and cannot authorize execution.
 
+Alpha Caller Task 11 extends the same `AlertRenderer` path with a bounded
+`CALLER INTELLIGENCE` section when normalized caller evidence is present. It
+can show caller historical-quality band, convergence state/count,
+event-time earliest-call context, smart-money/distribution state,
+security/liquidity/execution quality, the MemeRadar decision band, research
+state and provenance/evidence references. Profile and convergence mappings
+are merged without creating another alert engine. Missing fields are omitted
+rather than guessed, while existing `UNKNOWN` values remain visible. The
+renderer always ends with `Auto execution: LOCKED` and emits no guaranteed
+multiple, live-buy, copy-trading or swap instruction.
+
 The Sprint 7.2 read API is not a provider adapter. Its application
 `ReadQueryPort` consumes normalized views, and the SQLAlchemy implementation
 reads persisted normalized records without importing provider SDKs or making

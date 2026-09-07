@@ -167,10 +167,10 @@
 - Consumes: caller profile/convergence, smart-money, risk, liquidity/execution and decision evidence.
 - Produces: concise evidence-rich research alerts.
 
-- [ ] Write failing snapshot/contract tests for chain+address, caller quality band, convergence, earliest-call context, smart-money, security/liquidity, decision band and provenance.
-- [ ] Ensure no guaranteed-multiple or live-buy wording is emitted.
-- [ ] Implement formatter using existing Telegram delivery path.
-- [ ] Run notifier tests/doctor if configured, update STATUS and commit.
+- [x] Write failing snapshot/contract tests for chain+address, caller quality band, convergence, earliest-call context, smart-money, security/liquidity, decision band and provenance.
+- [x] Ensure no guaranteed-multiple or live-buy wording is emitted.
+- [x] Implement formatter using existing Telegram delivery path.
+- [x] Run notifier tests/doctor if configured, update STATUS and commit.
 
 ### Task 12: Fail-closed PAPER_AUTO gate
 

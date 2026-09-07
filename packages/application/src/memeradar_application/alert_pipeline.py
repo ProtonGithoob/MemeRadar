@@ -260,6 +260,25 @@ _OPPORTUNITY_MARKERS = frozenset(
     }
 )
 
+_CALLER_MARKERS = frozenset(
+    {
+        "caller_quality_band",
+        "caller_quality",
+        "convergence_state",
+        "caller_convergence_state",
+        "independent_caller_count",
+        "earliest_call_at",
+        "smart_money_state",
+        "distribution_state",
+        "security_quality",
+        "liquidity_quality",
+        "execution_quality",
+        "decision_band",
+        "research_state",
+        "provenance",
+    }
+)
+
 
 def _opportunity_payload(payload: Mapping[str, object]) -> Mapping[str, object] | None:
     nested = payload.get("opportunity")
@@ -423,6 +442,135 @@ def _opportunity_lines(
     return tuple(lines)
 
 
+def _caller_payload(
+    payload: Mapping[str, object],
+    opportunity: Mapping[str, object] | None,
+) -> Mapping[str, object] | None:
+    sources = tuple(source for source in (opportunity, payload) if source is not None)
+    merged: dict[str, object] = {}
+    for source in sources:
+        for key in ("caller_intelligence", "caller_evidence", "caller_profile", "caller"):
+            value = source.get(key)
+            if isinstance(value, Mapping):
+                merged.update({str(name): item for name, item in value.items()})
+        convergence = source.get("caller_convergence")
+        if isinstance(convergence, Mapping):
+            merged.update({str(name): item for name, item in convergence.items()})
+        for key in _CALLER_MARKERS:
+            if key in source:
+                merged.setdefault(key, source[key])
+    return merged or None
+
+
+def _caller_sources(
+    payload: Mapping[str, object],
+    opportunity: Mapping[str, object] | None,
+    caller: Mapping[str, object],
+) -> tuple[Mapping[str, object], ...]:
+    sources: list[Mapping[str, object]] = [caller]
+    for parent in (opportunity, payload):
+        if parent is None:
+            continue
+        for key in ("caller_intelligence", "caller_evidence", "caller_profile", "caller"):
+            value = parent.get(key)
+            if isinstance(value, Mapping) and value not in sources:
+                sources.append(value)
+    if opportunity is not None:
+        sources.append(opportunity)
+    sources.append(payload)
+    return tuple(sources)
+
+
+def _caller_value(
+    payload: Mapping[str, object],
+    opportunity: Mapping[str, object] | None,
+    caller: Mapping[str, object],
+    *keys: str,
+) -> object | None:
+    for source in _caller_sources(payload, opportunity, caller):
+        for key in keys:
+            value = source.get(key)
+            if value is not None:
+                return value
+    return None
+
+
+def _caller_lines(
+    payload: Mapping[str, object],
+    opportunity: Mapping[str, object] | None,
+    caller: Mapping[str, object],
+) -> tuple[str, ...]:
+    lines: list[str] = []
+    field_specs = (
+        (
+            "Caller quality",
+            (
+                "quality_band",
+                "caller_quality_band",
+                "historical_quality_band",
+                "profile_quality_band",
+            ),
+        ),
+        ("Caller convergence", ("convergence_state", "caller_convergence_state", "convergence")),
+        (
+            "Independent callers",
+            ("independent_caller_count", "independent_callers", "caller_count"),
+        ),
+        ("Smart-money", ("smart_money_state", "smart_wallet_state", "smart_money_confirmation")),
+        (
+            "Caller distribution",
+            ("distribution_state", "post_call_distribution", "distribution_evidence"),
+        ),
+        ("Security quality", ("security_quality", "token_security_quality", "security_state")),
+        ("Liquidity quality", ("liquidity_quality", "liquidity_state")),
+        ("Execution quality", ("execution_quality", "execution_state")),
+        ("Decision band", ("decision_band", "meme_radar_decision_band")),
+        ("Research state", ("research_state", "evidence_class", "research_evidence_state")),
+        ("Provenance", ("provenance", "provenance_state", "provider_provenance")),
+    )
+    for label, keys in field_specs:
+        value = _caller_value(payload, opportunity, caller, *keys)
+        if value is None:
+            continue
+        display = _safe_opportunity_value(value)
+        if display:
+            lines.append(f"{label}: {display}")
+
+    earliest_parts: list[str] = []
+    earliest_at = _caller_value(
+        payload,
+        opportunity,
+        caller,
+        "earliest_call_at",
+        "earliest_call_timestamp",
+        "first_call_at",
+    )
+    earliest_market_cap = _caller_value(
+        payload,
+        opportunity,
+        caller,
+        "earliest_call_market_cap",
+        "first_call_market_cap",
+    )
+    earliest_age = _caller_value(
+        payload,
+        opportunity,
+        caller,
+        "earliest_call_age",
+        "earliest_call_age_seconds",
+        "first_call_age",
+    )
+    if earliest_at is not None:
+        earliest_parts.append(_safe_opportunity_value(earliest_at))
+    if earliest_market_cap is not None:
+        earliest_parts.append(f"MC {_safe_opportunity_value(earliest_market_cap)}")
+    if earliest_age is not None:
+        earliest_parts.append(f"age {_safe_opportunity_value(earliest_age)}")
+    if earliest_parts:
+        lines.append("Earliest call: " + " / ".join(earliest_parts))
+    return tuple(lines)
+
+
 class AlertRenderer:
     """Render typed alerts as bounded plain text safe for Telegram."""
 
@@ -462,6 +610,12 @@ class AlertRenderer:
             if opportunity_lines:
                 lines.append("OPPORTUNITY EVIDENCE")
                 lines.extend(opportunity_lines)
+        caller = _caller_payload(payload, opportunity)
+        if caller is not None:
+            caller_lines = _caller_lines(payload, opportunity, caller)
+            if caller_lines:
+                lines.append("CALLER INTELLIGENCE")
+                lines.extend(caller_lines)
         early_payload = _ultra_early_payload(payload)
         if early_payload is not None:
             lines.append("ULTRA EARLY SIGNAL")
@@ -538,6 +692,7 @@ class AlertRenderer:
         for raw_references in (
             payload.get("evidence_refs"),
             None if opportunity is None else opportunity.get("evidence_refs"),
+            None if caller is None else caller.get("evidence_refs"),
         ):
             if isinstance(raw_references, str):
                 if safe_reference := _safe_display(raw_references, max_length=512):
