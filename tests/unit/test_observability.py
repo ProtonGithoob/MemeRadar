@@ -190,3 +190,52 @@ def test_early_detection_projection_is_read_only_and_preserves_evidence_class() 
     assert payload["early_detection"]["evidence_class"] == "SYNTHETIC"
     assert payload["early_detection"]["counters"]["entry_ready"] == 1
     assert payload["execution_eligible"] is False
+
+
+def test_operational_failure_metrics_emit_fail_closed_alerts() -> None:
+    metrics = ReliabilityMetrics()
+    metrics.set_gauge("ingestion_lag_seconds", 301)
+    metrics.set_gauge("queue_depth", 1001)
+    metrics.set_gauge("queue_oldest_age_seconds", 301)
+    metrics.set_gauge("db_storage_used_fraction", 0.95)
+    metrics.increment("migration_mismatches")
+    metrics.increment("telegram_delivery_failures")
+    metrics.increment("provider_successes", provider="dexscreener")
+    metrics.increment("provider_rate_limits", provider="telegram")
+
+    overview = OperationsProjector().project(
+        as_of=NOW,
+        providers=(_provider(),),
+        reliability=metrics.snapshot(),
+    )
+
+    assert {alert.code for alert in overview.alerts} >= {
+        OperationalAlertCode.INGESTION_STOPPED,
+        OperationalAlertCode.QUEUE_GROWTH,
+        OperationalAlertCode.DB_STORAGE_PRESSURE,
+        OperationalAlertCode.MIGRATION_MISMATCH,
+        OperationalAlertCode.TELEGRAM_DELIVERY_FAILURE,
+    }
+    assert overview.metrics["provider_counters"]["dexscreener"]["provider_successes"] == 1
+    assert overview.metrics["provider_counters"]["telegram"]["provider_rate_limits"] == 1
+    assert overview.execution_eligible is False
+
+
+def test_stale_market_evidence_has_a_specific_operational_alert() -> None:
+    market = ProviderOperationalInput(
+        provider="dexscreener",
+        capability="market_reference",
+        state=OperationalState.HEALTHY,
+        checked_at=NOW,
+        freshness_state=QualityState.STALE,
+    )
+    overview = OperationsProjector().project(
+        as_of=NOW,
+        providers=(market,),
+        reliability=ReliabilityMetrics().snapshot(),
+    )
+
+    assert any(
+        alert.code is OperationalAlertCode.MARKET_EVIDENCE_STALE
+        for alert in overview.alerts
+    )

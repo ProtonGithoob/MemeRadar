@@ -73,6 +73,21 @@ class ReliabilityCounter(str, Enum):
     BACKFILL_SUCCESSES = "backfill_successes"
     RECOVERY_SUCCESSES = "recovery_successes"
     RECOVERY_FAILURES = "recovery_failures"
+    PROVIDER_SUCCESSES = "provider_successes"
+    PROVIDER_ERRORS = "provider_errors"
+    PROVIDER_RATE_LIMITS = "provider_rate_limits"
+    PROVIDER_STALE_OBSERVATIONS = "provider_stale_observations"
+    INGESTION_EVENTS = "ingestion_events"
+    PARSER_FAILURES = "parser_failures"
+    NORMALIZATION_FAILURES = "normalization_failures"
+    SOCIAL_CALL_RESOLUTION_FAILURES = "social_call_resolution_failures"
+    ALERT_DELIVERY_FAILURES = "alert_delivery_failures"
+    TELEGRAM_DELIVERY_FAILURES = "telegram_delivery_failures"
+    DB_CONNECTION_FAILURES = "db_connection_failures"
+    REDIS_CONNECTION_FAILURES = "redis_connection_failures"
+    API_ERRORS = "api_errors"
+    WORKER_RESTARTS = "worker_restarts"
+    MIGRATION_MISMATCHES = "migration_mismatches"
 
 
 class ReliabilityTelemetry(Protocol):
@@ -125,6 +140,12 @@ _GAUGE_NAMES = frozenset(
         "oldest_gap_age_seconds",
         "outbox_backlog",
         "queue_depth",
+        "ingestion_lag_seconds",
+        "queue_oldest_age_seconds",
+        "db_storage_used_fraction",
+        "social_call_resolution_rate",
+        "quote_freshness_age_seconds",
+        "api_error_rate",
     }
 )
 _SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,63}$")

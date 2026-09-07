@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1099 Python tests (11 skipped), 55 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1101 Python tests (11 skipped), 55 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1418,14 +1418,17 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Task 8 TDD/verification evidence: the initial focused collection failed with the expected five missing resume/event/gap/readiness/closure contracts. After implementation, `tests/unit/test_shadow_tooling.py` passes `24 tests`; the adjacent shadow-entry/reliability suite passes `35 tests`; Ruff, Python compilation and `git diff --check` pass. Real provider snapshots, historical-real calls and matured live-shadow outcomes remain unavailable, so PR-4 remains `INSUFFICIENT_SAMPLES` and no production-ready classification is claimed. Protected modes remain exact and the four pre-existing unrelated WIP files remain untouched.
 - Current read-only status evidence: `python3 scripts/shadow_status.py` exits `0` with `STACK_READY / BLOCKED_EXTERNAL`, `START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE` evidence and `0` matured outcomes; no real shadow collection is claimed.
 
+- Real Alpha Production Readiness Task 9 checkpoint (2026-09-07): extended the existing bounded `ReliabilityMetrics` and `OperationsProjector` seams with allow-listed provider success/error/rate-limit/stale counters; ingestion, parser, normalization, social-resolution, alert/Telegram delivery, DB/Redis/API, worker and migration counters; bounded ingestion-lag, queue-age/depth, DB-storage, social-resolution and quote-freshness gauges; and deterministic fail-closed alerts for sustained ingestion stop, stale market evidence, critical provider loss, unresolved stream gaps/recovery, queue growth, DB pressure, migration mismatch and Telegram/alert delivery failure. Provider capability health remains separate from application health and the projection remains `execution_eligible=false`. Initial targets are versioned in `ProviderSloPolicy` (300s ingestion lag, queue depth 1000 or oldest age 300s, DB storage 90%) and are not claimed as measured SLO PASS.
+- Task 9 TDD/verification evidence: the initial telemetry focused run failed with the expected two missing gauge/alert contracts. After implementation, the focused observability/reliability/alert suite passes `28 tests`; `make lint` and strict `make typecheck` pass over `121 source files`; `git diff --check` passes. Full `make verify` exits `0` with `1101` Python tests passed, `11` skipped, `1` warning, and `55` Vitest tests passed; Compose, secret scan, migrations, security review and SBOM pass, with external scans still `NOT_RUN`/`BLOCKED_EXTERNAL`. External provider/Telegram/database/Redis and soak measurements remain unavailable, so PR-5 remains `PARTIAL/NOT_VERIFIED`; no production-ready classification is claimed. Protected modes remain exact and the four pre-existing unrelated WIP files remain untouched.
+
 ## Next task
 
-Real Alpha Production Readiness Task 9: extend the existing reliability,
-metrics, health and alerting seams for provider success/error/rate-limit/stale
-states, ingestion lag, queue age/depth, idempotency, stream gaps, parsing and
-resolution, quote freshness, decision/alert latency, Telegram failure and
-DB/Redis/API/worker health. Add fail-closed operational alert contracts
-without claiming measured production SLOs until real evidence exists.
+Real Alpha Production Readiness Task 10: complete database durability, retention
+and restore acceptance using the existing migration, persistence and reliability
+runbook seams. Test migration safety, backup/restore in a disposable target,
+volume/index/query assumptions, research/live-ingestion isolation and explicit
+pool/statement timeout behavior. Preserve `UNKNOWN`/external-blocked results
+when real infrastructure evidence is unavailable.
 No production weights or protected modes change; current social/Telegram access
 remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`.
 Protected modes remain

@@ -57,6 +57,13 @@ class OperationalAlertCode(str, Enum):
     STREAM_RECOVERY_FAILED = "STREAM_RECOVERY_FAILED"
     QUEUE_BACKPRESSURE = "QUEUE_BACKPRESSURE"
     OUTBOX_DEAD_LETTERS = "OUTBOX_DEAD_LETTERS"
+    INGESTION_STOPPED = "INGESTION_STOPPED"
+    MARKET_EVIDENCE_STALE = "MARKET_EVIDENCE_STALE"
+    QUEUE_GROWTH = "QUEUE_GROWTH"
+    DB_STORAGE_PRESSURE = "DB_STORAGE_PRESSURE"
+    MIGRATION_MISMATCH = "MIGRATION_MISMATCH"
+    TELEGRAM_DELIVERY_FAILURE = "TELEGRAM_DELIVERY_FAILURE"
+    ALERT_DELIVERY_FAILURE = "ALERT_DELIVERY_FAILURE"
 
 
 _ERROR_CLASS = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]{0,127}$")
@@ -221,6 +228,10 @@ class ProviderSloPolicy:
     low_quota_fraction: float = 0.10
     min_measurement_samples: int = 100
     require_provider_network: bool = True
+    ingestion_stop_lag_seconds: float = 300.0
+    queue_growth_depth: int = 1_000
+    queue_oldest_age_seconds: float = 300.0
+    db_storage_pressure_fraction: float = 0.90
 
     def __post_init__(self) -> None:
         normalized_version = require_text(self.version, "policy version", max_length=64).lower()
@@ -251,6 +262,24 @@ class ProviderSloPolicy:
             raise ValueError("min_measurement_samples must be between 1 and 1000000")
         if not isinstance(self.require_provider_network, bool):
             raise TypeError("require_provider_network must be a boolean")
+        if (
+            not math.isfinite(float(self.ingestion_stop_lag_seconds))
+            or self.ingestion_stop_lag_seconds <= 0
+        ):
+            raise ValueError("ingestion_stop_lag_seconds must be positive")
+        if (
+            isinstance(self.queue_growth_depth, bool)
+            or not isinstance(self.queue_growth_depth, int)
+            or self.queue_growth_depth < 1
+        ):
+            raise ValueError("queue_growth_depth must be positive")
+        if (
+            not math.isfinite(float(self.queue_oldest_age_seconds))
+            or self.queue_oldest_age_seconds <= 0
+        ):
+            raise ValueError("queue_oldest_age_seconds must be positive")
+        if not 0 < float(self.db_storage_pressure_fraction) <= 1:
+            raise ValueError("db_storage_pressure_fraction must be between 0 and 1")
 
     def evaluate(self, reliability: ReliabilitySnapshot) -> OperationalSloState:
         """Evaluate only non-synthetic provider-request samples."""
@@ -524,6 +553,15 @@ def _alert(
         OperationalAlertCode.STREAM_RECOVERY_FAILED: "Stream recovery has failed",
         OperationalAlertCode.QUEUE_BACKPRESSURE: "Downstream queue backpressure is active",
         OperationalAlertCode.OUTBOX_DEAD_LETTERS: "Outbox dead letters require operator review",
+        OperationalAlertCode.INGESTION_STOPPED: "Ingestion lag exceeds the operational target",
+        OperationalAlertCode.MARKET_EVIDENCE_STALE: "Market evidence is stale",
+        OperationalAlertCode.QUEUE_GROWTH: "Queue depth or age exceeds the operational target",
+        OperationalAlertCode.DB_STORAGE_PRESSURE: "Database storage pressure requires review",
+        OperationalAlertCode.MIGRATION_MISMATCH: (
+            "Database migration state does not match the release"
+        ),
+        OperationalAlertCode.TELEGRAM_DELIVERY_FAILURE: "Telegram delivery failures require review",
+        OperationalAlertCode.ALERT_DELIVERY_FAILURE: "Alert delivery failures require review",
     }
     subject = ""
     if provider is not None:
@@ -614,6 +652,69 @@ class OperationsProjector:
                     reason_codes=("OUTBOX_DEAD_LETTER",),
                 )
             )
+        ingestion_lag = float(gauges.get("ingestion_lag_seconds", 0))
+        if ingestion_lag >= self.policy.ingestion_stop_lag_seconds:
+            alerts.append(
+                _alert(
+                    OperationalAlertCode.INGESTION_STOPPED,
+                    AlertSeverity.CRITICAL,
+                    as_of=normalized_as_of,
+                    reason_codes=("INGESTION_LAG_ABOVE_TARGET",),
+                )
+            )
+        queue_depth = float(gauges.get("queue_depth", 0))
+        queue_age = float(gauges.get("queue_oldest_age_seconds", 0))
+        if (
+            queue_depth >= self.policy.queue_growth_depth
+            or queue_age >= self.policy.queue_oldest_age_seconds
+        ):
+            alerts.append(
+                _alert(
+                    OperationalAlertCode.QUEUE_GROWTH,
+                    AlertSeverity.WARNING,
+                    as_of=normalized_as_of,
+                    reason_codes=("QUEUE_DEPTH_OR_AGE_ABOVE_TARGET",),
+                )
+            )
+        if (
+            float(gauges.get("db_storage_used_fraction", 0))
+            >= self.policy.db_storage_pressure_fraction
+        ):
+            alerts.append(
+                _alert(
+                    OperationalAlertCode.DB_STORAGE_PRESSURE,
+                    AlertSeverity.CRITICAL,
+                    as_of=normalized_as_of,
+                    reason_codes=("DB_STORAGE_ABOVE_TARGET",),
+                )
+            )
+        if counters.get("migration_mismatches", 0) > 0:
+            alerts.append(
+                _alert(
+                    OperationalAlertCode.MIGRATION_MISMATCH,
+                    AlertSeverity.CRITICAL,
+                    as_of=normalized_as_of,
+                    reason_codes=("MIGRATION_MISMATCH",),
+                )
+            )
+        if counters.get("telegram_delivery_failures", 0) > 0:
+            alerts.append(
+                _alert(
+                    OperationalAlertCode.TELEGRAM_DELIVERY_FAILURE,
+                    AlertSeverity.CRITICAL,
+                    as_of=normalized_as_of,
+                    reason_codes=("TELEGRAM_DELIVERY_FAILURE",),
+                )
+            )
+        if counters.get("alert_delivery_failures", 0) > 0:
+            alerts.append(
+                _alert(
+                    OperationalAlertCode.ALERT_DELIVERY_FAILURE,
+                    AlertSeverity.CRITICAL,
+                    as_of=normalized_as_of,
+                    reason_codes=("ALERT_DELIVERY_FAILURE",),
+                )
+            )
         alerts.sort(key=lambda alert: alert.dedupe_key)
         overall_state = self._overall_state(statuses, alerts)
         return OperationsOverview(
@@ -698,6 +799,22 @@ class OperationsProjector:
                     provider=item.provider,
                     capability=item.capability,
                     reason_codes=tuple(reasons) or ("PROVIDER_DOWN",),
+                )
+            )
+        if freshness_state is QualityState.STALE and item.capability.lower() in {
+            "market",
+            "market_reference",
+            "reference_quote",
+            "execution_quote",
+        }:
+            alerts.append(
+                _alert(
+                    OperationalAlertCode.MARKET_EVIDENCE_STALE,
+                    AlertSeverity.CRITICAL,
+                    as_of=as_of,
+                    provider=item.provider,
+                    capability=item.capability,
+                    reason_codes=("STALE_MARKET_EVIDENCE",),
                 )
             )
         elif state is OperationalState.UNKNOWN:

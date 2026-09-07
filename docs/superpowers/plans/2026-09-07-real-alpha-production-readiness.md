@@ -136,11 +136,11 @@
 
 **Produces:** Metrics for provider success/error/rate-limit/stale, ingestion lag, queue depth/age, idempotency, stream gaps, parsing, resolution rate, quote freshness, decision latency, Telegram latency/failure, paper-gate reasons, DB/Redis/API/worker health.
 
-- [ ] Write failing telemetry tests for each critical failure state.
-- [ ] Add alerts for sustained ingestion stop, stale evidence, required-provider loss, unresolved stream gap, queue growth, DB storage pressure/migration mismatch and Telegram failure.
-- [ ] Keep provider availability separate from application availability.
-- [ ] Document initial SLO targets without claiming PASS until measured.
-- [ ] Run observability/reliability tests; update STATUS and commit.
+- [x] Write failing telemetry tests for each critical failure state.
+- [x] Add alerts for sustained ingestion stop, stale evidence, required-provider loss, unresolved stream gap, queue growth, DB storage pressure/migration mismatch and Telegram failure.
+- [x] Keep provider availability separate from application availability.
+- [x] Document initial SLO targets without claiming PASS until measured.
+- [x] Run observability/reliability tests; update STATUS and commit.
 
 ### Task 10: Database durability, retention and restore acceptance
 
