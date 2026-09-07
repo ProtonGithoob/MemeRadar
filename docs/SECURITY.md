@@ -105,6 +105,15 @@ receives only allow-listed evidence through the server gateway, and the
 `/callers` surface exposes no order, copy, follow, signing or execution
 mutation path. Every response remains permanently non-authorizing.
 
+Alpha Caller Task 15 keeps the replay and promotion path in the research plane.
+Caller-only, smart-money-only, opportunity-only, pairwise and full-fusion
+ablations reuse event-time partitions and preserve explicit missing evidence;
+future target labels and winner-only survivorship cannot enter decision-time
+features. The existing strategy-promotion gate is advisory and human-review
+gated, while the report remains non-promoting and non-executable. No caller
+feature changes production weights, operating modes, paper-ledger authority,
+signing or transaction submission.
+
 Core Sprint 6.1 feature windows are also analysis-only derived records. Their
 stable IDs and persisted JSON values are replay identities, not authorization
 tokens. The aggregator uses the correlation event-time boundary, invalidates

@@ -38,3 +38,11 @@ The checked-in report remains `INSUFFICIENT_SAMPLES` for this seven-case
 synthetic bundle. It reports the split, feature-family ablation shape,
 chain/archetype/age/market-cap/regime segments and explicit non-promotion;
 it is not evidence for production weight changes.
+
+The report also contains the Alpha Caller Task 15 ablation families
+(`caller_only`, `smart_money_only`, `opportunity_only`, both pairwise joins and
+`full_fusion`). The seven-case redacted bundle has no caller-history or
+smart-money sample adequacy, so those families remain `INSUFFICIENT_SAMPLES`
+and are rejected by the existing promotion gate. Deterministic 40-sample
+engineering coverage lives in the opportunity-research tests; no historical
+real or live-shadow caller evidence is asserted here.

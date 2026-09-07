@@ -405,6 +405,29 @@ Postgres integration command is opt-in and is skipped when no test database is
 available. External provider, Telegram and live-shadow acceptance remains
 `BLOCKED_EXTERNAL` and cannot change the protected operating modes.
 
+Alpha Caller Task 15 extends the same analyzer rather than adding a replay or
+scoring engine. Its contracts cover all six caller ablation families, fixed
+threshold evaluation across TRAIN/VALIDATION/TEST, false-positive cost, rug
+and copycat rejection, Wilson intervals, lift versus baseline, explicit
+missing-evidence behavior, future-target mutation isolation and retention of
+negative controls. The existing `StrategyPromotionGate` is invoked for each
+caller family; no result can promote without adequate out-of-sample evidence
+and human review.
+
+Focused command:
+
+```text
+./.venv/bin/pytest tests/unit/test_opportunity_research.py tests/contract/test_extension_opportunity_research.py -q
+make opportunity-research OPPORTUNITY_RESEARCH_OUTPUT=fixtures/research/opportunity_research_report.json
+make replay-dataset REPLAY_INPUT=fixtures/research/opportunity_case_studies.json
+make paper-trading-doctor
+make free-provider-doctor
+```
+
+The checked-in redacted report is `SYNTHETIC_REDACTED` with seven samples and
+`INSUFFICIENT_SAMPLES` for every caller family. Historical-real/live-shadow
+caller evidence is not available; this is not a production performance claim.
+
 ## Phase 9.3 position UI / Telegram
 
 The keyless Sprint 9.3 suite covers bounded position views, fresh/stale/unknown

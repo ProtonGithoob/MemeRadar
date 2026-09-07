@@ -30,6 +30,34 @@ KOL, smart-money and protocol evidence remain measurement-only. This addendum
 does not promote the synthetic results or supersede the existing
 human-reviewed strategy-promotion gate.
 
+## Alpha Caller Task 15 replay/ablation acceptance addendum — 2026-09-07
+
+The existing `OpportunityResearchAnalyzer` now evaluates the required caller
+feature families without creating a second replay or scoring engine:
+`caller_only`, `smart_money_only`, `opportunity_only`,
+`caller_plus_smart_money`, `caller_plus_opportunity` and `full_fusion`. Each
+family uses the same event-time `TRAIN`/`VALIDATION`/`TEST` split, selects its
+threshold from TRAIN plus VALIDATION only, reports fixed-threshold metrics for
+all three partitions, false-positive cost, rug/copycat rejection and Wilson
+confidence intervals, and records incremental lift versus the existing
+baseline.
+
+The checked-in `SYNTHETIC_REDACTED` case-study report has seven samples with
+`TRAIN=3`, `VALIDATION=1`, `TEST=3`. Caller and smart-money inputs are absent
+or unknown in this redacted bundle, so every caller family is explicitly
+`INSUFFICIENT_SAMPLES`; no missing evidence is converted to zero. The existing
+`StrategyPromotionGate` is run for each caller family and every result is
+rejected with `promotion_allowed=false`, `execution_eligible=false` and no
+production-weight change. Deterministic engineering tests exercise evaluated
+40-sample partitions and mutate future target metadata without changing
+decision-time samples; negative controls remain in the sample universe.
+
+No historical-real or live-shadow caller evidence was available for this
+checkpoint. Therefore the report is engineering evidence only, and caller,
+smart-money and opportunity features remain measurement-only. Protected modes
+remain `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
+`MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
+
 ---
 
 ## Evaluation of 11 Key Product Questions

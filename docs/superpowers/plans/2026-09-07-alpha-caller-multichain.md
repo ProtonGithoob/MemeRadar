@@ -217,9 +217,9 @@
 **Interfaces:**
 - Produces: caller-only, smart-money-only, opportunity-only, caller+smart-money, caller+opportunity and full-fusion ablation against baseline.
 
-- [ ] Add deterministic engineering fixtures plus historical-real/live-shadow inputs only when genuinely available; label provenance exactly.
-- [ ] Write mutation tests for future-label separation and winner-only survivorship leakage.
-- [ ] Run TRAIN/VALIDATION/TEST ablation, sample adequacy, false-positive cost and confidence reporting.
-- [ ] If evidence is insufficient, return `INSUFFICIENT_SAMPLES` and preserve all production weights/modes.
-- [ ] Run `make verify`, relevant doctors and `git diff --check`; document all external blockers.
-- [ ] Update STATUS with exact next unfinished task, commit and push coherent final checkpoint.
+- [x] Add deterministic engineering fixtures plus historical-real/live-shadow inputs only when genuinely available; label provenance exactly.
+- [x] Write mutation tests for future-label separation and winner-only survivorship leakage.
+- [x] Run TRAIN/VALIDATION/TEST ablation, sample adequacy, false-positive cost and confidence reporting.
+- [x] If evidence is insufficient, return `INSUFFICIENT_SAMPLES` and preserve all production weights/modes.
+- [x] Run `make verify`, relevant doctors and `git diff --check`; document all external blockers.
+- [x] Update STATUS with exact next unfinished task, commit and push coherent final checkpoint.

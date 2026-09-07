@@ -15,6 +15,7 @@
         "recall": null
       },
       "paper_expectancy": null,
+      "partition_metrics": {},
       "precision": null,
       "precision_recall_curve": [],
       "recall": null,
@@ -40,6 +41,7 @@
         "recall": null
       },
       "paper_expectancy": null,
+      "partition_metrics": {},
       "precision": null,
       "precision_recall_curve": [],
       "recall": null,
@@ -65,6 +67,7 @@
         "recall": null
       },
       "paper_expectancy": null,
+      "partition_metrics": {},
       "precision": null,
       "precision_recall_curve": [],
       "recall": null,
@@ -90,6 +93,7 @@
         "recall": null
       },
       "paper_expectancy": null,
+      "partition_metrics": {},
       "precision": null,
       "precision_recall_curve": [],
       "recall": null,
@@ -115,6 +119,7 @@
         "recall": null
       },
       "paper_expectancy": null,
+      "partition_metrics": {},
       "precision": null,
       "precision_recall_curve": [],
       "recall": null,
@@ -140,6 +145,165 @@
         "recall": null
       },
       "paper_expectancy": null,
+      "partition_metrics": {},
+      "precision": null,
+      "precision_recall_curve": [],
+      "recall": null,
+      "rug_rejection_rate": null,
+      "sample_count": 3,
+      "selected_count": 0,
+      "status": "INSUFFICIENT_SAMPLES",
+      "target_count": 1,
+      "threshold": null
+    }
+  },
+  "caller_ablation": {
+    "caller_only": {
+      "confidence_intervals": {},
+      "copycat_false_selection_rate": null,
+      "detection_age_seconds_median": null,
+      "detection_market_cap_usd_median": null,
+      "executable_entry_coverage": null,
+      "false_positive_cost": null,
+      "family": "caller_only",
+      "incremental_lift_vs_baseline": {
+        "false_positive_cost": null,
+        "paper_expectancy": null,
+        "precision": null,
+        "recall": null
+      },
+      "paper_expectancy": null,
+      "partition_metrics": {},
+      "precision": null,
+      "precision_recall_curve": [],
+      "recall": null,
+      "rug_rejection_rate": null,
+      "sample_count": 3,
+      "selected_count": 0,
+      "status": "INSUFFICIENT_SAMPLES",
+      "target_count": 1,
+      "threshold": null
+    },
+    "caller_plus_opportunity": {
+      "confidence_intervals": {},
+      "copycat_false_selection_rate": null,
+      "detection_age_seconds_median": null,
+      "detection_market_cap_usd_median": null,
+      "executable_entry_coverage": null,
+      "false_positive_cost": null,
+      "family": "caller_plus_opportunity",
+      "incremental_lift_vs_baseline": {
+        "false_positive_cost": null,
+        "paper_expectancy": null,
+        "precision": null,
+        "recall": null
+      },
+      "paper_expectancy": null,
+      "partition_metrics": {},
+      "precision": null,
+      "precision_recall_curve": [],
+      "recall": null,
+      "rug_rejection_rate": null,
+      "sample_count": 3,
+      "selected_count": 0,
+      "status": "INSUFFICIENT_SAMPLES",
+      "target_count": 1,
+      "threshold": null
+    },
+    "caller_plus_smart_money": {
+      "confidence_intervals": {},
+      "copycat_false_selection_rate": null,
+      "detection_age_seconds_median": null,
+      "detection_market_cap_usd_median": null,
+      "executable_entry_coverage": null,
+      "false_positive_cost": null,
+      "family": "caller_plus_smart_money",
+      "incremental_lift_vs_baseline": {
+        "false_positive_cost": null,
+        "paper_expectancy": null,
+        "precision": null,
+        "recall": null
+      },
+      "paper_expectancy": null,
+      "partition_metrics": {},
+      "precision": null,
+      "precision_recall_curve": [],
+      "recall": null,
+      "rug_rejection_rate": null,
+      "sample_count": 3,
+      "selected_count": 0,
+      "status": "INSUFFICIENT_SAMPLES",
+      "target_count": 1,
+      "threshold": null
+    },
+    "full_fusion": {
+      "confidence_intervals": {},
+      "copycat_false_selection_rate": null,
+      "detection_age_seconds_median": null,
+      "detection_market_cap_usd_median": null,
+      "executable_entry_coverage": null,
+      "false_positive_cost": null,
+      "family": "full_fusion",
+      "incremental_lift_vs_baseline": {
+        "false_positive_cost": null,
+        "paper_expectancy": null,
+        "precision": null,
+        "recall": null
+      },
+      "paper_expectancy": null,
+      "partition_metrics": {},
+      "precision": null,
+      "precision_recall_curve": [],
+      "recall": null,
+      "rug_rejection_rate": null,
+      "sample_count": 3,
+      "selected_count": 0,
+      "status": "INSUFFICIENT_SAMPLES",
+      "target_count": 1,
+      "threshold": null
+    },
+    "opportunity_only": {
+      "confidence_intervals": {},
+      "copycat_false_selection_rate": null,
+      "detection_age_seconds_median": null,
+      "detection_market_cap_usd_median": null,
+      "executable_entry_coverage": null,
+      "false_positive_cost": null,
+      "family": "opportunity_only",
+      "incremental_lift_vs_baseline": {
+        "false_positive_cost": null,
+        "paper_expectancy": null,
+        "precision": null,
+        "recall": null
+      },
+      "paper_expectancy": null,
+      "partition_metrics": {},
+      "precision": null,
+      "precision_recall_curve": [],
+      "recall": null,
+      "rug_rejection_rate": null,
+      "sample_count": 3,
+      "selected_count": 0,
+      "status": "INSUFFICIENT_SAMPLES",
+      "target_count": 1,
+      "threshold": null
+    },
+    "smart_money_only": {
+      "confidence_intervals": {},
+      "copycat_false_selection_rate": null,
+      "detection_age_seconds_median": null,
+      "detection_market_cap_usd_median": null,
+      "executable_entry_coverage": null,
+      "false_positive_cost": null,
+      "family": "smart_money_only",
+      "incremental_lift_vs_baseline": {
+        "false_positive_cost": null,
+        "paper_expectancy": null,
+        "precision": null,
+        "recall": null
+      },
+      "paper_expectancy": null,
+      "partition_metrics": {},
       "precision": null,
       "precision_recall_curve": [],
       "recall": null,
@@ -152,6 +316,7 @@
     }
   },
   "config_hash": "opportunity-research-v1-hash",
+  "evidence_class": "SYNTHETIC_REDACTED",
   "execution_eligible": false,
   "feature_families": [
     "baseline",
@@ -163,6 +328,74 @@
   ],
   "no_lookahead_verified": true,
   "promotion_allowed": false,
+  "promotion_gate": {
+    "caller_only": {
+      "approved": false,
+      "quality_state": "UNKNOWN",
+      "reason_codes": [
+        "INSUFFICIENT_SAMPLES",
+        "PROMOTION_REJECTED_EXECUTION_INFEASIBLE",
+        "PROMOTION_REJECTED_NO_OUT_OF_SAMPLE_IMPROVEMENT",
+        "PROMOTION_REJECTED_NO_SPLIT",
+        "PROMOTION_REQUIRES_HUMAN_REVIEW"
+      ]
+    },
+    "caller_plus_opportunity": {
+      "approved": false,
+      "quality_state": "UNKNOWN",
+      "reason_codes": [
+        "INSUFFICIENT_SAMPLES",
+        "PROMOTION_REJECTED_EXECUTION_INFEASIBLE",
+        "PROMOTION_REJECTED_NO_OUT_OF_SAMPLE_IMPROVEMENT",
+        "PROMOTION_REJECTED_NO_SPLIT",
+        "PROMOTION_REQUIRES_HUMAN_REVIEW"
+      ]
+    },
+    "caller_plus_smart_money": {
+      "approved": false,
+      "quality_state": "UNKNOWN",
+      "reason_codes": [
+        "INSUFFICIENT_SAMPLES",
+        "PROMOTION_REJECTED_EXECUTION_INFEASIBLE",
+        "PROMOTION_REJECTED_NO_OUT_OF_SAMPLE_IMPROVEMENT",
+        "PROMOTION_REJECTED_NO_SPLIT",
+        "PROMOTION_REQUIRES_HUMAN_REVIEW"
+      ]
+    },
+    "full_fusion": {
+      "approved": false,
+      "quality_state": "UNKNOWN",
+      "reason_codes": [
+        "INSUFFICIENT_SAMPLES",
+        "PROMOTION_REJECTED_EXECUTION_INFEASIBLE",
+        "PROMOTION_REJECTED_NO_OUT_OF_SAMPLE_IMPROVEMENT",
+        "PROMOTION_REJECTED_NO_SPLIT",
+        "PROMOTION_REQUIRES_HUMAN_REVIEW"
+      ]
+    },
+    "opportunity_only": {
+      "approved": false,
+      "quality_state": "UNKNOWN",
+      "reason_codes": [
+        "INSUFFICIENT_SAMPLES",
+        "PROMOTION_REJECTED_EXECUTION_INFEASIBLE",
+        "PROMOTION_REJECTED_NO_OUT_OF_SAMPLE_IMPROVEMENT",
+        "PROMOTION_REJECTED_NO_SPLIT",
+        "PROMOTION_REQUIRES_HUMAN_REVIEW"
+      ]
+    },
+    "smart_money_only": {
+      "approved": false,
+      "quality_state": "UNKNOWN",
+      "reason_codes": [
+        "INSUFFICIENT_SAMPLES",
+        "PROMOTION_REJECTED_EXECUTION_INFEASIBLE",
+        "PROMOTION_REJECTED_NO_OUT_OF_SAMPLE_IMPROVEMENT",
+        "PROMOTION_REJECTED_NO_SPLIT",
+        "PROMOTION_REQUIRES_HUMAN_REVIEW"
+      ]
+    }
+  },
   "reason_codes": [
     "INSUFFICIENT_SAMPLES",
     "RESEARCH_ONLY_NOT_PROMOTED"

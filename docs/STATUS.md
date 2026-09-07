@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1077 Python tests (11 skipped), 54 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1080 Python tests (11 skipped), 54 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1389,14 +1389,17 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 14 TDD evidence: the initial API contract run failed on the absent routes/schema fields (`3` failures, `2` existing checks passing); the initial web gateway/component tests failed because the new fetchers and component were absent. After the minimal implementation, the API/schema/route contracts pass (`6 tests`, one expected Starlette deprecation warning), the final profile no-lookahead contract passes (`3 tests` with the same warning), the focused web gateway/component suite passes (`4 tests`), and the opt-in SQL read integration is skipped without a configured database. The route-surface regression allowlist was updated to include the three intentional GET-only paths.
 - Alpha Caller Task 14 verification: `make verify` exits `0` with `1077 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `19 files / 54 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). Ruff, strict mypy (`119 source files`), web lint/typecheck, Compose config, secret scan, migration check and `git diff --check` pass. No production scoring weight, provider success, persistence migration, signer, execution authority or protected mode changed; live provider/Telegram/shadow acceptance and external security scans remain honestly classified as `BLOCKED_EXTERNAL`/`NOT_RUN`, and the four pre-existing untracked WIP files remain untouched.
 
+- Alpha Caller Task 15 checkpoint (2026-09-07): extended the existing opportunity replay/reporting seam with six deterministic caller ablation families: `caller_only`, `smart_money_only`, `opportunity_only`, `caller_plus_smart_money`, `caller_plus_opportunity` and `full_fusion`. Each family reuses the event-time TRAIN/VALIDATION/TEST split, fixed-threshold partition metrics, false-positive cost, rug/copycat diagnostics, Wilson intervals and explicit UNKNOWN/insufficient-sample semantics; the existing strategy-promotion gate is run for every family without changing production weights or execution authority. Checked-in evidence remains `SYNTHETIC_REDACTED` and the report is `INSUFFICIENT_SAMPLES`; no historical-real or live-shadow caller evidence was fabricated.
+- Alpha Caller Task 15 TDD evidence: the initial focused run failed at collection with the expected missing ablation export. After the minimal implementation, the focused opportunity unit/contract suite passes `8 tests`, including all six family outputs, missing caller evidence as UNKNOWN, future-label mutation invariance, winner-only survivorship/negative controls, sample adequacy, false-positive cost and promotion-gate rejection. `make opportunity-research OPPORTUNITY_RESEARCH_OUTPUT=fixtures/research/opportunity_research_report.json`, `make replay-dataset REPLAY_INPUT=fixtures/research/opportunity_case_studies.json`, `make paper-trading-doctor` and `make free-provider-doctor` pass; the report records all six families as `INSUFFICIENT_SAMPLES`, `promotion_allowed=false` and `execution_eligible=false`. `git diff --check` passes.
+- Alpha Caller Task 15 verification: `make verify` exits `0` with `1080 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `19 files / 54 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). Ruff, strict mypy (`119 source files`), web lint/typecheck, Compose config, secret scan and migration check pass. No production scoring weight, provider, persistence migration, signer, execution authority or protected mode changed; live historical/live-shadow caller collection and external security scans remain honestly classified as `BLOCKED_EXTERNAL`/`NOT_RUN`, and the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 15: extend the existing replay/reporting seam with caller-only,
-smart-money-only, opportunity-only, caller+smart-money, caller+opportunity and
-full-fusion ablations against the baseline. Add deterministic engineering
-fixtures, mutation tests for future-label and winner-only survivorship leakage,
-TRAIN/VALIDATION/TEST sample-adequacy and false-positive-cost reporting, then
-run the existing strategy-promotion gate. Historical-real/live-shadow inputs
-remain unavailable until genuinely observed; if evidence is insufficient,
-report `INSUFFICIENT_SAMPLES` and preserve production weights and protected
-modes.
+No further currently feasible Alpha Caller implementation task remains. The
+next unfinished task is external: collect compliant historical-real and
+live-shadow caller samples, then rerun the same event-time replay, ablation and
+strategy-promotion gate. This is `BLOCKED_EXTERNAL` until compliant X/Telegram
+and provider access plus enough observed samples exist; current checked-in
+evidence is `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES`. Protected modes
+remain `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
+`MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.

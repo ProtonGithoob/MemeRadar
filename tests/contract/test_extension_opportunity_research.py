@@ -26,6 +26,20 @@ def test_opportunity_research_cli_and_artifact_are_non_executable() -> None:
     )
     assert artifact["report_version"] == "opportunity-research-v1"
     assert artifact["status"] == "INSUFFICIENT_SAMPLES"
+    assert artifact["evidence_class"] == "SYNTHETIC_REDACTED"
+    assert set(artifact["caller_ablation"]) == {
+        "caller_only",
+        "smart_money_only",
+        "opportunity_only",
+        "caller_plus_smart_money",
+        "caller_plus_opportunity",
+        "full_fusion",
+    }
+    assert all(
+        value["status"] == "INSUFFICIENT_SAMPLES"
+        for value in artifact["caller_ablation"].values()
+    )
+    assert all(not value["approved"] for value in artifact["promotion_gate"].values())
     assert artifact["promotion_allowed"] is False
     assert artifact["execution_eligible"] is False
     assert set(artifact["segments"]) == {

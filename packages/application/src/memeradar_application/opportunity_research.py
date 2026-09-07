@@ -25,6 +25,7 @@ from .call_performance import OutcomeHorizonState
 from .caller_outcomes import HistoricalCallerOutcome
 from .opportunity_case_studies import OpportunityCaseStudyBundle
 from .replay_harness import ResearchReplayResult
+from .strategy_promotion import PromotionCandidate, StrategyPromotionGate
 
 RESEARCH_REPORT_VERSION = "opportunity-research-v1"
 FEATURE_FAMILY_KEYS: tuple[str, ...] = (
@@ -34,6 +35,14 @@ FEATURE_FAMILY_KEYS: tuple[str, ...] = (
     "smart_money",
     "protocol_fundamentals",
     "risk_execution",
+)
+CALLER_ABLATION_FAMILIES: tuple[str, ...] = (
+    "caller_only",
+    "smart_money_only",
+    "opportunity_only",
+    "caller_plus_smart_money",
+    "caller_plus_opportunity",
+    "full_fusion",
 )
 SEGMENT_DIMENSIONS: tuple[str, ...] = (
     "chain",
@@ -83,6 +92,11 @@ class OpportunityResearchSample:
     paper_expectancy: Decimal | None = None
     detection_age_seconds: Decimal | None = None
     detection_market_cap_usd: Decimal | None = None
+    caller_score: Decimal | None = None
+    smart_money_score: Decimal | None = None
+    opportunity_score: Decimal | None = None
+    evidence_class: str = "SYNTHETIC_FIXTURE"
+    no_lookahead_verified: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "sample_id", require_text(self.sample_id, "sample_id"))
@@ -90,9 +104,7 @@ class OpportunityResearchSample:
         object.__setattr__(
             self, "cohort", require_text(self.cohort, "cohort", max_length=64).upper()
         )
-        object.__setattr__(
-            self, "chain", require_text(self.chain, "chain", max_length=32).lower()
-        )
+        object.__setattr__(self, "chain", require_text(self.chain, "chain", max_length=32).lower())
         object.__setattr__(
             self,
             "archetype",
@@ -110,12 +122,23 @@ class OpportunityResearchSample:
             if value is not None and not isinstance(value, Decimal):
                 raise TypeError(f"family_scores.{key} must be Decimal or None")
         object.__setattr__(self, "family_scores", MappingProxyType(scores))
+        for field_name, family_name in (
+            ("smart_money_score", "smart_money"),
+            ("opportunity_score", "chain_opportunity"),
+        ):
+            if getattr(self, field_name) is None:
+                score = scores[family_name]
+                if score is not None and Decimal("0") <= score <= Decimal("1"):
+                    object.__setattr__(self, field_name, score)
         for field_name in (
             "launch_age_seconds",
             "market_cap_usd",
             "paper_expectancy",
             "detection_age_seconds",
             "detection_market_cap_usd",
+            "caller_score",
+            "smart_money_score",
+            "opportunity_score",
         ):
             value = getattr(self, field_name)
             if value is not None and not isinstance(value, Decimal):
@@ -128,8 +151,19 @@ class OpportunityResearchSample:
             value = getattr(self, field_name)
             if value is not None and value <= 0:
                 raise ValueError(f"{field_name} must be positive")
+        for field_name in ("caller_score", "smart_money_score", "opportunity_score"):
+            value = getattr(self, field_name)
+            if value is not None and not Decimal("0") <= value <= Decimal("1"):
+                raise ValueError(f"{field_name} must be between zero and one")
         if self.executable_entry is not None and not isinstance(self.executable_entry, bool):
             raise TypeError("executable_entry must be boolean or None")
+        object.__setattr__(
+            self,
+            "evidence_class",
+            require_text(self.evidence_class, "evidence_class", max_length=64).upper(),
+        )
+        if not isinstance(self.no_lookahead_verified, bool):
+            raise TypeError("no_lookahead_verified must be boolean")
 
     @property
     def is_extreme_winner(self) -> bool:
@@ -170,6 +204,7 @@ class FeatureAblationResult:
     confidence_intervals: Mapping[str, tuple[Decimal, Decimal] | None]
     precision_recall_curve: tuple[Mapping[str, Decimal], ...]
     incremental_lift_vs_baseline: Mapping[str, Decimal | None]
+    partition_metrics: Mapping[str, AblationPartitionMetrics] = field(default_factory=dict)
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -199,6 +234,46 @@ class FeatureAblationResult:
             "incremental_lift_vs_baseline": {
                 key: _json_value(value) for key, value in self.incremental_lift_vs_baseline.items()
             },
+            "partition_metrics": {
+                key: value.to_json_dict() for key, value in self.partition_metrics.items()
+            },
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AblationPartitionMetrics:
+    """Metrics for one fixed threshold evaluated on one time partition."""
+
+    partition: str
+    status: str
+    sample_count: int
+    target_count: int
+    selected_count: int
+    precision: Decimal | None
+    recall: Decimal | None
+    rug_rejection_rate: Decimal | None
+    copycat_false_selection_rate: Decimal | None
+    paper_expectancy: Decimal | None
+    false_positive_cost: Decimal | None
+    confidence_intervals: Mapping[str, tuple[Decimal, Decimal] | None]
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "partition": self.partition,
+            "status": self.status,
+            "sample_count": self.sample_count,
+            "target_count": self.target_count,
+            "selected_count": self.selected_count,
+            "precision": _json_value(self.precision),
+            "recall": _json_value(self.recall),
+            "rug_rejection_rate": _json_value(self.rug_rejection_rate),
+            "copycat_false_selection_rate": _json_value(self.copycat_false_selection_rate),
+            "paper_expectancy": _json_value(self.paper_expectancy),
+            "false_positive_cost": _json_value(self.false_positive_cost),
+            "confidence_intervals": {
+                key: None if value is None else [_json_value(value[0]), _json_value(value[1])]
+                for key, value in self.confidence_intervals.items()
+            },
         }
 
 
@@ -216,9 +291,7 @@ class SegmentResearchResult:
             "key": self.key,
             "sample_count": self.sample_count,
             "status": self.status,
-            "families": {
-                family: value.to_json_dict() for family, value in self.families.items()
-            },
+            "families": {family: value.to_json_dict() for family, value in self.families.items()},
         }
 
 
@@ -234,6 +307,9 @@ class OpportunityResearchReport:
     segments: Mapping[str, Mapping[str, SegmentResearchResult]]
     reason_codes: tuple[str, ...]
     no_lookahead_verified: bool
+    evidence_class: str = "INSUFFICIENT_SAMPLES"
+    caller_ablation: Mapping[str, FeatureAblationResult] = field(default_factory=dict)
+    promotion_gate: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     promotion_allowed: bool = False
     execution_eligible: bool = False
 
@@ -247,13 +323,21 @@ class OpportunityResearchReport:
             "feature_families": list(self.feature_families),
             "ablation": {key: value.to_json_dict() for key, value in self.ablation.items()},
             "segments": {
-                dimension: {
-                    key: value.to_json_dict() for key, value in values.items()
-                }
+                dimension: {key: value.to_json_dict() for key, value in values.items()}
                 for dimension, values in self.segments.items()
             },
             "reason_codes": list(self.reason_codes),
             "no_lookahead_verified": self.no_lookahead_verified,
+            "evidence_class": self.evidence_class,
+            "caller_ablation": {
+                key: value.to_json_dict() for key, value in self.caller_ablation.items()
+            },
+            "promotion_gate": {
+                key: {
+                    inner_key: _json_value(inner_value) for inner_key, inner_value in value.items()
+                }
+                for key, value in self.promotion_gate.items()
+            },
             "promotion_allowed": self.promotion_allowed,
             "execution_eligible": self.execution_eligible,
         }
@@ -299,11 +383,7 @@ def _wilson(successes: int, total: int) -> tuple[Decimal, Decimal] | None:
     p = Decimal(successes) / n
     denominator = Decimal("1") + (z * z / n)
     centre = (p + z * z / (Decimal("2") * n)) / denominator
-    margin = (
-        z
-        * (p * (Decimal("1") - p) / n + z * z / (Decimal("4") * n * n)).sqrt()
-        / denominator
-    )
+    margin = z * (p * (Decimal("1") - p) / n + z * z / (Decimal("4") * n * n)).sqrt() / denominator
     return max(Decimal("0"), centre - margin), min(Decimal("1"), centre + margin)
 
 
@@ -316,6 +396,34 @@ def _empty_lift() -> dict[str, Decimal | None]:
     }
 
 
+def _mean_scores(values: Sequence[Decimal | None]) -> Decimal | None:
+    if not values or any(value is None for value in values):
+        return None
+    return sum((value for value in values if value is not None), Decimal("0")) / Decimal(
+        len(values)
+    )
+
+
+def _family_score(sample: OpportunityResearchSample, family: str) -> Decimal | None:
+    if family in FEATURE_FAMILY_KEYS:
+        return sample.family_scores[family]
+    components = {
+        "caller_only": (sample.caller_score,),
+        "smart_money_only": (sample.smart_money_score,),
+        "opportunity_only": (sample.opportunity_score,),
+        "caller_plus_smart_money": (sample.caller_score, sample.smart_money_score),
+        "caller_plus_opportunity": (sample.caller_score, sample.opportunity_score),
+        "full_fusion": (
+            sample.caller_score,
+            sample.smart_money_score,
+            sample.opportunity_score,
+        ),
+    }
+    if family not in components:
+        raise ValueError(f"unsupported ablation family: {family}")
+    return _mean_scores(components[family])
+
+
 def _counts(
     samples: Sequence[OpportunityResearchSample],
     family: str,
@@ -325,7 +433,7 @@ def _counts(
         sample
         for sample in samples
         if threshold is not None
-        and (score := sample.family_scores[family]) is not None
+        and (score := _family_score(sample, family)) is not None
         and score >= threshold
     ]
     target_count = sum(sample.is_extreme_winner for sample in samples)
@@ -339,11 +447,7 @@ def _candidate_thresholds(
     samples: Sequence[OpportunityResearchSample], family: str
 ) -> tuple[Decimal, ...]:
     values = sorted(
-        {
-            score
-            for sample in samples
-            if (score := sample.family_scores[family]) is not None
-        }
+        {score for sample in samples if (score := _family_score(sample, family)) is not None}
     )
     return tuple(dict.fromkeys((Decimal("0"), *values)))
 
@@ -393,7 +497,7 @@ def _metric(
     copycat_samples = [sample for sample in samples if sample.is_copycat_failure]
     copycat_selected = sum(
         threshold is not None
-        and (score := sample.family_scores[family]) is not None
+        and (score := _family_score(sample, family)) is not None
         and score >= threshold
         for sample in copycat_samples
     )
@@ -404,7 +508,7 @@ def _metric(
         sample
         for sample in samples
         if threshold is not None
-        and (score := sample.family_scores[family]) is not None
+        and (score := _family_score(sample, family)) is not None
         and score >= threshold
     ]
     executable = [
@@ -451,9 +555,7 @@ def _metric(
             }
         )
         for threshold_value in curve_thresholds
-        for curve_tp, curve_fp, curve_targets, _, _ in (
-            _counts(samples, family, threshold_value),
-        )
+        for curve_tp, curve_fp, curve_targets, _, _ in (_counts(samples, family, threshold_value),)
         for curve_precision, curve_recall in (
             (
                 Decimal(curve_tp) / Decimal(curve_tp + curve_fp)
@@ -483,6 +585,32 @@ def _metric(
         precision_recall_curve=curve,
         incremental_lift_vs_baseline=MappingProxyType(_empty_lift()),
     )
+
+
+def _with_partition_metrics(
+    result: FeatureAblationResult,
+    family: str,
+    threshold: Decimal | None,
+    partitions: Mapping[str, Sequence[OpportunityResearchSample]],
+) -> FeatureAblationResult:
+    metrics: dict[str, AblationPartitionMetrics] = {}
+    for partition, samples in partitions.items():
+        value = _metric(family, samples, threshold, status=result.status)
+        metrics[partition] = AblationPartitionMetrics(
+            partition=partition,
+            status=result.status,
+            sample_count=value.sample_count,
+            target_count=value.target_count,
+            selected_count=value.selected_count,
+            precision=value.precision,
+            recall=value.recall,
+            rug_rejection_rate=value.rug_rejection_rate,
+            copycat_false_selection_rate=value.copycat_false_selection_rate,
+            paper_expectancy=value.paper_expectancy,
+            false_positive_cost=value.false_positive_cost,
+            confidence_intervals=value.confidence_intervals,
+        )
+    return replace(result, partition_metrics=MappingProxyType(metrics))
 
 
 def _with_lift(
@@ -592,17 +720,28 @@ class OpportunityResearchAnalyzer:
         train, validation, test = self.split_samples(samples)
         all_samples = train + validation + test
         extreme_count = sum(sample.is_extreme_winner for sample in all_samples)
+        no_lookahead_verified = all(sample.no_lookahead_verified for sample in all_samples)
         sufficient = (
             len(all_samples) >= self.config.min_samples
             and extreme_count >= self.config.min_extreme_samples
             and bool(train)
             and bool(validation)
             and bool(test)
+            and no_lookahead_verified
         )
         status = "EVALUATED" if sufficient else "INSUFFICIENT_SAMPLES"
         reasons = ["RESEARCH_ONLY_NOT_PROMOTED"]
         if not sufficient:
-            reasons.insert(0, "INSUFFICIENT_SAMPLES")
+            reasons.insert(
+                0,
+                "INSUFFICIENT_SAMPLES" if no_lookahead_verified else "NO_LOOKAHEAD_UNVERIFIED",
+            )
+
+        partitions = {
+            "TRAIN": train,
+            "VALIDATION": validation,
+            "TEST": test,
+        }
 
         ablation: dict[str, FeatureAblationResult] = {}
         if sufficient:
@@ -614,28 +753,61 @@ class OpportunityResearchAnalyzer:
                 family: _candidate_thresholds((*train, *validation), family)
                 for family in FEATURE_FAMILY_KEYS
             }
-            baseline = _metric(
+            baseline = _with_partition_metrics(
+                _metric(
+                    "baseline",
+                    test,
+                    thresholds["baseline"],
+                    status=status,
+                    curve_thresholds=curves["baseline"],
+                ),
                 "baseline",
-                test,
                 thresholds["baseline"],
-                status=status,
-                curve_thresholds=curves["baseline"],
+                partitions,
             )
             ablation["baseline"] = _with_lift(baseline, baseline)
             for family in FEATURE_FAMILY_KEYS[1:]:
                 ablation[family] = _with_lift(
-                    _metric(
+                    _with_partition_metrics(
+                        _metric(
+                            family,
+                            test,
+                            thresholds[family],
+                            status=status,
+                            curve_thresholds=curves[family],
+                        ),
                         family,
-                        test,
                         thresholds[family],
-                        status=status,
-                        curve_thresholds=curves[family],
+                        partitions,
                     ),
                     baseline,
                 )
         else:
             for family in FEATURE_FAMILY_KEYS:
                 ablation[family] = self._insufficient(family, test)
+
+        caller_ablation = self._caller_ablation(
+            all_samples,
+            train=train,
+            validation=validation,
+            test=test,
+            partitions=partitions,
+            sufficient=sufficient,
+            baseline=ablation["baseline"],
+        )
+        promotion_gate = self._promotion_gate(
+            caller_ablation,
+            baseline=ablation["baseline"],
+            no_lookahead_verified=no_lookahead_verified,
+        )
+        evidence_classes = {sample.evidence_class for sample in all_samples}
+        evidence_class = (
+            "INSUFFICIENT_SAMPLES"
+            if not evidence_classes
+            else next(iter(evidence_classes))
+            if len(evidence_classes) == 1
+            else "MIXED"
+        )
 
         segments = self._segments(
             test,
@@ -660,8 +832,112 @@ class OpportunityResearchAnalyzer:
             ablation=MappingProxyType(ablation),
             segments=MappingProxyType(segments),
             reason_codes=tuple(reasons),
-            no_lookahead_verified=True,
+            no_lookahead_verified=no_lookahead_verified,
+            evidence_class=evidence_class,
+            caller_ablation=MappingProxyType(caller_ablation),
+            promotion_gate=MappingProxyType(promotion_gate),
         )
+
+    def _caller_ablation(
+        self,
+        samples: Sequence[OpportunityResearchSample],
+        *,
+        train: Sequence[OpportunityResearchSample],
+        validation: Sequence[OpportunityResearchSample],
+        test: Sequence[OpportunityResearchSample],
+        partitions: Mapping[str, Sequence[OpportunityResearchSample]],
+        sufficient: bool,
+        baseline: FeatureAblationResult,
+    ) -> dict[str, FeatureAblationResult]:
+        result: dict[str, FeatureAblationResult] = {}
+        for family in CALLER_ABLATION_FAMILIES:
+            coverage = sum(_family_score(sample, family) is not None for sample in samples)
+            family_sufficient = sufficient and coverage >= self.config.min_samples
+            if not family_sufficient:
+                result[family] = self._insufficient(family, test)
+                continue
+            threshold = _select_threshold(train, validation, family)
+            value = _with_partition_metrics(
+                _metric(
+                    family,
+                    test,
+                    threshold,
+                    status="EVALUATED",
+                    curve_thresholds=_candidate_thresholds((*train, *validation), family),
+                ),
+                family,
+                threshold,
+                partitions,
+            )
+            result[family] = _with_lift(value, baseline)
+        return result
+
+    def _promotion_gate(
+        self,
+        ablation: Mapping[str, FeatureAblationResult],
+        *,
+        baseline: FeatureAblationResult,
+        no_lookahead_verified: bool,
+    ) -> dict[str, Mapping[str, object]]:
+        gate = StrategyPromotionGate()
+        baseline_test = baseline.partition_metrics.get("TEST")
+        result: dict[str, Mapping[str, object]] = {}
+        for family, value in ablation.items():
+
+            def metric_value(
+                partition: str, *, family_result: FeatureAblationResult = value
+            ) -> Decimal:
+                metrics = family_result.partition_metrics.get(partition)
+                return (
+                    Decimal("0")
+                    if metrics is None or metrics.paper_expectancy is None
+                    else metrics.paper_expectancy
+                )
+
+            def rug_rate(metrics: AblationPartitionMetrics | None) -> Decimal:
+                return (
+                    Decimal("1")
+                    if metrics is None or metrics.rug_rejection_rate is None
+                    else Decimal("1") - metrics.rug_rejection_rate
+                )
+
+            candidate = PromotionCandidate(
+                strategy_version=f"caller-ablation-{family}",
+                config_hash=self.config.config_hash,
+                train_expectancy=metric_value("TRAIN"),
+                val_expectancy=metric_value("VALIDATION"),
+                test_expectancy=metric_value("TEST"),
+                baseline_test_expectancy=(
+                    Decimal("0")
+                    if baseline_test is None or baseline_test.paper_expectancy is None
+                    else baseline_test.paper_expectancy
+                ),
+                sample_count_test=(
+                    0
+                    if value.partition_metrics.get("TEST") is None
+                    else value.partition_metrics["TEST"].sample_count
+                ),
+                rug_rate_test=rug_rate(value.partition_metrics.get("TEST")),
+                baseline_rug_rate=rug_rate(baseline_test),
+                has_train_val_test_split=set(value.partition_metrics)
+                == {
+                    "TRAIN",
+                    "VALIDATION",
+                    "TEST",
+                },
+                is_deterministic_replay=True,
+                no_lookahead_verified=no_lookahead_verified,
+                execution_feasible=False,
+            )
+            record = gate.evaluate(candidate)
+            result[family] = MappingProxyType(
+                {
+                    "approved": record.is_approved_for_promotion,
+                    "quality_state": record.quality_state.value,
+                    "reason_codes": tuple(reason.code for reason in record.reason_codes),
+                }
+            )
+        return result
 
     def _insufficient(
         self, family: str, samples: Sequence[OpportunityResearchSample]
@@ -716,8 +992,7 @@ class OpportunityResearchAnalyzer:
                     }
                     baseline = families["baseline"]
                     families = {
-                        family: _with_lift(value, baseline)
-                        for family, value in families.items()
+                        family: _with_lift(value, baseline) for family, value in families.items()
                     }
                 segment_values[key] = SegmentResearchResult(
                     dimension=dimension,
@@ -772,9 +1047,7 @@ def samples_from_case_studies(
         ):
             raise ValueError("research sample contains future decision-time evidence")
         market_records = tuple(
-            record
-            for record in records
-            if record.observation.kind in _MARKET_KINDS
+            record for record in records if record.observation.kind in _MARKET_KINDS
         )
         baseline_record = next(
             (
@@ -793,11 +1066,7 @@ def samples_from_case_studies(
         market_cap = _payload_decimal(baseline_payload, "market_cap_usd", "market_cap")
         liquidity = _payload_decimal(baseline_payload, "liquidity_usd", "liquidity")
         launch_record = next(
-            (
-                record
-                for record in records
-                if record.observation.kind in _LAUNCH_KINDS
-            ),
+            (record for record in records if record.observation.kind in _LAUNCH_KINDS),
             None,
         )
         launch_age = (
@@ -852,6 +1121,7 @@ def samples_from_case_studies(
                 paper_expectancy=None,
                 detection_age_seconds=launch_age,
                 detection_market_cap_usd=market_cap,
+                evidence_class=case.evidence_class,
             )
         )
     return tuple(samples)
@@ -899,8 +1169,12 @@ class CallerDiscoveryAnchor:
 
     @property
     def is_matured(self) -> bool:
-        return bool(self.outcome.horizons) and self.outcome.no_lookahead_verified and all(
-            horizon.state is OutcomeHorizonState.COMPLETE for horizon in self.outcome.horizons
+        return (
+            bool(self.outcome.horizons)
+            and self.outcome.no_lookahead_verified
+            and all(
+                horizon.state is OutcomeHorizonState.COMPLETE for horizon in self.outcome.horizons
+            )
         )
 
 
@@ -1298,11 +1572,7 @@ class CallerDiscoveryAnalyzer:
                         *anchor.outcome.call.evidence_refs,
                     )
                 }
-                | {
-                    reference
-                    for candidate in candidates
-                    for reference in candidate.evidence_refs
-                }
+                | {reference for candidate in candidates for reference in candidate.evidence_refs}
             )
         )
         quality = _discovery_quality(valid_anchors, calls, checked_as_of)
@@ -1496,9 +1766,7 @@ def _count_anchor_cohorts(anchors: Sequence[CallerDiscoveryAnchor]) -> Mapping[s
 
 def _combine_quality(values: Sequence[QualityState]) -> QualityState:
     return (
-        max(values, key=lambda value: _QUALITY_PRIORITY[value])
-        if values
-        else QualityState.UNKNOWN
+        max(values, key=lambda value: _QUALITY_PRIORITY[value]) if values else QualityState.UNKNOWN
     )
 
 
@@ -1531,7 +1799,9 @@ CallerDiscoveryWatchCohort = CallerResearchWatchCohort
 
 
 __all__ = [
+    "CALLER_ABLATION_FAMILIES",
     "CALLER_DISCOVERY_VERSION",
+    "AblationPartitionMetrics",
     "CallerDiscoveryAnchor",
     "CallerDiscoveryAnalyzer",
     "CallerDiscoveryCandidate",
