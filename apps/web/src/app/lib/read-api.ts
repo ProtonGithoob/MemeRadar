@@ -193,6 +193,7 @@ export interface CallerProfileRecord {
   asOf: string;
   expiresAt: string;
   status: string;
+  evidenceClass: string;
   handle: string | null;
   displayName: string | null;
   sampleCount: number;
@@ -1040,6 +1041,7 @@ function parseCallerProfile(value: unknown): CallerProfileRecord | null {
   const asOf = timestamp(value.as_of);
   const expiresAt = timestamp(value.expires_at);
   const status = boundedString(value.status, 32);
+  const evidenceClass = boundedString(value.evidence_class, 64);
   const handle = optionalBoundedString(value.handle, 128);
   const displayName = optionalBoundedString(value.display_name, 256);
   const sampleCount = integer(value.sample_count, 0, 1_000_000);
@@ -1079,7 +1081,7 @@ function parseCallerProfile(value: unknown): CallerProfileRecord | null {
   const version = boundedString(value.version, 64);
   if (
     callerId === null || platform === null || authorId === null || callerId !== `${platform}:${authorId}` ||
-    asOf === null || expiresAt === null || Date.parse(expiresAt) <= Date.parse(asOf) || status === null ||
+    asOf === null || expiresAt === null || Date.parse(expiresAt) <= Date.parse(asOf) || status === null || evidenceClass === null ||
     handle === undefined || displayName === undefined || sampleCount === null || maturedSampleCount === null ||
     knownOutcomeCount === null || maturedSampleCount > sampleCount || knownOutcomeCount > maturedSampleCount ||
     evidenceCoverage === undefined || earlyEntryPercentile === undefined || earlyEntryQuality === undefined ||
@@ -1103,6 +1105,7 @@ function parseCallerProfile(value: unknown): CallerProfileRecord | null {
     asOf,
     expiresAt,
     status,
+    evidenceClass,
     handle,
     displayName,
     sampleCount,

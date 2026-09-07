@@ -43,6 +43,7 @@ def _profile(*, caller_id: str, platform: str, quality: QualityState) -> CallerP
         as_of=NOW,
         expires_at=NOW + timedelta(minutes=15),
         status="INSUFFICIENT_SAMPLES",
+        evidence_class="SYNTHETIC_REDACTED",
         sample_count=1,
         matured_sample_count=0,
         known_outcome_count=0,
@@ -148,6 +149,7 @@ def test_caller_projections_are_bounded_chain_qualified_and_read_only() -> None:
     assert profiles.status_code == calls.status_code == convergence.status_code == 200
     assert profiles.json()["items"][0]["caller_id"] == "telegram:alpha"
     assert profiles.json()["items"][0]["quality_state"] == "UNKNOWN"
+    assert profiles.json()["items"][0]["evidence_class"] == "SYNTHETIC_REDACTED"
     assert profiles.json()["items"][0]["provenance"][0]["provider"] == "fixture-social"
     assert calls.json()["items"][0]["asset_id"] == f"bnb:{BNB_ADDRESS}"
     assert calls.json()["items"][0]["caller_id"] == "telegram:alpha"

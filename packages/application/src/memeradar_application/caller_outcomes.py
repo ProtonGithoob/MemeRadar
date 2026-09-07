@@ -1079,6 +1079,18 @@ def _profile_label(call: SocialCallObservation, *names: str) -> str:
     return "UNKNOWN"
 
 
+def _profile_evidence_class(outcomes: Sequence[HistoricalCallerOutcome]) -> str:
+    values = {
+        value.strip().upper()
+        for outcome in outcomes
+        if isinstance(value := outcome.call.disclosure.get("evidence_class"), str)
+        and value.strip()
+    }
+    if not values:
+        return "UNKNOWN"
+    return next(iter(values)) if len(values) == 1 else "MIXED"
+
+
 def _profile_lookup[T](values: Mapping[str, T], call: SocialCallObservation) -> T | None:
     return values.get(call.canonical_id, values.get(call.message_id))
 
@@ -1182,6 +1194,7 @@ class CallerPerformanceProfile:
     as_of: datetime
     expires_at: datetime
     status: str
+    evidence_class: str
     sample_count: int
     matured_sample_count: int
     known_outcome_count: int
@@ -1234,6 +1247,11 @@ class CallerPerformanceProfile:
         object.__setattr__(self, "as_of", as_of)
         object.__setattr__(self, "expires_at", expires_at)
         object.__setattr__(self, "status", require_text(self.status, "status", max_length=32))
+        object.__setattr__(
+            self,
+            "evidence_class",
+            require_text(self.evidence_class, "evidence_class", max_length=64).upper(),
+        )
         for field_name in (
             "sample_count",
             "matured_sample_count",
@@ -1737,6 +1755,7 @@ class CallerPerformanceAnalyzer:
             as_of=now,
             expires_at=now + self.policy.evidence_ttl,
             status=status,
+            evidence_class=_profile_evidence_class(outcomes),
             sample_count=sample_count,
             matured_sample_count=matured_count,
             known_outcome_count=known_outcome_count,

@@ -17,6 +17,7 @@ const profile = {
   asOf: "2026-09-07T08:00:00.000Z",
   expiresAt: "2026-09-07T08:15:00.000Z",
   status: "INSUFFICIENT_SAMPLES",
+  evidenceClass: "SYNTHETIC_REDACTED",
   handle: "alpha",
   displayName: "Alpha Caller",
   sampleCount: 1,
@@ -54,6 +55,27 @@ const profile = {
   reasonCodes: ["CALLER_HISTORY_UNKNOWN"],
   configHash: "sha256:profile",
   version: "caller-performance-v1"
+} satisfies CallerProfileRecord;
+
+const evaluatedProfile = {
+  ...profile,
+  callerId: "x:beta",
+  platform: "x",
+  authorId: "beta",
+  status: "EVALUATED",
+  evidenceClass: "HISTORICAL_REAL",
+  sampleCount: 20,
+  maturedSampleCount: 18,
+  knownOutcomeCount: 18,
+  evidenceCoverage: 0.9,
+  executableWinRates: { "1h:2x": 0.75, "1h:5x": 0.4 },
+  medianExecutableMfe: 1.5,
+  medianExecutableMae: -0.2,
+  rugCount: 1,
+  failureCount: 3,
+  specialization: { chain: { SOLANA: 12, BNB: 8 } },
+  confidence: 0.7,
+  uncertainty: 0.3
 } satisfies CallerProfileRecord;
 
 const call = {
@@ -153,5 +175,21 @@ describe("CallersDashboard", () => {
     );
 
     expect(screen.getAllByText("CALLER INTELLIGENCE UNAVAILABLE")).toHaveLength(3);
+  });
+
+  it("renders leaderboard outcome evidence and keeps sparse evidence explicit", () => {
+    render(
+      <CallersDashboard
+        calls={page([])}
+        convergence={page([])}
+        profiles={page([evaluatedProfile, profile])}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Caller leaderboard" })).toBeInTheDocument();
+    expect(screen.getByText("HISTORICAL_REAL")).toBeInTheDocument();
+    expect(screen.getByText("1h:2x 75%")).toBeInTheDocument();
+    expect(screen.getByText("INSUFFICIENT_SAMPLES")).toBeInTheDocument();
+    expect(screen.queryByText(/guaranteed alpha|buy now|copy trade/i)).not.toBeInTheDocument();
   });
 });

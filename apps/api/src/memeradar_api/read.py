@@ -435,6 +435,7 @@ class CallerProfileResponse(_StrictModel):
     as_of: datetime
     expires_at: datetime
     status: str
+    evidence_class: str
     handle: str | None = None
     display_name: str | None = None
     sample_count: int
@@ -987,6 +988,7 @@ def _caller_profile_response(value: CallerProfileView) -> CallerProfileResponse:
         as_of=value.as_of,
         expires_at=value.expires_at,
         status=value.status,
+        evidence_class=value.evidence_class,
         handle=value.handle,
         display_name=value.display_name,
         sample_count=value.sample_count,

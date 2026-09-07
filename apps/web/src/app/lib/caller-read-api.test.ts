@@ -31,6 +31,7 @@ const profile = {
   as_of: "2026-09-07T08:00:00.000Z",
   expires_at: "2026-09-07T08:15:00.000Z",
   status: "INSUFFICIENT_SAMPLES",
+  evidence_class: "SYNTHETIC_REDACTED",
   handle: "alpha",
   display_name: "Alpha Caller",
   sample_count: 1,
@@ -155,6 +156,7 @@ describe("caller read gateway", () => {
     const convergences = await fetchCallerConvergence({ chain: "bnb", qualityState: "UNKNOWN" });
 
     expect(profiles.ok && profiles.data.items[0]?.callerId).toBe("telegram:alpha");
+    expect(profiles.ok && profiles.data.items[0]?.evidenceClass).toBe("SYNTHETIC_REDACTED");
     expect(calls.ok && calls.data.items[0]?.assetId).toBe(`bnb:${BNB_ADDRESS}`);
     expect(convergences.ok && convergences.data.items[0]?.tokenId).toBe(`bnb:${BNB_ADDRESS}`);
     expect(fetchMock.mock.calls.map((callArgs) => callArgs[0])).toEqual([

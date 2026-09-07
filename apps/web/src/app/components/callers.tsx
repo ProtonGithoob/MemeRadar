@@ -33,6 +33,10 @@ function Failure({ label, result }: { label: string; result: ReadResult<unknown>
 }
 
 function ProfileEvidence({ profile }: { profile: CallerProfileRecord }) {
+  const multipleEntries = Object.entries(profile.executableWinRates).slice(0, 4);
+  const specialization = Object.entries(profile.specialization)
+    .flatMap(([family, values]) => Object.entries(values).map(([label, count]) => `${family}:${label} ${count}`))
+    .slice(0, 4);
   return (
     <article className="detail-panel">
       <div className="section-heading">
@@ -55,12 +59,34 @@ function ProfileEvidence({ profile }: { profile: CallerProfileRecord }) {
           <small>UNCERTAINTY {percent(profile.uncertainty)}</small>
         </div>
         <div>
+          <span className="card-label">EVIDENCE CLASS</span>
+          <strong>{profile.evidenceClass}</strong>
+          <small>{profile.noLookaheadVerified ? "NO-LOOKAHEAD VERIFIED" : "NO-LOOKAHEAD UNKNOWN"}</small>
+        </div>
+        <div>
           <span className="card-label">PROVENANCE</span>
           <strong>{provenanceSummary(profile.provenance)}</strong>
           <small>AS OF {readableDate(profile.asOf)}</small>
         </div>
       </div>
-      <small>{profile.noLookaheadVerified ? "NO-LOOKAHEAD VERIFIED" : "NO-LOOKAHEAD UNKNOWN"}</small>
+      <div className="operations-summary">
+        <div>
+          <span className="card-label">EXECUTABLE MULTIPLES</span>
+          {multipleEntries.length === 0 ? <strong>UNKNOWN</strong> : multipleEntries.map(([label, value]) => (
+            <small key={label}>{label} {percent(value)}</small>
+          ))}
+        </div>
+        <div>
+          <span className="card-label">EXECUTABLE MFE / MAE</span>
+          <strong>{profile.medianExecutableMfe ?? "UNKNOWN"} / {profile.medianExecutableMae ?? "UNKNOWN"}</strong>
+          <small>RUGS {profile.rugCount} / FAILURES {profile.failureCount}</small>
+        </div>
+        <div>
+          <span className="card-label">SPECIALIZATION</span>
+          <strong>{specialization.length === 0 ? "UNKNOWN" : specialization.join(" · ")}</strong>
+          <small>Measurement-only historical evidence</small>
+        </div>
+      </div>
     </article>
   );
 }
@@ -182,7 +208,7 @@ export function CallersDashboard({
       </div>
       <section className="section-block intelligence-section" aria-labelledby="caller-profiles-title">
         <div className="section-heading">
-          <div><p className="eyebrow">MEASUREMENT-ONLY HISTORY</p><h3 id="caller-profiles-title">Caller profiles</h3></div>
+          <div><p className="eyebrow">MEASUREMENT-ONLY HISTORY</p><h3 id="caller-profiles-title">Caller leaderboard</h3></div>
           <p className="section-note">Unknown outcomes remain unknown.</p>
         </div>
         <ProfileSection result={profiles} />

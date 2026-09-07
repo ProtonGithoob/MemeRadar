@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1093 Python tests (11 skipped), 54 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1094 Python tests (11 skipped), 55 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1411,13 +1411,17 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Real Alpha Production Readiness Task 6 checkpoint (2026-09-07): extended the existing `HistoricalCallerOutcomeProjector` with explicit `HistoricalExecutionTimeline` evidence and execution-price semantics. Market/reference marks remain analytical only; executable entry and later labels require explicit execution/effective/fill prices, so mark-only 2x..100x moves remain UNKNOWN for executable outcomes with `EXECUTABLE_ENTRY_UNKNOWN`. The timeline preserves signal-to-decision, decision-to-quote, evaluation quote age, optional decision market cap/token age, liquidity, impact, modeled fee/slippage/priority cost, partial-fill ratio and explicit MEV exposure; absent Solana priority/MEV evidence remains UNKNOWN. No duplicate replay/paper/execution engine, production scoring weight or protected mode changed.
 - Task 6 TDD/verification evidence: the initial mark-only and executable-price tests failed as expected because market marks were being reused as executable values. After the minimal projector change, the focused caller/outcome/discovery/performance/KOL/provider suite passes `35 tests`; `make lint`, strict `make typecheck` over `121 source files` and `git diff --check` pass. Full `make verify` exits `0` with `1093` Python tests passed, `11` skipped, `1` warning, `54` Vitest tests passed, migration head `0008_alpha_caller_intelligence` / `25` tables, security review PASS and the existing `581`-component SBOM digest. The bare-system API collection lacked FastAPI, but the repository `.venv` gate passed; no historical-real/provider/live-shadow success or production-ready classification is fabricated. Protected modes remain exact and all four unrelated WIP files remain untouched.
 
+- Real Alpha Production Readiness Task 7 checkpoint (2026-09-07): extended the existing caller performance/read path with explicit `evidence_class` propagation and a read-only caller leaderboard. The endpoint retains confidence ordering, bounded filters and cursor pagination; the UI now renders sample adequacy, executable multiple rates, executable MFE/MAE, rug/failure counts, specialization, confidence, evidence class, provenance and no-lookahead state. `HISTORICAL_REAL`, `SYNTHETIC_REDACTED`, `MIXED` and `UNKNOWN` remain explicit; no provider-name or confidence inference is used. No duplicate caller score, persistence, UI decision engine, production scoring weight or execution/follow/copy control was added.
+- Task 7 TDD/verification evidence: the initial backend read contract failed on the absent evidence-class field. After the minimal extension, the focused backend profile/read suite passes `8 tests`, the caller gateway passes `2 tests`, and the leaderboard UI passes `3 tests`; `make lint`, strict `make typecheck` over `121 source files` and `git diff --check` pass. Full `make verify` exits `0` with `1094` Python tests passed, `11` skipped, `1` warning, `55` Vitest tests passed, migration head `0008_alpha_caller_intelligence` / `25` tables, security review PASS and the existing `581`-component SBOM digest. No historical-real/provider/live-shadow success or production-ready classification is fabricated; protected modes remain exact and all four unrelated WIP files remain untouched.
+
 ## Next task
 
-Real Alpha Production Readiness Task 7: extend the existing caller profile
-read model and frontend surface into a read-only caller leaderboard with
-sample adequacy, executable multiple rates, rug/failure rate, MFE/MAE,
-specialization, confidence and historical-real versus synthetic evidence
-coverage. Do not add a second caller scoring engine.
+Real Alpha Production Readiness Task 8: extend the existing live-shadow run
+controller and evidence durability path for restart/resume, duplicate events,
+unresolved gaps, provider degradation, run closure, config/git/provider
+provenance and the >=200 matured actionable-signal guardrail. Keep
+`INSUFFICIENT_SAMPLES` fail-closed when the 14-day/200-signal evidence target
+cannot be met.
 No production weights or protected modes change; current social/Telegram access
 remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`.
 Protected modes remain

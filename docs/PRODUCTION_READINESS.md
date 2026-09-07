@@ -1,6 +1,6 @@
 # MemeRadar Production Readiness
 
-**Current checkpoint:** Real Alpha Production Readiness Task 6 complete; the repository remains synchronized on `main` with protected modes unchanged.
+**Current checkpoint:** Real Alpha Production Readiness Task 7 complete; the repository remains synchronized on `main` with protected modes unchanged.
 
 **Current classification:** `NOT_PRODUCTION_READY` for real-alpha or live-money claims. Engineering verification is strong, but checked-in alpha evidence remains `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES` and real X/Telegram/provider/live-shadow evidence is still externally incomplete.
 
@@ -29,7 +29,7 @@ AUTO_EXECUTION=false
 
 | Gate | Requirement | Current status | Evidence / what closes it |
 |---|---|---|---|
-| PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | `PARTIAL` | Task 6 checkpoint `make verify` passed with `1093` Python tests, `11` skipped and `54` Vitest tests; migration/security/SBOM gates pass locally. `.github/workflows/ci.yml` exists, but no hosted run, release artifact or tested rollback is evidenced yet. |
+| PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | `PARTIAL` | Task 7 checkpoint `make verify` passed with `1094` Python tests, `11` skipped and `55` Vitest tests; migration/security/SBOM gates pass locally. `.github/workflows/ci.yml` exists, but no hosted run, release artifact or tested rollback is evidenced yet. |
 | PR-2 Provider/evidence | Required real chain/market/social/Telegram capabilities with freshness/provenance and stable doctors | `BLOCKED_EXTERNAL/PARTIAL` | `make free-provider-doctor` reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors report `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`. Configure compliant real access and prove bounded reads. |
 | PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | `INSUFFICIENT_SAMPLES` | `fixtures/research/opportunity_research_report.json` remains `SYNTHETIC_REDACTED`; the new `historical_real_dataset_validation.json` reports zero matured calls/outcomes and no historical-real evidence. Collect real calls/outcomes and rerun the canonical gate. |
 | PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | `INSUFFICIENT_SAMPLES` | `python3 scripts/shadow_status.py` reports `STACK_OFFLINE`, `START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE` evidence and unknown matured outcomes; run a durable real shadow window. |
@@ -235,6 +235,34 @@ tables, security review is PASS and the existing `581`-component SBOM passes.
 The bare-system focused API collection lacked FastAPI, but the repository
 `.venv` full gate passed. Real historical/provider/live-shadow evidence is not
 claimed; compliant access remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`.
+
+## Task 7 evidence snapshot — 2026-09-07
+
+The existing caller profile read model now exposes an explicit `evidence_class`
+without inferring realness from provider names or confidence. Profiles preserve
+`HISTORICAL_REAL`, `SYNTHETIC_REDACTED`, `MIXED` or `UNKNOWN`, alongside the
+existing sample/maturity counts, executable 2x/5x/10x/20x/50x/100x rates,
+rug/failure counts, executable MFE/MAE, specialization, confidence intervals,
+no-lookahead state, provenance and reason codes. The endpoint remains the
+existing bounded, confidence-sorted, filterable and cursor-paginated
+`/v1/caller-profiles` read path.
+
+The existing callers surface is now a read-only caller leaderboard: it renders
+sample adequacy, evidence class, executable multiple rates, MFE/MAE,
+rug/failure counts, specialization, confidence and provenance while retaining
+explicit UNKNOWN values and the locked execution boundary. No second caller
+score, persistence engine, production weight or follow/copy control was added.
+
+Task 7 focused TDD passes `8 backend profile/read tests`, `2 gateway tests` and
+`3 UI tests`; the initial evidence-class contract failed at the missing read
+field before the minimal extension. Full `make verify` exits `0` with `1094`
+Python tests passed, `11` skipped, `1` warning and `55` Vitest tests passed;
+strict mypy covers `121 source files`, migration head is
+`0008_alpha_caller_intelligence` / `25` tables, security review is PASS and
+the existing `581`-component SBOM digest passes. No historical-real or
+live-shadow success is claimed; the checked-in fixture remains
+`SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES`, and compliant X/Telegram access
+remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`.
 
 ## Minimum evidence targets
 

@@ -111,10 +111,10 @@
 
 **Produces:** Read-only caller leaderboard with sample size, executable 2x/5x/10x/20x+, rug/failure rate, median call market cap, MFE/MAE, specialization and confidence state.
 
-- [ ] Write API/UI tests for sparse callers, confidence/INSUFFICIENT_SAMPLES, pagination/filtering and no guaranteed-alpha language.
-- [ ] Implement using existing caller profile data; do not create a second scoring engine.
-- [ ] Display data coverage/provenance and distinguish historical-real versus synthetic evidence.
-- [ ] Run backend/frontend focused gates; update STATUS and commit.
+- [x] Write API/UI tests for sparse callers, confidence/INSUFFICIENT_SAMPLES, pagination/filtering and no guaranteed-alpha language.
+- [x] Implement using existing caller profile data; do not create a second scoring engine.
+- [x] Display data coverage/provenance and distinguish historical-real versus synthetic evidence.
+- [x] Run backend/frontend focused gates; update STATUS and commit.
 
 ### Task 8: Live-shadow run controller and evidence durability
 

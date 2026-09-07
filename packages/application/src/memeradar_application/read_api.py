@@ -1149,6 +1149,7 @@ class CallerProfileView:
     as_of: datetime
     expires_at: datetime
     status: str
+    evidence_class: str = "UNKNOWN"
     handle: str | None = None
     display_name: str | None = None
     sample_count: int = 0
@@ -1215,6 +1216,11 @@ class CallerProfileView:
         object.__setattr__(self, "expires_at", expires_at)
         object.__setattr__(
             self, "status", require_text(self.status, "status", max_length=32).upper()
+        )
+        object.__setattr__(
+            self,
+            "evidence_class",
+            require_text(self.evidence_class, "evidence_class", max_length=64).upper(),
         )
         for field_name in (
             "sample_count",
@@ -1637,6 +1643,7 @@ def caller_profile_view(value: CallerProfileView | CallerPerformanceProfile) -> 
         as_of=value.as_of,
         expires_at=value.expires_at,
         status=value.status,
+        evidence_class=value.evidence_class,
         sample_count=value.sample_count,
         matured_sample_count=value.matured_sample_count,
         known_outcome_count=value.known_outcome_count,

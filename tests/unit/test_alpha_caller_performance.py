@@ -80,8 +80,14 @@ def make_outcome(
     rugged: bool | None = False,
     published_at: datetime = NOW - timedelta(days=2),
     no_lookahead_verified: bool = True,
+    disclosure: dict[str, object] | None = None,
 ) -> HistoricalCallerOutcome:
-    current_call = make_call(caller_id, message_id, published_at=published_at)
+    current_call = make_call(
+        caller_id,
+        message_id,
+        published_at=published_at,
+        disclosure=disclosure,
+    )
     horizons = tuple(
         HistoricalCallerOutcomeHorizon(
             horizon=name,
@@ -147,6 +153,27 @@ def test_sparse_profile_is_insufficient_and_never_promotable() -> None:
     assert profile.reason_codes[0].code == "INSUFFICIENT_SAMPLES"
     assert profile.promotion_allowed is False
     assert profile.execution_eligible(NOW) is False
+
+
+def test_profile_preserves_explicit_evidence_class_without_inference() -> None:
+    profile = CallerPerformanceAnalyzer().analyze(
+        (
+            make_outcome(
+                "evidence",
+                "evidence-real",
+                disclosure={"evidence_class": "historical_real"},
+            ),
+            make_outcome(
+                "evidence",
+                "evidence-synthetic",
+                disclosure={"evidence_class": "synthetic_redacted"},
+            ),
+        ),
+        now=NOW,
+        config_hash="caller-profile-test",
+    )[0]
+
+    assert profile.evidence_class == "MIXED"
 
 
 def test_failed_and_rug_calls_remain_in_profile_metrics() -> None:
