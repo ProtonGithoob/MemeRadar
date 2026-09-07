@@ -1393,13 +1393,19 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 15 TDD evidence: the initial focused run failed at collection with the expected missing ablation export. After the minimal implementation, the focused opportunity unit/contract suite passes `8 tests`, including all six family outputs, missing caller evidence as UNKNOWN, future-label mutation invariance, winner-only survivorship/negative controls, sample adequacy, false-positive cost and promotion-gate rejection. `make opportunity-research OPPORTUNITY_RESEARCH_OUTPUT=fixtures/research/opportunity_research_report.json`, `make replay-dataset REPLAY_INPUT=fixtures/research/opportunity_case_studies.json`, `make paper-trading-doctor` and `make free-provider-doctor` pass; the report records all six families as `INSUFFICIENT_SAMPLES`, `promotion_allowed=false` and `execution_eligible=false`. `git diff --check` passes.
 - Alpha Caller Task 15 verification: `make verify` exits `0` with `1080 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `19 files / 54 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). Ruff, strict mypy (`119 source files`), web lint/typecheck, Compose config, secret scan and migration check pass. No production scoring weight, provider, persistence migration, signer, execution authority or protected mode changed; live historical/live-shadow caller collection and external security scans remain honestly classified as `BLOCKED_EXTERNAL`/`NOT_RUN`, and the four pre-existing untracked WIP files remain untouched.
 
+- Real Alpha Production Readiness Task 1 checkpoint (2026-09-07): completed the current-state gap inventory in `docs/PRODUCTION_READINESS.md` using the actual CI workflow, Make targets, provider/paper/reliability doctors, migration head, security/SBOM results, shadow run state, runbooks and checked-in Alpha Caller artifact. PR-1 is `PARTIAL` because local `make verify` is green but hosted CI, release identity and tested rollback are not evidenced; PR-2 is `BLOCKED_EXTERNAL/PARTIAL` because the free core doctor reaches `READY_FOR_FREE_READ_ONLY_SHADOW` while social, Telegram and stream capability doctors report missing configuration; PR-3 is `INSUFFICIENT_SAMPLES` with seven `SYNTHETIC_REDACTED` cases and no historical-real samples; PR-4 is `INSUFFICIENT_SAMPLES` because the latest shadow run is `START_FAILED`/`STACK_OFFLINE` with no matured outcomes; PR-5 is `PARTIAL/NOT_VERIFIED` because backup/restore is documented but not drilled and production-like soak/failure acceptance is not recorded. No production-ready classification was made.
+- Task 1 verification evidence: `make free-provider-doctor` exits `0` with `CORE_FREE_READINESS=READY_FOR_FREE_READ_ONLY_SHADOW`, `make paper-trading-doctor` exits `0` with `paper_auto_gate=PASS`, `make migration-check` reports head `0008_alpha_caller_intelligence`/`25` tables, `make security-review` exits `0` with `PASS` and external scans `NOT_RUN`, `make sbom` exits `0` with the existing `581`-component digest, `make compose-config` exits `0`, and `python3 scripts/shadow_status.py` reports `STACK_OFFLINE`, `START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE` evidence and unknown matured outcomes. `make social-doctor`, `make telegram-doctor`, `make stream-integrity-doctor` and `make reliability-doctor` honestly report configuration/external blockers. `git diff --check` passes; protected modes remain exact and the four unrelated WIP files remain untouched.
+
 ## Next task
 
-No further currently feasible Alpha Caller implementation task remains. The
-next unfinished task is external: collect compliant historical-real and
-live-shadow caller samples, then rerun the same event-time replay, ablation and
-strategy-promotion gate. This is `BLOCKED_EXTERNAL` until compliant X/Telegram
-and provider access plus enough observed samples exist; current checked-in
-evidence is `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES`. Protected modes
-remain `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
-`MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
+Real Alpha Production Readiness Task 2: harden the required-provider contract
+and doctor state model for the production capability set. Start with failing
+tests proving application health and evidence-capability health remain
+separate, then extend bounded timeout/retry/backoff/freshness/rate-limit
+semantics for historical/live social, Telegram, market/execution quote and
+chain reads. Keep optional providers non-blocking unless explicitly required;
+current social, Telegram, stream and reliability access remains
+`BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`, while the free core remains
+`READY_FOR_FREE_READ_ONLY_SHADOW`. Protected modes remain
+`ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`,
+`AUTO_EXECUTION=false`.

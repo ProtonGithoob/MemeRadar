@@ -31,11 +31,11 @@
 
 **Produces:** Machine/human-readable inventory of PR-1..PR-8 gates with status `PASS|PARTIAL|BLOCKED_EXTERNAL|INSUFFICIENT_SAMPLES|NOT_STARTED` and exact evidence references.
 
-- [ ] Inspect actual code, tests, Compose/deployment files, provider doctors, migrations, CI workflows, alerting and current Alpha Caller outputs before writing conclusions.
-- [ ] Write the initial production-readiness matrix using current evidence only.
-- [ ] Record the exact external credentials/access needed without printing secret values.
-- [ ] Record the four pre-existing WIP files and preserve them.
-- [ ] Run `git diff --check`, update STATUS and commit.
+- [x] Inspect actual code, tests, Compose/deployment files, provider doctors, migrations, CI workflows, alerting and current Alpha Caller outputs before writing conclusions.
+- [x] Write the initial production-readiness matrix using current evidence only.
+- [x] Record the exact external credentials/access needed without printing secret values.
+- [x] Record the four pre-existing WIP files and preserve them.
+- [x] Run `git diff --check`, update STATUS and commit.
 
 ### Task 2: Required-provider contract and doctor hardening
 

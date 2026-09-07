@@ -27,16 +27,68 @@ AUTO_EXECUTION=false
 
 ## Acceptance gates
 
-| Gate | Requirement | Initial status | What closes it |
+| Gate | Requirement | Current status | Evidence / what closes it |
 |---|---|---|---|
-| PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | PARTIAL | Local verification already reported strong; obtain actual remote CI/release-candidate evidence and reproducible rollback metadata |
-| PR-2 Provider/evidence | Required real chain/market/social/Telegram capabilities with freshness/provenance and stable doctors | BLOCKED_EXTERNAL/PARTIAL | Configure compliant real provider access; prove bounded live/historical reads and health states without exposing secrets |
-| PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | INSUFFICIENT_SAMPLES | Collect/reconstruct sufficient historical real calls/tokens and rerun canonical research |
-| PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | INSUFFICIENT_SAMPLES | Run durable live-shadow collection and mature enough signals across required capability set |
-| PR-5 Operations | Backups/restore, monitoring/alerts, soak/failure tests, deployment/rollback runbooks | PARTIAL/NOT VERIFIED | Execute production-like operational acceptance with recorded evidence |
-| PR-6 PROD_READ_ONLY | PR-1 + PR-2 + PR-5 PASS | NOT ACCEPTED | Complete dependencies; PR-3/PR-4 may still be insufficient because read-only prod can collect evidence |
-| PR-7 PROD_PAPER_AUTO | PR-1..PR-5 PASS plus real-environment paper-auto fail-closed acceptance | NOT ACCEPTED | Complete evidence and operational gates |
-| PR-8 LIVE_MONEY_CANDIDATE | Separate future operator-approved design plus all prior evidence | OUT OF SCOPE | Never auto-enable from this roadmap |
+| PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | `PARTIAL` | `make verify` passed at `2acf261`; migration/security/SBOM gates pass locally. `.github/workflows/ci.yml` exists, but no hosted run, release artifact or tested rollback is evidenced yet. |
+| PR-2 Provider/evidence | Required real chain/market/social/Telegram capabilities with freshness/provenance and stable doctors | `BLOCKED_EXTERNAL/PARTIAL` | `make free-provider-doctor` reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors report `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`. Configure compliant real access and prove bounded reads. |
+| PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | `INSUFFICIENT_SAMPLES` | `fixtures/research/opportunity_research_report.json` is `SYNTHETIC_REDACTED`, seven cases, all six caller families `INSUFFICIENT_SAMPLES`; collect real calls/outcomes and rerun the canonical gate. |
+| PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | `INSUFFICIENT_SAMPLES` | `python3 scripts/shadow_status.py` reports `STACK_OFFLINE`, `START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE` evidence and unknown matured outcomes; run a durable real shadow window. |
+| PR-5 Operations | Backups/restore, monitoring/alerts, soak/failure tests, deployment/rollback runbooks | `PARTIAL/NOT_VERIFIED` | Runbooks and keyless contracts exist; `reliability-doctor` reports `backup_restore=DOCUMENTED_ONLY`. Execute restore, soak and failure acceptance. |
+| PR-6 PROD_READ_ONLY | PR-1 + PR-2 + PR-5 PASS | `NOT_ACCEPTED` | Complete its three prerequisite gates; PR-3/PR-4 may remain insufficient while collecting evidence. |
+| PR-7 PROD_PAPER_AUTO | PR-1..PR-5 PASS plus real-environment paper-auto fail-closed acceptance | `NOT_ACCEPTED` | Complete all evidence and operational gates in a real deployment. |
+| PR-8 LIVE_MONEY_CANDIDATE | Separate future operator-approved design plus all prior evidence | `OUT_OF_SCOPE` | Never auto-enable from this roadmap. |
+
+## Task 1 evidence snapshot — 2026-09-07
+
+The initial inventory was checked against the actual checkout after a safe
+fast-forward from `2acf261` to `0dc07f8`. The local checkout and `origin/main`
+are synchronized (`git rev-list --left-right --count origin/main...HEAD` =
+`0 0`). The four unrelated pre-existing WIP files remain untracked and
+untouched:
+
+- `apps/web/e2e-screenshots.mjs`
+- `apps/web/mock-api.mjs`
+- `apps/web/overflow-debug.mjs`
+- `docs/superpowers/plans/2026-09-05-multichain-extreme-winner.md`
+
+Observed evidence:
+
+- `make verify` passed at the Alpha Caller checkpoint with `1080` Python tests
+  passed, `11` skipped, `1` warning, and `54` Vitest tests passed. Ruff,
+  strict mypy, Compose config, secret scan, migrations, security review and
+  SBOM were green. SBOM identity is `581` components,
+  `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
+- `make migration-check` reports head `0008_alpha_caller_intelligence` and
+  `25` tables. `make security-review` reports `PASS`, but external container,
+  npm and pip scans are `NOT_RUN` / `BLOCKED_EXTERNAL`.
+- `make free-provider-doctor` reports core `PASS` and
+  `CORE_FREE_READINESS=READY_FOR_FREE_READ_ONLY_SHADOW`; Solana RPC and
+  DexScreener were reachable in this bounded check. Optional Helius, Birdeye,
+  RugCheck, external wallet, social analytics and Telegram are
+  `UNCONFIGURED_OPTIONAL`; Ollama is `OPTIONAL_UNAVAILABLE`.
+- `make paper-trading-doctor` reports `PASS` with `paper_auto_gate=PASS`, live
+  execution disabled and the exact protected modes. `make compose-config`
+  passes.
+- `make social-doctor`, `make telegram-doctor` and
+  `make stream-integrity-doctor` each report `BLOCKED_EXTERNAL` because their
+  configured endpoint/credential set is missing. `make reliability-doctor`
+  reports keyless contracts `PASS` but `backup_restore=DOCUMENTED_ONLY` and
+  `BLOCKED_EXTERNAL` because external acceptance was not run.
+- `current_run.json` and `python3 scripts/shadow_status.py` show the latest
+  shadow attempt as `START_FAILED` / `STACK_OFFLINE`, with collection
+  `NOT_ACTIVE`, evidence `NOT_AVAILABLE` and matured outcomes `UNKNOWN`.
+- `docs/RUNBOOKS/RELIABILITY.md` and `docs/DATA_RETENTION.md` document the
+  non-destructive isolated `pg_dump`/`pg_restore` procedure, but no restore
+  drill or production-like soak has been completed.
+- The Alpha Caller artifact records `SYNTHETIC_REDACTED`, seven checked-in
+  cases, `INSUFFICIENT_SAMPLES`, `promotion_allowed=false` and
+  `execution_eligible=false`; no historical-real or live-shadow sample is
+  claimed.
+
+Required external inputs are compliant X/social historical/live access,
+Telegram Bot API/channel access where authorized, any selected paid provider
+credentials, a reachable production-like database/restore target, and a
+hosted CI/release run. Secret values must remain outside reports and git.
 
 ## Minimum evidence targets
 
