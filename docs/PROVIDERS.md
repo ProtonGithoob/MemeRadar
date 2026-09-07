@@ -21,6 +21,7 @@ execution modes.
 | `SOCIAL_ANALYTICS` | unavailable | existing external social provider | no fabricated counts, sentiment or velocity |
 | `SOCIAL_CALLS` | unavailable unless configured | compliant social/X and Telegram Bot API call adapters | public caller evidence only; unresolved symbols remain UNKNOWN |
 | `RISK_SUMMARY` | local deterministic checks | public/authenticated RugCheck evidence | third-party scores never replace local gates |
+| `TOKEN_SECURITY` | local authority/token-program checks | read-only GoPlus-style normalized enrichment | SOLANA/BNB/ROBINHOOD fields are advisory; missing fields remain UNKNOWN |
 | `WALLET_ENRICHMENT` | local tracking/scoring/graphs/flows | external wallet enrichment | labels remain corroborating evidence |
 | `NARRATIVE` | local Ollama or disabled | explicitly configured external LLM | advisory output only |
 | `ALERT_DELIVERY` | Telegram when configured | — | notification is downstream of analysis |
@@ -536,6 +537,42 @@ never required for the local deterministic risk engine. Keyless fixtures and
 contracts are stored under `fixtures/providers/rugcheck/`.
 
 Reference contract: [RugCheck API Swagger](https://api.rugcheck.xyz/swagger/index.html) and its [raw API specification](https://api.rugcheck.xyz/swagger/doc.json).
+
+### Multi-chain token-security enrichment
+
+The existing security audit was compared against the common GoPlus-style
+token/address fields. Local `TokenSecurityEvaluator` remains the authority for
+Solana token-program identity, mint/freeze authorities and Token-2022
+extensions. RugCheck contributes free-form risk names/levels, and the existing
+Birdeye security observation contributes Solana `is_freezable`, `is_mintable`,
+`is_mutable`, blacklist and creator fields. None of those paths provide one
+bounded, chain-neutral contract for the high-value honeypot, blacklist,
+mintability, proxy, source-verification and buy/sell-tax fields across all
+mandatory chains.
+
+`GoPlusTokenSecurityAdapter` in
+`packages/providers/src/memeradar_providers/token_security.py` fills only that
+missing enrichment seam. It reuses the existing bounded RugCheck HTTP
+transport and `RiskDataPort`, performs a read-only GET, routes Solana through
+the Solana endpoint and BNB/Robinhood through the generic EVM chain IDs `56`
+and `4663`, and emits provider-neutral `RiskFinding` values with provenance.
+Each absent field is an explicit `UNKNOWN` finding; unsupported chain,
+timeout, authentication, schema and provider failures remain typed failures.
+The normalized fields are `is_honeypot`, `is_blacklisted`, `is_mintable`,
+`is_proxy`, `is_open_source`, `buy_tax` and `sell_tax` (tax values are bounded
+percentages). Address/owner/deployer and liquidity-lock fields remain
+`UNKNOWN` until a reviewed normalized contract supplies them.
+
+The external `GoPlusSecurity/goplus-mcp` repository was used only as a
+research/protocol input. No code was copied or vendored (`NO`); the local
+adapter independently implements the response validation, provenance,
+timeouts and fail-closed semantics. No license grant or live provider
+acceptance is inferred. Synthetic keyless fixtures live under
+`fixtures/providers/token_security/`; an endpoint/key is not required for the
+local core, and live acceptance remains `BLOCKED_EXTERNAL` until an operator
+configures and verifies an approved endpoint. These findings remain advisory
+to the local evaluator and do not change score weights, hard-risk authority or
+execution eligibility.
 
 ## Holder concentration / wallet graph analysis
 

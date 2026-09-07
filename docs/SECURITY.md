@@ -18,6 +18,14 @@ Use environment/secret-manager references. `.env.example` contains names and saf
 
 The Sprint 3.1 RugCheck integration is read-only. `RUGCHECK_API_KEY`, when needed, is sent only as an `Authorization: Bearer ...` header; the adapter rejects credential-bearing base URLs and does not include provider response bodies in errors. `make rugcheck-doctor` reports configuration presence rather than values and returns `BLOCKED_EXTERNAL` when no endpoint is configured. RugCheck severity and verification are advisory inputs: on-chain authority evidence remains the deterministic security authority, and provider verification is never treated as an endorsement.
 
+The optional multi-chain `GoPlusTokenSecurityAdapter` reuses that bounded
+read-only risk transport for SOLANA, BNB and Robinhood's generic EVM path. It
+normalizes only bounded token-security fields and leaves absent values as
+`UNKNOWN`; it never treats an external security field as a local authority
+hard-gate, score boost or execution permission. No GoPlus code is vendored or
+copied, and live provider acceptance is not claimed when the optional endpoint
+is absent or unavailable.
+
 The Sprint 5.1 social integration is also read-only. `SOCIAL_API_KEY` is sent
 only as a Bearer header; credential-bearing URLs, cookies, browser session
 state, fragments and unsupported links are rejected or ignored. The adapter

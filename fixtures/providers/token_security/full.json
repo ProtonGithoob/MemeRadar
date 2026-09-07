@@ -1,0 +1,15 @@
+{
+  "code": 1,
+  "message": "OK",
+  "result": {
+    "0x1111111111111111111111111111111111111111": {
+      "is_honeypot": "0",
+      "is_blacklisted": "0",
+      "is_mintable": "0",
+      "is_proxy": "0",
+      "is_open_source": "1",
+      "buy_tax": "0",
+      "sell_tax": "0"
+    }
+  }
+}

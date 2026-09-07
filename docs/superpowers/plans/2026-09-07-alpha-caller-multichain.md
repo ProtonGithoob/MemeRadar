@@ -153,10 +153,10 @@
 **Interfaces:**
 - Produces: optional normalized `token_security` capability across supported chains; GoPlus or equivalent remains enrichment.
 
-- [ ] Audit existing RugCheck/local risk coverage against GoPlus-style token/address security fields and record license/provenance decision.
-- [ ] Write failing adapter contract tests for supported, unsupported, timeout and partial evidence.
-- [ ] Implement only missing high-value normalized fields; `UNKNOWN` on absence.
-- [ ] Run tests/doctors, update provider docs/STATUS and commit.
+- [x] Audit existing RugCheck/local risk coverage against GoPlus-style token/address security fields and record license/provenance decision.
+- [x] Write failing adapter contract tests for supported, unsupported, timeout and partial evidence.
+- [x] Implement only missing high-value normalized fields; `UNKNOWN` on absence.
+- [x] Run tests/doctors, update provider docs/STATUS and commit.
 
 ### Task 11: Telegram alpha evidence alerts
 
