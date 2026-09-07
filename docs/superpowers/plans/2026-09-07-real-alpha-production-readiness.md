@@ -218,11 +218,11 @@
 
 **Produces:** Final PR-1..PR-8 matrix and an evidence-backed deployment classification.
 
-- [ ] Evaluate PR-1 Engineering/release, PR-2 Provider/evidence, PR-3 Historical-real research, PR-4 Live-shadow, PR-5 Operations independently.
-- [ ] Allow `PRODUCTION_READY_READ_ONLY` only when PR-1 + PR-2 + PR-5 pass.
-- [ ] Allow `PRODUCTION_READY_PAPER_AUTO` only when PR-1..PR-5 and real-environment paper-auto fail-closed acceptance pass.
-- [ ] Never declare generic `PRODUCTION_READY` or live-money readiness.
-- [ ] `LIVE_MONEY_CANDIDATE` requires a separate future operator-approved design; do not change protected modes.
-- [ ] Run final `make verify`, doctors, security, migrations, build/release checks and `git diff --check`.
-- [ ] Record exact test counts, provider blockers, evidence class/sample counts, CI run, backup/restore evidence, soak evidence, git sync state and exact next task.
-- [ ] Commit/push coherent final checkpoint.
+- [x] Evaluate PR-1 Engineering/release, PR-2 Provider/evidence, PR-3 Historical-real research, PR-4 Live-shadow, PR-5 Operations independently.
+- [x] Allow `PRODUCTION_READY_READ_ONLY` only when PR-1 + PR-2 + PR-5 pass.
+- [x] Allow `PRODUCTION_READY_PAPER_AUTO` only when PR-1..PR-5 and real-environment paper-auto fail-closed acceptance pass.
+- [x] Never declare generic `PRODUCTION_READY` or live-money readiness.
+- [x] `LIVE_MONEY_CANDIDATE` requires a separate future operator-approved design; do not change protected modes.
+- [x] Run final `make verify`, doctors, security, migrations, build/release checks and `git diff --check`.
+- [x] Record exact test counts, provider blockers, evidence class/sample counts, CI run, backup/restore evidence, soak evidence, git sync state and exact next task.
+- [x] Commit/push coherent final checkpoint.

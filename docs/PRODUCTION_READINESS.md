@@ -1,6 +1,6 @@
 # MemeRadar Production Readiness
 
-**Current checkpoint:** Real Alpha Production Readiness Task 14 evidence rerun is complete; historical-real/live-shadow evidence is externally blocked and protected modes remain unchanged.
+**Current checkpoint:** Real Alpha Production Readiness Task 15 acceptance is evaluated; the staged production gates remain not accepted because real evidence and hosted operational gates are externally blocked.
 
 **Current classification:** `NOT_PRODUCTION_READY` for real-alpha or live-money claims. Engineering verification is strong, but checked-in alpha evidence remains `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES` and real X/Telegram/provider/live-shadow evidence is still externally incomplete.
 
@@ -496,7 +496,7 @@ Evidence for this slice:
   `STACK_OFFLINE`/`START_FAILED`, provider readiness `NOT_AVAILABLE`,
   collection `NOT_ACTIVE`, evidence class `NOT_AVAILABLE` and `0` matured
   outcomes.
-- The full `make verify` gate passes with `1112` Python tests passed, `11`
+- The full `make verify` gate passes with `1113` Python tests passed, `11`
   skipped, `1` warning and `55` Vitest tests passed; Ruff, strict mypy over
   `121 source files`, Compose, secret scan, migrations, security review and
   the existing `581`-component SBOM also pass.
@@ -505,6 +505,37 @@ Evidence for this slice:
   therefore `BLOCKED_EXTERNAL`/`INSUFFICIENT_SAMPLES`; no production score
   weight or promotion record changed. Task 14 remains the exact unfinished
   evidence task until compliant access and sufficient real samples exist.
+
+## Task 15 acceptance snapshot — 2026-09-07
+
+The final staged acceptance was evaluated without changing execution modes or
+claiming live-money readiness. The only allowed roadmap classifications remain
+`PRODUCTION_READY_READ_ONLY` and `PRODUCTION_READY_PAPER_AUTO`; neither is
+declared. Current classification is `NOT_PRODUCTION_READY`.
+
+| Gate | Evidence at current candidate | Classification |
+|---|---|---|
+| PR-1 Engineering/release | Local `make verify`, release identity, migration/security/SBOM/Compose gates pass; hosted CI run `34119179340` for SHA `00f250987be7a5be3214ae09f1738632a2f9bc8f` failed with zero executed steps in all prerequisite jobs, and rollback is not deployed/tested | `PARTIAL/BLOCKED_EXTERNAL` |
+| PR-2 Provider/evidence | Free provider doctor reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors are `CONFIGURATION_MISSING`/`BLOCKED_EXTERNAL` | `BLOCKED_EXTERNAL/PARTIAL` |
+| PR-3 Historical-real research | `SYNTHETIC_REDACTED`, zero matured calls/outcomes/identities/negative controls; all six caller families remain `INSUFFICIENT_SAMPLES` | `INSUFFICIENT_SAMPLES` |
+| PR-4 Live-shadow | `STACK_OFFLINE`/`START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE`, zero matured outcomes | `INSUFFICIENT_SAMPLES` |
+| PR-5 Operations | Restore is `DOCUMENTED_ONLY`; local telemetry and synthetic soak pass, but real dependency failure/restore and managed backup evidence are absent | `PARTIAL/BLOCKED_EXTERNAL` |
+| PR-6 `PROD_READ_ONLY` | PR-1 + PR-2 + PR-5 are not all PASS | `NOT_ACCEPTED` |
+| PR-7 `PROD_PAPER_AUTO` | Real-environment paper-auto acceptance and PR-1..PR-5 are not all PASS | `NOT_ACCEPTED` |
+| PR-8 `LIVE_MONEY_CANDIDATE` | Separate future operator-approved design is required | `OUT_OF_SCOPE` |
+
+The current release identity is Git SHA
+`00f250987be7a5be3214ae09f1738632a2f9bc8f`, app/API `0.1.0`, migration head
+`0008_alpha_caller_intelligence` with `25` metadata tables, config hash
+`sha256:e6d23c5553553dd7ec228b73851fd71bd6d26ed22856ec800bcfefea897bd865`,
+and the `581`-component SBOM digest
+`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
+Local and `origin/main` are synchronized (`0 0`); the four unrelated WIP
+files remain untracked and untouched. Protected modes remain exactly
+`ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`,
+`AUTO_EXECUTION=false`. The exact next unfinished task is Task 14 real-data
+collection and rerun once compliant historical access and a durable shadow
+environment are available.
 
 ## Minimum evidence targets
 
