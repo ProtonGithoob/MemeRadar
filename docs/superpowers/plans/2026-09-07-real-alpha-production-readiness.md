@@ -177,11 +177,11 @@
 
 **Produces:** Remote CI evidence tied to exact commit plus reproducible release metadata.
 
-- [ ] Inspect existing workflows; write/update CI so canonical `make verify` or equivalent mandatory gates run on PR/push/release candidate without weakening checks.
-- [ ] Persist/report git SHA, migration head, config/schema/app version and SBOM/build identity for the candidate artifact.
-- [ ] Add release-candidate checklist and rollback procedure.
+- [x] Inspect existing workflows; write/update CI so canonical `make verify` or equivalent mandatory gates run on PR/push/release candidate without weakening checks.
+- [x] Persist/report git SHA, migration head, config/schema/app version and SBOM/build identity for the candidate artifact.
+- [x] Add release-candidate checklist and rollback procedure.
 - [ ] Confirm an actual remote workflow run succeeds; if GitHub Actions permissions/network are external blockers, mark PR-1 `PARTIAL/BLOCKED_EXTERNAL` rather than claiming PASS.
-- [ ] Update STATUS and commit/push.
+- [x] Update STATUS and commit/push.
 
 ### Task 13: Production-like soak, load and chaos/failure tests
 

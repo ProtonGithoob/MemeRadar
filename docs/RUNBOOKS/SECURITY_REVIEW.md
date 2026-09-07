@@ -58,6 +58,11 @@ when an artifact is needed. The default check prints only a component count
 and digest, and never includes credentials, raw provider data or scanner
 output.
 
+Release candidates also run `make release-identity`, which binds the full Git
+SHA, migration head/table count, app/API versions, configuration hash and SBOM
+digest into a keyless JSON artifact. The release identity contains no provider
+or Telegram credentials.
+
 ## Credential or authorization incident
 
 1. Keep the execution kill switch active and preserve all four protected modes.

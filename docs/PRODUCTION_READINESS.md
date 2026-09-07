@@ -1,6 +1,6 @@
 # MemeRadar Production Readiness
 
-**Current checkpoint:** Real Alpha Production Readiness Task 11 complete; the repository remains synchronized on `main` with protected modes unchanged.
+**Current checkpoint:** Real Alpha Production Readiness Task 12 locally implemented; hosted verification is pending and protected modes remain unchanged.
 
 **Current classification:** `NOT_PRODUCTION_READY` for real-alpha or live-money claims. Engineering verification is strong, but checked-in alpha evidence remains `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES` and real X/Telegram/provider/live-shadow evidence is still externally incomplete.
 
@@ -29,7 +29,7 @@ AUTO_EXECUTION=false
 
 | Gate | Requirement | Current status | Evidence / what closes it |
 |---|---|---|---|
-| PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | `PARTIAL` | Task 11 local security boundary audit and canonical gates pass; `.github/workflows/ci.yml` exists, but no hosted run, release artifact or tested rollback is evidenced yet. |
+| PR-1 Engineering/release | Canonical tests, lint/typecheck, migrations, security/SBOM, build, remote CI, release identity, rollback | `PARTIAL/BLOCKED_EXTERNAL` | Task 12 adds the gated release-identity artifact and rollback runbook. Local gates pass, but hosted GitHub Actions success for the exact candidate and a real deployment rollback remain externally unverified. |
 | PR-2 Provider/evidence | Required real chain/market/social/Telegram capabilities with freshness/provenance and stable doctors | `BLOCKED_EXTERNAL/PARTIAL` | `make free-provider-doctor` reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors report `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`. Configure compliant real access and prove bounded reads. |
 | PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | `INSUFFICIENT_SAMPLES` | `fixtures/research/opportunity_research_report.json` remains `SYNTHETIC_REDACTED`; the new `historical_real_dataset_validation.json` reports zero matured calls/outcomes and no historical-real evidence. Collect real calls/outcomes and rerun the canonical gate. |
 | PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | `INSUFFICIENT_SAMPLES` | Task 8 now provides restart-safe run identity, idempotent normalized-event fingerprints, unresolved-gap blocking, provider snapshots, closure and `14 days + 200 matured actionable signals` classification. No real shadow window or matured live evidence exists yet. |
@@ -395,6 +395,35 @@ Evidence for this slice:
   protected modes remain exactly `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
   `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`, and no execution authority
   was added. The four pre-existing unrelated WIP files remain untouched.
+
+## Task 12 local evidence snapshot — 2026-09-07
+
+The existing CI workflow now runs on pull requests, `main` pushes and `v*`
+release-candidate tags. Backend, frontend, Compose and secret-scan jobs remain
+separate mandatory gates; the new release-identity job is gated on all four
+and checks out full history before uploading a SHA-named
+`release-identity.json` artifact.
+
+The repository-owned `make release-identity` command composes the existing
+migration check and deterministic SBOM with the full Git SHA, app/API versions,
+runtime configuration hash, migration heads/table count and exact protected
+modes. It never reads provider credentials or raw data. The rollback runbook
+uses the existing forward-first migration and isolated-restore rules and does
+not authorize a mode change.
+
+Evidence for this slice:
+
+- The focused release-identity suite passes `3 tests`, including reproducible
+  metadata, workflow gating/artifact assertions and direct CLI artifact
+  creation. The generated local identity reports app/API `0.1.0`, migration
+  head `0008_alpha_caller_intelligence`, `25` metadata tables, `581` SBOM
+  components and the existing SBOM digest.
+- `make lint`, strict `make typecheck` over `121 source files`,
+  `make migration-check`, `make sbom`, `make compose-config`,
+  `make release-identity`, CI YAML parsing and `git diff --check` pass.
+- Hosted GitHub Actions success for the exact pushed candidate SHA and a real
+  deployment rollback remain pending. Until observed, PR-1 stays
+  `PARTIAL/BLOCKED_EXTERNAL`; no remote-CI PASS is claimed.
 
 ## Minimum evidence targets
 

@@ -36,7 +36,7 @@ SBOM_OUTPUT ?=
 	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
 backtest-replay opportunity-research historical-dataset calibrate-score winner-vs-rug-optimizer reliability-benchmark early-detection-benchmark early-live-doctor reliability-doctor \
-	security-review security-review-external sbom shadow-start shadow-status
+	security-review security-review-external sbom release-identity shadow-start shadow-status
 
 
 bootstrap:
@@ -121,6 +121,9 @@ security-review-external:
 
 sbom:
 	$(PYTHON) scripts/sbom.py --check $(if $(SBOM_OUTPUT),--output $(SBOM_OUTPUT),)
+
+release-identity:
+	$(PYTHON) scripts/release_identity.py $(if $(RELEASE_IDENTITY_OUTPUT),--output $(RELEASE_IDENTITY_OUTPUT),)
 
 migration-check:
 	$(PYTHON) scripts/check_migrations.py
