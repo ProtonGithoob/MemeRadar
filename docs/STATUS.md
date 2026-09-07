@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1042 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1047 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1365,9 +1365,14 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 8 TDD evidence: the initial focused collection failed with the expected missing `CallerDiscoveryAnchor` import; after the minimal implementation, `tests/unit/test_alpha_caller_discovery.py` passes `3 tests`, and the combined discovery/opportunity/outcome/profile suite passes `15 tests`. Tests prove winner-only input returns `INSUFFICIENT_SAMPLES` with no selected survivors, negative controls/rugs/failures/late/contradictory callers remain represented, unresolved references do not create sources, prior calls are bounded by the caller's discovery timestamp, and future calls are held out without changing the discovered candidate set.
 - Alpha Caller Task 8 verification: Ruff and strict mypy pass (`118 source files`); `git diff --check` passes; full `make verify` exits `0` with `1042 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production scoring weight, persistence migration, external provider success, scraping dependency or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
 
+- Alpha Caller Task 9 checkpoint (2026-09-07): extended the existing `SmartMoneyConvergenceAnalyzer` with an optional nested `CallerConvergenceEvidence` projection and compatibility aliases, without adding a second convergence/scoring engine. It deduplicates exact social calls and conduct, rejects conflicting duplicate identities, filters future event-time/provenance data, joins fresh caller profiles/conduct, union-adjusts coordinated or configured caller clusters, records raw/independent counts, high-quality caller evidence, earliest/latest timestamps and dispersion, and exposes smart-wallet confirmation, narrative alignment, contradictory calls and distribution. Caller evidence remains measurement-only: unknown risk cannot become caller convergence, blocked risk/distribution is `DISAGREEMENT`, and every projection is permanently non-executable; existing EarlyScore weights and top-level execution behavior are unchanged.
+- Alpha Caller Task 9 TDD evidence: the initial focused run failed in the two new call paths with the expected unsupported `caller_calls` keyword. After the minimal extension, `tests/unit/test_smart_money_convergence.py` passes `13 tests`, covering exact duplicate collapse, linked-caller cluster adjustment, temporal evidence, blocked-risk/distribution disagreement, missing evidence as `None`, unknown-risk non-convergence and future-call exclusion. `make lint` and strict `make typecheck` pass (`118 source files`); `git diff --check` passes.
+- Alpha Caller Task 9 verification: full `make verify` exits `0` with `1047 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production scoring weight, persistence migration, provider success, scraping dependency or execution authority changed; external acceptance remains `BLOCKED_EXTERNAL` and the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 9: extend the existing smart-money/opportunity convergence
-seam with measurement-only caller convergence evidence, independent and
-cluster-adjusted caller counts, temporal dispersion, smart-wallet confirmation,
-narrative alignment and contradictory/distribution evidence.
+Alpha Caller Task 10: audit the existing security/risk provider seam for
+multi-chain `token_security` enrichment across SOLANA, BNB and ROBINHOOD;
+write supported/unsupported/timeout/partial contract tests, implement only
+missing normalized fields with explicit UNKNOWN semantics, update provider
+documentation, and classify any live provider acceptance blocker honestly.

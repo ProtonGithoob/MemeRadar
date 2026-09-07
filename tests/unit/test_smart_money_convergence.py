@@ -16,10 +16,14 @@ from memeradar_application.confluence import (
 from memeradar_application.correlation import CorrelationSnapshot, CorrelationWindowFeatures
 from memeradar_application.narrative_catalyst import NarrativeCatalystAnalyzer
 from memeradar_application.smart_money_convergence import (
+    CallerConvergenceState,
     ConvergenceSignalState,
     SmartMoneyConvergenceAnalyzer,
 )
 from memeradar_domain import (
+    CallerIdentity,
+    CallerMarketConductClassification,
+    CallIntent,
     Chain,
     Freshness,
     GlobalEvent,
@@ -27,6 +31,7 @@ from memeradar_domain import (
     QualityState,
     ReasonCode,
     RiskDisposition,
+    SocialCallObservation,
     TokenIdentity,
 )
 
@@ -231,6 +236,53 @@ def project(
     )
 
 
+def caller_call(
+    token_value: TokenIdentity,
+    author_id: str,
+    message_id: str,
+    published_at: datetime,
+    *,
+    intent: CallIntent = CallIntent.BULLISH,
+) -> SocialCallObservation:
+    return SocialCallObservation(
+        source="telegram",
+        message_id=message_id,
+        caller_identity=CallerIdentity(
+            platform="telegram",
+            author_id=author_id,
+            confidence=Decimal("0.90"),
+            quality_state=QualityState.FRESH,
+        ),
+        published_at=published_at,
+        observed_at=published_at,
+        ingested_at=published_at,
+        provenance=(provenance(message_id, published_at),),
+        asset=token_value,
+        chain=token_value.chain,
+        referenced_address=token_value.address,
+        intent=intent,
+        confidence=Decimal("0.90"),
+        quality_state=QualityState.FRESH,
+    )
+
+
+def caller_conduct(call: SocialCallObservation, *coordinated: str):
+    from memeradar_domain import CallerMarketConductEvidence
+
+    return CallerMarketConductEvidence(
+        call=call,
+        as_of=NOW,
+        expires_at=NOW + timedelta(minutes=5),
+        classifications=(CallerMarketConductClassification.COORDINATED_CALL_CLUSTER,),
+        confidence=Decimal("0.80"),
+        wallet_link_confidence=Decimal("0.80"),
+        coordinated_caller_ids=coordinated,
+        quality_state=QualityState.FRESH,
+        provenance=(provenance(f"conduct:{call.message_id}"),),
+        reason_codes=(ReasonCode("CALLER_CONDUCT_CLUSTER"),),
+    )
+
+
 def test_narrative_alone_is_visible_without_fabricating_wallet_evidence() -> None:
     value = token()
     snapshot = project(token_value=value, narrative_value=narrative())
@@ -326,6 +378,114 @@ def test_mismatched_correlation_token_is_conflicted_and_not_joined() -> None:
     assert snapshot.quality_state is QualityState.CONFLICTED
     assert snapshot.signal_state is ConvergenceSignalState.UNKNOWN
     assert "SMART_MONEY_CONVERGENCE_TOKEN_MISMATCH" in snapshot.reason_code_values
+
+
+def test_caller_convergence_deduplicates_linked_callers_and_keeps_timing_evidence() -> None:
+    value = token()
+    first = caller_call(value, "caller-a", "caller-a-1", NOW - timedelta(minutes=4))
+    linked = caller_call(value, "caller-b", "caller-b-1", NOW - timedelta(minutes=3))
+    independent = caller_call(value, "caller-c", "caller-c-1", NOW - timedelta(minutes=2))
+    snapshot = SmartMoneyConvergenceAnalyzer().analyze(
+        token=value,
+        caller_calls=(first, linked, independent, first),
+        caller_conduct=(caller_conduct(first, linked.caller_identity.canonical_id),),
+        now=NOW,
+        config_hash="convergence-fixture-v1",
+    )
+
+    assert snapshot.caller_convergence is not None
+    evidence = snapshot.caller_convergence
+    assert evidence.state is CallerConvergenceState.CALLER_ONLY
+    assert evidence.raw_caller_count == 3
+    assert evidence.independent_caller_count == 2
+    assert evidence.cluster_adjusted_caller_count == 2
+    assert evidence.temporal_dispersion_seconds == Decimal("120")
+    assert evidence.earliest_call_at == first.published_at
+    assert evidence.latest_call_at == independent.published_at
+    assert evidence.no_lookahead_verified is True
+    assert evidence.execution_eligible() is False
+
+
+def test_caller_convergence_cannot_override_blocked_risk_or_distribution() -> None:
+    value = token()
+    first = caller_call(value, "caller-a", "caller-a-1", NOW - timedelta(minutes=2))
+    conduct = caller_conduct(first)
+
+    distribution = replace(
+        conduct,
+        classifications=(
+            CallerMarketConductClassification.POST_CALL_DISTRIBUTION,
+        ),
+        post_call_net_flow=Decimal("-100"),
+    )
+    snapshot = SmartMoneyConvergenceAnalyzer().analyze(
+        token=value,
+        narrative=narrative(),
+        smart_money=smart_money(value),
+        correlation=correlation(value, risk=RiskDisposition.BLOCK),
+        caller_calls=(first,),
+        caller_conduct=(distribution,),
+        now=NOW,
+        config_hash="convergence-fixture-v1",
+    )
+
+    assert snapshot.hard_risk_blocked is True
+    assert snapshot.signal_state is ConvergenceSignalState.DISAGREEMENT
+    assert snapshot.caller_convergence is not None
+    assert snapshot.caller_convergence.state is CallerConvergenceState.DISAGREEMENT
+    assert snapshot.caller_convergence.risk_blocked is True
+    assert snapshot.execution_eligible() is False
+
+
+def test_missing_caller_evidence_is_unknown_not_zero() -> None:
+    value = token()
+    snapshot = SmartMoneyConvergenceAnalyzer().analyze(
+        token=value,
+        now=NOW,
+        config_hash="convergence-fixture-v1",
+    )
+
+    assert snapshot.caller_convergence is None
+
+
+def test_unknown_risk_cannot_turn_caller_evidence_into_convergence() -> None:
+    value = token()
+    calls = (
+        caller_call(value, "caller-a", "caller-a-1", NOW - timedelta(minutes=2)),
+        caller_call(value, "caller-b", "caller-b-1", NOW - timedelta(minutes=1)),
+    )
+    snapshot = SmartMoneyConvergenceAnalyzer().analyze(
+        token=value,
+        narrative=narrative(),
+        smart_money=smart_money(value),
+        caller_calls=calls,
+        now=NOW,
+        config_hash="convergence-fixture-v1",
+    )
+
+    assert snapshot.signal_state is ConvergenceSignalState.CONVERGENT
+    assert snapshot.caller_convergence is not None
+    assert snapshot.caller_convergence.state is CallerConvergenceState.CALLER_ONLY
+    assert snapshot.caller_convergence.risk_blocked is None
+    assert snapshot.caller_convergence.risk_quality_state is QualityState.UNKNOWN
+    assert snapshot.caller_convergence.execution_eligible() is False
+
+
+def test_future_caller_call_is_held_out_and_invalidates_caller_evidence() -> None:
+    value = token()
+    future = caller_call(value, "caller-future", "caller-future-1", NOW + timedelta(seconds=1))
+    snapshot = SmartMoneyConvergenceAnalyzer().analyze(
+        token=value,
+        caller_calls=(future,),
+        now=NOW,
+        config_hash="convergence-fixture-v1",
+    )
+
+    assert snapshot.caller_convergence is not None
+    assert snapshot.caller_convergence.raw_caller_count is None
+    assert snapshot.caller_convergence.quality_state is QualityState.INVALID
+    assert snapshot.caller_convergence.no_lookahead_verified is False
+    assert snapshot.caller_convergence.state is CallerConvergenceState.UNKNOWN
 
 
 @pytest.mark.parametrize("chain", [Chain.BNB, Chain.ROBINHOOD])

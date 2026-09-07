@@ -384,6 +384,23 @@ future evaluation. The cohort is research-only and cannot promote caller
 quality, alter production weights or authorize execution; no physical
 migration is introduced.
 
+### caller_convergence_evidence (logical projection)
+- token identity and event-time `as_of`/`expires_at`
+- raw caller IDs, independent/cluster-adjusted caller counts and high-quality count
+- earliest/latest call timestamps and temporal dispersion
+- smart-wallet confirmation, narrative alignment and contradictory-call count
+- caller-linked distribution evidence and risk disposition/quality/block state
+- confidence, quality state, no-lookahead marker, provenance, evidence references,
+  reason codes and config/version metadata
+
+`CallerConvergenceEvidence` extends the existing smart-money convergence
+projection rather than creating another scoring engine. Exact duplicate calls
+are collapsed, coordinated/explicitly clustered callers count once, and future
+or no-lookahead-unverified evidence is excluded and invalidates the projection.
+Caller evidence can remain `CALLER_ONLY` when risk is unknown; it cannot turn
+unknown or blocked risk into convergence, change EarlyScore weights, authorize
+promotion or become execution-eligible. No physical migration is introduced.
+
 ## Wallet intelligence
 
 ### wallets

@@ -141,9 +141,9 @@
 **Interfaces:**
 - Produces: measurement-only `CallerConvergenceEvidence` with independent/cluster-adjusted callers, temporal dispersion, smart-wallet confirmation, narrative alignment and contradictory/distribution evidence.
 
-- [ ] Write failing tests showing duplicated/linked callers do not inflate convergence and caller evidence cannot override critical BLOCK/UNKNOWN safety evidence.
-- [ ] Implement measurement-only fusion without changing production EarlyScore weights.
-- [ ] Run focused tests, update STATUS and commit.
+- [x] Write failing tests showing duplicated/linked callers do not inflate convergence and caller evidence cannot override critical BLOCK/UNKNOWN safety evidence.
+- [x] Implement measurement-only fusion without changing production EarlyScore weights.
+- [x] Run focused tests, update STATUS and commit.
 
 ### Task 10: Multi-chain security enrichment audit/adapter
 
