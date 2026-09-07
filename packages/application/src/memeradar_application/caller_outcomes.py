@@ -141,6 +141,26 @@ def _payload_price(observation: Observation) -> Decimal | None:
     )
 
 
+def _payload_execution_price(observation: Observation) -> Decimal | None:
+    """Read only explicit effective/fill prices; market marks are not fills."""
+
+    payload = observation.normalized_payload
+    raw = _field(payload, "execution_price", "executed_price", "effective_price", "fill_price")
+    if raw is _MISSING:
+        return None
+    semantics = _field(payload, "price_semantics", "price_role")
+    if semantics is not _MISSING and semantics is not None:
+        try:
+            if PriceSemantics(str(semantics).upper()) not in {
+                PriceSemantics.EXECUTION_EFFECTIVE,
+                PriceSemantics.EXECUTION_QUOTE,
+            }:
+                return None
+        except ValueError:
+            return None
+    return _decimal(raw, "execution_price", positive=True)
+
+
 def _market_cap(observation: Observation) -> Decimal | None:
     return _decimal(
         _field(
@@ -333,6 +353,70 @@ class HistoricalCallerOutcomeHorizon:
 
 
 @dataclass(frozen=True, slots=True)
+class HistoricalExecutionTimeline:
+    """Explicit timing and fill-evidence fields for a research outcome."""
+
+    signal_at: datetime
+    decision_at: datetime | None
+    quote_at: datetime | None
+    signal_to_decision_seconds: Decimal | None
+    decision_to_quote_seconds: Decimal | None
+    quote_age_seconds: Decimal | None
+    market_cap_at_decision: Decimal | None
+    token_age_seconds_at_decision: Decimal | None
+    call_time_execution_price: Decimal | None
+    call_time_liquidity_usd: Decimal | None
+    call_time_impact_bps: Decimal | None
+    modeled_fee_bps: Decimal | None
+    modeled_slippage_bps: Decimal | None
+    priority_cost_usd: Decimal | None
+    partial_fill_ratio: Decimal | None
+    mev_exposure: str = "UNKNOWN"
+    reason_codes: tuple[ReasonCode, ...] = ()
+
+    def __post_init__(self) -> None:
+        signal_at = ensure_utc(self.signal_at, "signal_at")
+        decision_at = (
+            None if self.decision_at is None else ensure_utc(self.decision_at, "decision_at")
+        )
+        quote_at = None if self.quote_at is None else ensure_utc(self.quote_at, "quote_at")
+        if decision_at is not None and decision_at < signal_at:
+            raise ValueError("decision_at must not precede signal_at")
+        if quote_at is not None and decision_at is not None and quote_at < decision_at:
+            raise ValueError("quote_at must not precede decision_at")
+        object.__setattr__(self, "signal_at", signal_at)
+        object.__setattr__(self, "decision_at", decision_at)
+        object.__setattr__(self, "quote_at", quote_at)
+        for field_name in (
+            "signal_to_decision_seconds",
+            "decision_to_quote_seconds",
+            "quote_age_seconds",
+            "market_cap_at_decision",
+            "token_age_seconds_at_decision",
+            "call_time_execution_price",
+            "call_time_liquidity_usd",
+            "call_time_impact_bps",
+            "modeled_fee_bps",
+            "modeled_slippage_bps",
+            "priority_cost_usd",
+            "partial_fill_ratio",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                normalized = to_decimal(value, field_name)
+                if normalized < 0:
+                    raise ValueError(f"{field_name} must not be negative")
+                if field_name == "partial_fill_ratio" and normalized > 1:
+                    raise ValueError("partial_fill_ratio must be between 0 and 1")
+                object.__setattr__(self, field_name, normalized)
+        exposure = require_text(self.mev_exposure, "mev_exposure", max_length=32).upper()
+        if exposure not in {"OBSERVED", "NOT_OBSERVED", "UNKNOWN"}:
+            raise ValueError("mev_exposure must be OBSERVED, NOT_OBSERVED or UNKNOWN")
+        object.__setattr__(self, "mev_exposure", exposure)
+        object.__setattr__(self, "reason_codes", normalize_reason_codes(self.reason_codes))
+
+
+@dataclass(frozen=True, slots=True)
 class HistoricalCallerOutcome:
     """A caller outcome whose event-time inputs are isolated from future labels."""
 
@@ -356,6 +440,7 @@ class HistoricalCallerOutcome:
     reason_codes: tuple[ReasonCode, ...]
     config_hash: str
     version: str = CALLER_OUTCOME_VERSION
+    execution_timeline: HistoricalExecutionTimeline | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.call, SocialCallObservation):
@@ -402,6 +487,10 @@ class HistoricalCallerOutcome:
         object.__setattr__(self, "reason_codes", tuple(self.reason_codes))
         object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
         object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+        if self.execution_timeline is not None and not isinstance(
+            self.execution_timeline, HistoricalExecutionTimeline
+        ):
+            raise TypeError("execution_timeline must be HistoricalExecutionTimeline or None")
 
     def horizon(self, name: str) -> HistoricalCallerOutcomeHorizon:
         normalized = require_text(name, "horizon", max_length=16)
@@ -451,6 +540,102 @@ class HistoricalCallerOutcome:
 
 def _reason(code: str) -> ReasonCode:
     return ReasonCode(code)
+
+
+def _disclosure_datetime(call: SocialCallObservation, *names: str) -> datetime | None:
+    for name in names:
+        raw = call.disclosure.get(name, _MISSING)
+        if raw is _MISSING or raw is None:
+            continue
+        if isinstance(raw, datetime):
+            try:
+                return ensure_utc(raw, name)
+            except ValueError:
+                return None
+        if isinstance(raw, str):
+            try:
+                return ensure_utc(datetime.fromisoformat(raw), name)
+            except ValueError:
+                return None
+    return None
+
+
+def _disclosure_decimal(call: SocialCallObservation, *names: str) -> Decimal | None:
+    return _decimal(
+        _field(call.disclosure, *names),
+        names[0],
+    )
+
+
+def _disclosure_mev_exposure(call: SocialCallObservation) -> str:
+    raw = _field(call.disclosure, "mev_exposure", "mev_status", "priority_mev_exposure")
+    if isinstance(raw, bool):
+        return "OBSERVED" if raw else "NOT_OBSERVED"
+    if isinstance(raw, str):
+        normalized = raw.strip().upper().replace("-", "_")
+        if normalized in {"OBSERVED", "NOT_OBSERVED", "UNKNOWN"}:
+            return normalized
+    return "UNKNOWN"
+
+
+def _execution_seconds(start: datetime | None, end: datetime | None) -> Decimal | None:
+    if start is None or end is None or end < start:
+        return None
+    return Decimal(str((end - start).total_seconds()))
+
+
+def _execution_timeline(
+    call: SocialCallObservation,
+    checked_now: datetime,
+    call_time_execution_price: Decimal | None,
+    snapshot: ReplayEventRecord | None,
+) -> HistoricalExecutionTimeline:
+    decision_at = _disclosure_datetime(call, "decision_at", "decided_at")
+    quote_at = _disclosure_datetime(call, "quote_at", "quoted_at")
+    if decision_at is not None and decision_at < call.published_at:
+        decision_at = None
+    if quote_at is not None and quote_at < (decision_at or call.published_at):
+        quote_at = None
+    if quote_at is not None and quote_at > checked_now:
+        quote_at = None
+    return HistoricalExecutionTimeline(
+        signal_at=call.published_at,
+        decision_at=decision_at,
+        quote_at=quote_at,
+        signal_to_decision_seconds=_execution_seconds(call.published_at, decision_at),
+        decision_to_quote_seconds=_execution_seconds(decision_at, quote_at),
+        quote_age_seconds=(
+            None if quote_at is None else Decimal(str((checked_now - quote_at).total_seconds()))
+        ),
+        market_cap_at_decision=_disclosure_decimal(
+            call,
+            "market_cap_at_decision",
+            "decision_market_cap_usd",
+        ),
+        token_age_seconds_at_decision=_disclosure_decimal(
+            call,
+            "token_age_seconds_at_decision",
+            "token_age_seconds",
+        ),
+        call_time_execution_price=call_time_execution_price,
+        call_time_liquidity_usd=(
+            None if snapshot is None else _liquidity(snapshot.observation)
+        ),
+        call_time_impact_bps=None if snapshot is None else _impact(snapshot.observation)[0],
+        modeled_fee_bps=_disclosure_decimal(call, "fee_bps", "modeled_fee_bps"),
+        modeled_slippage_bps=_disclosure_decimal(
+            call,
+            "slippage_bps",
+            "modeled_slippage_bps",
+        ),
+        priority_cost_usd=_disclosure_decimal(
+            call,
+            "priority_cost_usd",
+            "priority_fee_usd",
+        ),
+        partial_fill_ratio=_disclosure_decimal(call, "partial_fill_ratio", "fill_ratio"),
+        mev_exposure=_disclosure_mev_exposure(call),
+    )
 
 
 class HistoricalCallerOutcomeProjector:
@@ -534,10 +719,16 @@ class HistoricalCallerOutcomeProjector:
             _append_provenance(provenance, snapshot_record.observation.provenance)
         call_time_price = None if snapshot is None else snapshot[1]
         call_time_market_cap = None if snapshot is None else snapshot[2]
+        call_time_execution_price = (
+            None if snapshot is None else _payload_execution_price(snapshot[0].observation)
+        )
         call_time_liquidity = None if snapshot is None else _liquidity(snapshot[0].observation)
         call_time_sellable = None if snapshot is None else _sellable(snapshot[0].observation)[0]
         call_time_impact = None if snapshot is None else _impact(snapshot[0].observation)[0]
+        if call_time_execution_price is None:
+            reasons.append(_reason("EXECUTABLE_ENTRY_UNKNOWN"))
         baseline_mark = call_time_price or call_time_market_cap
+        baseline_execution = call_time_execution_price
         horizons: list[HistoricalCallerOutcomeHorizon] = []
         all_mark_returns: list[Decimal] = []
         all_executable_returns: list[Decimal] = []
@@ -586,8 +777,11 @@ class HistoricalCallerOutcomeProjector:
                 liquidity = _liquidity(observation)
                 sellable, sellable_supplied = _sellable(observation)
                 impact, impact_supplied = _impact(observation)
+                execution_price = _payload_execution_price(observation)
                 executable = (
-                    liquidity is not None
+                    baseline_execution is not None
+                    and execution_price is not None
+                    and liquidity is not None
                     and liquidity >= self.policy.minimum_liquidity_usd
                     and sellable is True
                     and (
@@ -596,8 +790,10 @@ class HistoricalCallerOutcomeProjector:
                     )
                     and sellable_supplied
                 )
-                if executable:
-                    executable_values.append((record, value))
+                if executable and baseline_execution is not None and execution_price is not None:
+                    executable_values.append(
+                        (record, (execution_price / baseline_execution) - Decimal("1"))
+                    )
             horizon_state = (
                 OutcomeHorizonState.COMPLETE
                 if checked_now >= end_at and mark_values
@@ -657,6 +853,12 @@ class HistoricalCallerOutcomeProjector:
         quality = _quality_state(states)
         if quality is not QualityState.FRESH:
             reasons.append(_reason(f"CALLER_OUTCOME_EVIDENCE_{quality.value}"))
+        execution_timeline = _execution_timeline(
+            call,
+            checked_now,
+            call_time_execution_price,
+            None if snapshot is None else snapshot[0],
+        )
         return HistoricalCallerOutcome(
             call=call,
             as_of=checked_now,
@@ -680,6 +882,7 @@ class HistoricalCallerOutcomeProjector:
             reason_codes=_unique_reasons(reasons),
             config_hash=normalized_config_hash,
             version=self.policy.version,
+            execution_timeline=execution_timeline,
         )
 
     project = evaluate
@@ -1617,6 +1820,7 @@ __all__ = [
     "CallerPerformanceProfile",
     "HistoricalCallerOutcome",
     "HistoricalCallerOutcomeHorizon",
+    "HistoricalExecutionTimeline",
     "HistoricalCallerOutcomePolicy",
     "HistoricalCallerOutcomeProjector",
 ]

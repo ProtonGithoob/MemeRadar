@@ -98,11 +98,11 @@
 
 **Produces:** Realistic call/signal outcome records with decision/quote latency, liquidity, impact, costs, executable entry/exit and MFE/MAE.
 
-- [ ] Write failing tests preventing mark/reference price from substituting for executable price when execution evidence is missing.
-- [ ] Add signal-to-decision, decision-to-quote, quote age, market-cap/token-age-at-decision, liquidity, impact, modeled fees/slippage/priority cost and partial-fill coverage semantics.
-- [ ] Add Solana priority/MEV exposure evidence where measurable without fabricating absent data.
-- [ ] Ensure 2x..100x labels use executable semantics.
-- [ ] Run replay/paper/no-lookahead suites; update STATUS and commit.
+- [x] Write failing tests preventing mark/reference price from substituting for executable price when execution evidence is missing.
+- [x] Add signal-to-decision, decision-to-quote, quote age, market-cap/token-age-at-decision, liquidity, impact, modeled fees/slippage/priority cost and partial-fill coverage semantics.
+- [x] Add Solana priority/MEV exposure evidence where measurable without fabricating absent data.
+- [x] Ensure 2x..100x labels use executable semantics.
+- [x] Run replay/paper/no-lookahead suites; update STATUS and commit.
 
 ### Task 7: Real caller leaderboard and confidence read model
 

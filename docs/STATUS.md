@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1080 Python tests (11 skipped), 54 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1093 Python tests (11 skipped), 54 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1408,13 +1408,16 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Real Alpha Production Readiness Task 5 checkpoint (2026-09-07): extended the existing `CallerDiscoveryAnchor`/`CallerDiscoveryAnalyzer` path to derive a research-only discovery cutoff from `HistoricalCallerOutcome.first_executable_move_at`, hold out calls after that event-time boundary, retain pre-move late calls, exclude deleted calls from caller selection, and preserve unresolved/deleted history as explicit UNKNOWN reason and quality state. Existing winner/negative-control anchors, historical backfill and future out-of-sample holdout remain the only discovery path; no duplicate caller/profile/scoring engine was added.
 - Task 5 TDD/verification evidence: the initial focused run failed with the expected post-move caller inclusion and absent deleted/unresolved UNKNOWN reason failures. After the minimal implementation, `tests/unit/test_alpha_caller_discovery.py` and `tests/unit/test_alpha_caller_outcomes.py` pass (`9 tests`); `make lint` passes; strict `make typecheck` passes over `121 source files`; and full `make verify` exits `0` with `1091` Python tests passed, `11` skipped, `1` warning, `54` Vitest tests passed, migration head `0008_alpha_caller_intelligence` / `25` tables, security review PASS and the existing `581`-component SBOM digest. No historical-real/provider success or production-ready classification is fabricated; compliant X/Telegram access remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`. Protected modes remain exact and all four unrelated WIP files remain untouched.
 
+- Real Alpha Production Readiness Task 6 checkpoint (2026-09-07): extended the existing `HistoricalCallerOutcomeProjector` with explicit `HistoricalExecutionTimeline` evidence and execution-price semantics. Market/reference marks remain analytical only; executable entry and later labels require explicit execution/effective/fill prices, so mark-only 2x..100x moves remain UNKNOWN for executable outcomes with `EXECUTABLE_ENTRY_UNKNOWN`. The timeline preserves signal-to-decision, decision-to-quote, evaluation quote age, optional decision market cap/token age, liquidity, impact, modeled fee/slippage/priority cost, partial-fill ratio and explicit MEV exposure; absent Solana priority/MEV evidence remains UNKNOWN. No duplicate replay/paper/execution engine, production scoring weight or protected mode changed.
+- Task 6 TDD/verification evidence: the initial mark-only and executable-price tests failed as expected because market marks were being reused as executable values. After the minimal projector change, the focused caller/outcome/discovery/performance/KOL/provider suite passes `35 tests`; `make lint`, strict `make typecheck` over `121 source files` and `git diff --check` pass. Full `make verify` exits `0` with `1093` Python tests passed, `11` skipped, `1` warning, `54` Vitest tests passed, migration head `0008_alpha_caller_intelligence` / `25` tables, security review PASS and the existing `581`-component SBOM digest. The bare-system API collection lacked FastAPI, but the repository `.venv` gate passed; no historical-real/provider/live-shadow success or production-ready classification is fabricated. Protected modes remain exact and all four unrelated WIP files remain untouched.
+
 ## Next task
 
-Real Alpha Production Readiness Task 6: implement executable event-time outcome
-reconstruction across the existing execution-quote, replay, paper-execution
-and outcome-label seams. Start with failing tests preventing mark/reference
-price substitution when executable evidence is missing; preserve latency,
-liquidity, impact, costs, partial fills and explicit UNKNOWN semantics.
+Real Alpha Production Readiness Task 7: extend the existing caller profile
+read model and frontend surface into a read-only caller leaderboard with
+sample adequacy, executable multiple rates, rug/failure rate, MFE/MAE,
+specialization, confidence and historical-real versus synthetic evidence
+coverage. Do not add a second caller scoring engine.
 No production weights or protected modes change; current social/Telegram access
 remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`.
 Protected modes remain

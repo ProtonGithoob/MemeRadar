@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import NAMESPACE_URL, uuid4, uuid5
@@ -100,17 +101,32 @@ def test_projector_labels_horizons_multiples_and_event_time_snapshot() -> None:
         record(
             "baseline",
             current_call.published_at - timedelta(seconds=1),
-            {"price_usd": "1", "liquidity_usd": "50000", "is_sellable": True},
+            {
+                "price_usd": "1",
+                "execution_price": "1",
+                "liquidity_usd": "50000",
+                "is_sellable": True,
+            },
         ),
         record(
             "two-x",
             current_call.published_at + timedelta(minutes=5),
-            {"price_usd": "2", "liquidity_usd": "50000", "is_sellable": True},
+            {
+                "price_usd": "2",
+                "execution_price": "2",
+                "liquidity_usd": "50000",
+                "is_sellable": True,
+            },
         ),
         record(
             "ten-x",
             current_call.published_at + timedelta(hours=2),
-            {"price_usd": "10", "liquidity_usd": "50000", "is_sellable": True},
+            {
+                "price_usd": "10",
+                "execution_price": "10",
+                "liquidity_usd": "50000",
+                "is_sellable": True,
+            },
         ),
     )
 
@@ -161,6 +177,92 @@ def test_thin_liquidity_mark_wick_does_not_count_as_executable_multiple() -> Non
     assert five_minute.executable_mfe is None
     assert five_minute.multiple_hits["100x"] is False
     assert outcome.executable_multiple is None
+
+
+def test_mark_multiple_without_execution_evidence_remains_unknown() -> None:
+    current_call = call()
+    records = (
+        record(
+            "baseline",
+            current_call.published_at - timedelta(seconds=1),
+            {"price_usd": "1", "liquidity_usd": "50000", "is_sellable": True},
+        ),
+        record(
+            "mark-only-winner",
+            current_call.published_at + timedelta(minutes=1),
+            {"price_usd": "100", "liquidity_usd": "50000", "is_sellable": True},
+        ),
+    )
+
+    outcome = HistoricalCallerOutcomeProjector().evaluate(
+        current_call,
+        records,
+        now=NOW,
+        config_hash="caller-outcome-test",
+    )
+
+    assert outcome.horizon("5m").market_mfe == Decimal("99")
+    assert outcome.horizon("5m").executable_mfe is None
+    assert outcome.horizon("5m").multiple_hits["100x"] is False
+    assert outcome.executable_multiple is None
+    assert "EXECUTABLE_ENTRY_UNKNOWN" in {reason.code for reason in outcome.reason_codes}
+
+
+def test_executable_labels_use_execution_price_and_keep_timeline_costs_explicit() -> None:
+    current_call = replace(
+        call(),
+        disclosure={
+            "decision_at": (call().published_at + timedelta(seconds=10)).isoformat(),
+            "quote_at": (call().published_at + timedelta(seconds=40)).isoformat(),
+            "fee_bps": "30",
+            "slippage_bps": "25",
+            "priority_cost_usd": "0.12",
+            "partial_fill_ratio": "0.5",
+        },
+    )
+    records = (
+        record(
+            "baseline",
+            current_call.published_at - timedelta(seconds=1),
+            {
+                "price_usd": "1",
+                "execution_price": "1",
+                "liquidity_usd": "50000",
+                "is_sellable": True,
+            },
+        ),
+        record(
+            "execution",
+            current_call.published_at + timedelta(minutes=1),
+            {
+                "price_usd": "100",
+                "execution_price": "2",
+                "liquidity_usd": "50000",
+                "is_sellable": True,
+            },
+        ),
+    )
+
+    outcome = HistoricalCallerOutcomeProjector().evaluate(
+        current_call,
+        records,
+        now=NOW,
+        config_hash="caller-outcome-test",
+    )
+
+    assert outcome.horizon("5m").market_mfe == Decimal("99")
+    assert outcome.horizon("5m").executable_mfe == Decimal("1")
+    assert outcome.horizon("5m").multiple_hits["2x"] is True
+    assert outcome.horizon("5m").multiple_hits["5x"] is False
+    assert outcome.execution_timeline is not None
+    assert outcome.execution_timeline.signal_to_decision_seconds == Decimal("10")
+    assert outcome.execution_timeline.decision_to_quote_seconds == Decimal("30")
+    assert outcome.execution_timeline.quote_age_seconds == Decimal("604820")
+    assert outcome.execution_timeline.modeled_fee_bps == Decimal("30")
+    assert outcome.execution_timeline.modeled_slippage_bps == Decimal("25")
+    assert outcome.execution_timeline.priority_cost_usd == Decimal("0.12")
+    assert outcome.execution_timeline.partial_fill_ratio == Decimal("0.5")
+    assert outcome.execution_timeline.mev_exposure == "UNKNOWN"
 
 
 def test_future_or_late_ingested_records_cannot_change_call_time_snapshot() -> None:
