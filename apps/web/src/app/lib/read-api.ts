@@ -186,6 +186,142 @@ export interface WalletRecord {
   evidenceRefs: string[];
 }
 
+export interface CallerProfileRecord {
+  callerId: string;
+  platform: string;
+  authorId: string;
+  asOf: string;
+  expiresAt: string;
+  status: string;
+  handle: string | null;
+  displayName: string | null;
+  sampleCount: number;
+  maturedSampleCount: number;
+  knownOutcomeCount: number;
+  evidenceCoverage: number | null;
+  earlyEntryPercentile: number | null;
+  earlyEntryQuality: number | null;
+  medianCallTimeMarketCap: number | null;
+  medianTokenAgeSeconds: number | null;
+  executableWinRates: Record<string, number | null>;
+  medianExecutableMfe: number | null;
+  medianExecutableMae: number | null;
+  rugCount: number;
+  failureCount: number;
+  rugAvoidanceRate: number | null;
+  consistencyRate: number | null;
+  recencyStability: number | null;
+  specialization: Record<string, Record<string, number>>;
+  smartWalletConfirmationRate: number | null;
+  earlyCallCount: number;
+  lateCallCount: number;
+  earlyCallRate: number | null;
+  lateCallRate: number | null;
+  editedCallRate: number | null;
+  deletedCallRate: number | null;
+  paidPromotionRate: number | null;
+  confidenceIntervals: Record<string, [number, number] | null>;
+  confidence: number;
+  uncertainty: number;
+  qualityState: TimelineQuality;
+  noLookaheadVerified: boolean;
+  provenance: ProvenanceRecord[];
+  evidenceRefs: string[];
+  reasonCodes: string[];
+  configHash: string;
+  version: string;
+}
+
+export interface SocialCallRecord {
+  id: string;
+  source: string;
+  messageId: string;
+  callerId: string;
+  platform: string;
+  authorId: string;
+  publishedAt: string;
+  observedAt: string;
+  ingestedAt: string;
+  chain: string | null;
+  assetAddress: string | null;
+  assetId: string | null;
+  referencedAddress: string | null;
+  unresolvedReferences: string[];
+  intent: string;
+  declaredEntry: string | null;
+  declaredTargets: string[];
+  disclosure: Record<string, unknown>;
+  edited: boolean | null;
+  deleted: boolean | null;
+  handle: string | null;
+  displayName: string | null;
+  confidence: number;
+  qualityState: TimelineQuality;
+  provenance: ProvenanceRecord[];
+  evidenceRefs: string[];
+}
+
+export interface CallerConvergenceRecord {
+  id: string;
+  tokenId: string;
+  chain: string;
+  assetAddress: string;
+  asOf: string;
+  expiresAt: string;
+  state: string;
+  rawCallerCount: number | null;
+  independentCallerCount: number | null;
+  clusterAdjustedCallerCount: number | null;
+  highQualityCallerCount: number | null;
+  callerIds: string[];
+  independentCallerIds: string[];
+  earliestCallAt: string | null;
+  latestCallAt: string | null;
+  temporalDispersionSeconds: number | null;
+  smartWalletConfirmation: boolean | null;
+  narrativeAlignment: boolean | null;
+  contradictoryCallCount: number | null;
+  distributionDetected: boolean | null;
+  riskDisposition: RiskDisposition | null;
+  riskQualityState: TimelineQuality;
+  riskBlocked: boolean | null;
+  confidence: number;
+  qualityState: TimelineQuality;
+  noLookaheadVerified: boolean;
+  provenance: ProvenanceRecord[];
+  evidenceRefs: string[];
+  reasonCodes: string[];
+  configHash: string;
+  version: string;
+}
+
+export interface CallerProfileFilters {
+  callerId?: string;
+  platform?: string;
+  status?: string;
+  qualityState?: TimelineQuality;
+  asOf?: string;
+}
+
+export interface SocialCallFilters {
+  callerId?: string;
+  chain?: string;
+  assetAddress?: string;
+  intent?: string;
+  qualityState?: TimelineQuality;
+  fromAt?: string;
+  toAt?: string;
+  asOf?: string;
+}
+
+export interface CallerConvergenceFilters {
+  tokenId?: string;
+  chain?: string;
+  state?: string;
+  qualityState?: TimelineQuality;
+  asOf?: string;
+}
+
 export type ProviderHealthState = "HEALTHY" | "DEGRADED" | "DOWN" | "UNKNOWN";
 
 export interface ProviderHealthRecord {
@@ -828,6 +964,349 @@ function parseProvenance(value: unknown): ProvenanceRecord | null {
   return provider && sourceId && observedAt && parserVersion
     ? { provider, sourceId, observedAt, parserVersion }
     : null;
+}
+
+function parseProvenanceList(value: unknown): ProvenanceRecord[] | null {
+  if (!Array.isArray(value) || value.length > MAX_ARRAY_LENGTH) return null;
+  const values = value.map(parseProvenance);
+  return values.every((item): item is ProvenanceRecord => item !== null) ? values : null;
+}
+
+function parseDecimalMap(
+  value: unknown,
+  minimum: number,
+  maximum: number
+): Record<string, number | null> | null {
+  if (!isRecord(value) || Object.keys(value).length > MAX_PAYLOAD_KEYS) return null;
+  const result: Record<string, number | null> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (boundedString(key, 128) === null) return null;
+    if (raw === null) {
+      result[key] = null;
+      continue;
+    }
+    const parsed = finiteNumber(raw, minimum, maximum);
+    if (parsed === null) return null;
+    result[key] = parsed;
+  }
+  return result;
+}
+
+function parseSpecialization(value: unknown): Record<string, Record<string, number>> | null {
+  if (!isRecord(value) || Object.keys(value).length > MAX_PAYLOAD_KEYS) return null;
+  const result: Record<string, Record<string, number>> = {};
+  for (const [family, rawCounts] of Object.entries(value)) {
+    if (boundedString(family, 128) === null || !isRecord(rawCounts)) return null;
+    const counts: Record<string, number> = {};
+    for (const [key, rawCount] of Object.entries(rawCounts)) {
+      const parsed = integer(rawCount, 0, 1_000_000);
+      if (boundedString(key, 128) === null || parsed === null) return null;
+      counts[key] = parsed;
+    }
+    result[family] = counts;
+  }
+  return result;
+}
+
+function parseConfidenceIntervals(value: unknown): Record<string, [number, number] | null> | null {
+  if (!isRecord(value) || Object.keys(value).length > MAX_PAYLOAD_KEYS) return null;
+  const result: Record<string, [number, number] | null> = {};
+  for (const [key, rawInterval] of Object.entries(value)) {
+    if (boundedString(key, 128) === null) return null;
+    if (rawInterval === null) {
+      result[key] = null;
+      continue;
+    }
+    if (!Array.isArray(rawInterval) || rawInterval.length !== 2) return null;
+    const lower = finiteNumber(rawInterval[0], 0, 1);
+    const upper = finiteNumber(rawInterval[1], 0, 1);
+    if (lower === null || upper === null || lower > upper) return null;
+    result[key] = [lower, upper];
+  }
+  return result;
+}
+
+function validChainAddress(chain: string | null, address: string | null): boolean {
+  if (chain === null || address === null) return true;
+  if (chain === "bnb" || chain === "robinhood") return /^0x[0-9a-fA-F]{40}$/.test(address);
+  return SOLANA_ADDRESS_PATTERN.test(address);
+}
+
+function parseCallerProfile(value: unknown): CallerProfileRecord | null {
+  if (!isRecord(value)) return null;
+  const callerId = boundedString(value.caller_id, 512);
+  const platform = boundedString(value.platform, 64);
+  const authorId = boundedString(value.author_id, 256);
+  const asOf = timestamp(value.as_of);
+  const expiresAt = timestamp(value.expires_at);
+  const status = boundedString(value.status, 32);
+  const handle = optionalBoundedString(value.handle, 128);
+  const displayName = optionalBoundedString(value.display_name, 256);
+  const sampleCount = integer(value.sample_count, 0, 1_000_000);
+  const maturedSampleCount = integer(value.matured_sample_count, 0, 1_000_000);
+  const knownOutcomeCount = integer(value.known_outcome_count, 0, 1_000_000);
+  const evidenceCoverage = optionalFiniteNumber(value.evidence_coverage, 0, 1);
+  const earlyEntryPercentile = optionalFiniteNumber(value.early_entry_percentile, 0, 1);
+  const earlyEntryQuality = optionalFiniteNumber(value.early_entry_quality, 0, 1);
+  const medianCallTimeMarketCap = optionalFiniteNumber(value.median_call_time_market_cap, 0, 1e15);
+  const medianTokenAgeSeconds = optionalFiniteNumber(value.median_token_age_seconds, 0, 1e15);
+  const executableWinRates = parseDecimalMap(value.executable_win_rates ?? {}, 0, 1);
+  const medianExecutableMfe = optionalFiniteNumber(value.median_executable_mfe, -1, 1000);
+  const medianExecutableMae = optionalFiniteNumber(value.median_executable_mae, -1, 0);
+  const rugCount = integer(value.rug_count, 0, 1_000_000);
+  const failureCount = integer(value.failure_count, 0, 1_000_000);
+  const rugAvoidanceRate = optionalFiniteNumber(value.rug_avoidance_rate, 0, 1);
+  const consistencyRate = optionalFiniteNumber(value.consistency_rate, 0, 1);
+  const recencyStability = optionalFiniteNumber(value.recency_stability, 0, 1);
+  const specialization = parseSpecialization(value.specialization ?? {});
+  const smartWalletConfirmationRate = optionalFiniteNumber(value.smart_wallet_confirmation_rate, 0, 1);
+  const earlyCallCount = integer(value.early_call_count, 0, 1_000_000);
+  const lateCallCount = integer(value.late_call_count, 0, 1_000_000);
+  const earlyCallRate = optionalFiniteNumber(value.early_call_rate, 0, 1);
+  const lateCallRate = optionalFiniteNumber(value.late_call_rate, 0, 1);
+  const editedCallRate = optionalFiniteNumber(value.edited_call_rate, 0, 1);
+  const deletedCallRate = optionalFiniteNumber(value.deleted_call_rate, 0, 1);
+  const paidPromotionRate = optionalFiniteNumber(value.paid_promotion_rate, 0, 1);
+  const confidenceIntervals = parseConfidenceIntervals(value.confidence_intervals ?? {});
+  const confidence = finiteNumber(value.confidence, 0, 1);
+  const uncertainty = finiteNumber(value.uncertainty, 0, 1);
+  const qualityState = optionalQuality(value.quality_state);
+  const noLookaheadVerified = value.no_lookahead_verified;
+  const provenance = parseProvenanceList(value.provenance ?? []);
+  const evidenceRefs = stringArray(value.evidence_refs, 256);
+  const reasonCodes = stringArray(value.reason_codes, 128);
+  const configHash = boundedString(value.config_hash, 128);
+  const version = boundedString(value.version, 64);
+  if (
+    callerId === null || platform === null || authorId === null || callerId !== `${platform}:${authorId}` ||
+    asOf === null || expiresAt === null || Date.parse(expiresAt) <= Date.parse(asOf) || status === null ||
+    handle === undefined || displayName === undefined || sampleCount === null || maturedSampleCount === null ||
+    knownOutcomeCount === null || maturedSampleCount > sampleCount || knownOutcomeCount > maturedSampleCount ||
+    evidenceCoverage === undefined || earlyEntryPercentile === undefined || earlyEntryQuality === undefined ||
+    medianCallTimeMarketCap === undefined || medianTokenAgeSeconds === undefined || executableWinRates === null ||
+    medianExecutableMfe === undefined || medianExecutableMae === undefined || rugCount === null ||
+    failureCount === null || rugAvoidanceRate === undefined || consistencyRate === undefined ||
+    recencyStability === undefined || specialization === null || smartWalletConfirmationRate === undefined ||
+    earlyCallCount === null || lateCallCount === null || earlyCallRate === undefined || lateCallRate === undefined ||
+    editedCallRate === undefined || deletedCallRate === undefined || paidPromotionRate === undefined ||
+    confidenceIntervals === null || confidence === null || uncertainty === null || qualityState === null ||
+    qualityState === undefined || typeof noLookaheadVerified !== "boolean" || provenance === null ||
+    evidenceRefs === null || reasonCodes === null || configHash === null || version === null ||
+    value.execution_eligible === true
+  ) {
+    return null;
+  }
+  return {
+    callerId,
+    platform,
+    authorId,
+    asOf,
+    expiresAt,
+    status,
+    handle,
+    displayName,
+    sampleCount,
+    maturedSampleCount,
+    knownOutcomeCount,
+    evidenceCoverage,
+    earlyEntryPercentile,
+    earlyEntryQuality,
+    medianCallTimeMarketCap,
+    medianTokenAgeSeconds,
+    executableWinRates,
+    medianExecutableMfe,
+    medianExecutableMae,
+    rugCount,
+    failureCount,
+    rugAvoidanceRate,
+    consistencyRate,
+    recencyStability,
+    specialization,
+    smartWalletConfirmationRate,
+    earlyCallCount,
+    lateCallCount,
+    earlyCallRate,
+    lateCallRate,
+    editedCallRate,
+    deletedCallRate,
+    paidPromotionRate,
+    confidenceIntervals,
+    confidence,
+    uncertainty,
+    qualityState: qualityState as TimelineQuality,
+    noLookaheadVerified,
+    provenance,
+    evidenceRefs,
+    reasonCodes,
+    configHash,
+    version
+  };
+}
+
+function parseSocialCall(value: unknown): SocialCallRecord | null {
+  if (!isRecord(value)) return null;
+  const id = boundedString(value.id, 512);
+  const source = boundedString(value.source, 128);
+  const messageId = boundedString(value.message_id, 256);
+  const callerId = boundedString(value.caller_id, 512);
+  const platform = boundedString(value.platform, 64);
+  const authorId = boundedString(value.author_id, 256);
+  const publishedAt = timestamp(value.published_at);
+  const observedAt = timestamp(value.observed_at);
+  const ingestedAt = timestamp(value.ingested_at);
+  const chain = optionalBoundedString(value.chain, 32);
+  const assetAddress = optionalBoundedString(value.asset_address, 128);
+  const assetId = optionalBoundedString(value.asset_id, 256);
+  const referencedAddress = optionalBoundedString(value.referenced_address, 128);
+  const unresolvedReferences = stringArray(value.unresolved_references ?? [], 512);
+  const intent = boundedString(value.intent, 32);
+  const declaredEntry = optionalBoundedString(value.declared_entry, 256);
+  const declaredTargets = stringArray(value.declared_targets ?? [], 256);
+  const disclosure = safePayload(value.disclosure ?? {});
+  const edited = value.edited === null || value.edited === undefined ? null : value.edited;
+  const deleted = value.deleted === null || value.deleted === undefined ? null : value.deleted;
+  const handle = optionalBoundedString(value.handle, 128);
+  const displayName = optionalBoundedString(value.display_name, 256);
+  const confidence = finiteNumber(value.confidence, 0, 1);
+  const qualityState = optionalQuality(value.quality_state);
+  const provenance = parseProvenanceList(value.provenance ?? []);
+  const evidenceRefs = stringArray(value.evidence_refs, 256);
+  if (
+    id === null || source === null || messageId === null || callerId === null || platform === null ||
+    authorId === null || callerId !== `${platform}:${authorId}` || publishedAt === null || observedAt === null ||
+    ingestedAt === null || Date.parse(publishedAt) > Date.parse(observedAt) ||
+    Date.parse(observedAt) > Date.parse(ingestedAt) || chain === undefined || assetAddress === undefined ||
+    assetId === undefined || referencedAddress === undefined || !validChainAddress(chain, assetAddress) ||
+    (chain !== null && assetAddress !== null && assetId !== `${chain}:${assetAddress}`) ||
+    unresolvedReferences === null || intent === null || declaredEntry === undefined || declaredTargets === null ||
+    disclosure === null || typeof edited !== "boolean" && edited !== null ||
+    typeof deleted !== "boolean" && deleted !== null || handle === undefined || displayName === undefined ||
+    confidence === null || qualityState === null || qualityState === undefined || provenance === null ||
+    evidenceRefs === null || value.execution_eligible === true
+  ) {
+    return null;
+  }
+  return {
+    id,
+    source,
+    messageId,
+    callerId,
+    platform,
+    authorId,
+    publishedAt,
+    observedAt,
+    ingestedAt,
+    chain,
+    assetAddress,
+    assetId,
+    referencedAddress,
+    unresolvedReferences,
+    intent,
+    declaredEntry,
+    declaredTargets,
+    disclosure,
+    edited,
+    deleted,
+    handle,
+    displayName,
+    confidence,
+    qualityState: qualityState as TimelineQuality,
+    provenance,
+    evidenceRefs
+  };
+}
+
+function parseCallerConvergence(value: unknown): CallerConvergenceRecord | null {
+  if (!isRecord(value)) return null;
+  const id = boundedString(value.id, 512);
+  const tokenId = boundedString(value.token_id, 256);
+  const chain = boundedString(value.chain, 32);
+  const assetAddress = boundedString(value.asset_address, 128);
+  const asOf = timestamp(value.as_of);
+  const expiresAt = timestamp(value.expires_at);
+  const state = boundedString(value.state, 32);
+  const rawCallerCount = optionalInteger(value.raw_caller_count, 0, 1_000_000);
+  const independentCallerCount = optionalInteger(value.independent_caller_count, 0, 1_000_000);
+  const clusterAdjustedCallerCount = optionalInteger(value.cluster_adjusted_caller_count, 0, 1_000_000);
+  const highQualityCallerCount = optionalInteger(value.high_quality_caller_count, 0, 1_000_000);
+  const callerIds = stringArray(value.caller_ids ?? [], 512);
+  const independentCallerIds = stringArray(value.independent_caller_ids ?? [], 512);
+  const earliestCallAt = optionalTimestamp(value.earliest_call_at);
+  const latestCallAt = optionalTimestamp(value.latest_call_at);
+  const temporalDispersionSeconds = optionalFiniteNumber(value.temporal_dispersion_seconds, 0, 1e12);
+  const booleans = [
+    value.smart_wallet_confirmation,
+    value.narrative_alignment,
+    value.distribution_detected,
+    value.risk_blocked
+  ];
+  const smartWalletConfirmation = booleans[0] === null || booleans[0] === undefined ? null : booleans[0];
+  const narrativeAlignment = booleans[1] === null || booleans[1] === undefined ? null : booleans[1];
+  const distributionDetected = booleans[2] === null || booleans[2] === undefined ? null : booleans[2];
+  const riskBlocked = booleans[3] === null || booleans[3] === undefined ? null : booleans[3];
+  const contradictoryCallCount = optionalInteger(value.contradictory_call_count, 0, 1_000_000);
+  const riskDisposition = value.risk_disposition === null || value.risk_disposition === undefined
+    ? null
+    : boundedString(value.risk_disposition, 16);
+  const riskQualityState = optionalQuality(value.risk_quality_state);
+  const confidence = finiteNumber(value.confidence, 0, 1);
+  const qualityState = optionalQuality(value.quality_state);
+  const noLookaheadVerified = value.no_lookahead_verified;
+  const provenance = parseProvenanceList(value.provenance ?? []);
+  const evidenceRefs = stringArray(value.evidence_refs, 256);
+  const reasonCodes = stringArray(value.reason_codes, 128);
+  const configHash = boundedString(value.config_hash, 128);
+  const version = boundedString(value.version, 64);
+  if (
+    id === null || tokenId === null || chain === null || assetAddress === null || tokenId !== `${chain}:${assetAddress}` ||
+    !validChainAddress(chain, assetAddress) || asOf === null || expiresAt === null ||
+    Date.parse(expiresAt) <= Date.parse(asOf) || state === null || rawCallerCount === undefined ||
+    independentCallerCount === undefined || clusterAdjustedCallerCount === undefined || highQualityCallerCount === undefined ||
+    callerIds === null || independentCallerIds === null || !independentCallerIds.every((item) => callerIds.includes(item)) ||
+    earliestCallAt === undefined || latestCallAt === undefined ||
+    (earliestCallAt !== null && latestCallAt !== null && Date.parse(latestCallAt) < Date.parse(earliestCallAt)) ||
+    temporalDispersionSeconds === undefined || booleans.some((item) => item !== null && item !== undefined && typeof item !== "boolean") ||
+    contradictoryCallCount === undefined || riskDisposition === undefined ||
+    (riskDisposition !== null && !RISK_DISPOSITIONS.has(riskDisposition as RiskDisposition)) ||
+    riskQualityState === null || riskQualityState === undefined || confidence === null || qualityState === null ||
+    qualityState === undefined || typeof noLookaheadVerified !== "boolean" || provenance === null ||
+    evidenceRefs === null || reasonCodes === null || configHash === null || version === null || value.execution_eligible === true
+  ) {
+    return null;
+  }
+  return {
+    id,
+    tokenId,
+    chain,
+    assetAddress,
+    asOf,
+    expiresAt,
+    state,
+    rawCallerCount,
+    independentCallerCount,
+    clusterAdjustedCallerCount,
+    highQualityCallerCount,
+    callerIds,
+    independentCallerIds,
+    earliestCallAt,
+    latestCallAt,
+    temporalDispersionSeconds,
+    smartWalletConfirmation: smartWalletConfirmation as boolean | null,
+    narrativeAlignment: narrativeAlignment as boolean | null,
+    contradictoryCallCount,
+    distributionDetected: distributionDetected as boolean | null,
+    riskDisposition: riskDisposition as RiskDisposition | null,
+    riskQualityState: riskQualityState as TimelineQuality,
+    riskBlocked: riskBlocked as boolean | null,
+    confidence,
+    qualityState: qualityState as TimelineQuality,
+    noLookaheadVerified,
+    provenance,
+    evidenceRefs,
+    reasonCodes,
+    configHash,
+    version
+  };
 }
 
 function parseTimeline(value: unknown): TimelineRecord | null {
@@ -1658,6 +2137,64 @@ export async function fetchWallet(address: string): Promise<ReadResult<WalletRec
 function parseWalletNullable(value: unknown): WalletRecord | null {
   if (value === null) return null;
   return parseWallet(value);
+}
+
+function setOptionalTimestamp(query: URLSearchParams, name: string, value: string | undefined): void {
+  if (value !== undefined && timestamp(value) !== null) query.set(name, value);
+}
+
+export async function fetchCallerProfiles(
+  filters: CallerProfileFilters = {}
+): Promise<ReadResult<ReadPage<CallerProfileRecord>>> {
+  const query = singleQuery();
+  setBoundedText(query, "caller_id", filters.callerId);
+  setBoundedText(query, "platform", filters.platform);
+  setBoundedText(query, "status", filters.status);
+  if (filters.qualityState && QUALITY_STATES.has(filters.qualityState)) {
+    query.set("quality_state", filters.qualityState);
+  }
+  setOptionalTimestamp(query, "as_of", filters.asOf);
+  const url = endpoint("/v1/caller-profiles", query);
+  return url === null
+    ? configuredFailure()
+    : request(url, (value) => parsePage(value, parseCallerProfile));
+}
+
+export async function fetchSocialCalls(
+  filters: SocialCallFilters = {}
+): Promise<ReadResult<ReadPage<SocialCallRecord>>> {
+  const query = singleQuery();
+  setBoundedText(query, "caller_id", filters.callerId);
+  setBoundedText(query, "chain", filters.chain);
+  setBoundedText(query, "asset_address", filters.assetAddress);
+  setBoundedText(query, "intent", filters.intent);
+  if (filters.qualityState && QUALITY_STATES.has(filters.qualityState)) {
+    query.set("quality_state", filters.qualityState);
+  }
+  setOptionalTimestamp(query, "from_at", filters.fromAt);
+  setOptionalTimestamp(query, "to_at", filters.toAt);
+  setOptionalTimestamp(query, "as_of", filters.asOf);
+  const url = endpoint("/v1/social-calls", query);
+  return url === null
+    ? configuredFailure()
+    : request(url, (value) => parsePage(value, parseSocialCall));
+}
+
+export async function fetchCallerConvergence(
+  filters: CallerConvergenceFilters = {}
+): Promise<ReadResult<ReadPage<CallerConvergenceRecord>>> {
+  const query = singleQuery();
+  setBoundedText(query, "token_id", filters.tokenId);
+  setBoundedText(query, "chain", filters.chain);
+  setBoundedText(query, "state", filters.state);
+  if (filters.qualityState && QUALITY_STATES.has(filters.qualityState)) {
+    query.set("quality_state", filters.qualityState);
+  }
+  setOptionalTimestamp(query, "as_of", filters.asOf);
+  const url = endpoint("/v1/caller-convergence", query);
+  return url === null
+    ? configuredFailure()
+    : request(url, (value) => parsePage(value, parseCallerConvergence));
 }
 
 export async function fetchProviderHealth(

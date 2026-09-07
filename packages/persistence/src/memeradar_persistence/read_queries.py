@@ -16,6 +16,10 @@ from memeradar_application.exit_engine import ExitEvaluation
 from memeradar_application.read_api import (
     AuditEventView,
     AuditQuery,
+    CallerConvergenceQuery,
+    CallerConvergenceView,
+    CallerProfileQuery,
+    CallerProfileView,
     CandidateQuery,
     CandidateView,
     ChainOpportunityQuery,
@@ -36,6 +40,8 @@ from memeradar_application.read_api import (
     ProviderHealthView,
     ReadQueryPort,
     ShortestPathQuery,
+    SocialCallQuery,
+    SocialCallView,
     TimelineEntryView,
     TimelineQuery,
     TokenGraphQuery,
@@ -45,6 +51,7 @@ from memeradar_application.read_api import (
     WalletQuery,
     WalletView,
     build_position_view,
+    social_call_view,
 )
 from memeradar_domain import (
     CandidateState,
@@ -52,12 +59,14 @@ from memeradar_domain import (
     PositionMode,
     PositionState,
     QualityState,
+    normalize_chain,
 )
 
 from .exit import evaluation_from_row
 from .models import (
     AlertRow,
     AuditEventRow,
+    CallerIdentityRow,
     CandidateRow,
     ConfigVersionRow,
     DomainEventRow,
@@ -67,9 +76,11 @@ from .models import (
     PositionRow,
     RiskAssessmentRow,
     ScoreSnapshotRow,
+    SocialCallObservationRow,
     StateTransitionRow,
     TokenRow,
 )
+from .repositories import caller_identity_from_row, social_call_observation_from_row
 from .serialization import reason_codes_from_json
 
 MAX_STORAGE_ROWS = 5_000
@@ -420,6 +431,9 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         early_radar: Sequence[EarlyRadarView] = (),
         chain_opportunities: Sequence[ChainOpportunitySnapshot] = (),
         wallets: Sequence[WalletView] = (),
+        caller_profiles: Sequence[CallerProfileView] = (),
+        social_calls: Sequence[SocialCallView] = (),
+        caller_convergences: Sequence[CallerConvergenceView] = (),
         provider_health: Sequence[ProviderHealthView] = (),
         audit_events: Sequence[AuditEventView] = (),
         config_versions: Sequence[ConfigVersionView] = (),
@@ -434,6 +448,9 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             early_radar=early_radar,
             chain_opportunities=chain_opportunities,
             wallets=wallets,
+            caller_profiles=caller_profiles,
+            social_calls=social_calls,
+            caller_convergences=caller_convergences,
             provider_health=provider_health,
             audit_events=audit_events,
             config_versions=config_versions,
@@ -738,6 +755,74 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
 
     async def get_wallet(self, address: str) -> WalletView | None:
         return await self._catalog.get_wallet(address)
+
+    async def list_caller_profiles(self, query: CallerProfileQuery) -> Page[CallerProfileView]:
+        return await self._catalog.list_caller_profiles(query)
+
+    async def list_caller_convergence(
+        self, query: CallerConvergenceQuery
+    ) -> Page[CallerConvergenceView]:
+        return await self._catalog.list_caller_convergence(query)
+
+    async def list_social_calls(self, query: SocialCallQuery) -> Page[SocialCallView]:
+        if not isinstance(query, SocialCallQuery):
+            raise TypeError("query must be a SocialCallQuery")
+        statement = (
+            select(SocialCallObservationRow)
+            .order_by(
+                SocialCallObservationRow.published_at.desc(), SocialCallObservationRow.id.desc()
+            )
+            .limit(MAX_STORAGE_ROWS)
+        )
+        if query.chain is not None:
+            statement = statement.where(
+                SocialCallObservationRow.chain == normalize_chain(query.chain).value
+            )
+        if query.asset_address is not None:
+            statement = statement.where(
+                SocialCallObservationRow.asset_address == query.asset_address
+            )
+        if query.caller_id is not None:
+            platform, separator, author_id = query.caller_id.partition(":")
+            if not separator:
+                return Page(items=(), limit=query.limit, has_more=False)
+            statement = statement.join(
+                CallerIdentityRow,
+                CallerIdentityRow.id == SocialCallObservationRow.caller_identity_id,
+            ).where(
+                CallerIdentityRow.platform == platform,
+                CallerIdentityRow.author_id == author_id,
+            )
+        if query.from_at is not None:
+            statement = statement.where(SocialCallObservationRow.published_at >= query.from_at)
+        if query.to_at is not None:
+            statement = statement.where(SocialCallObservationRow.published_at < query.to_at)
+        if query.as_of is not None:
+            statement = statement.where(
+                SocialCallObservationRow.published_at <= query.as_of,
+                SocialCallObservationRow.observed_at <= query.as_of,
+                SocialCallObservationRow.ingested_at <= query.as_of,
+            )
+        async with self._session_factory() as session:
+            rows = (await session.scalars(statement)).all()
+            values: list[SocialCallView] = []
+            for row in rows:
+                caller_row = await session.get(CallerIdentityRow, row.caller_identity_id)
+                if caller_row is None:
+                    continue
+                try:
+                    observation = social_call_observation_from_row(
+                        row,
+                        caller_identity_from_row(caller_row),
+                    )
+                    values.append(social_call_view(observation))
+                except (TypeError, ValueError):
+                    # Malformed evidence stays absent/UNKNOWN; it cannot become a
+                    # fabricated caller signal in the read surface.
+                    continue
+        if not rows:
+            values = list(self._catalog.social_calls)
+        return await InMemoryReadQueryService(social_calls=values).list_social_calls(query)
 
     async def get_creator_reputation(self, address: str) -> CreatorReputationView | None:
         return await InMemoryReadQueryService().get_creator_reputation(address)

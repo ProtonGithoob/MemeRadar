@@ -384,6 +384,27 @@ Focused command:
 ./.venv/bin/pytest tests/unit/test_convex_exit.py tests/contract/test_extension_e9_4_convex_exit.py tests/unit/test_exit_engine.py -q
 ```
 
+The Alpha Caller Task 14 read-model extension uses failing-first API contracts
+for bounded pagination/filtering, chain-qualified BNB/ROBINHOOD identities,
+provenance, UNKNOWN/freshness states, `as_of` no-lookahead filtering and the
+permanent absence of execution controls. The web contracts validate the same
+payload boundary and render caller/profile/call/convergence evidence without
+order, copy, follow or signing controls.
+
+Focused commands:
+
+```text
+./.venv/bin/pytest tests/contract/test_alpha_caller_read_api.py tests/contract/test_api_schema.py tests/contract/test_phase7_sprint7_2.py -q
+cd apps/web && npm test -- --run src/app/lib/caller-read-api.test.ts src/app/components/callers.test.tsx
+```
+
+The SQL adapter rehydrates social calls from the existing normalized social
+observation table; profile and convergence projections remain injectable
+logical catalogs until their physical persistence slices are scheduled. The
+Postgres integration command is opt-in and is skipped when no test database is
+available. External provider, Telegram and live-shadow acceptance remains
+`BLOCKED_EXTERNAL` and cannot change the protected operating modes.
+
 ## Phase 9.3 position UI / Telegram
 
 The keyless Sprint 9.3 suite covers bounded position views, fresh/stale/unknown

@@ -95,6 +95,16 @@ transaction. Missing storage returns a safe `503` and empty non-persisted
 catalogs remain empty; `UNKNOWN`, `STALE`, `CONFLICTED` and `INVALID` evidence
 are preserved rather than upgraded to safe.
 
+Alpha Caller Task 14 reuses this boundary for caller profiles, normalized
+social calls and caller/smart-money convergence. The API and web gateway
+validate chain-qualified identities, timestamps, provenance, bounded
+pagination, explicit UNKNOWN states and `as_of` no-lookahead semantics; the
+profile/convergence catalogs are advisory logical projections and social-call
+rows are read-only rehydrations of existing normalized storage. The browser
+receives only allow-listed evidence through the server gateway, and the
+`/callers` surface exposes no order, copy, follow, signing or execution
+mutation path. Every response remains permanently non-authorizing.
+
 Core Sprint 6.1 feature windows are also analysis-only derived records. Their
 stable IDs and persisted JSON values are replay identities, not authorization
 tokens. The aggregator uses the correlation event-time boundary, invalidates

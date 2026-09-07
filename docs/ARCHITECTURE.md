@@ -395,6 +395,18 @@ not untrusted text or raw provider bodies. Wallet/provider/control/audit
 records use the same strict boundary and allow-listed display projections; no
 browser fetch or control mutation is introduced.
 
+Alpha Caller Task 14 extends the same read port with GET-only
+`/v1/caller-profiles`, `/v1/social-calls` and `/v1/caller-convergence` routes.
+Profiles and convergence remain injectable logical projections until their
+physical persistence slices exist; social calls rehydrate the existing
+normalized social-observation rows through the existing caller/repository
+mapping path. All three projections preserve chain-qualified SOLANA, BNB and
+ROBINHOOD identities, bounded cursors, provenance, explicit UNKNOWN/freshness
+states and `as_of` no-lookahead filtering, and permanently report
+`execution_eligible=false`. The `/callers` page uses the existing server-side
+gateway and renders evidence only; it has no order, copy, follow, signing or
+mutation control.
+
 ## Authenticated control plane
 
 Sprint 7.3 adds an application-facing control port with explicit viewer,

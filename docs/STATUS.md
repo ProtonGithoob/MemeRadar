@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1074 Python tests (11 skipped), 50 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1077 Python tests (11 skipped), 54 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1385,8 +1385,18 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Alpha Caller Task 13 TDD evidence: the new replay test first failed during collection with the expected missing `ConvexExitReplayReport` export. After implementation, the focused convex/exit-engine regression suite passes `37 tests`; it proves candidate dimension presence, VALIDATION selection, TEST mutation non-selection, post-boundary event exclusion and protection of call-time fields. The CLI now runs the same split/replay path and emits separate TRAIN/VALIDATION/TEST policy evaluations; the keyless fallback reports `EVALUATED`, three candidates and `balanced-convex-v1` selected from VALIDATION.
 - Alpha Caller Task 13 verification: `make lint`, strict `make typecheck` (`119 source files`) and `git diff --check` pass. `make verify` exits `0` with `1074 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `17 files / 50 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). No production scoring weight, provider, persistence migration, signer, execution authority or protected mode changed; external acceptance remains `BLOCKED_EXTERNAL`, and the four pre-existing untracked WIP files remain untouched.
 
+- Alpha Caller Task 14 checkpoint (2026-09-07): extended the existing `ReadQueryPort`/FastAPI/read-model path with bounded GET-only caller profile, normalized social-call and caller-convergence projections. Profiles and convergence use the existing injectable logical catalogs; SQL social calls rehydrate the existing normalized social-observation table through existing repository mappers, with no duplicate storage or engine. Chain-qualified SOLANA, BNB and read-only ROBINHOOD identities, provenance, freshness, UNKNOWN, explicit `as_of` no-lookahead filtering and permanently false `execution_eligible` are preserved. The existing web gateway now strictly parses these projections and the minimal `/callers` page renders evidence only; no order, copy, follow, signing or mutation controls were added.
+- Alpha Caller Task 14 TDD evidence: the initial API contract run failed on the absent routes/schema fields (`3` failures, `2` existing checks passing); the initial web gateway/component tests failed because the new fetchers and component were absent. After the minimal implementation, the API/schema/route contracts pass (`6 tests`, one expected Starlette deprecation warning), the final profile no-lookahead contract passes (`3 tests` with the same warning), the focused web gateway/component suite passes (`4 tests`), and the opt-in SQL read integration is skipped without a configured database. The route-surface regression allowlist was updated to include the three intentional GET-only paths.
+- Alpha Caller Task 14 verification: `make verify` exits `0` with `1077 passed, 11 skipped, 1 warning`, `80%` branch-aware coverage, frontend `19 files / 54 tests`, migration head `0008_alpha_caller_intelligence` with `25` tables, security review `PASS` with exact protected modes, and SBOM `PASS` with `581` components (`sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`). Ruff, strict mypy (`119 source files`), web lint/typecheck, Compose config, secret scan, migration check and `git diff --check` pass. No production scoring weight, provider success, persistence migration, signer, execution authority or protected mode changed; live provider/Telegram/shadow acceptance and external security scans remain honestly classified as `BLOCKED_EXTERNAL`/`NOT_RUN`, and the four pre-existing untracked WIP files remain untouched.
+
 ## Next task
 
-Alpha Caller Task 14: extend the existing read-only API/read model with
-caller profile, social-call and convergence projections, then assess whether a
-minimal UI evidence surface has a natural existing frontend seam.
+Alpha Caller Task 15: extend the existing replay/reporting seam with caller-only,
+smart-money-only, opportunity-only, caller+smart-money, caller+opportunity and
+full-fusion ablations against the baseline. Add deterministic engineering
+fixtures, mutation tests for future-label and winner-only survivorship leakage,
+TRAIN/VALIDATION/TEST sample-adequacy and false-positive-cost reporting, then
+run the existing strategy-promotion gate. Historical-real/live-shadow inputs
+remain unavailable until genuinely observed; if evidence is insufficient,
+report `INSUFFICIENT_SAMPLES` and preserve production weights and protected
+modes.

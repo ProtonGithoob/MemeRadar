@@ -204,10 +204,10 @@
 **Interfaces:**
 - Produces: read-only caller profile/call/convergence projections with provenance and explicit research state.
 
-- [ ] Write failing API contract tests for pagination/filtering, chain-qualified identity, UNKNOWN/provenance and absence of execution controls.
-- [ ] Implement read models/routes following existing patterns.
-- [ ] Add minimal UI evidence views only if current frontend architecture has a natural surface; no live-order controls.
-- [ ] Run backend/frontend focused gates, update STATUS and commit.
+- [x] Write failing API contract tests for pagination/filtering, chain-qualified identity, UNKNOWN/provenance and absence of execution controls.
+- [x] Implement read models/routes following existing patterns.
+- [x] Add minimal UI evidence views only if current frontend architecture has a natural surface; no live-order controls.
+- [x] Run backend/frontend focused gates, update STATUS and commit.
 
 ### Task 15: Replay, ablation and final promotion acceptance
 
