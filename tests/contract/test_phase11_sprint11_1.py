@@ -88,6 +88,6 @@ def test_reliability_runbook_documents_safe_restore_and_current_posture() -> Non
 
     assert "pg_dump --format=custom" in runbook
     assert "isolated" in runbook.lower()
-    assert "0006_paper_execution" in runbook
+    assert "0008_alpha_caller_intelligence" in runbook
     assert "no physical table partitions" in runbook
     assert "Healthy telemetry is neutral" in runbook

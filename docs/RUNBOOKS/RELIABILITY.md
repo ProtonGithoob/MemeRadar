@@ -70,10 +70,18 @@ reconnect, verify that cursors/gaps, normalized observations and pending
 outbox rows are still present and that replay/dedupe does not create a second
 business event.
 
+Migration recovery is forward-first: stop the affected writer, preserve a
+backup, inspect the applied Alembic revision and deploy a reviewed corrective
+migration. Do not downgrade a shared production database as an ad-hoc repair;
+an Alembic downgrade is reserved for the disposable restore target after the
+backup and downgrade path have been verified. Application startup must not
+silently run an irreversible migration.
+
 ## Retention, partition and index review
 
 The current schema uses append-oriented tables and event-time indexes. The
-current migration head is `0006_paper_execution`; the 11.1 review found no physical table partitions and no automatic destructive retention job. Important
+current migration head is `0008_alpha_caller_intelligence`; the review found
+no physical table partitions and no automatic destructive retention job. Important
 indexes include observation kind/time and chain/slot, stream cursor progress,
 stream gap status/range, verification time, domain-event aggregate/time and
 outbox availability/status/lease expiry.
@@ -110,6 +118,24 @@ Record backup timestamp, source schema head, restore target, row-count/checksum
 verification and test results in the change or incident record. Do not print
 the URLs, passwords or provider credentials. A restore drill that cannot
 connect is `BLOCKED_EXTERNAL`, not a fabricated PASS.
+
+## Production connection boundary
+
+`create_database_engine` applies bounded PostgreSQL defaults unless a caller
+explicitly supplies a pool class: pool size `5`, max overflow `5`, pool
+timeout `30s`, pool recycle `1800s`, asyncpg command timeout `30s`, server
+statement timeout `30s` and idle-in-transaction timeout `60s`. Research jobs
+must use a separate process/connection budget and must not share a long-lived
+transaction with live ingestion or API work.
+
+The 2026-09-07 disposable Postgres drill applied migration head
+`0008_alpha_caller_intelligence`, dumped the source database in custom format,
+restored it into an isolated database, and confirmed the same head and `26`
+public tables including `alembic_version`. The restored database ran the
+integration suite with `11 passed`. Index checks found the caller/social,
+observation and cross-chain identity indexes; bounded BNB social-call and
+market-observation queries used backward index scans in `EXPLAIN`. This is
+local disposable evidence, not a managed-production backup SLA.
 
 ## Protected-mode closeout
 

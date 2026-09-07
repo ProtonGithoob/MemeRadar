@@ -1,6 +1,6 @@
 # MemeRadar Production Readiness
 
-**Current checkpoint:** Real Alpha Production Readiness Task 9 complete; the repository remains synchronized on `main` with protected modes unchanged.
+**Current checkpoint:** Real Alpha Production Readiness Task 10 complete; the repository remains synchronized on `main` with protected modes unchanged.
 
 **Current classification:** `NOT_PRODUCTION_READY` for real-alpha or live-money claims. Engineering verification is strong, but checked-in alpha evidence remains `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES` and real X/Telegram/provider/live-shadow evidence is still externally incomplete.
 
@@ -33,7 +33,7 @@ AUTO_EXECUTION=false
 | PR-2 Provider/evidence | Required real chain/market/social/Telegram capabilities with freshness/provenance and stable doctors | `BLOCKED_EXTERNAL/PARTIAL` | `make free-provider-doctor` reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors report `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`. Configure compliant real access and prove bounded reads. |
 | PR-3 Historical-real research | Leakage-safe real positive/negative dataset and real ablation | `INSUFFICIENT_SAMPLES` | `fixtures/research/opportunity_research_report.json` remains `SYNTHETIC_REDACTED`; the new `historical_real_dataset_validation.json` reports zero matured calls/outcomes and no historical-real evidence. Collect real calls/outcomes and rerun the canonical gate. |
 | PR-4 Live-shadow | Sustained real observation, replayability, latency/freshness and matured paper outcomes | `INSUFFICIENT_SAMPLES` | Task 8 now provides restart-safe run identity, idempotent normalized-event fingerprints, unresolved-gap blocking, provider snapshots, closure and `14 days + 200 matured actionable signals` classification. No real shadow window or matured live evidence exists yet. |
-| PR-5 Operations | Backups/restore, monitoring/alerts, soak/failure tests, deployment/rollback runbooks | `PARTIAL/NOT_VERIFIED` | Task 9 adds keyless bounded metrics and fail-closed alerts for ingestion stop, stale market evidence, provider loss, stream gaps, queue growth, DB pressure, migration mismatch and Telegram delivery failure. `reliability-doctor` still reports `backup_restore=DOCUMENTED_ONLY`; measured soak/failure acceptance is not complete. |
+| PR-5 Operations | Backups/restore, monitoring/alerts, soak/failure tests, deployment/rollback runbooks | `PARTIAL/NOT_VERIFIED` | Task 10 proves a disposable migration/apply/dump/restore drill, 11 restored-database integration tests, index/query-plan use and explicit pool/timeouts. Managed backup scheduling, real deployment restore objectives and soak/failure acceptance remain unverified. |
 | PR-6 PROD_READ_ONLY | PR-1 + PR-2 + PR-5 PASS | `NOT_ACCEPTED` | Complete its three prerequisite gates; PR-3/PR-4 may remain insufficient while collecting evidence. |
 | PR-7 PROD_PAPER_AUTO | PR-1..PR-5 PASS plus real-environment paper-auto fail-closed acceptance | `NOT_ACCEPTED` | Complete all evidence and operational gates in a real deployment. |
 | PR-8 LIVE_MONEY_CANDIDATE | Separate future operator-approved design plus all prior evidence | `OUT_OF_SCOPE` | Never auto-enable from this roadmap. |
@@ -328,6 +328,37 @@ Evidence for this slice:
   `BLOCKED_EXTERNAL`.
 - External provider, Telegram, database, Redis and soak measurements remain
   unavailable; PR-5 remains `PARTIAL/NOT_VERIFIED`.
+
+## Task 10 evidence snapshot — 2026-09-07
+
+The existing persistence engine now applies explicit bounded PostgreSQL
+defaults: pool size `5`, max overflow `5`, pool timeout `30s`, pool recycle
+`1800s`, asyncpg command timeout `30s`, server statement timeout `30s` and
+idle-in-transaction timeout `60s`. Caller/social/observation and replay
+indexes remain in the existing schema; research work is documented as a
+separate process/connection budget from live ingestion/API transactions.
+
+Evidence for this slice:
+
+- The new engine contract first failed on absent pool/timeout kwargs; after
+  implementation it passes, and the focused database/persistence/runbook
+  suite passes `12 tests`.
+- A disposable `postgres:16-alpine` instance applied migration head
+  `0008_alpha_caller_intelligence`, was dumped in custom format and restored
+  to an isolated database. The restore has the same head and `26` public
+  tables including `alembic_version`; the restored integration suite passes
+  `11 tests`.
+- The restored query checks found the required caller/social,
+  cross-chain-identity and observation indexes, and `EXPLAIN` used backward
+  index scans for bounded BNB social-call and market-observation queries.
+- The final `make verify` exits `0` with `1102` Python tests passed, `11`
+  skipped, `1` warning and `55` Vitest tests passed; Compose, secret scan,
+  migrations, security review and SBOM pass. External scans remain `NOT_RUN`/
+  `BLOCKED_EXTERNAL`.
+- Migration recovery is documented as forward-first; managed backup schedule,
+  off-host retention/encryption, production RPO/RTO and soak/failure evidence
+  remain deployment-specific and unverified. No secrets or credentials were
+  recorded.
 
 ## Minimum evidence targets
 

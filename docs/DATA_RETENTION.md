@@ -38,6 +38,23 @@ backup, restore test, audit record and rollback plan before deployment. A
 controlled database operator must scope and review any deletion; application
 workers must not delete broad history as a side effect of normal processing.
 
+## Backup policy boundary
+
+For a deployment that enables production read-only or paper-auto operation,
+the deployment operator must schedule an access-controlled PostgreSQL custom
+format dump at least daily, retain backups according to the approved
+deployment/privacy schedule, and exercise an isolated restore before release
+and after material schema changes. WAL/point-in-time recovery is deployment-
+specific and is required when the target recovery point cannot be met by the
+daily dump alone. MemeRadar does not silently create a backup scheduler or
+persist backup credentials; an environment with no configured scheduler is
+`NOT_CONFIGURED`, not backup acceptance.
+
+The repository runbook records the non-destructive `pg_dump`/`pg_restore`
+procedure and the 2026-09-07 disposable restore evidence. Managed backup
+retention, off-host encryption, restore objective and legal/privacy approval
+remain deployment acceptance items.
+
 Logical replay partitions already preserve event-time/date/venue/token
 boundaries. Physical PostgreSQL table partitioning is not enabled in the
 current migration set. If volume measurements justify physical partitioning,

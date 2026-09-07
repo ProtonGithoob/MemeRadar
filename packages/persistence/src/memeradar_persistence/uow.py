@@ -98,6 +98,25 @@ def create_database_engine(database_url: str, **kwargs: object) -> AsyncEngine:
     normalized_url = database_url
     if normalized_url.startswith("postgresql://"):
         normalized_url = "postgresql+asyncpg://" + normalized_url.removeprefix("postgresql://")
+    if normalized_url.startswith("postgresql+asyncpg://"):
+        if "poolclass" not in kwargs:
+            kwargs.setdefault("pool_size", 5)
+            kwargs.setdefault("max_overflow", 5)
+            kwargs.setdefault("pool_timeout", 30)
+            kwargs.setdefault("pool_recycle", 1_800)
+        existing_connect_args = kwargs.get("connect_args", {})
+        if not isinstance(existing_connect_args, Mapping):
+            raise TypeError("connect_args must be a mapping")
+        connect_args = dict(existing_connect_args)
+        existing_server_settings = connect_args.get("server_settings", {})
+        if not isinstance(existing_server_settings, Mapping):
+            raise TypeError("connect_args.server_settings must be a mapping")
+        server_settings = dict(existing_server_settings)
+        server_settings.setdefault("statement_timeout", "30000")
+        server_settings.setdefault("idle_in_transaction_session_timeout", "60000")
+        connect_args.setdefault("command_timeout", 30)
+        connect_args["server_settings"] = server_settings
+        kwargs["connect_args"] = connect_args
     return create_async_engine(normalized_url, pool_pre_ping=True, **kwargs)
 
 

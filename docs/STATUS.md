@@ -17,7 +17,7 @@ Detailed migration handoff: [FREE-FIRST Provider Migration — Completion Report
 | Local Project Lifecycle | `scripts/start.sh`, `scripts/stop.sh`, `scripts/status.sh` (`make start/status/stop`) | `DEGRADED_WEB_APP` | Compose restart completed; API liveness/readiness pass; frontend workstation redesign committed (`08f5072`) with all web gates green |
 | Safe Shadow Start Script | `scripts/start-shadow.sh` (`make shadow-start`) | `IMPLEMENTED` | Explicitly exports safe modes & establishes run identity |
 | Shadow Status Report Script | `scripts/shadow_status.py` (`make shadow-status`) | `IMPLEMENTED` | Paginated API count, UNKNOWN != ZERO telemetry, JSON output |
-| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1101 Python tests (11 skipped), 55 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
+| Quality Gate (`make verify`) | `PASSED` | `VERIFIED` | Ruff/mypy, 1102 Python tests (11 skipped), 55 Vitest tests, Compose, secret scan, migrations, security review and SBOM passed; external acceptance remains `BLOCKED_EXTERNAL`. |
  
 ---
 
@@ -1421,14 +1421,16 @@ Opportunity Discovery Task 3 checkpoint (2026-09-06): commit `8962dd0` adds one 
 - Real Alpha Production Readiness Task 9 checkpoint (2026-09-07): extended the existing bounded `ReliabilityMetrics` and `OperationsProjector` seams with allow-listed provider success/error/rate-limit/stale counters; ingestion, parser, normalization, social-resolution, alert/Telegram delivery, DB/Redis/API, worker and migration counters; bounded ingestion-lag, queue-age/depth, DB-storage, social-resolution and quote-freshness gauges; and deterministic fail-closed alerts for sustained ingestion stop, stale market evidence, critical provider loss, unresolved stream gaps/recovery, queue growth, DB pressure, migration mismatch and Telegram/alert delivery failure. Provider capability health remains separate from application health and the projection remains `execution_eligible=false`. Initial targets are versioned in `ProviderSloPolicy` (300s ingestion lag, queue depth 1000 or oldest age 300s, DB storage 90%) and are not claimed as measured SLO PASS.
 - Task 9 TDD/verification evidence: the initial telemetry focused run failed with the expected two missing gauge/alert contracts. After implementation, the focused observability/reliability/alert suite passes `28 tests`; `make lint` and strict `make typecheck` pass over `121 source files`; `git diff --check` passes. Full `make verify` exits `0` with `1101` Python tests passed, `11` skipped, `1` warning, and `55` Vitest tests passed; Compose, secret scan, migrations, security review and SBOM pass, with external scans still `NOT_RUN`/`BLOCKED_EXTERNAL`. External provider/Telegram/database/Redis and soak measurements remain unavailable, so PR-5 remains `PARTIAL/NOT_VERIFIED`; no production-ready classification is claimed. Protected modes remain exact and the four pre-existing unrelated WIP files remain untouched.
 
+- Real Alpha Production Readiness Task 10 checkpoint (2026-09-07): hardened the existing async PostgreSQL engine with explicit bounded pool and statement/idle-transaction timeouts, preserved caller/social/observation/replay indexes, documented forward-first migration recovery and deployment-managed automated backup requirements, and recorded the isolated restore procedure. No duplicate persistence or database engine was added.
+- Task 10 TDD/verification evidence: the new engine contract first failed on absent pool/timeout kwargs; after implementation, the focused database/persistence/runbook suite passes `12 tests`, `make migration-check` reports head `0008_alpha_caller_intelligence` / `25` metadata tables, `make lint`, strict `make typecheck` over `121 source files` and `git diff --check` pass. Full `make verify` exits `0` with `1102` Python tests passed, `11` skipped, `1` warning, and `55` Vitest tests passed; Compose, secret scan, migrations, security review and SBOM pass, with external scans still `NOT_RUN`/`BLOCKED_EXTERNAL`. A disposable Postgres migration/apply/dump/restore drill confirmed the same `0008_alpha_caller_intelligence` head and `26` public tables including `alembic_version`; the restored integration suite passes `11 tests`, and bounded caller/social/observation `EXPLAIN` checks use the expected indexes. Managed backup scheduling, production RPO/RTO and soak/failure evidence remain unverified; no production-ready classification is claimed. Protected modes remain exact and the four pre-existing unrelated WIP files remain untouched.
+
 ## Next task
 
-Real Alpha Production Readiness Task 10: complete database durability, retention
-and restore acceptance using the existing migration, persistence and reliability
-runbook seams. Test migration safety, backup/restore in a disposable target,
-volume/index/query assumptions, research/live-ingestion isolation and explicit
-pool/statement timeout behavior. Preserve `UNKNOWN`/external-blocked results
-when real infrastructure evidence is unavailable.
+Real Alpha Production Readiness Task 11: perform the release-grade security and
+secret-boundary audit across repository history/artifacts/config examples,
+frontend bundles, auth/RBAC, request bounds/rate limits, unsafe modes,
+container privileges, CORS, dependency/SBOM findings and log redaction.
+Preserve external-scan blockers honestly and keep all protected modes unchanged.
 No production weights or protected modes change; current social/Telegram access
 remains `BLOCKED_EXTERNAL`/`CONFIGURATION_MISSING`.
 Protected modes remain

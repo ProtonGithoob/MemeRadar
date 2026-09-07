@@ -149,12 +149,12 @@
 
 **Produces:** Tested migration, backup and restore procedure suitable for production read-only/paper-auto operation.
 
-- [ ] Test migration apply on a production-like database fixture/copy and document rollback/forward-fix strategy.
-- [ ] Configure/document automated backups appropriate to the deployment target.
-- [ ] Perform a restore drill in a disposable environment and record objective evidence.
-- [ ] Validate indexes/query plans for caller/social/observation/replay volumes and isolate research jobs from live ingestion transactions.
-- [ ] Verify connection pools and statement timeouts are explicit.
-- [ ] Update STATUS and commit.
+- [x] Test migration apply on a production-like database fixture/copy and document rollback/forward-fix strategy.
+- [x] Configure/document automated backups appropriate to the deployment target.
+- [x] Perform a restore drill in a disposable environment and record objective evidence.
+- [x] Validate indexes/query plans for caller/social/observation/replay volumes and isolate research jobs from live ingestion transactions.
+- [x] Verify connection pools and statement timeouts are explicit.
+- [x] Update STATUS and commit.
 
 ### Task 11: Security and secret boundary production audit
 
