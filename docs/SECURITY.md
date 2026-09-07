@@ -145,6 +145,15 @@ boundary, and reconciliation reports mismatches without silently repairing
 history. A paper result, `ENTRY_READY` decision or external label is not
 execution permission.
 
+The `PaperAutoExecutionGate` is the shared fail-closed pre-ledger check for
+the research-only PAPER_AUTO seam. It requires an ENTRY_READY decision, fresh
+PASS risk evidence, a fresh execution quote, explicit sellability, sufficient
+liquidity and bounded price impact, and supports only the canonical SOLANA,
+BNB and ROBINHOOD chain identities. Caller convergence is retained as
+corroborating evidence and cannot bypass a hard gate. The decision projection
+always reports `execution_eligible=false`, `signer_available=false` and
+`submission_available=false`; protected modes remain immutable.
+
 The Sprint 9.2 exit engine preserves the same boundary: it accepts normalized
 evidence only, emits an advisory `ExitEvaluation`, and has no persistence,
 provider, signer or transaction-submission authority. External distribution

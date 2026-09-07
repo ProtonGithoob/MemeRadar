@@ -7,6 +7,8 @@ execution path.
 
 from .paper_execution import (
     InMemoryPaperLedgerStore,
+    PaperAutoExecutionDecision,
+    PaperAutoExecutionGate,
     PaperExecutionEngine,
     PaperExecutionPolicy,
     PaperExecutionRejected,
@@ -28,6 +30,8 @@ PaperTradingEngine = PaperExecutionEngine
 
 __all__ = [
     "InMemoryPaperLedgerStore",
+    "PaperAutoExecutionDecision",
+    "PaperAutoExecutionGate",
     "PaperExecutionEngine",
     "PaperExecutionPolicy",
     "PaperExecutionRejected",

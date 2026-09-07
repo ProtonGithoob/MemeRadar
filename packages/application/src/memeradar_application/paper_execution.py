@@ -17,6 +17,8 @@ from memeradar_application.provider_contracts import QuoteSnapshot
 from memeradar_domain import (
     CashLedgerEntry,
     CashLedgerEntryType,
+    Chain,
+    Freshness,
     PaperFill,
     PaperOrder,
     PaperOrderSide,
@@ -25,7 +27,10 @@ from memeradar_domain import (
     PositionMode,
     PositionState,
     PriceSemantics,
+    QualityState,
     ReasonCode,
+    RiskDisposition,
+    normalize_chain,
 )
 from memeradar_domain.common import (
     bounded_decimal,
@@ -53,8 +58,12 @@ class PaperLedgerConflict(RuntimeError):
 _CASH_TOLERANCE = Decimal("0.000000001")
 
 
-def _reason(code: str, detail: str | None = None) -> ReasonCode:
-    return ReasonCode(code=code, detail=detail)
+def _reason(
+    code: str,
+    detail: str | None = None,
+    refs: Sequence[str] = (),
+) -> ReasonCode:
+    return ReasonCode(code=code, detail=detail, evidence_refs=tuple(refs))
 
 
 def _non_negative(value: object, field_name: str) -> Decimal:
@@ -286,6 +295,404 @@ class PaperExecutionPolicy:
         )
 
 
+PAPER_AUTO_GATE_VERSION = "paper-auto-gate-v1"
+_PAPER_AUTO_CHAINS = frozenset({Chain.SOLANA, Chain.BNB, Chain.ROBINHOOD})
+
+
+def _paper_auto_source(source: object | None, name: str) -> object | None:
+    if source is None:
+        return None
+    if isinstance(source, Mapping):
+        return source.get(name)
+    return getattr(source, name, None)
+
+
+def _paper_auto_refs(source: object | None) -> tuple[str, ...]:
+    value = _paper_auto_source(source, "evidence_refs")
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (require_text(value, "evidence_ref"),)
+    if isinstance(value, Sequence) and not isinstance(value, bytes | bytearray):
+        return normalize_texts(tuple(str(item) for item in value), "evidence_refs")
+    return ()
+
+
+def _paper_auto_bool(value: object | None) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().upper()
+        if normalized in {"TRUE", "PASS", "SELLABLE", "SELLABLE_NOW", "OK"}:
+            return True
+        if normalized in {"FALSE", "BLOCK", "NOT_SELLABLE", "UNSELLABLE", "NO"}:
+            return False
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class PaperAutoExecutionDecision:
+    """Explainable permission for one paper-only candidate evaluation."""
+
+    allowed: bool
+    evaluated_at: datetime
+    chain: Chain | None
+    reason_codes: tuple[ReasonCode, ...]
+    evidence_refs: tuple[str, ...]
+    policy_version: str
+    config_hash: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.allowed, bool):
+            raise TypeError("allowed must be a boolean")
+        object.__setattr__(self, "evaluated_at", ensure_utc(self.evaluated_at, "evaluated_at"))
+        if self.chain is not None:
+            object.__setattr__(self, "chain", Chain(self.chain))
+        object.__setattr__(self, "reason_codes", normalize_reason_codes(self.reason_codes))
+        if not self.reason_codes:
+            raise ValueError("paper-auto decisions require at least one reason")
+        object.__setattr__(
+            self,
+            "evidence_refs",
+            normalize_texts(self.evidence_refs, "evidence_refs"),
+        )
+        object.__setattr__(
+            self,
+            "policy_version",
+            require_text(self.policy_version, "policy_version", max_length=64),
+        )
+        object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
+
+    @property
+    def execution_eligible(self) -> bool:
+        """Paper permission never becomes live execution authority."""
+
+        return False
+
+    @property
+    def signer_available(self) -> bool:
+        return False
+
+    @property
+    def submission_available(self) -> bool:
+        return False
+
+    @property
+    def analysis_only(self) -> bool:
+        return True
+
+    @property
+    def paper_trading(self) -> bool:
+        return True
+
+    @property
+    def manual_execution(self) -> bool:
+        return False
+
+    @property
+    def auto_execution(self) -> bool:
+        return False
+
+    @property
+    def reason_code_values(self) -> tuple[str, ...]:
+        return tuple(reason.code for reason in self.reason_codes)
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return freeze_mapping(
+            {
+                "allowed": self.allowed,
+                "evaluated_at": self.evaluated_at.isoformat(),
+                "chain": self.chain.value if self.chain is not None else None,
+                "reason_codes": self.reason_code_values,
+                "evidence_refs": self.evidence_refs,
+                "policy_version": self.policy_version,
+                "config_hash": self.config_hash,
+                "analysis_only": True,
+                "paper_trading": True,
+                "manual_execution": False,
+                "auto_execution": False,
+                "execution_eligible": False,
+                "signer_available": False,
+                "submission_available": False,
+            },
+            "paper_auto_execution_decision",
+        )
+
+
+class PaperAutoExecutionGate:
+    """Fail-closed PAPER_AUTO research permission over the existing paper seam."""
+
+    def __init__(
+        self,
+        *,
+        policy: PaperExecutionPolicy | None = None,
+        min_liquidity_usd: Decimal | int | float | str = Decimal("2000"),
+        max_price_impact_bps: Decimal | int | float | str = Decimal("500"),
+    ) -> None:
+        self.policy = policy or PaperExecutionPolicy()
+        if not isinstance(self.policy, PaperExecutionPolicy):
+            raise TypeError("policy must be a PaperExecutionPolicy")
+        minimum_liquidity = to_decimal(min_liquidity_usd, "min_liquidity_usd")
+        if minimum_liquidity <= 0:
+            raise ValueError("min_liquidity_usd must be positive")
+        maximum_impact = to_decimal(max_price_impact_bps, "max_price_impact_bps")
+        if maximum_impact < 0:
+            raise ValueError("max_price_impact_bps must not be negative")
+        self.min_liquidity_usd = minimum_liquidity
+        self.max_price_impact_bps = maximum_impact
+        material = {
+            "version": PAPER_AUTO_GATE_VERSION,
+            "paper_policy": self.policy.config_hash,
+            "min_liquidity_usd": str(minimum_liquidity),
+            "max_price_impact_bps": str(maximum_impact),
+        }
+        encoded = json.dumps(material, sort_keys=True, separators=(",", ":"))
+        self.config_hash = f"sha256:{hashlib.sha256(encoded.encode()).hexdigest()}"
+
+    def evaluate(
+        self,
+        decision: object,
+        *,
+        quote: QuoteSnapshot | None,
+        at: datetime,
+        risk: object | None = None,
+        caller_convergence: object | None = None,
+        sellable: object | None = None,
+        liquidity_usd: object | None = None,
+    ) -> PaperAutoExecutionDecision:
+        """Evaluate paper permission without constructing or submitting an order."""
+
+        checked_at = ensure_utc(at, "at")
+        reasons: list[ReasonCode] = []
+        refs = list(_paper_auto_refs(decision))
+
+        if decision is None:
+            reasons.append(_reason("PAPER_AUTO_DECISION_REQUIRED"))
+        elif not self._entry_ready(decision):
+            reasons.append(_reason("PAPER_AUTO_ENTRY_READY_REQUIRED", refs=tuple(refs)))
+        if not self._modes_locked(decision):
+            reasons.append(_reason("PAPER_AUTO_PROTECTED_MODES_REQUIRED"))
+        if _paper_auto_source(decision, "execution_eligible") is True:
+            reasons.append(_reason("PAPER_AUTO_EXECUTION_AUTHORITY_FORBIDDEN"))
+
+        risk_source = risk
+        if risk_source is None:
+            risk_source = _paper_auto_source(decision, "risk")
+        if risk_source is None:
+            risk_source = _paper_auto_source(decision, "risk_snapshot")
+        risk_disposition, risk_quality = self._risk_state(risk_source, checked_at)
+        refs.extend(_paper_auto_refs(risk_source))
+        if risk_disposition is not RiskDisposition.PASS:
+            reasons.append(
+                _reason(
+                    "PAPER_AUTO_RISK_BLOCKED"
+                    if risk_disposition is RiskDisposition.BLOCK
+                    else "PAPER_AUTO_RISK_NOT_PASS",
+                    refs=_paper_auto_refs(risk_source),
+                )
+            )
+        if risk_quality is not QualityState.FRESH:
+            reasons.append(
+                _reason(
+                    "PAPER_AUTO_RISK_EVIDENCE_UNKNOWN"
+                    if risk_quality is QualityState.UNKNOWN
+                    else "PAPER_AUTO_RISK_EVIDENCE_NOT_FRESH",
+                    detail=risk_quality.value,
+                    refs=_paper_auto_refs(risk_source),
+                )
+            )
+        hard_blocks = _paper_auto_source(risk_source, "hard_blocks")
+        if hard_blocks:
+            reasons.append(_reason("PAPER_AUTO_RISK_BLOCKED", refs=_paper_auto_refs(risk_source)))
+
+        candidate_chain = self._candidate_chain(decision, quote)
+        if candidate_chain is None or candidate_chain not in _PAPER_AUTO_CHAINS:
+            reasons.append(_reason("PAPER_AUTO_CHAIN_UNSUPPORTED"))
+        elif quote is not None and quote.chain is not candidate_chain:
+            reasons.append(_reason("PAPER_AUTO_CHAIN_MISMATCH"))
+
+        quote_ref = self._quote_ref(quote)
+        if quote_ref is not None:
+            refs.append(quote_ref)
+        if not isinstance(quote, QuoteSnapshot):
+            reasons.append(_reason("PAPER_AUTO_QUOTE_REQUIRED"))
+        else:
+            if not quote.freshness.is_fresh(checked_at):
+                reasons.append(_reason("PAPER_AUTO_QUOTE_NOT_FRESH", refs=(quote_ref or "",)))
+            quote_input: Decimal | None
+            quote_output: Decimal | None
+            quote_impact: Decimal | None
+            try:
+                quote_input = to_decimal(quote.input_amount, "quote.input_amount")
+                quote_output = to_decimal(quote.output_amount, "quote.output_amount")
+                quote_impact = to_decimal(quote.price_impact_bps, "quote.price_impact_bps")
+            except (TypeError, ValueError):
+                quote_input = None
+                quote_output = None
+                quote_impact = None
+            if (
+                quote_input is None
+                or quote_output is None
+                or quote_input <= 0
+                or quote_output <= 0
+            ):
+                reasons.append(_reason("PAPER_AUTO_QUOTE_INVALID", refs=(quote_ref or "",)))
+            if quote.price_semantics is not PriceSemantics.EXECUTION_QUOTE:
+                reasons.append(
+                    _reason(
+                        "PAPER_AUTO_EXECUTION_QUOTE_REQUIRED",
+                        refs=(quote_ref or "",),
+                    )
+                )
+            if quote_impact is None:
+                reasons.append(_reason("PAPER_AUTO_PRICE_IMPACT_UNKNOWN", refs=(quote_ref or "",)))
+            elif quote_impact > self.max_price_impact_bps:
+                reasons.append(
+                    _reason(
+                        "PAPER_AUTO_PRICE_IMPACT_TOO_HIGH",
+                        refs=(quote_ref or "",),
+                    )
+                )
+
+        resolved_sellable = sellable
+        if resolved_sellable is None:
+            for field_name in ("sellable", "sellability", "sellability_state"):
+                resolved_sellable = _paper_auto_source(decision, field_name)
+                if resolved_sellable is not None:
+                    break
+        sellable_value = _paper_auto_bool(resolved_sellable)
+        if sellable_value is None:
+            reasons.append(_reason("PAPER_AUTO_SELLABILITY_UNKNOWN"))
+        elif not sellable_value:
+            reasons.append(_reason("PAPER_AUTO_NOT_SELLABLE"))
+
+        resolved_liquidity = liquidity_usd
+        if resolved_liquidity is None:
+            for field_name in ("liquidity_usd", "liquidity"):
+                resolved_liquidity = _paper_auto_source(decision, field_name)
+                if resolved_liquidity is not None:
+                    break
+        if resolved_liquidity is None and isinstance(quote, QuoteSnapshot):
+            market_context = quote.market_context
+            if market_context is not None:
+                resolved_liquidity = market_context.liquidity_usd
+        if resolved_liquidity is None:
+            liquidity_flag = _paper_auto_bool(_paper_auto_source(decision, "liquidity_ok"))
+            if liquidity_flag is False:
+                reasons.append(_reason("PAPER_AUTO_LIQUIDITY_TOO_LOW"))
+            elif liquidity_flag is not True:
+                reasons.append(_reason("PAPER_AUTO_LIQUIDITY_UNKNOWN"))
+        else:
+            try:
+                normalized_liquidity = to_decimal(resolved_liquidity, "liquidity_usd")
+            except (TypeError, ValueError):
+                normalized_liquidity = None
+            if normalized_liquidity is None:
+                reasons.append(_reason("PAPER_AUTO_LIQUIDITY_UNKNOWN"))
+            elif normalized_liquidity < self.min_liquidity_usd:
+                reasons.append(_reason("PAPER_AUTO_LIQUIDITY_TOO_LOW"))
+
+        caller_source = caller_convergence
+        if caller_source is None:
+            caller_source = _paper_auto_source(decision, "caller_convergence")
+        if caller_source is None:
+            caller_source = _paper_auto_source(decision, "caller_intelligence")
+        refs.extend(_paper_auto_refs(caller_source))
+        if _paper_auto_source(caller_source, "execution_eligible") is True:
+            reasons.append(_reason("PAPER_AUTO_CALLER_AUTHORITY_FORBIDDEN"))
+
+        if not reasons:
+            reasons.append(_reason("PAPER_AUTO_CANDIDATE_ALLOWED"))
+        return PaperAutoExecutionDecision(
+            allowed=not any(reason.code != "PAPER_AUTO_CANDIDATE_ALLOWED" for reason in reasons),
+            evaluated_at=checked_at,
+            chain=candidate_chain if candidate_chain in _PAPER_AUTO_CHAINS else None,
+            reason_codes=tuple(dict.fromkeys(reasons)),
+            evidence_refs=tuple(dict.fromkeys(reference for reference in refs if reference)),
+            policy_version=PAPER_AUTO_GATE_VERSION,
+            config_hash=self.config_hash,
+        )
+
+    @staticmethod
+    def _entry_ready(decision: object) -> bool:
+        if _paper_auto_source(decision, "entry_ready") is True:
+            return True
+        state = _paper_auto_source(decision, "state")
+        if state is None:
+            state = _paper_auto_source(decision, "to_state")
+        return getattr(state, "value", state) == "ENTRY_READY"
+
+    def _modes_locked(self, decision: object) -> bool:
+        for field_name, expected in (
+            ("analysis_only", True),
+            ("paper_trading", True),
+            ("manual_execution", False),
+            ("auto_execution", False),
+        ):
+            value = _paper_auto_source(decision, field_name)
+            if value is not None and value is not expected:
+                return False
+        return (
+            self.policy.analysis_only
+            and self.policy.paper_trading
+            and not self.policy.manual_execution
+            and not self.policy.auto_execution
+        )
+
+    @staticmethod
+    def _risk_state(
+        risk: object | None,
+        at: datetime,
+    ) -> tuple[RiskDisposition, QualityState]:
+        if risk is None:
+            return RiskDisposition.UNKNOWN, QualityState.UNKNOWN
+        raw_disposition = _paper_auto_source(risk, "risk_disposition")
+        if raw_disposition is None:
+            raw_disposition = _paper_auto_source(risk, "disposition")
+        try:
+            disposition = RiskDisposition(raw_disposition)
+        except (TypeError, ValueError):
+            disposition = RiskDisposition.UNKNOWN
+        states: list[QualityState] = []
+        for field_name in ("critical_evidence_state", "quality_state"):
+            value = _paper_auto_source(risk, field_name)
+            if value is not None:
+                try:
+                    states.append(QualityState(value))
+                except (TypeError, ValueError):
+                    states.append(QualityState.UNKNOWN)
+        freshness = _paper_auto_source(risk, "freshness")
+        if isinstance(freshness, Freshness):
+            states.append(freshness.state_at(at))
+        if not states:
+            return disposition, QualityState.UNKNOWN
+        for state in (
+            QualityState.INVALID,
+            QualityState.CONFLICTED,
+            QualityState.STALE,
+            QualityState.UNKNOWN,
+        ):
+            if state in states:
+                return disposition, state
+        return disposition, QualityState.FRESH
+
+    @staticmethod
+    def _candidate_chain(decision: object, quote: QuoteSnapshot | None) -> Chain | None:
+        raw_chain = _paper_auto_source(decision, "chain")
+        if raw_chain is None and isinstance(quote, QuoteSnapshot):
+            raw_chain = quote.chain
+        try:
+            if not isinstance(raw_chain, Chain | str):
+                return None
+            return normalize_chain(raw_chain)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _quote_ref(quote: QuoteSnapshot | None) -> str | None:
+        if not isinstance(quote, QuoteSnapshot):
+            return None
+        return f"quote:{quote.provenance.source_id}"
 @dataclass(frozen=True, slots=True)
 class PaperReplayManifest:
     """Pinned paper replay boundary and execution identities."""
@@ -1126,6 +1533,9 @@ class PaperReconciler:
 
 __all__ = [
     "InMemoryPaperLedgerStore",
+    "PAPER_AUTO_GATE_VERSION",
+    "PaperAutoExecutionDecision",
+    "PaperAutoExecutionGate",
     "PaperExecutionEngine",
     "PaperExecutionPolicy",
     "PaperExecutionRejected",

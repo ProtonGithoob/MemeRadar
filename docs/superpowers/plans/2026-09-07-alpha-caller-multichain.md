@@ -180,9 +180,9 @@
 **Interfaces:**
 - Produces: `PaperAutoExecutionGate` decision using existing promoted decision evidence plus caller convergence and hard execution/risk prerequisites.
 
-- [ ] Write failing tests for allowed paper candidate and blocks on critical risk, required UNKNOWN, stale quote, non-sellability, low liquidity, excessive impact, unsupported chain or protected-mode violation.
-- [ ] Implement paper-only gate with no signer/private-key/swap dependency.
-- [ ] Verify exact protected modes in tests and doctor output; update STATUS and commit.
+- [x] Write failing tests for allowed paper candidate and blocks on critical risk, required UNKNOWN, stale quote, non-sellability, low liquidity, excessive impact, unsupported chain or protected-mode violation.
+- [x] Implement paper-only gate with no signer/private-key/swap dependency.
+- [x] Verify exact protected modes in tests and doctor output; update STATUS and commit.
 
 ### Task 13: Exit-policy research extensions
 

@@ -28,6 +28,7 @@ for source_root in (
 from memeradar_application.config import Settings  # noqa: E402
 from memeradar_application.paper_execution import (  # noqa: E402
     InMemoryPaperLedgerStore,
+    PaperAutoExecutionGate,
     PaperExecutionPolicy,
     PaperFillModel,
     PaperReplayManifest,
@@ -90,6 +91,18 @@ def _keyless_contract_check() -> str:
     return "PASS"
 
 
+def _paper_auto_gate_check() -> str:
+    gate = PaperAutoExecutionGate()
+    if (
+        gate.policy.analysis_only is not True
+        or gate.policy.paper_trading is not True
+        or gate.policy.manual_execution is not False
+        or gate.policy.auto_execution is not False
+    ):
+        raise ValueError("paper-auto gate modes are not protected")
+    return "PASS"
+
+
 def _base_report(
     configuration: Mapping[str, str],
     *,
@@ -102,6 +115,7 @@ def _base_report(
         "reason": reason,
         "configuration": dict(configuration),
         "paper_contracts": "not_checked",
+        "paper_auto_gate": "not_checked",
         "external_network": "not_checked",
         "live_execution": "disabled",
         "modes": dict(_SAFE_MODES),
@@ -135,10 +149,12 @@ def run_doctor(environ: Mapping[str, str] | None = None) -> DoctorReport:
     )
     try:
         report["paper_contracts"] = _keyless_contract_check()
+        report["paper_auto_gate"] = _paper_auto_gate_check()
     except (TypeError, ValueError):
         report["status"] = "FAIL"
         report["reason"] = "KEYLESS_CONTRACT_FAILURE"
         report["paper_contracts"] = "FAIL"
+        report["paper_auto_gate"] = "FAIL"
     if report["paper_contracts"] == "PASS":
         if settings.paper_quote_provider == "custom":
             report["status"] = "BLOCKED_EXTERNAL"

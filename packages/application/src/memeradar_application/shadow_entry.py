@@ -19,7 +19,6 @@ from memeradar_domain import (
     PaperOrderSide,
     PaperOrderState,
     PriceSemantics,
-    QualityState,
     ReasonCode,
 )
 from memeradar_domain.common import (
@@ -32,6 +31,7 @@ from memeradar_domain.common import (
 from memeradar_domain.events import normalize_reason_codes
 
 from .paper_execution import (
+    PaperAutoExecutionGate,
     PaperExecutionEngine,
     PaperExecutionResult,
     PaperOrderRequest,
@@ -258,6 +258,9 @@ class ShadowEntryService:
             raise TypeError("policy must be a ShadowEntryPolicy")
         self._clock = clock or (lambda: datetime.now(UTC))
         self._completed: dict[str, ShadowEntryResult] = {}
+        self._paper_auto_gate = PaperAutoExecutionGate(
+            max_price_impact_bps=self.policy.max_price_impact_bps,
+        )
 
     async def on_entry_ready(
         self,
@@ -412,14 +415,24 @@ class ShadowEntryService:
                 evidence_refs=quote_refs,
             )
 
+        paper_auto = self._paper_auto_gate.evaluate(decision, quote=quote, at=now)
+        if not paper_auto.allowed:
+            return self._rejected(
+                idempotency_key=idempotency_key,
+                candidate_id=candidate_id,
+                decision_ref=decision_ref,
+                intended_at=now,
+                quoted_at=now,
+                quote=quote,
+                reason_codes=paper_auto.reason_code_values,
+                evidence_refs=tuple(dict.fromkeys((*quote_refs, *paper_auto.evidence_refs))),
+            )
+
         raw_risk = _source_value(decision, "risk_snapshot")
         risk_snapshot = (
             dict(raw_risk)
             if isinstance(raw_risk, Mapping)
-            else {
-                "disposition": "PASS",
-                "critical_evidence_state": QualityState.FRESH.value,
-            }
+            else {}
         )
         try:
             paper_request = PaperOrderRequest(

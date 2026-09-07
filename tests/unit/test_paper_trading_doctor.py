@@ -43,6 +43,7 @@ def test_keyless_default_quote_configuration_is_explicitly_ready() -> None:
 
     assert report["status"] == "PASS"
     assert report["reason"] == "PAPER_QUOTE_PROVIDER_READY"
+    assert report["paper_auto_gate"] == "PASS"
     assert report["configuration"] == {
         "quote_provider": "dexscreener",
         "quote_url": "defaulted",
@@ -50,6 +51,12 @@ def test_keyless_default_quote_configuration_is_explicitly_ready() -> None:
         "live_execution": "disabled",
     }
     assert report["external_network"] == "not_checked"
+    assert report["modes"] == {
+        "analysis_only": True,
+        "paper_trading": True,
+        "manual_execution": False,
+        "auto_execution": False,
+    }
 
 
 def test_legacy_custom_quote_configuration_remains_blocked_until_a_port_is_injected() -> None:

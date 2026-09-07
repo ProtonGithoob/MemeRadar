@@ -233,6 +233,27 @@ def test_market_reference_quote_requires_pair_context_before_paper_fill() -> Non
     asyncio.run(scenario())
 
 
+def test_shadow_entry_rejects_missing_risk_before_paper_auto_path() -> None:
+    async def scenario() -> None:
+        store = InMemoryPaperLedgerStore()
+        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        engine = PaperExecutionEngine(store)
+        candidate = decision(portfolio_id=portfolio.id, token_id=uuid4())
+        del candidate.risk_snapshot
+
+        result = await ShadowEntryService(clock=lambda: NOW).on_entry_ready(
+            candidate,
+            FakeQuotePort(),
+            engine,
+        )
+
+        assert result.status is ShadowEntryStatus.SHADOW_REJECTED
+        assert "PAPER_AUTO_RISK_EVIDENCE_UNKNOWN" in result.reason_code_values
+        assert await store.list_fills(portfolio.id) == ()
+
+    asyncio.run(scenario())
+
+
 def test_shadow_policy_cannot_enable_live_modes() -> None:
     assert ShadowEntryPolicy().analysis_only is True
     assert ShadowEntryPolicy().paper_trading is True

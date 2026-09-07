@@ -330,6 +330,13 @@ submission dependencies. `make paper-trading-doctor` runs only local contracts;
 without external quote configuration it returns `BLOCKED_EXTERNAL`, and even
 with configuration it never fabricates a provider or live-execution PASS.
 
+The PAPER_AUTO gate tests cover allowed paper candidates on SOLANA, BNB and
+ROBINHOOD plus critical/unknown risk, stale quotes, non-sellability, low
+liquidity, excessive impact, unsupported chains and protected-mode violations.
+The shadow-entry regression proves missing risk cannot default to PASS before
+the paper ledger. The gate and doctor projections keep execution, signer and
+submission capabilities false.
+
 The focused command is:
 
 ```text
