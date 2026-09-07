@@ -515,7 +515,7 @@ declared. Current classification is `NOT_PRODUCTION_READY`.
 
 | Gate | Evidence at current candidate | Classification |
 |---|---|---|
-| PR-1 Engineering/release | Local `make verify`, release identity, migration/security/SBOM/Compose gates pass; hosted CI run `34119179340` for SHA `00f250987be7a5be3214ae09f1738632a2f9bc8f` failed with zero executed steps in all prerequisite jobs, and rollback is not deployed/tested | `PARTIAL/BLOCKED_EXTERNAL` |
+| PR-1 Engineering/release | Local `make verify`, release identity, migration/security/SBOM/Compose gates pass; hosted CI run `34119948144` for candidate SHA `d49b8a3c687bb0a6e637d06847c238df05042ed7` failed with zero executed steps in all prerequisite jobs, and rollback is not deployed/tested | `PARTIAL/BLOCKED_EXTERNAL` |
 | PR-2 Provider/evidence | Free provider doctor reaches `READY_FOR_FREE_READ_ONLY_SHADOW`; social, Telegram and stream doctors are `CONFIGURATION_MISSING`/`BLOCKED_EXTERNAL` | `BLOCKED_EXTERNAL/PARTIAL` |
 | PR-3 Historical-real research | `SYNTHETIC_REDACTED`, zero matured calls/outcomes/identities/negative controls; all six caller families remain `INSUFFICIENT_SAMPLES` | `INSUFFICIENT_SAMPLES` |
 | PR-4 Live-shadow | `STACK_OFFLINE`/`START_FAILED`, `NOT_ACTIVE`, `NOT_AVAILABLE`, zero matured outcomes | `INSUFFICIENT_SAMPLES` |
@@ -524,8 +524,8 @@ declared. Current classification is `NOT_PRODUCTION_READY`.
 | PR-7 `PROD_PAPER_AUTO` | Real-environment paper-auto acceptance and PR-1..PR-5 are not all PASS | `NOT_ACCEPTED` |
 | PR-8 `LIVE_MONEY_CANDIDATE` | Separate future operator-approved design is required | `OUT_OF_SCOPE` |
 
-The current release identity is Git SHA
-`00f250987be7a5be3214ae09f1738632a2f9bc8f`, app/API `0.1.0`, migration head
+The accepted code candidate release identity is Git SHA
+`d49b8a3c687bb0a6e637d06847c238df05042ed7`, app/API `0.1.0`, migration head
 `0008_alpha_caller_intelligence` with `25` metadata tables, config hash
 `sha256:e6d23c5553553dd7ec228b73851fd71bd6d26ed22856ec800bcfefea897bd865`,
 and the `581`-component SBOM digest
