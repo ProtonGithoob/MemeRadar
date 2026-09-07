@@ -192,9 +192,9 @@
 **Interfaces:**
 - Produces: versioned research candidates for partial TP, trailing protection, liquidity collapse, deployer/caller-linked distribution, smart-wallet distribution and drawdown circuit breakers.
 
-- [ ] Write failing replay tests comparing candidate exits without selecting on TEST data.
-- [ ] Implement candidates as research policies only.
-- [ ] Run focused exit/replay tests, update STATUS and commit.
+- [x] Write failing replay tests comparing candidate exits without selecting on TEST data.
+- [x] Implement candidates as research policies only.
+- [x] Run focused exit/replay tests, update STATUS and commit.
 
 ### Task 14: API/read model and optional UI evidence
 

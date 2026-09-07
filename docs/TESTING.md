@@ -369,6 +369,21 @@ MEMERADAR_TEST_DATABASE_URL=postgresql+asyncpg://... ./.venv/bin/pytest tests/in
 Live market-data and execution acceptance remains `BLOCKED_EXTERNAL`; no exit
 test may grant execution authority or change the protected operating modes.
 
+The Alpha Caller Task 13 exit-research extension keeps the existing exit engine
+as the evaluation primitive and extends `ConvexExitPolicy` with versioned
+research dimensions for partial TP, trailing protection, liquidity collapse,
+deployer/caller-linked distribution, smart-wallet distribution and drawdown
+circuit breakers. `ConvexExitEvaluator.replay_candidates` consumes the shared
+`CalibrationTimeSplit`, selects only from VALIDATION (TRAIN fallback), reports
+TEST metrics separately, excludes out-of-range event times and emits
+`ADVISORY_ONLY_NO_AUTO_PROMOTION` with the protected modes unchanged.
+
+Focused command:
+
+```text
+./.venv/bin/pytest tests/unit/test_convex_exit.py tests/contract/test_extension_e9_4_convex_exit.py tests/unit/test_exit_engine.py -q
+```
+
 ## Phase 9.3 position UI / Telegram
 
 The keyless Sprint 9.3 suite covers bounded position views, fresh/stale/unknown

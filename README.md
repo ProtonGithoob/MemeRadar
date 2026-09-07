@@ -183,7 +183,14 @@ Paper/shadow metrics include open/closed position counts, measured realized/unre
 - expectancy per signal cohort;
 - premature exit rate for future extreme-winner cohorts.
 
-Current exit policies are research candidates only. Synthetic replay winners are explicitly labeled `BEST_SYNTHETIC_CANDIDATE`, not production-proven strategies.
+The current candidate dimensions also cover partial TP, trailing protection,
+liquidity collapse, deployer/caller-linked distribution, smart-wallet
+distribution and drawdown circuit breakers. `replay_candidates` uses the
+existing `CalibrationTimeSplit`: selection is based on VALIDATION (TRAIN only
+when validation is unavailable), while TEST is evaluated and reported without
+affecting selection. Out-of-range/future records are excluded. Current exit
+policies are research candidates only; synthetic replay winners are explicitly
+labeled `BEST_SYNTHETIC_CANDIDATE`, not production-proven strategies.
 
 ### 10. No-lookahead research and strategy promotion
 

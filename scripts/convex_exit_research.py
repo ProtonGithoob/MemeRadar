@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -24,10 +24,10 @@ for source_root in (
     if source_root_text not in sys.path:
         sys.path.insert(0, source_root_text)
 
+from memeradar_application.calibration import CalibrationTimeSplit  # noqa: E402
 from memeradar_application.convex_exit import (  # noqa: E402
     CANDIDATE_EXIT_POLICIES,
     ConvexExitEvaluator,
-    ConvexExitPerformanceMetrics,
 )
 from memeradar_domain import QualityState, ReasonCode  # noqa: E402
 
@@ -52,6 +52,7 @@ def load_trade_dataset(path: Path) -> list[dict[str, Any]]:
         return [
             {
                 "trade_id": "t1",
+                "event_time": "2026-09-01T12:00:00+00:00",
                 "entry_price": "1.0",
                 "exit_price": "2.5",
                 "executable_peak_price": "3.0",
@@ -61,6 +62,7 @@ def load_trade_dataset(path: Path) -> list[dict[str, Any]]:
             },
             {
                 "trade_id": "t2",
+                "event_time": "2026-09-01T13:00:00+00:00",
                 "entry_price": "1.0",
                 "exit_price": "0.7",
                 "executable_peak_price": "1.1",
@@ -70,6 +72,7 @@ def load_trade_dataset(path: Path) -> list[dict[str, Any]]:
             },
             {
                 "trade_id": "t3",
+                "event_time": "2026-09-01T14:00:00+00:00",
                 "entry_price": "1.0",
                 "exit_price": "15.0",
                 "executable_peak_price": "25.0",
@@ -79,6 +82,7 @@ def load_trade_dataset(path: Path) -> list[dict[str, Any]]:
             },
             {
                 "trade_id": "t4",
+                "event_time": "2026-09-01T15:00:00+00:00",
                 "entry_price": "1.0",
                 "exit_price": "0.1",
                 "executable_peak_price": "1.05",
@@ -98,25 +102,28 @@ def load_trade_dataset(path: Path) -> list[dict[str, Any]]:
     return []
 
 
-def serialize_metrics(metrics: ConvexExitPerformanceMetrics) -> dict[str, Any]:
-    return {
-        "realized_paper_multiple": str(metrics.realized_paper_multiple),
-        "realized_net_pnl": str(metrics.realized_net_pnl),
-        "executable_peak_multiple": str(metrics.executable_peak_multiple),
-        "exit_capture_ratio": (
-            str(metrics.exit_capture_ratio) if metrics.exit_capture_ratio is not None else None
-        ),
-        "giveback_from_peak": str(metrics.giveback_from_peak),
-        "max_drawdown": str(metrics.max_drawdown),
-        "profit_factor": str(metrics.profit_factor),
-        "expectancy_per_trade": str(metrics.expectancy_per_trade),
-        "expectancy_per_100_signals": str(metrics.expectancy_per_100_signals),
-        "premature_exit_rate_20x_plus": str(metrics.premature_exit_rate_20x_plus),
-        "failure_exit_before_drawdown_rate": str(metrics.failure_exit_before_drawdown_rate),
-        "quality_state": str(getattr(metrics.quality_state, "value", str(metrics.quality_state))),
-        "reason_codes": [str(getattr(r, "code", r)) for r in metrics.reason_codes],
-        "config_hash": metrics.config_hash,
-    }
+def _event_time(trade: dict[str, Any]) -> datetime:
+    raw_value = trade.get("event_time", trade.get("decision_at"))
+    if not isinstance(raw_value, str):
+        raise ValueError("trade event_time is required for no-lookahead replay")
+    return datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+
+
+def _split_for_trades(trades: list[dict[str, Any]]) -> CalibrationTimeSplit:
+    event_times = sorted(_event_time(trade) for trade in trades)
+    if len(event_times) < 3:
+        raise ValueError("at least three event-time trade records are required")
+    train_end = event_times[max(1, len(event_times) // 3)]
+    validation_end = event_times[max(2, (2 * len(event_times)) // 3)]
+    test_end = event_times[-1] + timedelta(microseconds=1)
+    if not train_end < validation_end < test_end:
+        raise ValueError("trade event times must provide three strict replay partitions")
+    return CalibrationTimeSplit(
+        start_at=event_times[0] - timedelta(microseconds=1),
+        train_end=train_end,
+        validation_end=validation_end,
+        test_end=test_end,
+    )
 
 
 def main() -> int:
@@ -136,38 +143,53 @@ def main() -> int:
     args = parser.parse_args()
 
     trades = load_trade_dataset(args.dataset)
-
-    results_by_policy: dict[str, Any] = {}
-    best_policy_version = None
-    best_expectancy = Decimal("-999999")
-
-    for policy in CANDIDATE_EXIT_POLICIES:
-        evaluator = ConvexExitEvaluator(policy)
-        metrics = evaluator.evaluate_trades(trades)
-        serialized = serialize_metrics(metrics)
-        serialized["policy"] = {
-            "version": policy.version,
-            "partial_take_profit_target": str(policy.partial_take_profit_target),
-            "partial_take_profit_ratio": str(policy.partial_take_profit_ratio),
-            "trailing_stop_bps": str(policy.trailing_stop_bps),
-            "max_drawdown_tolerance_bps": str(policy.max_drawdown_tolerance_bps),
-            "config_hash": policy.config_hash,
+    split = _split_for_trades(trades)
+    report = ConvexExitEvaluator().replay_candidates(
+        trades,
+        split=split,
+        candidates=CANDIDATE_EXIT_POLICIES,
+        evaluated_at=split.test_end,
+    )
+    results_by_policy = {
+        value.candidate.version: {
+            "policy": value.to_json_dict()["candidate"],
+            "rank": value.rank,
+            "selection_objective": (
+                None if value.selection_objective is None else str(value.selection_objective)
+            ),
+            "train": value.train.to_json_dict(),
+            "validation": value.validation.to_json_dict(),
+            "test": value.test.to_json_dict(),
         }
-        results_by_policy[policy.version] = serialized
-
-        if metrics.expectancy_per_trade > best_expectancy:
-            best_expectancy = metrics.expectancy_per_trade
-            best_policy_version = policy.version
-
-    output_payload = {
-        "evidence_class": "SYNTHETIC_FIXTURE",
-        "trade_count": len(trades),
-        "best_synthetic_candidate": best_policy_version,
-        "best_policy_version": best_policy_version,
-        "best_expectancy_per_trade": str(best_expectancy),
-        "policy_evaluations": results_by_policy,
-        "evaluated_at": datetime.now().isoformat(),
+        for value in report.evaluations
     }
+    selected_partition_metrics = (
+        report.validation_metrics
+        if report.selection_partition == "VALIDATION"
+        else report.train_metrics
+    )
+    selected_metrics = (
+        selected_partition_metrics.get(report.selected_policy_version)
+        if report.selected_policy_version is not None
+        else None
+    )
+    output_payload = report.to_json_dict()
+    output_payload.update(
+        {
+            "evidence_class": (
+                "SYNTHETIC_FIXTURE" if not args.dataset.exists() else "HISTORICAL_REAL"
+            ),
+            "trade_count": len(trades),
+            "best_synthetic_candidate": report.selected_policy_version,
+            "best_policy_version": report.selected_policy_version,
+            "best_expectancy_per_trade": (
+                None
+                if selected_metrics is None
+                else str(selected_metrics.expectancy_per_trade)
+            ),
+            "policy_evaluations": results_by_policy,
+        }
+    )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as f:
@@ -175,7 +197,10 @@ def main() -> int:
 
     print(f"Convex exit research completed. Output saved to {args.output}")
     print(f"Evaluated {len(CANDIDATE_EXIT_POLICIES)} policies across {len(trades)} trade records.")
-    print(f"Recommended policy: {best_policy_version} (Expectancy/trade: {best_expectancy})")
+    print(
+        "Research candidate: "
+        f"{report.selected_policy_version} (selection: {report.selection_partition})"
+    )
     return 0
 
 

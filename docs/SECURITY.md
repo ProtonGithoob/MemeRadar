@@ -161,6 +161,13 @@ alerts can be recorded as corroboration but cannot force an exit alone. Exit
 timeline persistence is append-only and retains before/after evidence
 references for audit and replay. The protected modes remain unchanged.
 
+Alpha Caller Task 13 extends only the research plane. Convex exit candidates
+for partial TP, trailing, liquidity collapse, deployer/caller-linked and
+smart-wallet distribution, and drawdown circuit breakers are compared through
+the existing event-time calibration split. TEST outcomes never select a
+candidate, and the report remains `ADVISORY_ONLY_NO_AUTO_PROMOTION` with
+`execution_eligible=false` and the protected modes unchanged.
+
 Sprint 9.3 keeps the position dashboard and position API behind the existing
 server-side read boundary. They expose observed market provenance and derived
 paper performance only; every response is permanently non-authorizing and the
