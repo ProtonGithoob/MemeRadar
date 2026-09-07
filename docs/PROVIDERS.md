@@ -109,6 +109,19 @@ All provider ports operate under strict fail-closed boundaries:
 - Third-party risk scores are corroborating evidence only and never override MemeRadar's deterministic risk hard gates.
 - `AUTO_EXECUTION=false` and `MANUAL_EXECUTION=false` remain permanently locked.
 
+The application `SocialCallCollector` is the shared bounded orchestration seam
+for historical and live call ingestion. It consumes the existing
+`SocialCallPort`/`SocialDataRequest`, paginates historical cursors only up to a
+configured page bound, keeps live collection to one resumable batch, orders
+calls by published/observed/ingested event time, replaces an earlier record
+only when a later provider observation explicitly marks it edited, and rejects
+conflicting duplicate identities. It writes through the existing
+`SocialCallObservationRepository`-compatible sink, so provider payloads and
+database details do not enter application logic. Reports expose bounded page,
+duplicate, persistence, cursor and ingestion-lag metrics; social and Telegram
+doctors expose `collector=UNKNOWN` until a collection run exists, or
+`CONFIGURATION_MISSING` when required access is absent.
+
 ## Paper execution boundary
 
 The Phase 9.1 paper engine is not a provider adapter. It consumes the existing

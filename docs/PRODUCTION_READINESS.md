@@ -127,6 +127,40 @@ The four pre-existing unrelated WIP files remain untracked and untouched. The
 protected modes remain exactly `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
 `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
 
+### Task 3 evidence snapshot — 2026-09-07
+
+The existing social and Telegram adapters now have a shared application
+collector orchestration seam. Historical collection follows provider cursors
+within a bounded page count; live collection is one bounded resumable batch.
+Normalized calls are ordered by event time, exact duplicates are idempotently
+ignored, explicit edited observations replace earlier content, conflicting
+message identities fail closed, and unresolved ticker/name references remain
+separate from chain-qualified addresses. Persistence is injected through the
+existing social-call repository contract, retaining provider/source IDs,
+timestamps, parser/provenance/freshness and edit/delete state without a new
+storage or alert engine.
+
+The collector report includes page/fetch/unique/duplicate/persist counts,
+cursor state and ingestion lag. Social and Telegram doctors include a
+collector status, but health probes never claim collection success: this
+checkout reports `CONFIGURATION_MISSING` and `ingestion_lag_seconds=null` for
+both because no compliant external access is configured.
+
+Evidence for this slice:
+
+- focused social/Telegram/provider/collector tests: `17 passed`;
+- `make migration-check`: PASS, head `0008_alpha_caller_intelligence`, `25`
+  tables;
+- `make verify`: PASS with `1083` Python tests, `11` skipped, `1` warning and
+  `54` Vitest tests; strict mypy covers `120` source files, and Ruff, Compose,
+  secret scan, security review and the `581`-component SBOM pass;
+- social and Telegram live/historical acceptance remains `BLOCKED_EXTERNAL`;
+  no historical-real or live-shadow alpha evidence is claimed.
+
+The four unrelated WIP files remain untouched and protected modes remain
+exactly `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`,
+`AUTO_EXECUTION=false`.
+
 ## Minimum evidence targets
 
 These are initial versioned guardrails for sample adequacy, not profitability promises:

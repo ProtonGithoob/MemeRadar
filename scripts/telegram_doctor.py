@@ -83,6 +83,12 @@ def _base_report(
     status: str,
     reason: str,
 ) -> DoctorReport:
+    collector_ready = reason in {
+        "CONFIGURATION_MISSING",
+        "DESTINATION_MISSING",
+        "CONFIGURATION_INVALID",
+        "OPERATING_MODE_INVALID",
+    }
     return {
         "provider": "telegram",
         "status": status,
@@ -93,6 +99,11 @@ def _base_report(
         "schema": "not_checked",
         "latency_ms": None,
         "rate_limit": None,
+        "collector": {
+            "status": "CONFIGURATION_MISSING" if collector_ready else "UNKNOWN",
+            "reason": reason if collector_ready else "COLLECTOR_NOT_PROBED",
+            "ingestion_lag_seconds": None,
+        },
         "modes": dict(_SAFE_MODES),
     }
 

@@ -37,6 +37,11 @@ def test_missing_configuration_is_blocked_without_echoing_values() -> None:
     assert report["status"] == "BLOCKED_EXTERNAL"
     assert report["reason"] == "CONFIGURATION_MISSING"
     assert report["configuration"] == {"api_url": "missing", "api_key": "present"}
+    assert report["collector"] == {
+        "status": "CONFIGURATION_MISSING",
+        "reason": "CONFIGURATION_MISSING",
+        "ingestion_lag_seconds": None,
+    }
     assert SECRET not in json.dumps(report, sort_keys=True)
     assert report["modes"] == {
         "analysis_only": True,

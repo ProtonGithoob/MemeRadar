@@ -59,11 +59,11 @@
 
 **Produces:** Idempotent historical backfill and bounded live ingestion into existing `SocialCallObservation`/caller seams.
 
-- [ ] Write failing tests for duplicate IDs, edited/deleted state where supplied, out-of-order messages, ticker-only unresolved calls, chain-qualified contract calls and provider retry/rate-limit behavior.
-- [ ] Implement provider-neutral collectors; never make arbitrary web scraping a boot dependency.
-- [ ] Persist `occurred_at`, `observed_at`, `ingested_at`, provider/source ID, parser/provider version, provenance and freshness.
-- [ ] Add collector status/lag metrics and doctor output.
-- [ ] Run tests/migration gates; update STATUS and commit.
+- [x] Write failing tests for duplicate IDs, edited/deleted state where supplied, out-of-order messages, ticker-only unresolved calls, chain-qualified contract calls and provider retry/rate-limit behavior.
+- [x] Implement provider-neutral collectors; never make arbitrary web scraping a boot dependency.
+- [x] Persist `occurred_at`, `observed_at`, `ingested_at`, provider/source ID, parser/provider version, provenance and freshness.
+- [x] Add collector status/lag metrics and doctor output.
+- [x] Run tests/migration gates; update STATUS and commit.
 
 ### Task 4: Historical-real dataset builder
 

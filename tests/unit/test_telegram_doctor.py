@@ -44,6 +44,11 @@ def test_missing_configuration_is_blocked_without_secret_values() -> None:
         "bot_token": "missing",
         "chat_id": "missing",
     }
+    assert report["collector"] == {
+        "status": "CONFIGURATION_MISSING",
+        "reason": "CONFIGURATION_MISSING",
+        "ingestion_lag_seconds": None,
+    }
     assert SECRET not in json.dumps(report, sort_keys=True)
 
 

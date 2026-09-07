@@ -64,6 +64,11 @@ def _configuration(values: Mapping[str, str]) -> tuple[str, str, dict[str, str]]
 
 
 def _base_report(configuration: Mapping[str, str], *, status: str, reason: str) -> DoctorReport:
+    collector_ready = reason in {
+        "CONFIGURATION_MISSING",
+        "CONFIGURATION_INVALID",
+        "OPERATING_MODE_INVALID",
+    }
     return {
         "provider": "social",
         "status": status,
@@ -74,6 +79,11 @@ def _base_report(configuration: Mapping[str, str], *, status: str, reason: str) 
         "schema": "not_checked",
         "latency_ms": None,
         "rate_limit": None,
+        "collector": {
+            "status": "CONFIGURATION_MISSING" if collector_ready else "UNKNOWN",
+            "reason": reason if collector_ready else "COLLECTOR_NOT_PROBED",
+            "ingestion_lag_seconds": None,
+        },
         "modes": dict(_SAFE_MODES),
     }
 
