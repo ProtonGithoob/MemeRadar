@@ -1,6 +1,6 @@
 # MemeRadar Production Readiness
 
-**Current checkpoint:** Alpha Caller Task 15 complete at `2acf261` before this readiness roadmap.
+**Current checkpoint:** Real Alpha Production Readiness Task 5 complete; the repository remains synchronized on `main` with protected modes unchanged.
 
 **Current classification:** `NOT_PRODUCTION_READY` for real-alpha or live-money claims. Engineering verification is strong, but checked-in alpha evidence remains `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES` and real X/Telegram/provider/live-shadow evidence is still externally incomplete.
 
@@ -183,6 +183,30 @@ historical-real cohorts. This is a validation contract, not real-data proof.
 
 The external blocker is unchanged: compliant X/social and Telegram history/live
 access is not configured, so no historical-real samples are fabricated.
+
+## Task 5 evidence snapshot — 2026-09-07
+
+The existing caller-discovery analyzer now derives its retrospective search
+boundary from the earliest executable outcome crossing when available, rather
+than treating the anchor message as the move boundary. Calls after that
+event-time cutoff remain held out; late pre-move calls remain classified as
+late. Deleted calls are excluded from caller selection, while deleted and
+unresolved historical call evidence adds explicit UNKNOWN reason/quality state.
+The implementation reuses `HistoricalCallerOutcome`,
+`SocialCallObservation` and the existing caller profile/backfill path; no
+second discovery or scoring engine was added.
+
+Task 5 focused TDD passes `9 tests` across caller discovery and outcome
+projection, including first-executable-move cutoff, post-move exclusion,
+late-call retention, unresolved/deleted UNKNOWN handling and existing
+winner/negative-control/future-call contracts. The full `make verify` gate
+passes with `1091` Python tests, `11` skipped, `1` warning, `54` Vitest tests,
+strict mypy over `121 source files`, Ruff, Compose, secret scan, migration
+head `0008_alpha_caller_intelligence` / `25` tables, security review PASS and
+the existing `581`-component SBOM digest. No real social/provider success,
+historical-real evidence or production-ready classification is claimed;
+compliant X/Telegram access remains external and the checked-in evidence is
+still `SYNTHETIC_REDACTED` / `INSUFFICIENT_SAMPLES`.
 
 ## Minimum evidence targets
 

@@ -86,10 +86,10 @@
 
 **Produces:** Earliest-caller cohorts mined from winners *and* negative controls without survivorship leakage.
 
-- [ ] Write failing tests proving only pre-move observations are eligible and late callers/failures/rugs remain in the history.
-- [ ] Implement asset-outcome -> pre-move social search -> caller backfill -> historical profile -> future out-of-sample cohort flow.
-- [ ] Preserve unresolved/deleted-history uncertainty as `UNKNOWN`.
-- [ ] Run focused tests and update STATUS/commit.
+- [x] Write failing tests proving only pre-move observations are eligible and late callers/failures/rugs remain in the history.
+- [x] Implement asset-outcome -> pre-move social search -> caller backfill -> historical profile -> future out-of-sample cohort flow.
+- [x] Preserve unresolved/deleted-history uncertainty as `UNKNOWN`.
+- [x] Run focused tests and update STATUS/commit.
 
 ### Task 6: Executable event-time outcome reconstruction
 

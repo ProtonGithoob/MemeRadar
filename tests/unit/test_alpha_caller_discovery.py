@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -269,3 +270,87 @@ def test_future_historical_calls_cannot_change_discovered_cohort() -> None:
     assert all(value.out_of_sample_call_ids == () for value in before.candidates)
     assert after.candidates[0].out_of_sample_call_ids == ("telegram:future-early",)
     assert after.no_lookahead_verified is True
+
+
+def test_reverse_discovery_stops_at_first_executable_move_not_anchor_message() -> None:
+    token = TokenIdentity(mint_address=SOLANA_TOKEN)
+    rug_token = TokenIdentity(mint_address=OTHER_SOLANA_TOKEN)
+    winner_anchor_call = _call(token, "winner", "winner-anchor", NOW - timedelta(days=2))
+    rug_anchor_call = _call(rug_token, "rug", "rug-anchor", NOW - timedelta(days=1))
+    pre_move = _call(
+        token,
+        "pre-move-caller",
+        "pre-move",
+        winner_anchor_call.published_at + timedelta(minutes=5),
+    )
+    post_move = _call(
+        token,
+        "post-move-caller",
+        "post-move",
+        winner_anchor_call.published_at + timedelta(minutes=11),
+    )
+
+    result = CallerDiscoveryAnalyzer().discover(
+        (
+            CallerDiscoveryAnchor(
+                outcome=_outcome(winner_anchor_call),
+                cohort="EXTREME_WINNER",
+                matured_at=NOW,
+            ),
+            CallerDiscoveryAnchor(
+                outcome=_outcome(rug_anchor_call, rugged=True),
+                cohort="RUG_SEVERE_FAILURE",
+                matured_at=NOW,
+            ),
+        ),
+        (winner_anchor_call, rug_anchor_call, pre_move, post_move),
+        as_of=NOW,
+        config_hash="caller-discovery-test",
+    )
+
+    candidates = {value.caller_id: value for value in result.candidates}
+    assert candidates["telegram:pre-move-caller"].late_call_ids == ("telegram:pre-move",)
+    assert "telegram:post-move-caller" not in candidates
+
+
+def test_unresolved_and_deleted_history_is_unknown_and_not_selected() -> None:
+    token = TokenIdentity(mint_address=SOLANA_TOKEN)
+    winner_anchor_call = _call(token, "winner", "winner-anchor", NOW - timedelta(days=2))
+    rug_anchor_call = _call(token, "rug", "rug-anchor", NOW - timedelta(days=1))
+    deleted = replace(
+        _call(
+            token,
+            "deleted-caller",
+            "deleted-call",
+            winner_anchor_call.published_at - timedelta(minutes=1),
+        ),
+        deleted=True,
+    )
+    unresolved = _unresolved_call(
+        "unresolved-caller",
+        "unresolved-call",
+        winner_anchor_call.published_at - timedelta(minutes=2),
+    )
+
+    result = CallerDiscoveryAnalyzer().discover(
+        (
+            CallerDiscoveryAnchor(
+                outcome=_outcome(winner_anchor_call),
+                cohort="EXTREME_WINNER",
+                matured_at=NOW,
+            ),
+            CallerDiscoveryAnchor(
+                outcome=_outcome(rug_anchor_call, rugged=True),
+                cohort="RUG_SEVERE_FAILURE",
+                matured_at=NOW,
+            ),
+        ),
+        (winner_anchor_call, rug_anchor_call, deleted, unresolved),
+        as_of=NOW,
+        config_hash="caller-discovery-test",
+    )
+
+    assert "DELETED_CALL_HISTORY_UNKNOWN" in {reason.code for reason in result.reason_codes}
+    assert "UNRESOLVED_CALL_HISTORY_UNKNOWN" in {reason.code for reason in result.reason_codes}
+    assert result.quality_state is QualityState.UNKNOWN
+    assert "telegram:deleted-caller" not in result.candidate_ids

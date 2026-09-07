@@ -415,6 +415,23 @@ class HistoricalCallerOutcome:
         return tuple(value.horizon for value in self.horizons)
 
     @property
+    def first_executable_move_at(self) -> datetime | None:
+        """Return the earliest executable multiple crossing, if one is known."""
+
+        crossing_times = [
+            crossing_time
+            for horizon in self.horizons
+            for label, crossing_time in horizon.time_to_multiple_seconds.items()
+            if horizon.multiple_hits.get(label) is True and crossing_time is not None
+        ]
+        if not crossing_times:
+            return None
+        earliest_seconds = min(crossing_times)
+        return self.call.published_at + timedelta(
+            microseconds=int(earliest_seconds * Decimal("1000000"))
+        )
+
+    @property
     def mfe(self) -> Decimal | None:
         return None if self.mark_multiple is None else self.mark_multiple - Decimal("1")
 

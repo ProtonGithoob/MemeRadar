@@ -1134,6 +1134,7 @@ class CallerDiscoveryAnchor:
     outcome: HistoricalCallerOutcome
     cohort: str
     matured_at: datetime | None = None
+    move_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.outcome, HistoricalCallerOutcome):
@@ -1148,6 +1149,20 @@ class CallerDiscoveryAnchor:
         if matured_at < self.outcome.call.published_at:
             raise ValueError("matured_at must not precede the anchor call")
         object.__setattr__(self, "matured_at", matured_at)
+        move_at = self.outcome.first_executable_move_at if self.move_at is None else self.move_at
+        move_at = (
+            self.outcome.call.published_at
+            if move_at is None
+            else ensure_utc(move_at, "move_at")
+        )
+        if move_at < self.outcome.call.published_at:
+            raise ValueError("move_at must not precede the anchor call")
+        object.__setattr__(self, "move_at", move_at)
+
+    @property
+    def discovery_cutoff(self) -> datetime:
+        assert self.move_at is not None
+        return self.move_at
 
     @property
     def anchor_id(self) -> str:
@@ -1508,6 +1523,22 @@ class CallerDiscoveryAnalyzer:
         unique_anchors = self._unique_anchors(anchors)
         calls = self._unique_calls(historical_calls)
         reasons: list[ReasonCode] = [ReasonCode("CALLER_DISCOVERY_RESEARCH_ONLY")]
+        if any(
+            call.deleted is True
+            and call.published_at <= checked_as_of
+            and call.observed_at <= checked_as_of
+            and call.ingested_at <= checked_as_of
+            for call in calls
+        ):
+            _append_reason(reasons, ReasonCode("DELETED_CALL_HISTORY_UNKNOWN"))
+        if any(
+            call.canonical_asset_id is None
+            and call.published_at <= checked_as_of
+            and call.observed_at <= checked_as_of
+            and call.ingested_at <= checked_as_of
+            for call in calls
+        ):
+            _append_reason(reasons, ReasonCode("UNRESOLVED_CALL_HISTORY_UNKNOWN"))
         valid_anchors: list[CallerDiscoveryAnchor] = []
         for anchor in unique_anchors:
             if anchor.cohort in _DISCOVERY_UNKNOWN_COHORTS:
@@ -1520,6 +1551,9 @@ class CallerDiscoveryAnalyzer:
                 or anchor.outcome.as_of > checked_as_of
             ):
                 _append_reason(reasons, ReasonCode("FUTURE_OUTCOME_EXCLUDED"))
+                continue
+            if anchor.discovery_cutoff > checked_as_of:
+                _append_reason(reasons, ReasonCode("FUTURE_MOVE_EXCLUDED"))
                 continue
             if not anchor.is_matured:
                 _append_reason(reasons, ReasonCode("OUTCOME_NOT_MATURED"))
@@ -1656,9 +1690,10 @@ class CallerDiscoveryAnalyzer:
                 call
                 for call in calls
                 if call.canonical_asset_id == asset_id
-                and call.published_at <= anchor.outcome.call.published_at
-                and call.observed_at <= anchor.outcome.call.published_at
-                and call.ingested_at <= anchor.outcome.call.published_at
+                and call.deleted is not True
+                and call.published_at <= anchor.discovery_cutoff
+                and call.observed_at <= anchor.discovery_cutoff
+                and call.ingested_at <= anchor.discovery_cutoff
             ]
             if not asset_calls:
                 _append_reason(reasons, ReasonCode("CALLER_DISCOVERY_CALLERS_UNKNOWN"))
@@ -1673,7 +1708,7 @@ class CallerDiscoveryAnalyzer:
                     caller_id,
                     _CallerDiscoveryState(
                         identity=call.caller_identity,
-                        discovered_at=anchor.outcome.call.published_at,
+                        discovered_at=anchor.discovery_cutoff,
                         earliest_call_at=call.published_at,
                     ),
                 )
@@ -1690,7 +1725,7 @@ class CallerDiscoveryAnalyzer:
                     state.anchor_cohorts[anchor.cohort] = (
                         state.anchor_cohorts.get(anchor.cohort, 0) + 1
                     )
-                state.discovered_at = min(state.discovered_at, anchor.outcome.call.published_at)
+                state.discovered_at = min(state.discovered_at, anchor.discovery_cutoff)
                 state.earliest_call_at = min(state.earliest_call_at, call.published_at)
                 state.quality.append(call.quality_state)
                 state.provenance.extend(call.provenance)
@@ -1790,6 +1825,14 @@ def _discovery_quality(
         for call in calls
         if call.published_at <= as_of and call.observed_at <= as_of and call.ingested_at <= as_of
     )
+    if any(
+        (call.deleted is True or call.canonical_asset_id is None)
+        and call.published_at <= as_of
+        and call.observed_at <= as_of
+        and call.ingested_at <= as_of
+        for call in calls
+    ):
+        states.append(QualityState.UNKNOWN)
     return _combine_quality(states)
 
 
