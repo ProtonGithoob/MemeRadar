@@ -39,10 +39,12 @@ from .confluence import TokenSmartMoneyScore
 from .correlation import CorrelationSnapshot, CorrelationWindowFeatures
 from .evidence_helpers import append_unique as _append_unique
 from .evidence_helpers import combined_quality as _combined_quality
+from .kol_bundle import KOLBundleClusterEvidence
 from .narrative_catalyst import NarrativeCatalystSnapshot
 
 SMART_MONEY_CONVERGENCE_VERSION = "smart-money-convergence-v1"
 CALLER_CONVERGENCE_VERSION = "caller-convergence-v1"
+
 
 class ConvergenceSignalState(str, Enum):
     """Research classification of the currently available signal families."""
@@ -179,11 +181,7 @@ def _disclosure_terms(values: Mapping[str, object]) -> tuple[str, ...]:
     for name in ("narrative", "narrative_id", "theme", "themes", "keywords", "entities"):
         value = values.get(name)
         candidates = (
-            (value,)
-            if isinstance(value, str)
-            else value
-            if isinstance(value, Sequence)
-            else ()
+            (value,) if isinstance(value, str) else value if isinstance(value, Sequence) else ()
         )
         for candidate in candidates:
             if isinstance(candidate, str) and candidate.strip():
@@ -234,6 +232,7 @@ class CallerConvergenceEvidence:
     reason_codes: tuple[ReasonCode | str, ...]
     config_hash: str
     version: str = CALLER_CONVERGENCE_VERSION
+    kol_bundle: KOLBundleClusterEvidence | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.token, TokenIdentity):
@@ -318,6 +317,11 @@ class CallerConvergenceEvidence:
         )
         object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
         object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+        if self.kol_bundle is not None:
+            if not isinstance(self.kol_bundle, KOLBundleClusterEvidence):
+                raise TypeError("kol_bundle must be KOLBundleClusterEvidence or None")
+            if self.kol_bundle.token != self.token:
+                raise ValueError("kol_bundle token must match caller convergence token")
 
     @property
     def signal_state(self) -> CallerConvergenceState:
@@ -381,6 +385,28 @@ class CallerConvergenceEvidence:
                     "reason_codes": self.reason_code_values,
                     "config_hash": self.config_hash,
                     "version": self.version,
+                    "kol_bundle": (
+                        None
+                        if self.kol_bundle is None
+                        else {
+                            "quality_state": self.kol_bundle.quality_state.value,
+                            "confidence_tier": self.kol_bundle.confidence_tier,
+                            "visible_caller_position": self.kol_bundle.visible_caller_position,
+                            "cluster_adjusted_accumulation": (
+                                self.kol_bundle.cluster_adjusted_accumulation
+                            ),
+                            "probable_related_side_wallet_count": (
+                                self.kol_bundle.probable_related_side_wallet_count
+                            ),
+                            "bundle_count": self.kol_bundle.bundle_count,
+                            "temporal_proximity_seconds": (
+                                self.kol_bundle.temporal_proximity_seconds
+                            ),
+                            "confidence": self.kol_bundle.confidence,
+                            "reason_codes": self.kol_bundle.reason_codes,
+                            "provenance": self.kol_bundle.provenance,
+                        }
+                    ),
                     "execution_eligible": False,
                 },
                 "caller convergence mapping",
@@ -635,6 +661,7 @@ class SmartMoneyConvergenceAnalyzer:
         hard_risk_blocked: bool | None,
         now: datetime,
         config_hash: str,
+        kol_bundle: KOLBundleClusterEvidence | None,
     ) -> CallerConvergenceEvidence | None:
         raw_calls = () if caller_calls is None else caller_calls
         raw_profiles = () if caller_profiles is None else caller_profiles
@@ -671,9 +698,7 @@ class SmartMoneyConvergenceAnalyzer:
         duplicate_conduct = False
         for conduct in raw_conduct:
             if not isinstance(conduct, CallerMarketConductEvidence):
-                raise TypeError(
-                    "caller_conduct must contain CallerMarketConductEvidence values"
-                )
+                raise TypeError("caller_conduct must contain CallerMarketConductEvidence values")
             key = conduct.call.canonical_id
             prior_conduct = unique_conduct.get(key)
             if prior_conduct is None:
@@ -732,9 +757,7 @@ class SmartMoneyConvergenceAnalyzer:
             if conduct.call.canonical_asset_id != token.canonical_id:
                 continue
             conduct_state = (
-                QualityState.INVALID
-                if future_call(conduct.call)
-                else _state_at(conduct, now)
+                QualityState.INVALID if future_call(conduct.call) else _state_at(conduct, now)
             )
             usable = conduct_state is QualityState.FRESH and conduct.no_lookahead_verified
             if conduct_state is QualityState.INVALID or not conduct.no_lookahead_verified:
@@ -742,9 +765,7 @@ class SmartMoneyConvergenceAnalyzer:
             relevant_conduct.append((conduct, conduct_state, usable))
             _source_metadata(provenance, evidence_refs, reasons, conduct)
 
-        selected_caller_ids = {
-            call.caller_identity.canonical_id for call in relevant_calls
-        }
+        selected_caller_ids = {call.caller_identity.canonical_id for call in relevant_calls}
         relevant_profiles: dict[str, tuple[CallerPerformanceProfile, QualityState]] = {}
         for caller_id in selected_caller_ids:
             profile = profiles.get(caller_id)
@@ -824,6 +845,7 @@ class SmartMoneyConvergenceAnalyzer:
                 provenance=provenance,
                 evidence_refs=evidence_refs,
                 reason_codes=reasons,
+                kol_bundle=kol_bundle,
             )
             return caller_convergence
 
@@ -934,15 +956,12 @@ class SmartMoneyConvergenceAnalyzer:
             for wallet_id in conduct.linked_wallet_ids
         }
         explicit_confirmation = (
-            CallerMarketConductClassification.CALLER_SMART_MONEY_CONFIRMATION
-            in classifications
+            CallerMarketConductClassification.CALLER_SMART_MONEY_CONFIRMATION in classifications
         )
         if explicit_confirmation:
             smart_wallet_confirmation = True
         elif (
-            linked_wallet_ids
-            and smart is not None
-            and _state_at(smart, now) is QualityState.FRESH
+            linked_wallet_ids and smart is not None and _state_at(smart, now) is QualityState.FRESH
         ):
             smart_wallet_ids = {
                 wallet_id.casefold()
@@ -968,9 +987,7 @@ class SmartMoneyConvergenceAnalyzer:
                 )
             }
             caller_terms = {
-                term
-                for call in relevant_calls
-                for term in _disclosure_terms(call.disclosure)
+                term for call in relevant_calls for term in _disclosure_terms(call.disclosure)
             }
             if caller_terms:
                 narrative_alignment = bool(narrative_terms & caller_terms)
@@ -992,8 +1009,14 @@ class SmartMoneyConvergenceAnalyzer:
         elif distribution_detected or contradictory_call_count or narrative_alignment is False:
             caller_state = CallerConvergenceState.DISAGREEMENT
             reasons.append(ReasonCode("CALLER_CONVERGENCE_DISAGREEMENT"))
-        elif caller_signal and hard_risk_blocked is False and (
-            wallet_signal is True or narrative_signal is True or smart_wallet_confirmation is True
+        elif (
+            caller_signal
+            and hard_risk_blocked is False
+            and (
+                wallet_signal is True
+                or narrative_signal is True
+                or smart_wallet_confirmation is True
+            )
         ):
             caller_state = CallerConvergenceState.CONVERGENT
             reasons.append(ReasonCode("CALLER_CONVERGENCE_CONVERGENT"))
@@ -1053,6 +1076,7 @@ class SmartMoneyConvergenceAnalyzer:
             provenance=provenance,
             evidence_refs=evidence_refs,
             reason_codes=reasons,
+            kol_bundle=kol_bundle,
         )
 
     def _caller_evidence(
@@ -1084,6 +1108,7 @@ class SmartMoneyConvergenceAnalyzer:
         provenance: Sequence[Provenance],
         evidence_refs: Sequence[str],
         reason_codes: Sequence[ReasonCode],
+        kol_bundle: KOLBundleClusterEvidence | None,
     ) -> CallerConvergenceEvidence:
         return CallerConvergenceEvidence(
             token=token,
@@ -1114,6 +1139,7 @@ class SmartMoneyConvergenceAnalyzer:
             reason_codes=tuple(reason_codes),
             config_hash=config_hash,
             version=CALLER_CONVERGENCE_VERSION,
+            kol_bundle=kol_bundle,
         )
 
     def analyze(
@@ -1130,6 +1156,7 @@ class SmartMoneyConvergenceAnalyzer:
         caller_profiles: Sequence[CallerPerformanceProfile] | None = None,
         caller_conduct: Sequence[CallerMarketConductEvidence] | None = None,
         caller_cluster_ids: Mapping[str, str] | None = None,
+        kol_bundle: KOLBundleClusterEvidence | None = None,
         now: datetime,
         config_hash: str,
     ) -> SmartMoneyConvergenceProjection:
@@ -1149,12 +1176,10 @@ class SmartMoneyConvergenceAnalyzer:
         ):
             if value is not None and not isinstance(value, expected):
                 raise TypeError(f"{field_name} has an unsupported snapshot type")
+        if kol_bundle is not None and not isinstance(kol_bundle, KOLBundleClusterEvidence):
+            raise TypeError("kol_bundle has an unsupported evidence type")
 
-        candidates = tuple(
-            value.token
-            for value in (smart, correlation)
-            if value is not None
-        )
+        candidates = tuple(value.token for value in (smart, correlation) if value is not None)
         if token is None:
             token = candidates[0] if candidates else None
         if not isinstance(token, TokenIdentity):
@@ -1197,10 +1222,7 @@ class SmartMoneyConvergenceAnalyzer:
             and narrative.chain is not token.chain
         ):
             identity_conflict = True
-        if (
-            chain_opportunity is not None
-            and chain_opportunity.chain is not token.chain
-        ):
+        if chain_opportunity is not None and chain_opportunity.chain is not token.chain:
             identity_conflict = True
         if identity_conflict:
             reasons.append(ReasonCode("SMART_MONEY_CONVERGENCE_TOKEN_MISMATCH"))
@@ -1290,7 +1312,12 @@ class SmartMoneyConvergenceAnalyzer:
             hard_risk_blocked=hard_risk_blocked,
             now=checked_at,
             config_hash=normalized_config_hash,
+            kol_bundle=kol_bundle,
         )
+        if kol_bundle is not None:
+            _append_unique(provenance, kol_bundle.provenance)
+            _append_unique(evidence_refs, kol_bundle.evidence_refs)
+            reasons.append(ReasonCode("KOL_BUNDLE_EVIDENCE_ATTACHED"))
         if caller_convergence is not None:
             _append_unique(provenance, caller_convergence.provenance)
             _append_unique(evidence_refs, caller_convergence.evidence_refs)
@@ -1356,18 +1383,15 @@ class SmartMoneyConvergenceAnalyzer:
                         confidence_sources.append(source_confidence)
         joint_confidence = (
             min(confidence_sources, default=Decimal("0"))
-            if signal_state in {
+            if signal_state
+            in {
                 ConvergenceSignalState.NARRATIVE_ONLY,
                 ConvergenceSignalState.WALLET_ONLY,
                 ConvergenceSignalState.CONVERGENT,
             }
             else Decimal("0")
         )
-        chain_value = (
-            None
-            if chain_opportunity is None
-            else Chain(chain_opportunity.chain)
-        )
+        chain_value = None if chain_opportunity is None else Chain(chain_opportunity.chain)
         chain_confidence = _source_confidence(chain_opportunity) if chain_opportunity else None
         return SmartMoneyConvergenceProjection(
             token=token,

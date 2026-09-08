@@ -65,9 +65,12 @@ CabalSpy-style stream for Solana, BNB and Robinhood (and rejects other chains
 through canonical identity validation). It emits the existing normalized wallet
 observation shape with chain-qualified source IDs, event-time timestamps,
 deduplication, sequence-gap evidence, bounded reconnect/backoff, bounded event
-count, provider health and optional RPC/provider fallback. External labels or
-scores are retained as advisory payload evidence only; local wallet history,
-graph and conduct calculations remain authoritative.
+count, provider health and optional RPC/provider fallback. The thin
+`CabalSpyWebSocketSource` uses the documented subscription envelope but remains
+optional and doctor-gated; credentials never enter normalized payloads.
+External labels or scores are retained as advisory payload evidence only; local
+wallet history, graph and conduct calculations remain authoritative. An
+unresolved sequence gap is `DEGRADED`, never fully healthy/fresh.
 
 `HistoricalSocialBackfillProvider` extends the existing `SocialCallPort` with a
 bounded time window. `SocialRestAdapter.backfill` reuses
@@ -78,24 +81,27 @@ observations to production truth; replay and caller-outcome evaluation still
 apply the existing no-lookahead, negative-control and sample-adequacy gates.
 
 `RobinhoodSequencerAdapter` reuses the generic EVM chain identity and wallet
-stream normalization, with ordered events, gap detection, deduplication and a
-bounded fallback seam. `RobinhoodLaunchpadDecoder` accepts only an explicitly
-verified `(contract_address, selector)` registry entry. Unsupported NOXA,
-Odyssey or other identities remain `UNKNOWN`; no selector or contract is
+stream normalization, with ordered low-latency observations, gap detection,
+deduplication and an RPC-backfill seam. Sequencer observations are explicitly
+non-authoritative until canonical RPC/finality reconciliation. The versioned
+verified launchpad registry remains empty until an authoritative
+`(chain_id, contract_address, selector)` identity is verified. Unsupported
+NOXA, Odyssey or other identities remain `UNKNOWN`; no selector or contract is
 guessed from an external reference.
 
-`ReferencePriceEvidence` compares a verified oracle observation with a DEX
-executable quote. A stale or missing oracle is `UNKNOWN`; a large unexplained
+`ReferencePriceEvidence` compares a verified Chainlink AggregatorV3 observation
+with a DEX executable quote through the read-only EVM RPC seam. A stale,
+missing, invalid or unavailable oracle is `UNKNOWN`; a large unexplained
 deviation is market-integrity risk evidence; the oracle value never becomes an
-execution price. All new evidence is measurement-only and
-`execution_eligible=false`.
+execution price. Robinhood feed addresses remain unregistered until verified.
+All new evidence is measurement-only and `execution_eligible=false`.
 
 The implementation reimplements small provider-neutral seams rather than
-copying external code. CabalSpy, GMGN-style scanner material and Robinhood
-launchpad references were used only for architecture/research; no external
-source code or unverified protocol identity was imported. Live provider
-credentials and compliant historical real-data cohorts remain external
-validation blockers.
+copying external code. CabalSpy's public MIT SDK/docs, GMGN-style scanner
+material and Robinhood launchpad references were used only for
+architecture/research; no external source code or unverified protocol identity
+was imported. Live provider credentials and compliant historical real-data
+cohorts remain external validation blockers.
 
 ### Opportunity discovery evidence
 

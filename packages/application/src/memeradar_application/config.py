@@ -131,6 +131,7 @@ class Settings:
     wallet_intelligence_provider: str = "local"
     external_wallet_api_url: str | None = None
     external_wallet_api_key: str | None = None
+    external_wallet_stream_url: str | None = None
     social_metadata_provider: str = "dexscreener"
     social_api_url: str | None = None
     social_api_key: str | None = None
@@ -329,6 +330,7 @@ class Settings:
             ),
             external_wallet_api_url=_optional_value(values, "EXTERNAL_WALLET_API_URL"),
             external_wallet_api_key=_optional_value(values, "EXTERNAL_WALLET_API_KEY"),
+            external_wallet_stream_url=_optional_value(values, "EXTERNAL_WALLET_STREAM_URL"),
             social_metadata_provider=_provider_choice(
                 values,
                 "SOCIAL_METADATA_PROVIDER",

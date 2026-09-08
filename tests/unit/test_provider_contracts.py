@@ -101,6 +101,7 @@ def test_all_documented_provider_ports_expose_async_application_methods() -> Non
         "risk_summary",
         "wallet_enrichment",
         "alert_delivery",
+        "reference_price",
     }
     for port, method_name in methods.items():
         method = getattr(port, method_name)

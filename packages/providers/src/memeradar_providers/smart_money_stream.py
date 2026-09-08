@@ -63,6 +63,15 @@ class ExternalWalletStreamPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class ExternalWalletStreamGap:
+    first_missing_sequence: int
+    last_missing_sequence: int
+    detected_at: datetime
+    recovery_attempted: bool = False
+    recovery_result: str = "NOT_ATTEMPTED"
+
+
+@dataclass(frozen=True, slots=True)
 class ExternalWalletStreamResult:
     observations: tuple[Observation, ...]
     used_fallback: bool
@@ -71,6 +80,9 @@ class ExternalWalletStreamResult:
     malformed: int
     gaps: tuple[tuple[int, int], ...]
     health: ProviderHealth
+    continuity_state: str = "UNKNOWN"
+    gap_reports: tuple[ExternalWalletStreamGap, ...] = ()
+    unresolved_gap_count: int = 0
 
 
 class ExternalWalletEventStreamAdapter:
@@ -86,6 +98,8 @@ class ExternalWalletEventStreamAdapter:
         | None = None,
         policy: ExternalWalletStreamPolicy | None = None,
         sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        source_layer: str = "EXTERNAL_STREAM",
+        authoritative: bool = False,
     ) -> None:
         self.provider_name = require_text(provider_name, "provider_name")
         self.chain = normalize_chain(chain)
@@ -93,9 +107,17 @@ class ExternalWalletEventStreamAdapter:
         self._fallback = fallback
         self._policy = policy or ExternalWalletStreamPolicy()
         self._sleeper = sleeper
+        self._source_layer = require_text(source_layer, "source_layer", max_length=32).upper()
+        self._authoritative = authoritative
         self._health = ProviderHealthTracker()
 
-    def _normalize(self, value: object, context: ProviderRequestContext) -> Observation:
+    def _normalize(
+        self,
+        value: object,
+        context: ProviderRequestContext,
+        *,
+        source_layer: str | None = None,
+    ) -> Observation:
         if not isinstance(value, Mapping):
             raise ValueError("wallet stream event must be a mapping")
         payload = dict(value)
@@ -117,9 +139,11 @@ class ExternalWalletEventStreamAdapter:
         normalized_token = require_chain_address(cast(str, token), self.chain, "token_address")
         normalized_wallet = require_chain_address(cast(str, wallet), self.chain, "wallet_address")
         observed = ensure_utc(context.requested_at, "observed_at")
-        occurred = _timestamp(
-            payload.get("occurred_at", payload.get("timestamp")), "occurred_at", observed
+        raw_occurred = payload.get("occurred_at", payload.get("timestamp"))
+        occurred = (
+            None if raw_occurred is None else _timestamp(raw_occurred, "occurred_at", observed)
         )
+        event_time_quality = "EXACT" if occurred is not None else "MISSING"
         normalized_source = require_text(cast(str, source), "source_id", max_length=256)
         source_id = f"{self.chain.value}:{normalized_source}"
         normalized = {
@@ -135,6 +159,10 @@ class ExternalWalletEventStreamAdapter:
             "external_classification": payload.get("classification", payload.get("label")),
             "external_score": payload.get("score"),
             "sequence": payload.get("sequence", payload.get("slot", payload.get("block_number"))),
+            "event_time_quality": event_time_quality,
+            "occurred_at_estimated": False,
+            "source_layer": self._source_layer if source_layer is None else source_layer,
+            "authoritative": self._authoritative,
         }
         return Observation(
             kind="wallet.activity",
@@ -148,7 +176,7 @@ class ExternalWalletEventStreamAdapter:
             occurred_at=occurred,
             observed_at=observed,
             ingested_at=observed,
-            quality_state=QualityState.FRESH,
+            quality_state=QualityState.FRESH if occurred is not None else QualityState.UNKNOWN,
             normalized_payload=normalized,
         )
 
@@ -166,9 +194,8 @@ class ExternalWalletEventStreamAdapter:
         if not isinstance(context, ProviderRequestContext):
             raise TypeError("context must be a ProviderRequestContext")
         observations: dict[str, Observation] = {}
-        gaps: set[tuple[int, int]] = set()
         reconnects = duplicates = malformed = 0
-        last_sequence: int | None = None
+        sequence_values: set[int] = set()
         while True:
             try:
                 source = await self._source()
@@ -190,9 +217,7 @@ class ExternalWalletEventStreamAdapter:
                         continue
                     sequence = observation.normalized_payload.get("sequence")
                     if isinstance(sequence, int) and not isinstance(sequence, bool):
-                        if last_sequence is not None and sequence > last_sequence + 1:
-                            gaps.add((last_sequence + 1, sequence - 1))
-                        last_sequence = max(last_sequence or sequence, sequence)
+                        sequence_values.add(sequence)
                     observations[observation.provenance.source_id] = observation
                 break
             except asyncio.CancelledError:
@@ -213,42 +238,146 @@ class ExternalWalletEventStreamAdapter:
                         self._policy.reconnect_delay_seconds * (2 ** (reconnects - 1)),
                     )
                 )
-        used_fallback = reconnects > self._policy.max_reconnects and self._fallback is not None
+
+        def missing_ranges(values: set[int]) -> tuple[tuple[int, int], ...]:
+            if len(values) < 2:
+                return ()
+            ordered_values = sorted(values)
+            ranges: list[tuple[int, int]] = []
+            for previous, current in zip(ordered_values, ordered_values[1:], strict=False):
+                if current > previous + 1:
+                    ranges.append((previous + 1, current - 1))
+            return tuple(ranges)
+
+        initial_gaps = missing_ranges(sequence_values)
+        used_fallback = bool(
+            self._fallback is not None
+            and (reconnects > self._policy.max_reconnects or initial_gaps)
+        )
+        recovery_attempted = False
+        recovery_result = "NOT_ATTEMPTED"
         if used_fallback and self._fallback is not None:
-            raw = self._fallback(context)
-            if inspect.isawaitable(raw):
-                raw = await raw
-            for item in raw:
-                try:
-                    observation = self._normalize(item, context)
-                except (TypeError, ValueError):
-                    malformed += 1
-                    continue
-                if observation.provenance.source_id in observations:
-                    duplicates += 1
-                else:
-                    observations[observation.provenance.source_id] = observation
+            recovery_attempted = bool(initial_gaps)
+            try:
+                raw = self._fallback(context)
+                if inspect.isawaitable(raw):
+                    raw = await raw
+                for item in raw:
+                    try:
+                        observation = self._normalize(item, context, source_layer="RPC_BACKFILL")
+                    except (TypeError, ValueError):
+                        malformed += 1
+                        continue
+                    if observation.provenance.source_id in observations:
+                        duplicates += 1
+                    else:
+                        observations[observation.provenance.source_id] = observation
+                        sequence = observation.normalized_payload.get("sequence")
+                        if isinstance(sequence, int) and not isinstance(sequence, bool):
+                            sequence_values.add(sequence)
+                recovery_result = "RECOVERED" if not missing_ranges(sequence_values) else "FAILED"
+            except Exception:
+                recovery_result = "FAILED"
+        gaps = missing_ranges(sequence_values)
+        gap_reports = tuple(
+            ExternalWalletStreamGap(
+                first_missing_sequence=first,
+                last_missing_sequence=last,
+                detected_at=ensure_utc(context.requested_at, "detected_at"),
+                recovery_attempted=recovery_attempted,
+                recovery_result=(recovery_result if recovery_attempted else "UNRESOLVED"),
+            )
+            for first, last in (initial_gaps or gaps)
+        )
         ordered = tuple(
             sorted(
                 observations.values(),
                 key=lambda item: (item.occurred_at or item.observed_at, item.provenance.source_id),
             )
         )
-        health = (
-            self._health.record_success(
+        if gaps:
+            health = self._health.record_failure(
+                self.provider_name,
+                "wallet_activity",
+                checked_at=context.requested_at,
+                error=ProviderError("unresolved wallet stream sequence gap"),
+            )
+            continuity_state = "DEGRADED"
+        elif initial_gaps and recovery_attempted:
+            health = self._health.record_success(
                 self.provider_name, "wallet_activity", checked_at=context.requested_at
             )
-            if ordered
-            else self._health.get(self.provider_name, "wallet_activity")
-        )
+            continuity_state = "RECOVERED"
+        elif ordered:
+            health = self._health.record_success(
+                self.provider_name, "wallet_activity", checked_at=context.requested_at
+            )
+            continuity_state = "CONTIGUOUS"
+        else:
+            health = self._health.get(self.provider_name, "wallet_activity")
+            continuity_state = "UNKNOWN"
         return ExternalWalletStreamResult(
             observations=ordered,
             used_fallback=used_fallback,
             reconnects=reconnects,
             duplicates=duplicates,
             malformed=malformed,
-            gaps=tuple(sorted(gaps)),
+            gaps=gaps,
             health=health,
+            continuity_state=continuity_state,
+            gap_reports=gap_reports,
+            unresolved_gap_count=len(gaps),
+        )
+
+
+class CabalSpyWebSocketSource:
+    """Thin documented CabalSpy stream source; payloads still use the shared normalizer."""
+
+    def __init__(
+        self,
+        url: str,
+        *,
+        blockchain: str,
+        stream: str = "tx",
+        event_type: str = "kol",
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
+        if not isinstance(url, str) or not url.startswith("wss://"):
+            raise ValueError("CabalSpy websocket URL must use wss")
+        self.url = url
+        self.blockchain = require_text(blockchain, "blockchain", max_length=32)
+        self.stream = require_text(stream, "stream", max_length=32)
+        self.event_type = require_text(event_type, "event_type", max_length=32)
+        self._headers = dict(headers or {})
+
+    async def events(self) -> AsyncIterable[object]:
+        try:
+            import websockets
+        except ImportError as exc:  # pragma: no cover - deployment dependency
+            raise ProviderError("websocket transport is not installed") from exc
+        subscription = {
+            "op": "subscribe",
+            "stream": self.stream,
+            "blockchain": self.blockchain,
+            "type": self.event_type,
+        }
+        async with websockets.connect(self.url, additional_headers=self._headers) as socket:
+            await socket.send(json.dumps(subscription))
+            async for message in socket:
+                if isinstance(message, bytes):
+                    message = message.decode("utf-8")
+                if not isinstance(message, str):
+                    raise ProviderError("CabalSpy websocket payload was not text")
+                payload = json.loads(message)
+                if not isinstance(payload, Mapping):
+                    raise ProviderError("CabalSpy websocket payload was not an object")
+                yield payload
+
+    def __repr__(self) -> str:
+        return (
+            f"CabalSpyWebSocketSource(url={self.url!r}, blockchain={self.blockchain!r}, "
+            f"stream={self.stream!r}, event_type={self.event_type!r}, "
+            f"headers_configured={bool(self._headers)})"
         )
 
 
@@ -256,4 +385,6 @@ __all__ = [
     "ExternalWalletEventStreamAdapter",
     "ExternalWalletStreamPolicy",
     "ExternalWalletStreamResult",
+    "ExternalWalletStreamGap",
+    "CabalSpyWebSocketSource",
 ]

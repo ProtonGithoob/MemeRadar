@@ -34,11 +34,14 @@ zero or safe evidence.
 
 ## Current blockers
 
-- Compliant historical-real X/Telegram/provider data and matured live-shadow
-  observations are unavailable, so research promotion and real-alpha acceptance
-  remain `BLOCKED_EXTERNAL` / `INSUFFICIENT_SAMPLES`.
-- Hosted CI, managed backup/restore, production-like dependency restart/soak,
-  and real provider/Telegram acceptance remain externally unverified.
+- Compliant historical-real X/Telegram data, CabalSpy-style wallet/KOL stream
+  data, Chainlink feed identities, and matured live-shadow observations are
+  unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
+  is `INSUFFICIENT_SAMPLES`.
+- Hosted CI, managed backup/restore, and production-like dependency
+  restart/soak remain externally unverified. Local browser acceptance is
+  blocked by the intentionally unconfigured control-auth gateway; no auth
+  bypass was added.
 - Optional Helius, Birdeye, social, Telegram, stream, narrative, and external
   wallet enrichment may report unavailable or degraded; the free core remains
   provider-independent.
@@ -47,11 +50,12 @@ No blocker changes the readiness classification or authorizes a mode change.
 
 ## Latest engineering evidence
 
-The latest local full gate recorded after the conservative cleanup:
+The latest local full gate recorded after the evidence hardening:
 
-- `make verify`: 1128 Python tests passed, 11 skipped, 1 warning; 60 Vitest
-  tests passed.
-- Ruff, strict mypy across 125 source files, frontend lint/typecheck,
+- `make verify`: 1141 Python tests passed, 11 skipped, 1 warning; 60 Vitest
+  tests passed. Focused hardening tests: 48 passed; provider-contract drift
+  check: 8 passed.
+- Ruff, strict mypy across 126 source files, frontend lint/typecheck,
   production build, Compose validation, tracked-file secret scan, migrations,
   security review, SBOM, and `git diff --check`: passed.
 - Migration head: `0008_alpha_caller_intelligence`; metadata tables: 25.
@@ -60,29 +64,27 @@ The latest local full gate recorded after the conservative cleanup:
 - Release identity and synthetic soak evidence remain local/measurement-only;
   external acceptance remains `BLOCKED_EXTERNAL`.
 
-The frontend/backend parity checkpoint added the authenticated runtime-settings
-read, completed the read-only chain-opportunities surface, and passed browser
-acceptance. It did not add execution authority, change API safety contracts,
-or fabricate unavailable rows.
+The current checkpoint hardens the reused canonical seams: KOL evidence now
+requires independent strong dimensions for above-weak confidence and exposes
+measurement-only precision/recall/FPR/calibration by dimension; external
+wallet streams fail closed on unresolved gaps and preserve provider event-time
+quality; historical social backfill is resumable, deduplicated and cohort
+counted; Robinhood sequencer observations remain non-authoritative until RPC
+verification/finality; the verified launchpad registry and Robinhood
+Chainlink-feed registry remain empty until authoritative identities are
+verified; and reference prices remain risk evidence, never executable fills.
+Existing caller/wallet/graph, social outcome/replay, provider-health,
+opportunity and read-model surfaces were extended without a second intelligence
+engine. KOL evidence remains `execution_eligible=false` and production weights
+are unchanged.
 
-The current research-extension checkpoint adds measurement-only, provider-
-neutral seams: Solana `KOLBundleClusterEvidence` for explicit Jito/bundle,
-adjacency, funding/graph and same-token side-wallet correlations; an external
-wallet/KOL stream normalizer with chain-qualified IDs, dedupe, gaps,
-reconnect/backoff, bounded buffering, fallback and health; historical social
-backfill through `SocialCallObservation` with explicit
-`EXTERNAL_RESEARCH_EVIDENCE`; Robinhood sequencer/verified-launchpad decoding;
-and `ReferencePriceEvidence` for stale-oracle and executable-quote deviation
-checks. The evidence is exposed through the existing caller-convergence read
-projection and frontend surface, remains `execution_eligible=false`, and does
-not change production scoring weights.
-
-Local extension evidence: 7 focused Python tests, 47 related Python
-unit/contract tests, and 17 targeted Vitest tests pass. Compliant real external
-samples: 0; synthetic fixtures remain test-only, so historical cohort
-promotion remains `INSUFFICIENT_SAMPLES` / `BLOCKED_EXTERNAL`. No unverified
-Robinhood launchpad identity is enabled; no external provider score is
-authoritative.
+Real external samples: 0. Calibration: `INSUFFICIENT_SAMPLES`, promotion
+false. CabalSpy-compatible stream, X/Telegram compliant backfill, Robinhood
+sequencer runtime, launchpad identity verification and Chainlink feed runtime
+are `BLOCKED_EXTERNAL`; deterministic transport, gap, no-lookahead, negative
+control, dedupe, resume and failure tests pass. Browser run: 4/7 passed, 3
+blocked by control-auth configuration. No unverified launchpad or external
+provider score is authoritative.
 
 ## Current operational references
 
@@ -120,7 +122,7 @@ authoritative.
   the keyless core while retaining optional provider-specific capabilities.
 - The 2026-09-05 to 2026-09-07 frontend/backend parity work completed the
   remaining read-only opportunities projection and browser acceptance.
-- The 2026-09-08 research-extension checkpoint reused the canonical wallet,
+- The 2026-09-08 evidence-hardening checkpoint reused the canonical wallet,
   social, provider-health, generic-EVM, read-model and quote semantics seams;
   external provider runtime validation remains blocked without compliant
   credentials/data.
@@ -129,9 +131,10 @@ authoritative.
   evidence collection and replay-cohort maturation, not a code or mode change.
 
 Exact next unfinished task: obtain compliant real X/Telegram and optional
-wallet/KOL provider data, populate winner/ordinary/flat/severe-loser/rug and
-fake-hype cohorts, then run the existing no-lookahead ablation/promotion gates
-without changing protected modes or production weights.
+wallet/KOL provider data plus verified Robinhood feed identities, populate all
+winner/ordinary/flat/severe-loser/rug/fake-hype/late/failed cohorts, then run
+the existing no-lookahead ablation/promotion gates without changing protected
+modes or production weights. Final commit SHA: `0b24812`.
 
 Historical plans and checkpoint logs are intentionally archived from this
 status file. The canonical documents and the current plans above are the

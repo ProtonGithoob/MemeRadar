@@ -242,6 +242,9 @@ def _runtime_settings_response(settings: Settings) -> RuntimeSettingsResponse:
             ),
             _runtime_setting("external_api_url", settings.external_wallet_api_url, safe_url=True),
             _runtime_setting("external_api_key", settings.external_wallet_api_key, secret=True),
+            _runtime_setting(
+                "external_stream_url", settings.external_wallet_stream_url, safe_url=True
+            ),
         ],
         "security": [
             _runtime_setting("app_env", settings.app_env),

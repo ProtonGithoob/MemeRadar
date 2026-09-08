@@ -544,6 +544,9 @@ class CallerConvergenceResponse(_StrictModel):
     probable_related_side_wallet_count: int | None = None
     kol_bundle_confidence: Decimal | None = None
     kol_bundle_reason_codes: list[str] = Field(default_factory=list)
+    kol_bundle_confidence_tier: str = "UNKNOWN"
+    kol_bundle_count: int | None = None
+    kol_bundle_temporal_proximity_seconds: Decimal | None = None
     execution_eligible: bool = False
 
 
@@ -1114,6 +1117,9 @@ def _caller_convergence_response(value: CallerConvergenceView) -> CallerConverge
         probable_related_side_wallet_count=value.probable_related_side_wallet_count,
         kol_bundle_confidence=value.kol_bundle_confidence,
         kol_bundle_reason_codes=list(value.kol_bundle_reason_codes),
+        kol_bundle_confidence_tier=value.kol_bundle_confidence_tier,
+        kol_bundle_count=value.kol_bundle_count,
+        kol_bundle_temporal_proximity_seconds=value.kol_bundle_temporal_proximity_seconds,
         execution_eligible=False,
     )
 

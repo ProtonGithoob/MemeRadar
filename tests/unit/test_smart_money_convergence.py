@@ -14,6 +14,7 @@ from memeradar_application.confluence import (
     TokenSmartMoneyScore,
 )
 from memeradar_application.correlation import CorrelationSnapshot, CorrelationWindowFeatures
+from memeradar_application.kol_bundle import KOLBundleClusterAnalyzer
 from memeradar_application.narrative_catalyst import NarrativeCatalystAnalyzer
 from memeradar_application.smart_money_convergence import (
     CallerConvergenceState,
@@ -27,6 +28,7 @@ from memeradar_domain import (
     Chain,
     Freshness,
     GlobalEvent,
+    Observation,
     Provenance,
     QualityState,
     ReasonCode,
@@ -283,6 +285,61 @@ def caller_conduct(call: SocialCallObservation, *coordinated: str):
     )
 
 
+def test_kol_bundle_evidence_flows_through_caller_convergence_as_advisory() -> None:
+    value = token()
+    at = NOW - timedelta(minutes=1)
+    kol = KOLBundleClusterAnalyzer().analyze(
+        value,
+        (
+            Observation(
+                kind="wallet.activity",
+                provenance=provenance("kol-caller", at),
+                occurred_at=at,
+                observed_at=at,
+                ingested_at=at,
+                quality_state=QualityState.FRESH,
+                normalized_payload={
+                    "mint_address": value.address,
+                    "wallet_address": WALLET_A,
+                    "quantity": "1",
+                    "bundle_id": "bundle-1",
+                    "funder": "11111111111111111111111111111115",
+                },
+            ),
+            Observation(
+                kind="wallet.activity",
+                provenance=provenance("kol-side", at),
+                occurred_at=at,
+                observed_at=at,
+                ingested_at=at,
+                quality_state=QualityState.FRESH,
+                normalized_payload={
+                    "mint_address": value.address,
+                    "wallet_address": WALLET_B,
+                    "quantity": "1",
+                    "bundle_id": "bundle-1",
+                    "funder": "11111111111111111111111111111115",
+                },
+            ),
+        ),
+        caller_wallet=WALLET_A,
+        now=NOW,
+        config_hash="kol-convergence-fixture",
+    )
+    snapshot = SmartMoneyConvergenceAnalyzer().analyze(
+        token=value,
+        caller_calls=(caller_call(value, "caller-1", "call-1", at),),
+        kol_bundle=kol,
+        now=NOW,
+        config_hash="convergence-fixture-v1",
+    )
+
+    assert snapshot.caller_convergence is not None
+    assert snapshot.caller_convergence.kol_bundle == kol
+    assert "KOL_BUNDLE_EVIDENCE_ATTACHED" in snapshot.reason_code_values
+    assert snapshot.execution_eligible() is False
+
+
 def test_narrative_alone_is_visible_without_fabricating_wallet_evidence() -> None:
     value = token()
     snapshot = project(token_value=value, narrative_value=narrative())
@@ -413,9 +470,7 @@ def test_caller_convergence_cannot_override_blocked_risk_or_distribution() -> No
 
     distribution = replace(
         conduct,
-        classifications=(
-            CallerMarketConductClassification.POST_CALL_DISTRIBUTION,
-        ),
+        classifications=(CallerMarketConductClassification.POST_CALL_DISTRIBUTION,),
         post_call_net_flow=Decimal("-100"),
     )
     snapshot = SmartMoneyConvergenceAnalyzer().analyze(

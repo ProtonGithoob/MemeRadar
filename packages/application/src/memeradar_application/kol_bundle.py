@@ -25,6 +25,7 @@ from memeradar_domain.common import (
 )
 
 KOL_BUNDLE_VERSION = "kol-bundle-cluster-v1"
+_KOL_TIERS = ("UNKNOWN", "WEAK", "MEDIUM", "HIGH", "VERY_HIGH", "CONFLICTED")
 
 
 def _value(payload: Mapping[str, object], *names: str) -> object | None:
@@ -88,6 +89,7 @@ class KOLBundleClusterEvidence:
     config_hash: str
     ownership_asserted: bool = False
     version: str = KOL_BUNDLE_VERSION
+    confidence_tier: str = "UNKNOWN"
 
     def __post_init__(self) -> None:
         if (
@@ -144,6 +146,10 @@ class KOLBundleClusterEvidence:
             bounded_decimal(self.confidence, "confidence", Decimal("0"), Decimal("1")),
         )
         object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        tier = require_text(self.confidence_tier, "confidence_tier", max_length=16).upper()
+        if tier not in _KOL_TIERS:
+            raise ValueError("confidence_tier is invalid")
+        object.__setattr__(self, "confidence_tier", tier)
         object.__setattr__(self, "provenance", tuple(self.provenance))
         if any(not isinstance(value, Provenance) for value in self.provenance):
             raise TypeError("provenance must contain Provenance values")
@@ -237,6 +243,8 @@ class KOLBundleClusterAnalyzer:
         bundles: set[str] = set()
         reasons: list[str] = ["KOL_BUNDLE_CLUSTER_EVALUATED"]
         dimensions: set[str] = set()
+        candidate_tiers: dict[str, str] = {}
+        contradictions: set[str] = set()
         for item in matched:
             payload = item.normalized_payload
             wallet = _text(_value(payload, "wallet_address", "wallet", "trader", "maker"))
@@ -257,29 +265,75 @@ class KOLBundleClusterAnalyzer:
             graph = _bool(_value(payload, "graph_related", "funding_related", "same_funder"))
             same_bundle = bundle is not None and bundle in caller_bundles
             same_slot = slot is not None and slot in caller_slots
-            if (
-                wallet != caller
-                and wallet is not None
-                and (
-                    jito
-                    or same_bundle
-                    or same_slot
-                    or adjacent
-                    or graph
-                    or (funder is not None and funder in caller_funders)
-                )
-            ):
-                related.add(wallet)
-                accumulation += signed
-                if item.occurred_at is not None and caller_at is not None:
-                    temporal_deltas.append(
-                        abs(Decimal(str((item.occurred_at - caller_at).total_seconds())))
+            funding = graph or (funder is not None and funder in caller_funders)
+            repeated = (
+                _bool(
+                    _value(
+                        payload,
+                        "repeated_cooccurrence",
+                        "historical_cooccurrence",
+                        "historical_repeated_cooccurrence",
                     )
+                )
+                or (
+                    _decimal(
+                        _value(payload, "cooccurrence_count", "historical_cooccurrence_count"),
+                        "cooccurrence_count",
+                    )
+                    or Decimal("0")
+                )
+                >= 2
+            )
+            contradiction = _bool(
+                _value(
+                    payload,
+                    "contradictory",
+                    "contradiction",
+                    "conflicting_relation",
+                    "ownership_conflict",
+                    "not_related",
+                )
+            )
+            if wallet != caller and wallet is not None:
+                if contradiction:
+                    contradictions.add(wallet)
+                strong = {
+                    name
+                    for name, present in (
+                        ("bundle", same_bundle),
+                        ("funding", funding),
+                        ("repeated", repeated),
+                    )
+                    if present
+                }
+                if same_bundle and funding and repeated:
+                    tier = "VERY_HIGH"
+                elif same_bundle and funding:
+                    tier = "HIGH"
+                elif same_bundle or len(strong) >= 2:
+                    tier = "MEDIUM"
+                elif strong:
+                    tier = "WEAK"
+                else:
+                    tier = "WEAK"
+                if contradiction:
+                    tier = "CONFLICTED"
+                candidate_tiers[wallet] = max(
+                    (candidate_tiers.get(wallet, "UNKNOWN"), tier),
+                    key=lambda value: _KOL_TIERS.index(value),
+                )
+                if tier in {"MEDIUM", "HIGH", "VERY_HIGH"}:
+                    related.add(wallet)
+                    accumulation += signed
+                    if item.occurred_at is not None and caller_at is not None:
+                        temporal_deltas.append(
+                            abs(Decimal(str((item.occurred_at - caller_at).total_seconds())))
+                        )
             if jito:
                 dimensions.add("jito")
             if same_slot or adjacent:
                 dimensions.add("adjacency")
-            if graph or (funder is not None and funder in caller_funders):
+            if funding:
                 dimensions.add("funding")
         if caller_rows:
             accumulation += caller_position
@@ -297,19 +351,39 @@ class KOLBundleClusterAnalyzer:
             reasons.append("FUNDING_GRAPH_EVIDENCE")
         if related:
             reasons.append("RELATED_SIDE_WALLETS_CORRELATED")
+        if any(tier == "MEDIUM" for tier in candidate_tiers.values()):
+            reasons.append("VERIFIED_BUNDLE_CORRELATION")
+        if any(tier == "HIGH" for tier in candidate_tiers.values()):
+            reasons.append("BUNDLE_PLUS_FUNDING_CORRELATION")
+        if any(tier == "VERY_HIGH" for tier in candidate_tiers.values()):
+            reasons.append("REPEATED_HISTORICAL_COOCCURRENCE")
+        if contradictions:
+            reasons.append("CONTRADICTORY_CORRELATION_EVIDENCE")
+        if dimensions.intersection({"jito", "adjacency"}) and not related:
+            reasons.append("WEAK_SINGLE_DIMENSION_EVIDENCE")
         if not matched:
             reasons.append("KOL_BUNDLE_EVIDENCE_MISSING")
         quality = _worst(tuple(item.quality_state for item in matched))
-        if matched and not dimensions.intersection(
-            {"bundle", "adjacency", "funding", "side_wallet"}
-        ):
+        if matched and not related:
             quality = QualityState.UNKNOWN
             reasons.append("WEAK_CORRELATION_ONLY")
-        confidence = (
-            Decimal("0")
-            if not matched
-            else min(Decimal("0.95"), Decimal("0.10") * Decimal(len(dimensions)))
+        tier_order = {tier: index for index, tier in enumerate(_KOL_TIERS)}
+        tier = (
+            max(candidate_tiers.values(), key=tier_order.__getitem__)
+            if candidate_tiers
+            else "UNKNOWN"
         )
+        if contradictions:
+            tier = "CONFLICTED"
+            quality = QualityState.CONFLICTED
+        confidence = {
+            "UNKNOWN": Decimal("0"),
+            "WEAK": Decimal("0"),
+            "MEDIUM": Decimal("0.50"),
+            "HIGH": Decimal("0.75"),
+            "VERY_HIGH": Decimal("0.90"),
+            "CONFLICTED": Decimal("0"),
+        }[tier]
         if quality is not QualityState.FRESH:
             confidence = Decimal("0")
         return KOLBundleClusterEvidence(
@@ -329,7 +403,85 @@ class KOLBundleClusterAnalyzer:
             evidence_refs=tuple(item.provenance.source_id for item in matched),
             reason_codes=tuple(dict.fromkeys(reasons)),
             config_hash=config_hash,
+            confidence_tier=tier,
         )
 
 
-__all__ = ["KOL_BUNDLE_VERSION", "KOLBundleClusterEvidence", "KOLBundleClusterAnalyzer"]
+@dataclass(frozen=True, slots=True)
+class KOLCorrelationCalibrationSample:
+    evidence_dimension: str
+    actual_related: bool
+    predicted_related: bool
+    confidence: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class KOLCorrelationCalibrationMetric:
+    sample_count: int
+    precision: Decimal
+    recall: Decimal
+    false_positive_rate: Decimal
+    confidence_calibration_error: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class KOLCorrelationCalibrationReport:
+    status: str
+    sample_count: int
+    sample_adequacy: str
+    promotion_allowed: bool
+    by_dimension: Mapping[str, KOLCorrelationCalibrationMetric]
+
+
+def calibrate_kol_correlation(
+    samples: Sequence[KOLCorrelationCalibrationSample], *, minimum_samples: int = 30
+) -> KOLCorrelationCalibrationReport:
+    if minimum_samples < 1:
+        raise ValueError("minimum_samples must be positive")
+    grouped: dict[str, list[KOLCorrelationCalibrationSample]] = {}
+    for sample in samples:
+        if not isinstance(sample, KOLCorrelationCalibrationSample):
+            raise TypeError("samples must contain KOLCorrelationCalibrationSample values")
+        grouped.setdefault(
+            require_text(sample.evidence_dimension, "evidence_dimension"), []
+        ).append(sample)
+    metrics: dict[str, KOLCorrelationCalibrationMetric] = {}
+    for dimension, values in grouped.items():
+        tp = sum(value.actual_related and value.predicted_related for value in values)
+        fp = sum(not value.actual_related and value.predicted_related for value in values)
+        fn = sum(value.actual_related and not value.predicted_related for value in values)
+        tn = sum(not value.actual_related and not value.predicted_related for value in values)
+        positive = tp + fp
+        actual = tp + fn
+        total_negative = fp + tn
+        precision = Decimal(tp) / Decimal(positive) if positive else Decimal("0")
+        recall = Decimal(tp) / Decimal(actual) if actual else Decimal("0")
+        false_positive_rate = (
+            Decimal(fp) / Decimal(total_negative) if total_negative else Decimal("0")
+        )
+        calibration_error = sum(
+            (abs(value.confidence - Decimal(int(value.actual_related))) for value in values),
+            Decimal("0"),
+        ) / Decimal(len(values))
+        metrics[dimension] = KOLCorrelationCalibrationMetric(
+            len(values), precision, recall, false_positive_rate, calibration_error
+        )
+    count = len(samples)
+    return KOLCorrelationCalibrationReport(
+        status="READY" if count >= minimum_samples else "INSUFFICIENT_SAMPLES",
+        sample_count=count,
+        sample_adequacy="ADEQUATE" if count >= minimum_samples else "INSUFFICIENT_SAMPLES",
+        promotion_allowed=False,
+        by_dimension=metrics,
+    )
+
+
+__all__ = [
+    "KOL_BUNDLE_VERSION",
+    "KOLBundleClusterEvidence",
+    "KOLBundleClusterAnalyzer",
+    "KOLCorrelationCalibrationMetric",
+    "KOLCorrelationCalibrationReport",
+    "KOLCorrelationCalibrationSample",
+    "calibrate_kol_correlation",
+]

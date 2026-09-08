@@ -167,8 +167,9 @@ function ConvergenceEvidence({ convergence }: { convergence: CallerConvergenceRe
         </div>
         <div>
           <span className="card-label">KOL / SIDE-WALLET</span>
-          <strong>{convergence.kolBundleState ?? "UNKNOWN"}</strong>
-          <small>{convergence.probableRelatedSideWalletCount ?? "UNKNOWN"} probable related wallets</small>
+          <strong>{convergence.kolBundleState ?? "UNKNOWN"} / {convergence.kolBundleConfidenceTier ?? "UNKNOWN"}</strong>
+          <small>{convergence.probableRelatedSideWalletCount ?? "UNKNOWN"} probable wallets · {convergence.kolBundleCount ?? "UNKNOWN"} bundles</small>
+          <small>{convergence.kolBundleTemporalProximitySeconds ?? "UNKNOWN"}s temporal proximity</small>
         </div>
         <div>
           <span className="card-label">PROVENANCE</span>

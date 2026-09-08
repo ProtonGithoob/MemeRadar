@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 from memeradar_application.provider_contracts import ProviderRequestContext
 from memeradar_domain import Observation, Provenance, QualityState, require_evm_address
@@ -16,6 +17,9 @@ from .smart_money_stream import (
     ExternalWalletStreamPolicy,
     SourceFactory,
 )
+
+ROBINHOOD_CHAIN_ID = 4663
+ROBINHOOD_SEQUENCER_URL = "wss://feed.mainnet.chain.robinhood.com"
 
 
 class RobinhoodSequencerAdapter(ExternalWalletEventStreamAdapter):
@@ -32,7 +36,12 @@ class RobinhoodSequencerAdapter(ExternalWalletEventStreamAdapter):
     ) -> None:
         if sleeper is None:
             super().__init__(
-                "robinhood-sequencer", "robinhood", source_factory, fallback=fallback, policy=policy
+                "robinhood-sequencer",
+                "robinhood",
+                source_factory,
+                fallback=fallback,
+                policy=policy,
+                source_layer="SEQUENCER",
             )
         else:
             super().__init__(
@@ -42,6 +51,7 @@ class RobinhoodSequencerAdapter(ExternalWalletEventStreamAdapter):
                 fallback=fallback,
                 policy=policy,
                 sleeper=sleeper,
+                source_layer="SEQUENCER",
             )
 
 
@@ -50,7 +60,10 @@ class VerifiedLaunchpadContract:
     name: str
     contract_address: str
     selectors: tuple[str, ...]
+    verification_source: str
+    verified_at: datetime
     parser_version: str = "robinhood-launchpad-v1"
+    chain_id: int = ROBINHOOD_CHAIN_ID
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", require_text(self.name, "name", max_length=64).lower())
@@ -68,6 +81,18 @@ class VerifiedLaunchpadContract:
             "parser_version",
             require_text(self.parser_version, "parser_version", max_length=64),
         )
+        object.__setattr__(
+            self,
+            "verification_source",
+            require_text(self.verification_source, "verification_source", max_length=512),
+        )
+        if self.chain_id != ROBINHOOD_CHAIN_ID:
+            raise ValueError("verified launchpad contract must use Robinhood chain id 4663")
+        object.__setattr__(self, "verified_at", ensure_utc(self.verified_at, "verified_at"))
+
+
+# No NOXA/Odyssey entry is included without independently verified metadata.
+ROBINHOOD_VERIFIED_LAUNCHPADS: tuple[VerifiedLaunchpadContract, ...] = ()
 
 
 class RobinhoodLaunchpadDecoder:
@@ -93,7 +118,9 @@ class RobinhoodLaunchpadDecoder:
             (
                 item
                 for item in self._contracts
-                if item.contract_address == contract and selector in item.selectors
+                if item.chain_id == ROBINHOOD_CHAIN_ID
+                and item.contract_address == contract
+                and selector in item.selectors
             ),
             None,
         )
@@ -115,6 +142,9 @@ class RobinhoodLaunchpadDecoder:
             parser_version = "robinhood-launchpad-unknown-v1"
         else:
             payload["launchpad"] = identity.name
+            payload["verification_source"] = identity.verification_source
+            payload["verified_at"] = identity.verified_at.isoformat()
+            payload["chain_id"] = identity.chain_id
             parser_version = identity.parser_version
         return Observation(
             kind="chain.launchpad",
@@ -133,4 +163,11 @@ class RobinhoodLaunchpadDecoder:
         )
 
 
-__all__ = ["RobinhoodLaunchpadDecoder", "RobinhoodSequencerAdapter", "VerifiedLaunchpadContract"]
+__all__ = [
+    "ROBINHOOD_CHAIN_ID",
+    "ROBINHOOD_SEQUENCER_URL",
+    "ROBINHOOD_VERIFIED_LAUNCHPADS",
+    "RobinhoodLaunchpadDecoder",
+    "RobinhoodSequencerAdapter",
+    "VerifiedLaunchpadContract",
+]

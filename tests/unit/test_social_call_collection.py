@@ -4,7 +4,11 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 from memeradar_application.provider_contracts import ProviderRequestContext, SocialDataRequest
-from memeradar_application.social_call_collection import CollectionMode, SocialCallCollector
+from memeradar_application.social_call_collection import (
+    CollectionMode,
+    HistoricalSocialBackfillRunner,
+    SocialCallCollector,
+)
 from memeradar_domain import SocialCallObservation
 from memeradar_providers.social import normalize_social_call
 
@@ -67,6 +71,20 @@ class _Sink:
     async def save(self, observation: SocialCallObservation) -> object:
         self.saved.append(observation)
         return observation
+
+
+class _CheckpointStore:
+    def __init__(self, cursor: str | None = None) -> None:
+        self.cursor = cursor
+        self.saved: list[str | None] = []
+
+    async def load(self, _key: str) -> str | None:
+        return self.cursor
+
+    async def save(self, _key: str, cursor: str | None) -> object:
+        self.cursor = cursor
+        self.saved.append(cursor)
+        return cursor
 
 
 def test_historical_collection_paginates_orders_deduplicates_and_reports_lag() -> None:
@@ -136,3 +154,43 @@ def test_live_collection_is_one_bounded_batch_and_leaves_cursor_for_resume() -> 
     assert report.next_cursor == "next"
     assert source.cursors == [None]
     assert report.persisted_count == 1
+
+
+def test_historical_backfill_resumes_from_checkpoint_and_reports_all_cohorts() -> None:
+    source = _Source(
+        {
+            "cursor-1": (
+                (
+                    _call(
+                        "rug-1",
+                        "2026-09-07T03:01:00Z",
+                        "rug $RUG",
+                        disclosure={"research_cohort": "rug"},
+                    ),
+                    _call(
+                        "winner-1",
+                        "2026-09-07T03:02:00Z",
+                        "moon $MOON",
+                        disclosure={"research_cohort": "extreme_winner"},
+                    ),
+                ),
+                None,
+            )
+        }
+    )
+    sink = _Sink()
+    checkpoint = _CheckpointStore("cursor-1")
+    report = asyncio.run(
+        HistoricalSocialBackfillRunner(clock=lambda: NOW).run(
+            source,
+            sink,
+            _request(),
+            checkpoint_store=checkpoint,
+            checkpoint_key="fixture",
+        )
+    )
+
+    assert report.status == "COMPLETE"
+    assert report.resumed_from_cursor == "cursor-1"
+    assert report.cohort_counts == {"extreme_winner": 1, "rug": 1}
+    assert checkpoint.saved == [None]

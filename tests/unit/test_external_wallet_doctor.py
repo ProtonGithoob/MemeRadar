@@ -30,7 +30,11 @@ def test_missing_external_wallet_configuration_is_blocked_without_secrets() -> N
 
     assert report["status"] == "BLOCKED_EXTERNAL"
     assert report["reason"] == "CONFIGURATION_MISSING"
-    assert report["configuration"] == {"api_url": "missing", "api_key": "present"}
+    assert report["configuration"] == {
+        "api_url": "missing",
+        "api_key": "present",
+        "stream_url": "missing",
+    }
     assert secret not in str(report)
     assert report["modes"] == {
         "analysis_only": True,

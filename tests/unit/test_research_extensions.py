@@ -4,7 +4,11 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from memeradar_application.kol_bundle import KOLBundleClusterAnalyzer
+from memeradar_application.kol_bundle import (
+    KOLBundleClusterAnalyzer,
+    KOLCorrelationCalibrationSample,
+    calibrate_kol_correlation,
+)
 from memeradar_application.price_integrity import compare_reference_price
 from memeradar_application.provider_contracts import ProviderRequestContext, SocialDataRequest
 from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
@@ -14,6 +18,7 @@ from memeradar_providers.robinhood import (
     VerifiedLaunchpadContract,
 )
 from memeradar_providers.smart_money_stream import (
+    CabalSpyWebSocketSource,
     ExternalWalletEventStreamAdapter,
     ExternalWalletStreamPolicy,
 )
@@ -66,6 +71,7 @@ def test_kol_bundle_evidence_uses_multiple_explicit_correlations_without_ownersh
                     "bundle_id": "b1",
                     "jito_bundle": True,
                     "slot": 10,
+                    "funder": FUNDER,
                 },
             ),
             obs(
@@ -94,6 +100,119 @@ def test_kol_bundle_evidence_uses_multiple_explicit_correlations_without_ownersh
     assert result.confidence > 0
     assert result.ownership_asserted is False
     assert "JITO_BUNDLE_EVIDENCE" in result.reason_code_values
+    assert result.confidence_tier == "HIGH"
+
+
+def test_kol_weak_single_dimensions_are_unknown_and_not_probable_side_wallets() -> None:
+    token = TokenIdentity(mint_address=MINT)
+    result = KOLBundleClusterAnalyzer().analyze(
+        token,
+        (
+            obs(
+                "caller",
+                {"mint_address": MINT, "wallet_address": CALLER, "quantity": "1", "slot": 9},
+            ),
+            obs(
+                "same-slot",
+                {"mint_address": MINT, "wallet_address": SIDE, "quantity": "2", "slot": 9},
+            ),
+            obs(
+                "jito-only",
+                {"mint_address": MINT, "wallet_address": FUNDER, "quantity": "2", "jito": True},
+            ),
+        ),
+        caller_wallet=CALLER,
+        now=NOW,
+        config_hash="kol-weak",
+    )
+
+    assert result.probable_related_side_wallet_count == 0
+    assert result.related_side_wallets == ()
+    assert result.confidence_tier == "WEAK"
+    assert result.quality_state is QualityState.UNKNOWN
+    assert "WEAK_CORRELATION_ONLY" in result.reason_code_values
+
+
+def test_kol_bundle_calibration_is_measurement_only_and_requires_real_labels() -> None:
+    samples = (
+        KOLCorrelationCalibrationSample("slot", True, False, Decimal("0.2")),
+        KOLCorrelationCalibrationSample("bundle", True, True, Decimal("0.6")),
+        KOLCorrelationCalibrationSample("funding", False, True, Decimal("0.7")),
+        KOLCorrelationCalibrationSample("combined", True, True, Decimal("0.9")),
+    )
+    report = calibrate_kol_correlation(samples, minimum_samples=10)
+
+    assert report.status == "INSUFFICIENT_SAMPLES"
+    assert report.promotion_allowed is False
+    assert report.by_dimension["slot"].false_positive_rate == Decimal("0")
+    assert report.by_dimension["funding"].precision == Decimal("0")
+
+
+def test_kol_conflicting_evidence_is_conflicted_not_ownership() -> None:
+    token = TokenIdentity(mint_address=MINT)
+    result = KOLBundleClusterAnalyzer().analyze(
+        token,
+        (
+            obs(
+                "caller",
+                {
+                    "mint_address": MINT,
+                    "wallet_address": CALLER,
+                    "bundle_id": "b1",
+                    "funder": FUNDER,
+                },
+            ),
+            obs(
+                "side",
+                {
+                    "mint_address": MINT,
+                    "wallet_address": SIDE,
+                    "bundle_id": "b1",
+                    "funder": FUNDER,
+                    "contradictory": True,
+                },
+            ),
+        ),
+        caller_wallet=CALLER,
+        now=NOW,
+        config_hash="kol-conflict",
+    )
+    assert result.confidence_tier == "CONFLICTED"
+    assert result.quality_state is QualityState.CONFLICTED
+    assert result.ownership_asserted is False
+
+
+def test_kol_bundle_funding_and_repeated_history_reaches_very_high_tier() -> None:
+    token = TokenIdentity(mint_address=MINT)
+    result = KOLBundleClusterAnalyzer().analyze(
+        token,
+        (
+            obs(
+                "caller",
+                {
+                    "mint_address": MINT,
+                    "wallet_address": CALLER,
+                    "bundle_id": "b1",
+                    "funder": FUNDER,
+                },
+            ),
+            obs(
+                "side",
+                {
+                    "mint_address": MINT,
+                    "wallet_address": SIDE,
+                    "bundle_id": "b1",
+                    "funder": FUNDER,
+                    "cooccurrence_count": 2,
+                },
+            ),
+        ),
+        caller_wallet=CALLER,
+        now=NOW,
+        config_hash="kol-very-high",
+    )
+    assert result.confidence_tier == "VERY_HIGH"
+    assert result.probable_related_side_wallet_count == 1
 
 
 def test_external_wallet_stream_is_chain_qualified_deduped_and_marks_gaps() -> None:
@@ -138,7 +257,132 @@ def test_external_wallet_stream_is_chain_qualified_deduped_and_marks_gaps() -> N
     assert result.observations[0].normalized_payload["chain"] == "robinhood"
     assert result.observations[0].provenance.source_id == "robinhood:a"
     assert result.used_fallback is False
-    assert result.health.state.value == "HEALTHY"
+    assert result.health.state.value == "DEGRADED"
+    assert result.continuity_state == "DEGRADED"
+    assert result.unresolved_gap_count == 1
+
+
+def test_external_wallet_stream_missing_event_time_is_not_exact_event_time() -> None:
+    async def source():
+        yield {
+            "chain": "robinhood",
+            "event_id": "missing-time",
+            "sequence": 1,
+            "token_address": EVM_TOKEN,
+            "wallet_address": EVM_WALLET,
+            "action": "buy",
+            "quantity": "1",
+        }
+
+    result = asyncio.run(
+        ExternalWalletEventStreamAdapter("fixture", "robinhood", lambda: source()).collect(
+            ProviderRequestContext("event-time", NOW)
+        )
+    )
+    observation = result.observations[0]
+    assert observation.occurred_at is None
+    assert observation.observed_at == NOW
+    assert observation.quality_state is QualityState.UNKNOWN
+    assert observation.normalized_payload["event_time_quality"] == "MISSING"
+    assert observation.normalized_payload["occurred_at_estimated"] is False
+
+
+def test_kol_future_delivery_cannot_create_prepositioning_evidence() -> None:
+    token = TokenIdentity(mint_address=MINT)
+    result = KOLBundleClusterAnalyzer().analyze(
+        token,
+        (
+            obs(
+                "future",
+                {"mint_address": MINT, "wallet_address": CALLER},
+                at=NOW + timedelta(seconds=1),
+            ),
+        ),
+        caller_wallet=CALLER,
+        now=NOW,
+        config_hash="kol-no-lookahead",
+    )
+    assert result.visible_caller_position is None
+    assert result.quality_state is QualityState.UNKNOWN
+    assert result.confidence_tier == "UNKNOWN"
+
+
+def test_external_wallet_stream_fallback_can_recover_a_gap() -> None:
+    async def source():
+        for sequence in (1, 3):
+            yield {
+                "chain": "robinhood",
+                "event_id": f"stream-{sequence}",
+                "sequence": sequence,
+                "token_address": EVM_TOKEN,
+                "wallet_address": EVM_WALLET,
+                "action": "buy",
+                "quantity": "1",
+                "occurred_at": NOW.isoformat(),
+            }
+
+    def fallback(_context):
+        return (
+            {
+                "chain": "robinhood",
+                "event_id": "rpc-2",
+                "sequence": 2,
+                "token_address": EVM_TOKEN,
+                "wallet_address": EVM_WALLET,
+                "action": "buy",
+                "quantity": "1",
+                "occurred_at": NOW.isoformat(),
+            },
+        )
+
+    result = asyncio.run(
+        ExternalWalletEventStreamAdapter(
+            "fixture", "robinhood", lambda: source(), fallback=fallback
+        ).collect(ProviderRequestContext("gap-recovery", NOW))
+    )
+    assert result.continuity_state == "RECOVERED"
+    assert result.unresolved_gap_count == 0
+    assert result.used_fallback is True
+
+
+def test_external_wallet_stream_reports_multiple_unresolved_gaps_and_failed_recovery() -> None:
+    async def source():
+        for sequence in (1, 4, 7):
+            yield {
+                "chain": "robinhood",
+                "event_id": f"stream-{sequence}",
+                "sequence": sequence,
+                "token_address": EVM_TOKEN,
+                "wallet_address": EVM_WALLET,
+                "action": "buy",
+                "quantity": "1",
+                "occurred_at": NOW.isoformat(),
+            }
+
+    def fallback(_context):
+        raise RuntimeError("fallback unavailable")
+
+    result = asyncio.run(
+        ExternalWalletEventStreamAdapter(
+            "fixture", "robinhood", lambda: source(), fallback=fallback
+        ).collect(ProviderRequestContext("gap-failure", NOW))
+    )
+    assert result.gaps == ((2, 3), (5, 6))
+    assert result.unresolved_gap_count == 2
+    assert result.continuity_state == "DEGRADED"
+    assert [gap.recovery_result for gap in result.gap_reports] == ["FAILED", "FAILED"]
+
+
+def test_cabalspy_source_keeps_documented_subscription_and_redacts_headers() -> None:
+    source = CabalSpyWebSocketSource(
+        "wss://stream.cabalspy.example",
+        blockchain="solana",
+        headers={"Authorization": "fixture-header"},
+    )
+    assert source.blockchain == "solana"
+    assert source.stream == "tx"
+    assert source.event_type == "kol"
+    assert "fixture-header" not in repr(source)
 
 
 def test_external_wallet_stream_outage_is_degraded_and_never_synthesizes_evidence() -> None:
@@ -278,6 +522,8 @@ def test_robinhood_sequencer_orders_events_and_unverified_launchpad_is_unknown()
         "robinhood:b",
     ]
     assert result.gaps == ()
+    assert result.observations[0].normalized_payload["source_layer"] == "SEQUENCER"
+    assert result.observations[0].normalized_payload["authoritative"] is False
     unknown = RobinhoodLaunchpadDecoder().decode(
         {"contract_address": EVM_TOKEN, "selector": "0xdeadbeef", "event_id": "launch-1"},
         ProviderRequestContext("rh-launch", NOW),
@@ -287,7 +533,11 @@ def test_robinhood_sequencer_orders_events_and_unverified_launchpad_is_unknown()
     verified = RobinhoodLaunchpadDecoder(
         (
             VerifiedLaunchpadContract(
-                "verified-launchpad", EVM_TOKEN, ("0x12345678",)
+                "verified-launchpad",
+                EVM_TOKEN,
+                ("0x12345678",),
+                verification_source="fixture",
+                verified_at=NOW,
             ),
         )
     ).decode(
@@ -301,6 +551,7 @@ def test_robinhood_sequencer_orders_events_and_unverified_launchpad_is_unknown()
     )
     assert verified.quality_state is QualityState.FRESH
     assert verified.normalized_payload["launchpad"] == "verified-launchpad"
+    assert verified.normalized_payload["verification_source"] == "fixture"
 
 
 def test_reference_price_evidence_stales_or_flags_deviation_without_becoming_executable_quote() -> (

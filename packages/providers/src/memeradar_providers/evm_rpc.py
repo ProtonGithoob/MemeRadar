@@ -291,6 +291,24 @@ class EvmRpcAdapter(OnChainPort):
         await self.verify_chain_id(context=context)
         return "ok"
 
+    async def call_contract(
+        self,
+        address: str,
+        data: str,
+        *,
+        context: ProviderRequestContext,
+    ) -> object:
+        """Read-only eth_call for verified provider adapters."""
+
+        normalized_address = require_chain_address(address, self.chain, "contract_address")
+        if not isinstance(data, str) or not re.fullmatch(r"0x[0-9a-fA-F]*", data):
+            raise ValueError("contract call data must be hexadecimal")
+        return await self._rpc(
+            "eth_call",
+            ({"to": normalized_address, "data": data}, "latest"),
+            context=context,
+        )
+
     async def probe_health(self, *, context: ProviderRequestContext) -> Mapping[str, object]:
         status = EvmRpcHealthStatus.PASS
         error_class: str | None = None
@@ -364,9 +382,7 @@ class EvmRpcAdapter(OnChainPort):
                 "EVM standard adapter exposes account reads only; transaction history "
                 "is not configured"
             )
-        address = request.address or (
-            request.token.address if request.token is not None else None
-        )
+        address = request.address or (request.token.address if request.token is not None else None)
         if address is None:
             raise ValueError("token or address is required")
         return (await self.fetch_balance(address, context=request.context),)

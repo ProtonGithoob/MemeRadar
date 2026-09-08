@@ -27,6 +27,9 @@ def _configuration(values: Mapping[str, str]) -> dict[str, str]:
     return {
         "api_url": "present" if values.get("EXTERNAL_WALLET_API_URL", "").strip() else "missing",
         "api_key": "present" if values.get("EXTERNAL_WALLET_API_KEY", "").strip() else "missing",
+        "stream_url": "present"
+        if values.get("EXTERNAL_WALLET_STREAM_URL", "").strip()
+        else "missing",
     }
 
 
@@ -63,7 +66,7 @@ def run_doctor(environ: Mapping[str, str] | None = None) -> DoctorReport:
             status="FAIL",
             reason="OPERATING_MODE_INVALID",
         )
-    if configuration["api_url"] == "missing":
+    if configuration["api_url"] == "missing" and configuration["stream_url"] == "missing":
         return _base_report(
             configuration,
             status="BLOCKED_EXTERNAL",

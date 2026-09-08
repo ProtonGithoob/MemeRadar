@@ -300,6 +300,9 @@ export interface CallerConvergenceRecord {
   probableRelatedSideWalletCount?: number | null;
   kolBundleConfidence?: number | null;
   kolBundleReasonCodes?: string[];
+  kolBundleConfidenceTier?: string;
+  kolBundleCount?: number | null;
+  kolBundleTemporalProximitySeconds?: number | null;
 }
 
 export interface CallerProfileFilters {
@@ -1345,6 +1348,10 @@ function parseCallerConvergence(value: unknown): CallerConvergenceRecord | null 
   const kolBundleConfidence = value.kol_bundle_confidence === undefined
     ? null : optionalFiniteNumber(value.kol_bundle_confidence, 0, 1);
   const kolBundleReasonCodes = stringArray(value.kol_bundle_reason_codes ?? [], 128);
+  const kolBundleConfidenceTier = boundedString(value.kol_bundle_confidence_tier ?? "UNKNOWN", 16);
+  const kolBundleCount = value.kol_bundle_count === undefined ? null : optionalInteger(value.kol_bundle_count, 0, 1_000_000);
+  const kolBundleTemporalProximitySeconds = value.kol_bundle_temporal_proximity_seconds === undefined
+    ? null : optionalFiniteNumber(value.kol_bundle_temporal_proximity_seconds, 0, 1e12);
   if (
     id === null || tokenId === null || chain === null || assetAddress === null || tokenId !== `${chain}:${assetAddress}` ||
     !validChainAddress(chain, assetAddress) || asOf === null || expiresAt === null ||
@@ -1361,6 +1368,7 @@ function parseCallerConvergence(value: unknown): CallerConvergenceRecord | null 
     evidenceRefs === null || reasonCodes === null || configHash === null || version === null || kolBundleState === null ||
     visibleCallerPosition === undefined || clusterAdjustedAccumulation === undefined || probableRelatedSideWalletCount === undefined ||
     kolBundleConfidence === undefined || kolBundleReasonCodes === null || value.execution_eligible === true
+    || kolBundleConfidenceTier === null || kolBundleCount === undefined || kolBundleTemporalProximitySeconds === undefined
   ) {
     return null;
   }
@@ -1401,7 +1409,10 @@ function parseCallerConvergence(value: unknown): CallerConvergenceRecord | null 
     clusterAdjustedAccumulation: clusterAdjustedAccumulation as number | null,
     probableRelatedSideWalletCount: probableRelatedSideWalletCount as number | null,
     kolBundleConfidence: kolBundleConfidence as number | null,
-    kolBundleReasonCodes
+    kolBundleReasonCodes,
+    kolBundleConfidenceTier,
+    kolBundleCount: kolBundleCount as number | null,
+    kolBundleTemporalProximitySeconds: kolBundleTemporalProximitySeconds as number | null
   };
 }
 

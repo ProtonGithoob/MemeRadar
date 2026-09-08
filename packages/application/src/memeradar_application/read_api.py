@@ -1519,6 +1519,9 @@ class CallerConvergenceView:
     probable_related_side_wallet_count: int | None = None
     kol_bundle_confidence: Decimal | None = None
     kol_bundle_reason_codes: tuple[str, ...] = ()
+    kol_bundle_confidence_tier: str = "UNKNOWN"
+    kol_bundle_count: int | None = None
+    kol_bundle_temporal_proximity_seconds: Decimal | None = None
 
     def __post_init__(self) -> None:
         normalized_chain = normalize_chain(self.chain)
@@ -1772,6 +1775,33 @@ def caller_convergence_view(
         reason_codes=tuple(str(getattr(reason, "code", reason)) for reason in value.reason_codes),
         config_hash=value.config_hash,
         version=value.version,
+        kol_bundle_state=(
+            "UNKNOWN" if value.kol_bundle is None else value.kol_bundle.quality_state.value
+        ),
+        visible_caller_position=(
+            None if value.kol_bundle is None else value.kol_bundle.visible_caller_position
+        ),
+        cluster_adjusted_accumulation=(
+            None if value.kol_bundle is None else value.kol_bundle.cluster_adjusted_accumulation
+        ),
+        probable_related_side_wallet_count=(
+            None
+            if value.kol_bundle is None
+            else value.kol_bundle.probable_related_side_wallet_count
+        ),
+        kol_bundle_confidence=(
+            None if value.kol_bundle is None else value.kol_bundle.confidence
+        ),
+        kol_bundle_reason_codes=(
+            () if value.kol_bundle is None else value.kol_bundle.reason_codes
+        ),
+        kol_bundle_confidence_tier=(
+            "UNKNOWN" if value.kol_bundle is None else value.kol_bundle.confidence_tier
+        ),
+        kol_bundle_count=None if value.kol_bundle is None else value.kol_bundle.bundle_count,
+        kol_bundle_temporal_proximity_seconds=(
+            None if value.kol_bundle is None else value.kol_bundle.temporal_proximity_seconds
+        ),
     )
 
 

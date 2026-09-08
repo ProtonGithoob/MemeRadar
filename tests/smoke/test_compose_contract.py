@@ -197,6 +197,9 @@ def test_external_wallet_intelligence_replay_seam_is_packaged_and_safe():
     assert "external-wallet-doctor:" in makefile
     assert "EXTERNAL_WALLET_API_URL=" in env_example
     assert "EXTERNAL_WALLET_API_KEY=" in env_example
+    assert "EXTERNAL_WALLET_STREAM_URL=" in env_example
+    assert "X_PROVIDER_ENABLED=false" in env_example
+    assert "TELEGRAM_BOT_USERNAME=" in env_example
     compose = yaml.safe_load(COMPOSE_PATH.read_text())["services"]
     for service_name in ("api", "worker"):
         environment = compose[service_name]["environment"]

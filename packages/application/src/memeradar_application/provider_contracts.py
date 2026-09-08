@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from memeradar_domain import (
@@ -37,6 +37,9 @@ from memeradar_domain.common import (
     to_decimal,
 )
 from memeradar_domain.events import normalize_reason_codes
+
+if TYPE_CHECKING:
+    from .price_integrity import ReferencePriceEvidence
 
 
 class ProviderCapability(str, Enum):
@@ -70,6 +73,7 @@ class ProviderCapability(str, Enum):
     EXECUTION = "execution"
     NOTIFICATION = "notification"
     EXTERNAL_WALLET_INTELLIGENCE = "external_wallet_intelligence"
+    REFERENCE_PRICE = "reference_price"
 
 
 class ProviderCapabilityStatus(str, Enum):
@@ -226,6 +230,39 @@ class OnChainRequest:
         object.__setattr__(self, "address", normalized_address)
         object.__setattr__(self, "signature", normalized_signature)
         object.__setattr__(self, "chain", normalized_chain)
+
+
+@dataclass(frozen=True, slots=True)
+class ReferencePriceRequest:
+    """Provider-neutral request for oracle evidence beside an executable quote."""
+
+    context: ProviderRequestContext
+    asset_address: str
+    quote_price: Decimal | int | float | str
+    chain: Chain | str = Chain.ROBINHOOD
+    now: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.context, ProviderRequestContext):
+            raise TypeError("context must be a ProviderRequestContext")
+        chain = normalize_chain(self.chain)
+        object.__setattr__(self, "chain", chain)
+        object.__setattr__(
+            self, "asset_address", require_chain_address(self.asset_address, chain, "asset_address")
+        )
+        quote = to_decimal(self.quote_price, "quote_price")
+        if quote <= 0:
+            raise ValueError("quote_price must be positive")
+        object.__setattr__(self, "quote_price", quote)
+        object.__setattr__(
+            self,
+            "now",
+            self.context.requested_at if self.now is None else ensure_utc(self.now, "now"),
+        )
+
+
+class ReferencePricePort(Protocol):
+    async def fetch(self, request: ReferencePriceRequest) -> ReferencePriceEvidence: ...
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,12 +3,18 @@
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import httpx
 import pytest
 
-from memeradar_application.provider_contracts import OnChainRequest, ProviderRequestContext
+from memeradar_application.provider_contracts import (
+    OnChainRequest,
+    ProviderRequestContext,
+    ReferencePriceRequest,
+)
 from memeradar_domain import Chain, TokenIdentity
+from memeradar_providers.chainlink import ChainlinkFeedConfig, ChainlinkReferencePriceAdapter
 from memeradar_providers.evm_rpc import EVM_CHAIN_IDS, EvmRpcAdapter
 from memeradar_providers.transport import (
     ProviderRateLimitedError,
@@ -189,5 +195,88 @@ def test_evm_rpc_rejects_a_token_from_another_chain() -> None:
                 await adapter.enrich(OnChainRequest(context=context(), token=token))
         finally:
             await adapter.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_chainlink_reference_adapter_decodes_decimals_and_fresh_round() -> None:
+    feed = "0x" + "cd" * 20
+    calls: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body["params"][0]["data"])
+        if body["params"][0]["data"] == "0x313ce567":
+            result = "0x" + (8).to_bytes(32, "big").hex()
+        else:
+            words = [7, 123450000, int(NOW.timestamp()), int(NOW.timestamp()), 7]
+            result = "0x" + "".join(
+                value.to_bytes(32, "big", signed=index == 1).hex()
+                for index, value in enumerate(words)
+            )
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": result})
+
+    async def scenario() -> None:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        rpc = EvmRpcAdapter(
+            Chain.ROBINHOOD,
+            "https://fixture.robinhood.example",
+            client=client,
+            transport=transport(),
+            clock=lambda: NOW,
+        )
+        adapter = ChainlinkReferencePriceAdapter(
+            rpc,
+            ChainlinkFeedConfig(feed, ROBINHOOD_ADDRESS, "https://docs.example/verified", NOW),
+        )
+        try:
+            evidence = await adapter.fetch(
+                ReferencePriceRequest(context(), ROBINHOOD_ADDRESS, "1.2345", now=NOW)
+            )
+            assert evidence.quality_state.value == "FRESH"
+            assert evidence.reference_price == Decimal("1.2345")
+            assert evidence.deviation_bps == Decimal("0")
+            assert len(calls) == 2
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_chainlink_reference_adapter_rejects_invalid_answer_as_unknown() -> None:
+    feed = "0x" + "cd" * 20
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if body["params"][0]["data"] == "0x313ce567":
+            result = "0x" + (8).to_bytes(32, "big").hex()
+        else:
+            words = [7, 0, int(NOW.timestamp()), int(NOW.timestamp()), 7]
+            result = "0x" + "".join(
+                value.to_bytes(32, "big", signed=index == 1).hex()
+                for index, value in enumerate(words)
+            )
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": result})
+
+    async def scenario() -> None:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        rpc = EvmRpcAdapter(
+            Chain.ROBINHOOD,
+            "https://fixture.robinhood.example",
+            client=client,
+            transport=transport(),
+            clock=lambda: NOW,
+        )
+        adapter = ChainlinkReferencePriceAdapter(
+            rpc, ChainlinkFeedConfig(feed, ROBINHOOD_ADDRESS, "fixture", NOW)
+        )
+        try:
+            evidence = await adapter.fetch(
+                ReferencePriceRequest(context(), ROBINHOOD_ADDRESS, "1", now=NOW)
+            )
+            assert evidence.quality_state.value == "UNKNOWN"
+            assert "ORACLE_NON_POSITIVE" in evidence.reason_code_values
+        finally:
+            await client.aclose()
 
     asyncio.run(scenario())
