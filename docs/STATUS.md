@@ -49,9 +49,9 @@ No blocker changes the readiness classification or authorizes a mode change.
 
 The latest local full gate recorded after the conservative cleanup:
 
-- `make verify`: 1121 Python tests passed, 11 skipped, 1 warning; 60 Vitest
+- `make verify`: 1128 Python tests passed, 11 skipped, 1 warning; 60 Vitest
   tests passed.
-- Ruff, strict mypy across 121 source files, frontend lint/typecheck,
+- Ruff, strict mypy across 125 source files, frontend lint/typecheck,
   production build, Compose validation, tracked-file secret scan, migrations,
   security review, SBOM, and `git diff --check`: passed.
 - Migration head: `0008_alpha_caller_intelligence`; metadata tables: 25.
@@ -64,6 +64,25 @@ The frontend/backend parity checkpoint added the authenticated runtime-settings
 read, completed the read-only chain-opportunities surface, and passed browser
 acceptance. It did not add execution authority, change API safety contracts,
 or fabricate unavailable rows.
+
+The current research-extension checkpoint adds measurement-only, provider-
+neutral seams: Solana `KOLBundleClusterEvidence` for explicit Jito/bundle,
+adjacency, funding/graph and same-token side-wallet correlations; an external
+wallet/KOL stream normalizer with chain-qualified IDs, dedupe, gaps,
+reconnect/backoff, bounded buffering, fallback and health; historical social
+backfill through `SocialCallObservation` with explicit
+`EXTERNAL_RESEARCH_EVIDENCE`; Robinhood sequencer/verified-launchpad decoding;
+and `ReferencePriceEvidence` for stale-oracle and executable-quote deviation
+checks. The evidence is exposed through the existing caller-convergence read
+projection and frontend surface, remains `execution_eligible=false`, and does
+not change production scoring weights.
+
+Local extension evidence: 7 focused Python tests, 47 related Python
+unit/contract tests, and 17 targeted Vitest tests pass. Compliant real external
+samples: 0; synthetic fixtures remain test-only, so historical cohort
+promotion remains `INSUFFICIENT_SAMPLES` / `BLOCKED_EXTERNAL`. No unverified
+Robinhood launchpad identity is enabled; no external provider score is
+authoritative.
 
 ## Current operational references
 
@@ -101,9 +120,18 @@ or fabricate unavailable rows.
   the keyless core while retaining optional provider-specific capabilities.
 - The 2026-09-05 to 2026-09-07 frontend/backend parity work completed the
   remaining read-only opportunities projection and browser acceptance.
+- The 2026-09-08 research-extension checkpoint reused the canonical wallet,
+  social, provider-health, generic-EVM, read-model and quote semantics seams;
+  external provider runtime validation remains blocked without compliant
+  credentials/data.
 - Real-alpha production-readiness evaluation retained
   `NOT_PRODUCTION_READY`; the next meaningful acceptance step is external
-  evidence collection, not a code or mode change.
+  evidence collection and replay-cohort maturation, not a code or mode change.
+
+Exact next unfinished task: obtain compliant real X/Telegram and optional
+wallet/KOL provider data, populate winner/ordinary/flat/severe-loser/rug and
+fake-hype cohorts, then run the existing no-lookahead ablation/promotion gates
+without changing protected modes or production weights.
 
 Historical plans and checkpoint logs are intentionally archived from this
 status file. The canonical documents and the current plans above are the

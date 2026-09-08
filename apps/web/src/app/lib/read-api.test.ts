@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchCandidates,
+  fetchChainOpportunities,
   fetchAuditEvents,
   fetchConfigVersions,
   fetchControlConfig,
   fetchControlState,
+  fetchRuntimeSettings,
   fetchOperations,
   fetchProviderHealth,
   fetchPositions,
@@ -14,6 +16,8 @@ import {
   fetchToken,
   fetchWallet,
   fetchWallets,
+  fetchWalletGraph,
+  fetchClusterGraph,
   parseRadarFilters,
   type CandidateRecord,
   type ReadPage
@@ -151,6 +155,31 @@ describe("server-side read gateway", () => {
     expect(JSON.stringify(malformed)).not.toContain("database-password");
   });
 
+  it("keeps graph query ordering and cluster outcome omission", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    const fetchMock = vi.fn().mockResolvedValue(response({ nodes: [], edges: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const filters = {
+      maxDepth: 3,
+      maxNodes: 20,
+      maxEdges: 40,
+      outcomeFilter: "WINNER / RUG",
+      dateFrom: "2026-01-01",
+      dateTo: "2026-01-02",
+      venue: "raydium/amm",
+      walletRole: "creator",
+      riskOutcomeClass: "LOW_RISK",
+      evidenceQuality: "FRESH"
+    };
+
+    expect((await fetchWalletGraph("So11111111111111111111111111111111111111112", filters)).ok).toBe(true);
+    expect((await fetchClusterGraph("cluster/one", filters)).ok).toBe(true);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://api.internal:8000/v1/wallet-graph/wallets/So11111111111111111111111111111111111111112?limit=50&max_depth=3&max_nodes=20&max_edges=40&outcome_filter=WINNER+%2F+RUG&date_from=2026-01-01&date_to=2026-01-02&venue=raydium%2Famm&wallet_role=creator&risk_outcome_class=LOW_RISK&evidence_quality=FRESH",
+      "http://api.internal:8000/v1/wallet-graph/clusters/cluster%2Fone?limit=50&max_depth=3&max_nodes=20&max_edges=40&date_from=2026-01-01&date_to=2026-01-02&venue=raydium%2Famm&wallet_role=creator&risk_outcome_class=LOW_RISK&evidence_quality=FRESH"
+    ]);
+  });
+
   it("fetches operations observability as a bounded read-only projection", async () => {
     vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
     const fetchMock = vi.fn().mockResolvedValue(response({
@@ -185,6 +214,99 @@ describe("server-side read gateway", () => {
       expect(result.data.sloState).toBe("UNVERIFIED");
       expect(result.data.executionEligible).toBe(false);
     }
+  });
+
+  it("parses grouped runtime settings without allowing secret values into the web projection", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      api_version: "runtime-settings-v1",
+      as_of: "2026-09-07T12:00:00.000Z",
+      groups: {
+        providers: [{ key: "helius_api_key", value: null, state: "CONFIGURED", secret: true }],
+        chains: [{ key: "enabled_chains", value: "solana,bnb,robinhood", state: "CONFIGURED", secret: false }],
+        telegram: [],
+        x: [{ key: "enabled", value: false, state: "DEFAULTED", secret: false }],
+        social: [],
+        website: [],
+        wallet: [],
+        security: [],
+        llm: []
+      },
+      protected_modes: {
+        analysis_only: true,
+        paper_trading: true,
+        manual_execution: false,
+        auto_execution: false
+      },
+      execution_eligible: false
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchRuntimeSettings();
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.internal:8000/v1/control/runtime-settings",
+      expect.objectContaining({ cache: "no-store" })
+    );
+    if (result.ok) {
+      expect(result.data.groups.providers[0]?.value).toBeNull();
+      expect(result.data.groups.chains[0]?.value).toBe("solana,bnb,robinhood");
+    }
+  });
+
+  it("fetches chain opportunity evidence through the existing bounded read route", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      items: [{
+        chain: "bnb",
+        as_of: "2026-09-07T12:00:00.000Z",
+        expires_at: "2026-09-07T12:05:00.000Z",
+        new_token_count_5m: 3,
+        new_token_count_1h: 8,
+        new_token_count_24h: null,
+        new_pool_count_5m: 2,
+        new_pool_count_1h: 5,
+        new_pool_count_24h: null,
+        active_wallet_count_5m: 10,
+        active_wallet_acceleration: "1.2",
+        transaction_count_5m: 20,
+        transaction_count_1h: 60,
+        transaction_acceleration: null,
+        dex_volume_5m: "100.5",
+        dex_volume_1h: "500.0",
+        dex_volume_acceleration: null,
+        liquidity_inflow_5m: null,
+        liquidity_inflow_1h: null,
+        liquidity_inflow_acceleration: null,
+        launchpad_launch_count_5m: null,
+        launchpad_graduation_count_5m: null,
+        successful_launch_ratio_5m: null,
+        provenance: [],
+        evidence_refs: ["fixture:chain"],
+        reason_codes: ["SOURCE_DIVERSITY"],
+        source_independence_count: 2,
+        source_diversity_confidence: "0.6",
+        confidence: "0.6",
+        config_hash: "sha256:fixture",
+        quality_state: "FRESH",
+        version: "chain-opportunity-v1",
+        execution_eligible: false
+      }],
+      limit: 50,
+      has_more: false,
+      next_cursor: null
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchChainOpportunities({ chain: "bnb", qualityState: "FRESH" });
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.internal:8000/v1/chain-opportunities?limit=50&chain=bnb&quality_state=FRESH",
+      expect.objectContaining({ cache: "no-store" })
+    );
+    if (result.ok) expect(result.data.items[0]?.dexVolume5m).toBe(100.5);
   });
 
   it("rejects operations responses that attempt to enable execution or modes", async () => {

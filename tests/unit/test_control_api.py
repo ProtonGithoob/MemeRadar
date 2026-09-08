@@ -42,6 +42,114 @@ def test_control_auth_fails_closed_when_no_role_token_is_configured() -> None:
     assert response.json() == {"detail": "control authentication is not configured"}
 
 
+def test_runtime_settings_are_dynamic_grouped_and_secret_safe() -> None:
+    secret = "runtime-provider-secret"
+    runtime = Settings.from_env(
+        {
+            "VIEWER_API_TOKEN": VIEWER,
+            "TELEGRAM_BOT_USERNAME": "radar_bot",
+            "TELEGRAM_BOT_TOKEN": secret,
+            "X_PROVIDER_ENABLED": "true",
+            "X_PROVIDER_API_KEY": secret,
+            "X_PROVIDER_BEARER_TOKEN": secret,
+            "WEBSITE_URL": "https://memeradar.example",
+            "HELIUS_API_KEY": secret,
+        }
+    )
+
+    response = client(runtime).get("/v1/control/runtime-settings", headers=headers(VIEWER))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["api_version"] == "runtime-settings-v1"
+    assert body["execution_eligible"] is False
+    assert body["protected_modes"] == {
+        "analysis_only": True,
+        "paper_trading": True,
+        "manual_execution": False,
+        "auto_execution": False,
+    }
+    assert set(body["groups"]) == {
+        "providers",
+        "chains",
+        "telegram",
+        "x",
+        "social",
+        "website",
+        "wallet",
+        "security",
+        "llm",
+    }
+    telegram = {item["key"]: item for item in body["groups"]["telegram"]}
+    assert telegram["api_url"] == {
+        "key": "api_url",
+        "value": "https://api.telegram.org",
+        "state": "DEFAULTED",
+        "secret": False,
+    }
+    assert telegram["bot_username"] == {
+        "key": "bot_username",
+        "value": "radar_bot",
+        "state": "CONFIGURED",
+        "secret": False,
+    }
+    assert telegram["bot_token"] == {
+        "key": "bot_token",
+        "value": None,
+        "state": "CONFIGURED",
+        "secret": True,
+    }
+    assert telegram["chat_id"] == {
+        "key": "chat_id",
+        "value": None,
+        "state": "UNCONFIGURED_OPTIONAL",
+        "secret": True,
+    }
+    x = {item["key"]: item for item in body["groups"]["x"]}
+    assert x["enabled"] == {"key": "enabled", "value": True, "state": "CONFIGURED", "secret": False}
+    assert x["api_key"] == {"key": "api_key", "value": None, "state": "CONFIGURED", "secret": True}
+    assert x["bearer_token"] == {
+        "key": "bearer_token",
+        "value": None,
+        "state": "CONFIGURED",
+        "secret": True,
+    }
+    website = {item["key"]: item for item in body["groups"]["website"]}
+    assert website["url"] == {
+        "key": "url",
+        "value": "https://memeradar.example",
+        "state": "CONFIGURED",
+        "secret": False,
+    }
+    assert website["name"] == {
+        "key": "name",
+        "value": None,
+        "state": "UNCONFIGURED_OPTIONAL",
+        "secret": False,
+    }
+    assert secret not in response.text
+
+
+def test_runtime_settings_reject_malformed_public_urls_without_failing_the_read() -> None:
+    runtime = Settings.from_env(
+        {
+            "VIEWER_API_TOKEN": VIEWER,
+            "WEBSITE_URL": "https://memeradar.example:not-a-port",
+        }
+    )
+
+    response = client(runtime).get("/v1/control/runtime-settings", headers=headers(VIEWER))
+
+    assert response.status_code == 200
+    website = {item["key"]: item for item in response.json()["groups"]["website"]}
+    assert website["url"] == {
+        "key": "url",
+        "value": None,
+        "state": "UNKNOWN",
+        "secret": False,
+    }
+
+
 def test_control_auth_rejects_missing_malformed_and_wrong_credentials_without_echo() -> None:
     control_client = client()
     responses = (

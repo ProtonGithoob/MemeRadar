@@ -18,11 +18,27 @@ test("workstation shell exposes navigation, search and protected modes", async (
   await expect(page.getByLabel("Search by token UUID or wallet address")).toBeVisible();
 
   const navigation = page.getByRole("navigation", { name: "Operator sections" });
-  for (const label of ["Overview", "Radar", "Ultra Early", "Positions", "Wallets", "Graph", "Providers", "Operations", "Settings", "Audit"]) {
+  for (const label of ["Overview", "Radar", "Ultra Early", "Positions", "Opportunities", "Wallets", "Graph", "Providers", "Operations", "Settings", "Audit"]) {
     await expect(navigation.getByRole("link", { name: label, exact: true })).toBeAttached();
   }
   await expect(page.locator("body")).not.toContainText("MEMERADAR_VIEWER_API_TOKEN");
   await expect(page.locator("body")).not.toContainText("private_key");
+});
+
+test("settings and chain opportunity surfaces preserve read-only evidence boundaries", async ({ page }) => {
+  const settings = await page.goto("/settings");
+  expect(settings?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Runtime configuration" })).toBeVisible();
+  for (const label of ["PROVIDERS", "CHAINS", "TELEGRAM", "X", "SOCIAL", "WEBSITE", "WALLET", "SECURITY", "LLM"]) {
+    await expect(page.getByRole("heading", { name: label, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("SECRET VALUE HIDDEN").first()).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("runtime-provider-secret");
+
+  const opportunities = await page.goto("/opportunities");
+  expect(opportunities?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Chain opportunities" })).toBeVisible();
+  await expect(page.getByText("EXECUTION LOCKED", { exact: true }).first()).toBeVisible();
 });
 
 test("radar and ultra-early routes render read-only discovery workspaces", async ({ page }) => {

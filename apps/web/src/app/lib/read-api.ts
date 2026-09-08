@@ -294,6 +294,12 @@ export interface CallerConvergenceRecord {
   reasonCodes: string[];
   configHash: string;
   version: string;
+  kolBundleState?: string;
+  visibleCallerPosition?: number | null;
+  clusterAdjustedAccumulation?: number | null;
+  probableRelatedSideWalletCount?: number | null;
+  kolBundleConfidence?: number | null;
+  kolBundleReasonCodes?: string[];
 }
 
 export interface CallerProfileFilters {
@@ -465,6 +471,69 @@ export interface ControlConfigRecord {
   config: Record<string, unknown>;
 }
 
+export type RuntimeSettingValue = string | boolean | number | null;
+export type RuntimeSettingState =
+  | "CONFIGURED"
+  | "DEFAULTED"
+  | "UNCONFIGURED_OPTIONAL"
+  | "UNKNOWN";
+
+export interface RuntimeSettingRecord {
+  key: string;
+  value: RuntimeSettingValue;
+  state: RuntimeSettingState;
+  secret: boolean;
+}
+
+export interface RuntimeSettingsRecord {
+  apiVersion: string;
+  asOf: string;
+  groups: Record<string, RuntimeSettingRecord[]>;
+  protectedModes: ProtectedModesRecord;
+  executionEligible: false;
+}
+
+export interface ChainOpportunityFilters {
+  chain?: string;
+  qualityState?: TimelineQuality;
+  asOf?: string;
+}
+
+export interface ChainOpportunityRecord {
+  chain: string;
+  asOf: string;
+  expiresAt: string;
+  newTokenCount5m: number | null;
+  newTokenCount1h: number | null;
+  newTokenCount24h: number | null;
+  newPoolCount5m: number | null;
+  newPoolCount1h: number | null;
+  newPoolCount24h: number | null;
+  activeWalletCount5m: number | null;
+  activeWalletAcceleration: number | null;
+  transactionCount5m: number | null;
+  transactionCount1h: number | null;
+  transactionAcceleration: number | null;
+  dexVolume5m: number | null;
+  dexVolume1h: number | null;
+  dexVolumeAcceleration: number | null;
+  liquidityInflow5m: number | null;
+  liquidityInflow1h: number | null;
+  liquidityInflowAcceleration: number | null;
+  launchpadLaunchCount5m: number | null;
+  launchpadGraduationCount5m: number | null;
+  successfulLaunchRatio5m: number | null;
+  provenance: ProvenanceRecord[];
+  evidenceRefs: string[];
+  reasonCodes: string[];
+  sourceIndependenceCount: number;
+  sourceDiversityConfidence: number;
+  confidence: number;
+  configHash: string;
+  qualityState: TimelineQuality;
+  version: string;
+}
+
 export type PositionMode = "PAPER" | "LIVE";
 export type PositionState = "PENDING" | "OPEN" | "EXIT_SIGNALLED" | "CLOSED";
 
@@ -561,6 +630,12 @@ const MAX_STRING_LENGTH = 512;
 const MAX_ARRAY_LENGTH = 64;
 const MAX_PAYLOAD_KEYS = 64;
 const MAX_PAYLOAD_DEPTH = 4;
+const RUNTIME_SETTING_GROUPS = new Set([
+  "providers", "chains", "telegram", "x", "social", "website", "wallet", "security", "llm"
+]);
+const RUNTIME_SETTING_STATES = new Set<RuntimeSettingState>([
+  "CONFIGURED", "DEFAULTED", "UNCONFIGURED_OPTIONAL", "UNKNOWN"
+]);
 const REQUEST_TIMEOUT_MS = 4_000;
 const SECRET_KEY_PATTERN =
   /(?:api[_ -]?key|access[_ -]?token|authorization|bearer|bot[_ -]?token|client[_ -]?secret|cookie|password|private[_ -]?key|seed(?:[_ -]?phrase)?|session[_ -]?token)/i;
@@ -1260,6 +1335,16 @@ function parseCallerConvergence(value: unknown): CallerConvergenceRecord | null 
   const reasonCodes = stringArray(value.reason_codes, 128);
   const configHash = boundedString(value.config_hash, 128);
   const version = boundedString(value.version, 64);
+  const kolBundleState = boundedString(value.kol_bundle_state ?? "UNKNOWN", 32);
+  const visibleCallerPosition = value.visible_caller_position === undefined
+    ? null : optionalFiniteNumber(value.visible_caller_position, 0, 1e30);
+  const clusterAdjustedAccumulation = value.cluster_adjusted_accumulation === undefined
+    ? null : optionalFiniteNumber(value.cluster_adjusted_accumulation, 0, 1e30);
+  const probableRelatedSideWalletCount = value.probable_related_side_wallet_count === undefined
+    ? null : optionalInteger(value.probable_related_side_wallet_count, 0, 1_000_000);
+  const kolBundleConfidence = value.kol_bundle_confidence === undefined
+    ? null : optionalFiniteNumber(value.kol_bundle_confidence, 0, 1);
+  const kolBundleReasonCodes = stringArray(value.kol_bundle_reason_codes ?? [], 128);
   if (
     id === null || tokenId === null || chain === null || assetAddress === null || tokenId !== `${chain}:${assetAddress}` ||
     !validChainAddress(chain, assetAddress) || asOf === null || expiresAt === null ||
@@ -1273,7 +1358,9 @@ function parseCallerConvergence(value: unknown): CallerConvergenceRecord | null 
     (riskDisposition !== null && !RISK_DISPOSITIONS.has(riskDisposition as RiskDisposition)) ||
     riskQualityState === null || riskQualityState === undefined || confidence === null || qualityState === null ||
     qualityState === undefined || typeof noLookaheadVerified !== "boolean" || provenance === null ||
-    evidenceRefs === null || reasonCodes === null || configHash === null || version === null || value.execution_eligible === true
+    evidenceRefs === null || reasonCodes === null || configHash === null || version === null || kolBundleState === null ||
+    visibleCallerPosition === undefined || clusterAdjustedAccumulation === undefined || probableRelatedSideWalletCount === undefined ||
+    kolBundleConfidence === undefined || kolBundleReasonCodes === null || value.execution_eligible === true
   ) {
     return null;
   }
@@ -1308,7 +1395,13 @@ function parseCallerConvergence(value: unknown): CallerConvergenceRecord | null 
     evidenceRefs,
     reasonCodes,
     configHash,
-    version
+    version,
+    kolBundleState,
+    visibleCallerPosition: visibleCallerPosition as number | null,
+    clusterAdjustedAccumulation: clusterAdjustedAccumulation as number | null,
+    probableRelatedSideWalletCount: probableRelatedSideWalletCount as number | null,
+    kolBundleConfidence: kolBundleConfidence as number | null,
+    kolBundleReasonCodes
   };
 }
 
@@ -1931,6 +2024,143 @@ function parseControlConfig(value: unknown): ControlConfigRecord | null {
   return { apiVersion, id, version, createdAt, actor, configHash, decisionAffecting, config };
 }
 
+function parseRuntimeSetting(value: unknown): RuntimeSettingRecord | null {
+  if (!isRecord(value)) return null;
+  const key = boundedString(value.key, 128);
+  const state = boundedString(value.state, 32);
+  const settingValue = value.value;
+  const safeValue = settingValue === null || typeof settingValue === "string" ||
+    typeof settingValue === "boolean" || (typeof settingValue === "number" && Number.isFinite(settingValue))
+    ? settingValue as RuntimeSettingValue
+    : undefined;
+  if (
+    key === null || state === null || !RUNTIME_SETTING_STATES.has(state as RuntimeSettingState) ||
+    typeof value.secret !== "boolean" || safeValue === undefined ||
+    (value.secret && safeValue !== null)
+  ) {
+    return null;
+  }
+  return { key, value: safeValue, state: state as RuntimeSettingState, secret: value.secret };
+}
+
+function parseRuntimeSettings(value: unknown): RuntimeSettingsRecord | null {
+  if (!isRecord(value) || !isRecord(value.groups) || !isRecord(value.protected_modes)) return null;
+  const apiVersion = boundedString(value.api_version, 64);
+  const asOf = timestamp(value.as_of);
+  const modes = value.protected_modes;
+  const protectedModes = {
+    analysisOnly: modes.analysis_only,
+    paperTrading: modes.paper_trading,
+    manualExecution: modes.manual_execution,
+    autoExecution: modes.auto_execution
+  };
+  const groupEntries = Object.entries(value.groups);
+  const groups: Record<string, RuntimeSettingRecord[]> = {};
+  for (const [name, rawItems] of groupEntries) {
+    if (!RUNTIME_SETTING_GROUPS.has(name) || !Array.isArray(rawItems) || rawItems.length > MAX_ARRAY_LENGTH) {
+      return null;
+    }
+    const items = rawItems.map(parseRuntimeSetting);
+    if (items.some((item): item is null => item === null)) return null;
+    groups[name] = items as RuntimeSettingRecord[];
+  }
+  if (
+    apiVersion === null || asOf === null || groupEntries.length !== RUNTIME_SETTING_GROUPS.size ||
+    Object.keys(groups).length !== RUNTIME_SETTING_GROUPS.size ||
+    Object.values(protectedModes).some((mode) => typeof mode !== "boolean") ||
+    protectedModes.analysisOnly !== true || protectedModes.paperTrading !== true ||
+    protectedModes.manualExecution !== false || protectedModes.autoExecution !== false ||
+    value.execution_eligible !== false
+  ) {
+    return null;
+  }
+  return {
+    apiVersion,
+    asOf,
+    groups,
+    protectedModes: protectedModes as ProtectedModesRecord,
+    executionEligible: false
+  };
+}
+
+function parseChainOpportunity(value: unknown): ChainOpportunityRecord | null {
+  if (!isRecord(value)) return null;
+  const chain = boundedString(value.chain, 32);
+  const asOf = timestamp(value.as_of);
+  const expiresAt = timestamp(value.expires_at);
+  const integerFields = [
+    "new_token_count_5m", "new_token_count_1h", "new_token_count_24h",
+    "new_pool_count_5m", "new_pool_count_1h", "new_pool_count_24h",
+    "active_wallet_count_5m", "transaction_count_5m", "transaction_count_1h",
+    "launchpad_launch_count_5m", "launchpad_graduation_count_5m"
+  ] as const;
+  const decimalFields = [
+    "active_wallet_acceleration", "transaction_acceleration", "dex_volume_5m",
+    "dex_volume_1h", "dex_volume_acceleration", "liquidity_inflow_5m",
+    "liquidity_inflow_1h", "liquidity_inflow_acceleration", "successful_launch_ratio_5m"
+  ] as const;
+  const integers = Object.fromEntries(
+    integerFields.map((field) => [field, optionalInteger(value[field], 0, 1_000_000_000)])
+  );
+  const decimals = Object.fromEntries(
+    decimalFields.map((field) => [field, optionalFiniteNumber(value[field], -1e24, 1e24)])
+  );
+  const provenance = parseProvenanceList(value.provenance ?? []);
+  const evidenceRefs = stringArray(value.evidence_refs ?? [], 1024);
+  const reasonCodes = stringArray(value.reason_codes ?? [], 128);
+  const sourceIndependenceCount = integer(value.source_independence_count, 0, 1_000_000);
+  const sourceDiversityConfidence = finiteNumber(value.source_diversity_confidence, 0, 1);
+  const confidence = finiteNumber(value.confidence, 0, 1);
+  const configHash = boundedString(value.config_hash, 128);
+  const qualityState = optionalQuality(value.quality_state);
+  const version = boundedString(value.version, 128);
+  const allIntegersValid = integerFields.every((field) => integers[field] !== undefined);
+  const allDecimalsValid = decimalFields.every((field) => decimals[field] !== undefined);
+  if (
+    chain === null || asOf === null || expiresAt === null || Date.parse(expiresAt) <= Date.parse(asOf) ||
+    !allIntegersValid || !allDecimalsValid || provenance === null || evidenceRefs === null ||
+    reasonCodes === null || sourceIndependenceCount === null || sourceDiversityConfidence === null ||
+    confidence === null || configHash === null || qualityState === null || qualityState === undefined ||
+    version === null || value.execution_eligible !== false
+  ) {
+    return null;
+  }
+  return {
+    chain,
+    asOf,
+    expiresAt,
+    newTokenCount5m: integers.new_token_count_5m as number | null,
+    newTokenCount1h: integers.new_token_count_1h as number | null,
+    newTokenCount24h: integers.new_token_count_24h as number | null,
+    newPoolCount5m: integers.new_pool_count_5m as number | null,
+    newPoolCount1h: integers.new_pool_count_1h as number | null,
+    newPoolCount24h: integers.new_pool_count_24h as number | null,
+    activeWalletCount5m: integers.active_wallet_count_5m as number | null,
+    activeWalletAcceleration: decimals.active_wallet_acceleration as number | null,
+    transactionCount5m: integers.transaction_count_5m as number | null,
+    transactionCount1h: integers.transaction_count_1h as number | null,
+    transactionAcceleration: decimals.transaction_acceleration as number | null,
+    dexVolume5m: decimals.dex_volume_5m as number | null,
+    dexVolume1h: decimals.dex_volume_1h as number | null,
+    dexVolumeAcceleration: decimals.dex_volume_acceleration as number | null,
+    liquidityInflow5m: decimals.liquidity_inflow_5m as number | null,
+    liquidityInflow1h: decimals.liquidity_inflow_1h as number | null,
+    liquidityInflowAcceleration: decimals.liquidity_inflow_acceleration as number | null,
+    launchpadLaunchCount5m: integers.launchpad_launch_count_5m as number | null,
+    launchpadGraduationCount5m: integers.launchpad_graduation_count_5m as number | null,
+    successfulLaunchRatio5m: decimals.successful_launch_ratio_5m as number | null,
+    provenance,
+    evidenceRefs,
+    reasonCodes,
+    sourceIndependenceCount,
+    sourceDiversityConfidence,
+    confidence,
+    configHash,
+    qualityState,
+    version
+  };
+}
+
 function parsePage<T>(value: unknown, parseItem: (item: unknown) => T | null): ReadPage<T> | null {
   if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > MAX_PAGE_LIMIT) {
     return null;
@@ -2252,6 +2482,26 @@ export async function fetchControlState(): Promise<ReadResult<ControlStateRecord
 export async function fetchControlConfig(): Promise<ReadResult<ControlConfigRecord>> {
   const url = endpoint("/v1/control/config");
   return url === null ? configuredFailure() : request(url, parseControlConfig);
+}
+
+export async function fetchRuntimeSettings(): Promise<ReadResult<RuntimeSettingsRecord>> {
+  const url = endpoint("/v1/control/runtime-settings");
+  return url === null ? configuredFailure() : request(url, parseRuntimeSettings);
+}
+
+export async function fetchChainOpportunities(
+  filters: ChainOpportunityFilters = {}
+): Promise<ReadResult<ReadPage<ChainOpportunityRecord>>> {
+  const query = singleQuery();
+  setBoundedText(query, "chain", filters.chain);
+  if (filters.qualityState && QUALITY_STATES.has(filters.qualityState)) {
+    query.set("quality_state", filters.qualityState);
+  }
+  setOptionalTimestamp(query, "as_of", filters.asOf);
+  const url = endpoint("/v1/chain-opportunities", query);
+  return url === null
+    ? configuredFailure()
+    : request(url, (value) => parsePage(value, parseChainOpportunity));
 }
 
 export interface CreatorReputationRecord {

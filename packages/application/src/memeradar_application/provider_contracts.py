@@ -99,12 +99,16 @@ def provider_capability_status(
         return ProviderCapabilityStatus.RATE_LIMITED
     if reason == "STALE" or freshness_state == "STALE":
         return ProviderCapabilityStatus.STALE
-    if reason in {
-        "OPTIONAL_CONFIGURATION_MISSING",
-        "CREDENTIAL_CONFIGURATION_MISSING",
-        "CONFIGURATION_INVALID",
-        "AUTHENTICATION_FAILED",
-    } or status == "UNCONFIGURED_OPTIONAL":
+    if (
+        reason
+        in {
+            "OPTIONAL_CONFIGURATION_MISSING",
+            "CREDENTIAL_CONFIGURATION_MISSING",
+            "CONFIGURATION_INVALID",
+            "AUTHENTICATION_FAILED",
+        }
+        or status == "UNCONFIGURED_OPTIONAL"
+    ):
         return ProviderCapabilityStatus.CONFIGURATION_MISSING
     if reason in {"EXTERNAL_UNAVAILABLE", "CORE_EXTERNAL_BLOCKER"} or status == "DOWN":
         return ProviderCapabilityStatus.BLOCKED_EXTERNAL
@@ -243,6 +247,8 @@ class SocialDataRequest:
     query: str | None = None
     cursor: str | None = None
     limit: int = 100
+    from_at: datetime | None = None
+    to_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.context, ProviderRequestContext):
@@ -255,6 +261,12 @@ class SocialDataRequest:
         object.__setattr__(self, "query", normalized_query)
         object.__setattr__(self, "cursor", _optional_cursor(self.cursor))
         object.__setattr__(self, "limit", _bounded_limit(self.limit))
+        from_at = None if self.from_at is None else ensure_utc(self.from_at, "from_at")
+        to_at = None if self.to_at is None else ensure_utc(self.to_at, "to_at")
+        if from_at is not None and to_at is not None and to_at <= from_at:
+            raise ValueError("to_at must be later than from_at")
+        object.__setattr__(self, "from_at", from_at)
+        object.__setattr__(self, "to_at", to_at)
 
 
 @dataclass(frozen=True, slots=True)
@@ -862,6 +874,7 @@ class QuoteSnapshot:
             "output_amount",
         )
 
+
 @dataclass(frozen=True, slots=True)
 class ExecutionPlan:
     """Unsigned execution plan; signing material is intentionally not a field."""
@@ -983,6 +996,12 @@ class SocialCallPort(Protocol):
     async def search_calls(self, request: SocialDataRequest) -> Sequence[SocialCallObservation]: ...
 
 
+class HistoricalSocialBackfillProvider(SocialCallPort, Protocol):
+    """Optional research-only backfill over the canonical social-call path."""
+
+    async def backfill(self, request: SocialDataRequest) -> Sequence[SocialCallObservation]: ...
+
+
 class SocialMetadataPort(Protocol):
     provider_name: str
 
@@ -1058,6 +1077,7 @@ __all__ = [
     "SocialDataPort",
     "SocialDataRequest",
     "SocialCallPort",
+    "HistoricalSocialBackfillProvider",
     "SocialMetadata",
     "SocialMetadataPort",
     "SocialMention",

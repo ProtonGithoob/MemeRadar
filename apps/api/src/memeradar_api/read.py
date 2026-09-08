@@ -538,6 +538,12 @@ class CallerConvergenceResponse(_StrictModel):
     reason_codes: list[str] = Field(default_factory=list)
     config_hash: str
     version: str
+    kol_bundle_state: str = "UNKNOWN"
+    visible_caller_position: Decimal | None = None
+    cluster_adjusted_accumulation: Decimal | None = None
+    probable_related_side_wallet_count: int | None = None
+    kol_bundle_confidence: Decimal | None = None
+    kol_bundle_reason_codes: list[str] = Field(default_factory=list)
     execution_eligible: bool = False
 
 
@@ -1102,6 +1108,12 @@ def _caller_convergence_response(value: CallerConvergenceView) -> CallerConverge
         reason_codes=list(value.reason_codes),
         config_hash=value.config_hash,
         version=value.version,
+        kol_bundle_state=value.kol_bundle_state,
+        visible_caller_position=value.visible_caller_position,
+        cluster_adjusted_accumulation=value.cluster_adjusted_accumulation,
+        probable_related_side_wallet_count=value.probable_related_side_wallet_count,
+        kol_bundle_confidence=value.kol_bundle_confidence,
+        kol_bundle_reason_codes=list(value.kol_bundle_reason_codes),
         execution_eligible=False,
     )
 

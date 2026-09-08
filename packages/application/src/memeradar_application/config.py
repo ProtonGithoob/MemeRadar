@@ -103,6 +103,7 @@ class Settings:
     execution_api_token: str | None
     telegram_api_url: str | None
     telegram_bot_token: str | None
+    telegram_bot_username: str | None
     telegram_chat_id: str | None
     alert_max_messages_per_window: int
     alert_rate_limit_window_seconds: float
@@ -146,6 +147,11 @@ class Settings:
     robinhood_chain_id: int = 4663
     robinhood_sequencer_feed_url: str = "wss://feed.mainnet.chain.robinhood.com"
     robinhood_blockscout_api_url: str | None = None
+    x_provider_enabled: bool = False
+    x_provider_api_key: str | None = None
+    x_provider_bearer_token: str | None = None
+    website_url: str | None = None
+    website_name: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Settings:
@@ -267,6 +273,7 @@ class Settings:
             telegram_api_url=_optional_value(values, "TELEGRAM_API_URL")
             or "https://api.telegram.org",
             telegram_bot_token=_optional_value(values, "TELEGRAM_BOT_TOKEN"),
+            telegram_bot_username=_optional_value(values, "TELEGRAM_BOT_USERNAME"),
             telegram_chat_id=_optional_value(values, "TELEGRAM_CHAT_ID"),
             alert_max_messages_per_window=alert_max_messages,
             alert_rate_limit_window_seconds=alert_window,
@@ -351,4 +358,11 @@ class Settings:
                 "wss://feed.mainnet.chain.robinhood.com",
             ),
             robinhood_blockscout_api_url=_optional_value(values, "ROBINHOOD_BLOCKSCOUT_API_URL"),
+            x_provider_enabled=_parse_bool(
+                "X_PROVIDER_ENABLED", values.get("X_PROVIDER_ENABLED", "false")
+            ),
+            x_provider_api_key=_optional_value(values, "X_PROVIDER_API_KEY"),
+            x_provider_bearer_token=_optional_value(values, "X_PROVIDER_BEARER_TOKEN"),
+            website_url=_optional_value(values, "WEBSITE_URL"),
+            website_name=_optional_value(values, "WEBSITE_NAME"),
         )

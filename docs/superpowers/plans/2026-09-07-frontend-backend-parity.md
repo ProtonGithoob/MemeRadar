@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Frontend / Backend Parity Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -172,3 +173,78 @@
 - [ ] Reconcile `docs/STATUS.md`, frontend docs and production-readiness docs without falsely changing `NOT_PRODUCTION_READY` unless real-data gates independently changed.
 - [ ] Record route parity matrix, exact tests, remaining external blockers and next task.
 - [ ] Commit/push coherent final checkpoint; preserve unrelated WIP.
+=======
+# Frontend/Backend Parity Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Expose the validated runtime configuration safely and bring existing operator routes into honest parity with their backend read contracts.
+
+**Architecture:** Reuse `Settings` as the single runtime source. Add one authenticated GET projection that exposes only allow-listed non-secret values plus presence/status metadata, then consume it through the existing server-side web gateway. Keep all UI read-only and preserve the four protected modes.
+
+**Tech Stack:** Python dataclasses/FastAPI/Pydantic, Next.js App Router, TypeScript, Vitest, Playwright.
+
+**Spec:** `README.md`, `docs/MASTER_SPEC.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/TESTING.md`, `FRONTEND_EXECUTION_PROMPT.md` (the requested parity document is absent from the checkout).
+
+## Global Constraints
+
+- Preserve `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
+- Never return secret values, raw provider responses, browser credentials, or wallet signing capability.
+- Missing optional evidence/configuration is `UNKNOWN`, `UNAVAILABLE`, or `UNCONFIGURED_OPTIONAL`, never fabricated as safe.
+- Reuse existing read APIs and components; add only bounded GET projections required by canonical runtime data.
+- Use TDD: failing focused test, minimal implementation, focused verification, documentation/status update, coherent commit.
+
+### Task 1: Dynamic runtime Settings contract
+
+**Files:**
+- Modify: `packages/application/src/memeradar_application/config.py`
+- Modify: `apps/api/src/memeradar_api/control.py`
+- Modify: `apps/api/src/memeradar_api/main.py` only if router wiring requires it
+- Test: `tests/unit/test_config.py`
+- Test: `tests/unit/test_control_api.py`
+
+- [x] Add failing tests for X/Telegram username parsing and a runtime-settings response that contains provider/chain/social/website/wallet/security/LLM metadata but no secret values.
+- [x] Run the focused backend tests and confirm the expected failures.
+- [x] Implement the smallest validated fields and authenticated GET projection with explicit secret-key omission/presence booleans.
+- [x] Run focused backend tests, Ruff and mypy.
+- [x] Update `docs/STATUS.md` with evidence; commit remains blocked by read-only `.git` metadata.
+
+### Task 2: Server-side Settings UI parity
+
+**Files:**
+- Modify: `apps/web/src/app/lib/read-api.ts`
+- Modify: `apps/web/src/app/components/settings.tsx`
+- Modify: `apps/web/src/app/settings/page.tsx`
+- Test: `apps/web/src/app/components/settings.test.tsx`
+- Test: `apps/web/src/app/lib/read-api.test.ts`
+
+- [x] Add failing parser/component tests for dynamic category rendering and secret-safe display.
+- [x] Run the focused Vitest tests and confirm failure.
+- [x] Add the bounded gateway parser and read-only category panel.
+- [x] Run focused Vitest, lint, typecheck and build.
+- [x] Update `docs/STATUS.md`; commit remains blocked by read-only `.git` metadata.
+
+### Task 3: Existing route parity audit
+
+**Files:**
+- Modify only existing route/components/read gateway files where a real backend datum is missing.
+- Test: affected existing route/component tests.
+
+- [x] Compare every App Router page to the existing FastAPI GET routes and record missing/empty/unavailable behavior.
+- [x] Add one failing regression test per actual missing parity seam.
+- [x] Implement only bounded projections or UI joins; do not add duplicate engines.
+- [x] Run focused frontend/backend checks and update `docs/STATUS.md`.
+- [ ] Commit the coherent route checkpoint; blocked by read-only `.git` metadata.
+
+### Task 4: Browser acceptance
+
+**Files:**
+- Modify: `apps/web/e2e/*.spec.ts` only for missing critical journeys.
+- Modify: `docs/STATUS.md`
+
+- [x] Add failing Playwright assertions for Settings runtime categories, protected modes, no secret leakage and existing critical deep links.
+- [x] Run the browser tests against the local app and distinguish local failures from external provider blockers.
+- [x] Fix only frontend contract/layout issues found by the tests.
+- [x] Run frontend lint/typecheck/build and the final `make verify` checkpoint.
+- [x] Record final route/test/commit/sync evidence in `docs/STATUS.md`; commit/push blocked by read-only `.git` metadata.
+>>>>>>> 6703b7e (Add research wallet and Robinhood evidence seams)

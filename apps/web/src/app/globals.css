@@ -592,6 +592,16 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .settings-field-list dt, .settings-field-list dd { font-size: 0.64rem; margin: 0; }
 .settings-field-list dt { color: var(--muted); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-field-list dd { color: var(--ink); font-weight: 700; }
+.settings-runtime { display: grid; gap: 12px; }
+.settings-runtime-grid { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.settings-runtime-group { border: 1px solid var(--line); border-radius: var(--radius-sm); min-width: 0; padding: 10px; }
+.settings-runtime-group h4 { color: var(--accent); font-size: 0.62rem; letter-spacing: 0.1em; margin: 0 0 8px; }
+.settings-runtime-list { margin: 0; }
+.settings-runtime-list > div { align-items: baseline; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: space-between; padding: 7px 0; }
+.settings-runtime-list dt { color: var(--muted); font-family: var(--font-mono); font-size: 0.58rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-runtime-list dd { color: var(--ink); font-size: 0.62rem; margin: 0; max-width: 60%; overflow-wrap: anywhere; text-align: right; }
+.settings-runtime-list dd strong { display: block; }
+.settings-runtime-list dd small { color: var(--faint); display: block; font-size: 0.5rem; margin-top: 2px; }
 .permission-panel { margin-top: 10px; }
 .permission-list { display: grid; gap: 0; margin-top: 12px; }
 .permission-row { border-top: 1px solid var(--line); display: grid; gap: 12px; grid-template-columns: 90px minmax(0, 1fr); padding: 10px 0; }
@@ -803,7 +813,7 @@ h1, h2, h3, h4, p { margin-top: 0; }
   .filter-submit { grid-column: span 2; }
   .tw-header { grid-template-columns: 1fr; }
   .tw-header__badges { justify-content: flex-start; }
-  .overview-grid, .evidence-grid, .charts-grid, .settings-state-grid, .settings-field-list, .audit-change-grid { grid-template-columns: 1fr; }
+  .overview-grid, .evidence-grid, .charts-grid, .settings-state-grid, .settings-field-list, .settings-runtime-grid, .audit-change-grid { grid-template-columns: 1fr; }
   .overview-grid .detail-panel--wide { grid-column: auto; }
   .chart-panel { grid-column: auto; }
   .timeline-entry { grid-template-columns: 1fr; gap: 8px; }

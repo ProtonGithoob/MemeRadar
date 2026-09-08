@@ -754,7 +754,7 @@ class SocialRestAdapter(SocialDataPort):
     """Read-only adapter for a compliant social search API."""
 
     provider_name = SOCIAL_PROVIDER
-    capabilities = frozenset({"social_analytics", "social_calls", "social_data"})
+    capabilities = frozenset({"social_analytics", "social_calls", "caller_history", "social_data"})
 
     def __init__(
         self,
@@ -1094,6 +1094,10 @@ class SocialRestAdapter(SocialDataPort):
         params: dict[str, str | int] = {"query": query, "limit": min(request.limit, 100)}
         if request.cursor is not None:
             params["cursor"] = request.cursor
+        if request.from_at is not None:
+            params["from_at"] = request.from_at.isoformat()
+        if request.to_at is not None:
+            params["to_at"] = request.to_at.isoformat()
         payload = await self._get(self._search_path, params, context=request.context)
         self._last_next_cursor = _next_cursor(payload)
         return self._normalize_posts(
@@ -1116,6 +1120,10 @@ class SocialRestAdapter(SocialDataPort):
         params: dict[str, str | int] = {"query": query, "limit": min(request.limit, 100)}
         if request.cursor is not None:
             params["cursor"] = request.cursor
+        if request.from_at is not None:
+            params["from_at"] = request.from_at.isoformat()
+        if request.to_at is not None:
+            params["to_at"] = request.to_at.isoformat()
         payload = await self._get(self._search_path, params, context=request.context)
         self._last_next_cursor = _next_cursor(payload)
         calls = tuple(
@@ -1131,6 +1139,23 @@ class SocialRestAdapter(SocialDataPort):
             for value in _posts(payload)
         )
         return deduplicate_social_calls(calls)
+
+    async def backfill(self, request: SocialDataRequest) -> Sequence[SocialCallObservation]:
+        """Return research-class calls through the same normalized call path."""
+
+        calls = await self.search_calls(request)
+        return tuple(
+            replace(
+                call,
+                disclosure={
+                    **dict(call.disclosure),
+                    "evidence_class": "EXTERNAL_RESEARCH_EVIDENCE",
+                },
+            )
+            for call in calls
+            if (request.from_at is None or call.published_at >= request.from_at)
+            and (request.to_at is None or call.published_at < request.to_at)
+        )
 
     async def search_global_events(
         self,
@@ -1158,9 +1183,7 @@ class SocialRestAdapter(SocialDataPort):
                     "text": mention.text,
                     "urls": mention.canonical_links,
                     "contract_addresses": (
-                        (mention.referenced_mint,)
-                        if mention.referenced_mint is not None
-                        else ()
+                        (mention.referenced_mint,) if mention.referenced_mint is not None else ()
                     ),
                 }
                 events.append(

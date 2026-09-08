@@ -5,7 +5,9 @@ import type {
   ControlConfigRecord,
   ControlStateRecord,
   ReadFailureReason,
-  ReadResult
+  ReadResult,
+  RuntimeSettingRecord,
+  RuntimeSettingsRecord
 } from "../lib/read-api";
 
 const configFields = [
@@ -41,6 +43,54 @@ function failureMessage(reason: ReadFailureReason, subject: string): string {
 function configDisplayValue(value: unknown): string {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return "UNKNOWN";
+}
+
+function runtimeLabel(value: string): string {
+  return value.replaceAll("_", " ").toUpperCase();
+}
+
+function runtimeValue(item: RuntimeSettingRecord): React.ReactNode {
+  if (item.secret) return <strong>SECRET VALUE HIDDEN</strong>;
+  if (item.value === null) return <strong>{item.state}</strong>;
+  if (typeof item.value === "boolean") return <strong>{item.value ? "ENABLED" : "DISABLED"}</strong>;
+  return <strong>{String(item.value)}</strong>;
+}
+
+function RuntimeSettingsPanel({ result }: { result: ReadResult<RuntimeSettingsRecord> }) {
+  if (!result.ok) {
+    return (
+      <div className="read-state read-state--error" role="status">
+        <strong>{failureMessage(result.reason, "RUNTIME SETTINGS")}</strong>
+        <p>No runtime provider or credential values were substituted.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="settings-runtime">
+      <div className="settings-config__meta">
+        <span><b>API</b> {result.data.apiVersion}</span>
+        <span><b>AS OF</b> {readableDate(result.data.asOf)}</span>
+        <span><b>BOUNDARY</b> LOCKED</span>
+      </div>
+      <div className="settings-runtime-grid">
+        {Object.entries(result.data.groups).map(([group, items]) => (
+          <section className="settings-runtime-group" key={group} aria-labelledby={`runtime-${group}`}>
+            <h4 id={`runtime-${group}`}>{runtimeLabel(group)}</h4>
+            {items.length === 0 ? <p className="muted-copy">UNAVAILABLE</p> : (
+              <dl className="settings-runtime-list">
+                {items.map((item) => (
+                  <div key={item.key}>
+                    <dt>{runtimeLabel(item.key)}</dt>
+                    <dd>{runtimeValue(item)}<small>{item.state}</small></dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </section>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ProtectedModesPanel({ result }: { result: ReadResult<ControlStateRecord> }) {
@@ -154,10 +204,12 @@ function PermissionMatrix() {
 
 export function SettingsDashboard({
   stateResult,
-  configResult
+  configResult,
+  runtimeSettingsResult
 }: {
   stateResult: ReadResult<ControlStateRecord>;
   configResult: ReadResult<ControlConfigRecord>;
+  runtimeSettingsResult: ReadResult<RuntimeSettingsRecord>;
 }) {
   return (
     <>
@@ -178,6 +230,10 @@ export function SettingsDashboard({
           <div className="panel-heading"><div><p className="eyebrow">REPLAY IDENTITY</p><h3>Validated configuration</h3></div></div>
           <ConfigPanel result={configResult} />
         </div>
+        <div className="settings-block">
+          <div className="panel-heading"><div><p className="eyebrow">RUNTIME / SECRET-SAFE READ</p><h3>Runtime configuration</h3></div><small>VALUES ARE ALLOW-LISTED</small></div>
+          <RuntimeSettingsPanel result={runtimeSettingsResult} />
+        </div>
         <PermissionMatrix />
       </section>
       <section className="boundary-strip" aria-labelledby="settings-boundary-title">
@@ -191,4 +247,3 @@ export function SettingsDashboard({
     </>
   );
 }
-

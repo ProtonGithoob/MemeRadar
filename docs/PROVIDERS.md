@@ -58,6 +58,45 @@ provider error; an unsupported capability is not silently converted into an
 unrelated provider result. Normalized observations and quotes retain provider,
 chain, token/pair identity, timestamps, freshness and provenance.
 
+### Research-only wallet, social and Robinhood extensions
+
+The optional `ExternalWalletEventStreamAdapter` accepts an injected
+CabalSpy-style stream for Solana, BNB and Robinhood (and rejects other chains
+through canonical identity validation). It emits the existing normalized wallet
+observation shape with chain-qualified source IDs, event-time timestamps,
+deduplication, sequence-gap evidence, bounded reconnect/backoff, bounded event
+count, provider health and optional RPC/provider fallback. External labels or
+scores are retained as advisory payload evidence only; local wallet history,
+graph and conduct calculations remain authoritative.
+
+`HistoricalSocialBackfillProvider` extends the existing `SocialCallPort` with a
+bounded time window. `SocialRestAdapter.backfill` reuses
+`SocialCallObservation`, retains message/edit/delete/unresolved-reference and
+parser/provenance fields, and marks the result
+`EXTERNAL_RESEARCH_EVIDENCE`. It does not promote unofficial or scraped
+observations to production truth; replay and caller-outcome evaluation still
+apply the existing no-lookahead, negative-control and sample-adequacy gates.
+
+`RobinhoodSequencerAdapter` reuses the generic EVM chain identity and wallet
+stream normalization, with ordered events, gap detection, deduplication and a
+bounded fallback seam. `RobinhoodLaunchpadDecoder` accepts only an explicitly
+verified `(contract_address, selector)` registry entry. Unsupported NOXA,
+Odyssey or other identities remain `UNKNOWN`; no selector or contract is
+guessed from an external reference.
+
+`ReferencePriceEvidence` compares a verified oracle observation with a DEX
+executable quote. A stale or missing oracle is `UNKNOWN`; a large unexplained
+deviation is market-integrity risk evidence; the oracle value never becomes an
+execution price. All new evidence is measurement-only and
+`execution_eligible=false`.
+
+The implementation reimplements small provider-neutral seams rather than
+copying external code. CabalSpy, GMGN-style scanner material and Robinhood
+launchpad references were used only for architecture/research; no external
+source code or unverified protocol identity was imported. Live provider
+credentials and compliant historical real-data cohorts remain external
+validation blockers.
+
 ### Opportunity discovery evidence
 
 Opportunity discovery observes `SOLANA`, `BNB` and `ROBINHOOD` through the

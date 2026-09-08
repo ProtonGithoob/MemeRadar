@@ -5,6 +5,7 @@ import { SettingsDashboard } from "./settings";
 import type {
   ControlConfigRecord,
   ControlStateRecord,
+  RuntimeSettingsRecord,
   ReadResult
 } from "../lib/read-api";
 
@@ -43,6 +44,24 @@ const config: ControlConfigRecord = {
   }
 };
 
+const runtimeSettings: RuntimeSettingsRecord = {
+  apiVersion: "runtime-settings-v1",
+  asOf: "2026-09-07T12:00:00.000Z",
+  groups: {
+    providers: [{ key: "market_data_provider", value: "dexscreener", state: "CONFIGURED", secret: false }],
+    chains: [{ key: "enabled_chains", value: "solana,bnb,robinhood", state: "CONFIGURED", secret: false }],
+    telegram: [{ key: "bot_token", value: null, state: "UNCONFIGURED_OPTIONAL", secret: true }],
+    x: [{ key: "enabled", value: false, state: "DEFAULTED", secret: false }],
+    social: [],
+    website: [{ key: "url", value: "https://memeradar.example", state: "CONFIGURED", secret: false }],
+    wallet: [],
+    security: [],
+    llm: [{ key: "provider", value: "ollama", state: "DEFAULTED", secret: false }]
+  },
+  protectedModes: state.protectedModes,
+  executionEligible: false
+};
+
 describe("SettingsDashboard", () => {
   afterEach(() => cleanup());
 
@@ -51,6 +70,7 @@ describe("SettingsDashboard", () => {
       <SettingsDashboard
         stateResult={{ ok: true, data: state }}
         configResult={{ ok: true, data: config }}
+        runtimeSettingsResult={{ ok: true, data: runtimeSettings }}
       />
     );
 
@@ -69,14 +89,33 @@ describe("SettingsDashboard", () => {
     expect(screen.queryByText("must-not-render")).not.toBeInTheDocument();
   });
 
+  it("renders dynamic runtime categories without displaying secret values", () => {
+    render(
+      <SettingsDashboard
+        stateResult={{ ok: true, data: state }}
+        configResult={{ ok: true, data: config }}
+        runtimeSettingsResult={{ ok: true, data: runtimeSettings }}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Runtime configuration" })).toBeInTheDocument();
+    expect(screen.getByText("PROVIDERS")).toBeInTheDocument();
+    expect(screen.getByText("solana,bnb,robinhood")).toBeInTheDocument();
+    expect(screen.getByText("SECRET VALUE HIDDEN")).toBeInTheDocument();
+    expect(screen.getByText("https://memeradar.example")).toBeInTheDocument();
+    expect(screen.getByText("ollama")).toBeInTheDocument();
+  });
+
   it("keeps state and config failures independently visible", () => {
     render(
       <SettingsDashboard
         stateResult={{ ok: false, reason: "UNAUTHORIZED" }}
         configResult={{ ok: false, reason: "NOT_CONFIGURED" }}
+        runtimeSettingsResult={{ ok: false, reason: "UNAVAILABLE" }}
       />
     );
     expect(screen.getByText("CONTROL STATE AUTHORIZATION UNAVAILABLE")).toBeInTheDocument();
     expect(screen.getByText("CONTROL CONFIG NOT CONFIGURED")).toBeInTheDocument();
+    expect(screen.getByText("RUNTIME SETTINGS UNAVAILABLE")).toBeInTheDocument();
   });
 });

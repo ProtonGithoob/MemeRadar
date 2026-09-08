@@ -166,6 +166,11 @@ function ConvergenceEvidence({ convergence }: { convergence: CallerConvergenceRe
           <small>{convergence.riskDisposition ?? "RISK UNKNOWN"}</small>
         </div>
         <div>
+          <span className="card-label">KOL / SIDE-WALLET</span>
+          <strong>{convergence.kolBundleState ?? "UNKNOWN"}</strong>
+          <small>{convergence.probableRelatedSideWalletCount ?? "UNKNOWN"} probable related wallets</small>
+        </div>
+        <div>
           <span className="card-label">PROVENANCE</span>
           <strong>{provenanceSummary(convergence.provenance)}</strong>
           <small>AS OF {readableDate(convergence.asOf)}</small>

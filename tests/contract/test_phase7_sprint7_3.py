@@ -33,9 +33,10 @@ def test_control_surface_is_explicit_and_read_routes_remain_get_only() -> None:
     app = create_app(_settings())
     expected_control = {
         "/v1/control/state",
-        "/v1/control/config",
-        "/v1/control/analysis-kill-switch",
-        "/v1/control/execution-kill-switch",
+            "/v1/control/config",
+            "/v1/control/analysis-kill-switch",
+            "/v1/control/execution-kill-switch",
+            "/v1/control/runtime-settings",
     }
     control_routes = {route.path for route in app.routes if route.path.startswith("/v1/control")}
 

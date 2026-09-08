@@ -59,3 +59,39 @@ def test_legacy_narrative_configuration_selects_external_provider_without_select
     assert settings.narrative_provider == "external"
     assert settings.narrative_api_url == "https://legacy.narrative.example"
     assert settings.narrative_api_key is None
+
+
+def test_dynamic_social_telegram_x_and_website_settings_are_loaded_without_defaults_that_leak() -> (
+    None
+):
+    settings = Settings.from_env(
+        {
+            "TELEGRAM_BOT_USERNAME": "radar_bot",
+            "X_PROVIDER_ENABLED": "true",
+            "X_PROVIDER_API_KEY": "x-key",
+            "X_PROVIDER_BEARER_TOKEN": "x-bearer",
+            "SOCIAL_API_URL": "https://social.example/search",
+            "SOCIAL_API_KEY": "social-key",
+            "WEBSITE_URL": "https://memeradar.example",
+            "WEBSITE_NAME": "MemeRadar",
+        }
+    )
+
+    assert settings.telegram_bot_username == "radar_bot"
+    assert settings.x_provider_enabled is True
+    assert settings.x_provider_api_key == "x-key"
+    assert settings.x_provider_bearer_token == "x-bearer"
+    assert settings.social_api_url == "https://social.example/search"
+    assert settings.website_url == "https://memeradar.example"
+    assert settings.website_name == "MemeRadar"
+
+
+def test_dynamic_settings_defaults_keep_optional_x_and_website_disabled() -> None:
+    settings = Settings.from_env({})
+
+    assert settings.telegram_bot_username is None
+    assert settings.x_provider_enabled is False
+    assert settings.x_provider_api_key is None
+    assert settings.x_provider_bearer_token is None
+    assert settings.website_url is None
+    assert settings.website_name is None

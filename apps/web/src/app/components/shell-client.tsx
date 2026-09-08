@@ -20,6 +20,7 @@ const NAV_SECTIONS: Array<{
     label: "Research",
     items: [
       { href: "/positions", label: "Positions", glyph: "PS" },
+      { href: "/opportunities", label: "Opportunities", glyph: "CH" },
       { href: "/wallets", label: "Wallets", glyph: "WL" },
       { href: "/callers", label: "Callers", glyph: "CL" },
       { href: "/wallet-graph", label: "Graph", glyph: "GR" }

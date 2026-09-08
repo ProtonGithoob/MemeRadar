@@ -109,6 +109,12 @@ def _convergence(*, chain: str, address: str, caller_id: str) -> CallerConvergen
         reason_codes=("CALLER_CONVERGENCE_RISK_UNKNOWN",),
         config_hash="sha256:caller-convergence",
         version="caller-convergence-v1",
+        kol_bundle_state="FRESH",
+        visible_caller_position=Decimal("10"),
+        cluster_adjusted_accumulation=Decimal("15"),
+        probable_related_side_wallet_count=1,
+        kol_bundle_confidence=Decimal("0.4"),
+        kol_bundle_reason_codes=("JITO_BUNDLE_EVIDENCE",),
     )
 
 
@@ -155,6 +161,8 @@ def test_caller_projections_are_bounded_chain_qualified_and_read_only() -> None:
     assert calls.json()["items"][0]["caller_id"] == "telegram:alpha"
     assert convergence.json()["items"][0]["token_id"] == f"bnb:{BNB_ADDRESS}"
     assert convergence.json()["items"][0]["risk_quality_state"] == "UNKNOWN"
+    assert convergence.json()["items"][0]["kol_bundle_state"] == "FRESH"
+    assert convergence.json()["items"][0]["probable_related_side_wallet_count"] == 1
     for response in (profiles, calls, convergence):
         assert response.json()["items"][0]["execution_eligible"] is False
         assert "order" not in response.json()["items"][0]

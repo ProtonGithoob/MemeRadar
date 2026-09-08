@@ -1513,6 +1513,12 @@ class CallerConvergenceView:
     config_hash: str = "caller-convergence-unknown"
     version: str = "caller-convergence-v1"
     execution_eligible: bool = False
+    kol_bundle_state: str = "UNKNOWN"
+    visible_caller_position: Decimal | None = None
+    cluster_adjusted_accumulation: Decimal | None = None
+    probable_related_side_wallet_count: int | None = None
+    kol_bundle_confidence: Decimal | None = None
+    kol_bundle_reason_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         normalized_chain = normalize_chain(self.chain)
