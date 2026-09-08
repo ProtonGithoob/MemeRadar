@@ -38,8 +38,9 @@ zero or safe evidence.
   data, Chainlink feed identities, and matured live-shadow observations are
   unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
   is `INSUFFICIENT_SAMPLES`.
-- Hosted CI, managed backup/restore, and production-like dependency
-  restart/soak remain externally unverified. Local browser acceptance is
+- Hosted CI triggered for the pushed commit but its jobs failed before any
+  steps executed (runner/API state unavailable); managed backup/restore and
+  production-like dependency restart/soak remain externally unverified. Local browser acceptance is
   blocked by the intentionally unconfigured control-auth gateway; no auth
   bypass was added.
 - Optional Helius, Birdeye, social, Telegram, stream, narrative, and external
