@@ -4,25 +4,25 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-import sys
-import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 
+from scripts.doctor_support import (
+    SAFE_MODES,
+    DoctorReport,
+    configure_paths,
+    doctor_main,
+    latency_ms,
+    perf_counter,
+    rate_limit_report,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
-for source_root in (
-    ROOT / "packages" / "application" / "src",
-    ROOT / "packages" / "domain" / "src",
-    ROOT / "packages" / "providers" / "src",
-):
-    source_root_text = str(source_root)
-    if source_root_text not in sys.path:
-        sys.path.insert(0, source_root_text)
+configure_paths(ROOT)
 
 from memeradar_application.config import Settings  # noqa: E402
 from memeradar_application.provider_contracts import ProviderRequestContext  # noqa: E402
@@ -39,19 +39,11 @@ from memeradar_providers.transport import (  # noqa: E402
     ProviderTimeoutError,
     ProviderTransport,
     ProviderUnavailableError,
-    RateLimitSnapshot,
     RetryPolicy,
     TransportTimeouts,
 )
 
 Clock = Callable[[], datetime]
-DoctorReport = dict[str, object]
-_SAFE_MODES = {
-    "analysis_only": True,
-    "paper_trading": True,
-    "manual_execution": False,
-    "auto_execution": False,
-}
 
 
 def _configuration(values: Mapping[str, str], settings: Settings) -> dict[str, str]:
@@ -68,7 +60,7 @@ def _base_report(
     *,
     status: str,
     reason: str,
-    modes: Mapping[str, bool] = _SAFE_MODES,
+    modes: Mapping[str, bool] = SAFE_MODES,
 ) -> DoctorReport:
     return {
         "provider": OLLAMA_PROVIDER,
@@ -83,21 +75,6 @@ def _base_report(
         "rate_limit": None,
         "modes": dict(modes),
     }
-
-
-def _rate_limit_report(snapshot: RateLimitSnapshot | None) -> dict[str, object] | None:
-    if snapshot is None:
-        return None
-    return {
-        "limit": snapshot.limit,
-        "remaining": snapshot.remaining,
-        "reset_at": None if snapshot.reset_at is None else snapshot.reset_at.isoformat(),
-        "retry_after_seconds": snapshot.retry_after_seconds,
-    }
-
-
-def _latency_ms(started_at: float) -> float:
-    return round(max(0.0, (time.perf_counter() - started_at) * 1000), 3)
 
 
 async def _run_configured(
@@ -128,7 +105,7 @@ async def _run_configured(
         requested_at=now,
         deadline_at=now + timedelta(seconds=transport.timeouts.overall_seconds),
     )
-    started_at = time.perf_counter()
+    started_at = perf_counter()
     try:
         health = await adapter.check_health(context=context)
         if health.get("model_available") is False:
@@ -194,8 +171,8 @@ async def _run_configured(
             }
         )
     finally:
-        report["latency_ms"] = _latency_ms(started_at)
-        report["rate_limit"] = _rate_limit_report(adapter.last_rate_limit)
+        report["latency_ms"] = latency_ms(started_at)
+        report["rate_limit"] = rate_limit_report(adapter.last_rate_limit)
         await adapter.aclose()
     return report
 
@@ -281,17 +258,18 @@ def run_doctor(
 
 
 def main() -> int:
-    report = run_doctor()
-    print(json.dumps(report, sort_keys=True, separators=(",", ":")))
-    return {
-        "PASS": 0,
-        "DISABLED": 0,
-        "OPTIONAL_UNAVAILABLE": 0,
-        "UNCONFIGURED_OPTIONAL": 0,
-        "DEGRADED": 0,
-        "BLOCKED_EXTERNAL": 2,
-        "FAIL": 1,
-    }.get(str(report["status"]), 1)
+    return doctor_main(
+        run_doctor,
+        {
+            "PASS": 0,
+            "DISABLED": 0,
+            "OPTIONAL_UNAVAILABLE": 0,
+            "UNCONFIGURED_OPTIONAL": 0,
+            "DEGRADED": 0,
+            "BLOCKED_EXTERNAL": 2,
+            "FAIL": 1,
+        },
+    )
 
 
 if __name__ == "__main__":

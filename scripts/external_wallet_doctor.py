@@ -9,31 +9,18 @@ explicitly ``BLOCKED_EXTERNAL`` until such an adapter is reviewed.
 
 from __future__ import annotations
 
-import json
 import os
-import sys
 from collections.abc import Mapping
 from pathlib import Path
 
+from scripts.doctor_support import SAFE_MODES, configure_paths, doctor_main
+
 ROOT = Path(__file__).resolve().parents[1]
-for source_root in (
-    ROOT / "packages" / "application" / "src",
-    ROOT / "packages" / "domain" / "src",
-    ROOT / "packages" / "providers" / "src",
-):
-    source_root_text = str(source_root)
-    if source_root_text not in sys.path:
-        sys.path.insert(0, source_root_text)
+configure_paths(ROOT, include_providers=False)
 
 from memeradar_application.config import Settings  # noqa: E402
 
 DoctorReport = dict[str, object]
-_SAFE_MODES = {
-    "analysis_only": True,
-    "paper_trading": True,
-    "manual_execution": False,
-    "auto_execution": False,
-}
 
 
 def _configuration(values: Mapping[str, str]) -> dict[str, str]:
@@ -59,7 +46,7 @@ def _base_report(
         "schema": "not_checked",
         "latency_ms": None,
         "rate_limit": None,
-        "modes": dict(_SAFE_MODES),
+        "modes": dict(SAFE_MODES),
     }
 
 
@@ -90,9 +77,7 @@ def run_doctor(environ: Mapping[str, str] | None = None) -> DoctorReport:
 
 
 def main() -> int:
-    report = run_doctor()
-    print(json.dumps(report, sort_keys=True, separators=(",", ":")))
-    return {"PASS": 0, "BLOCKED_EXTERNAL": 2, "FAIL": 1}[str(report["status"])]
+    return doctor_main(run_doctor, {"PASS": 0, "BLOCKED_EXTERNAL": 2, "FAIL": 1})
 
 
 if __name__ == "__main__":

@@ -37,15 +37,9 @@ from .caller_outcomes import (
     CallerPerformancePolicy,
     CallerPerformanceProfile,
 )
+from .evidence_helpers import combined_quality as _combined_quality
 from .provider_contracts import SocialMention
 
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
 _QUALITY_CONFIDENCE = {
     QualityState.FRESH: Decimal("1"),
     QualityState.STALE: Decimal("0"),
@@ -694,12 +688,6 @@ def _clamp(
     upper: Decimal = Decimal("100"),
 ) -> Decimal:
     return max(lower, min(upper, value))
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
 
 
 def _provenance(values: Sequence[Provenance]) -> tuple[Provenance, ...]:

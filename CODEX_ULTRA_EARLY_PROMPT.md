@@ -22,15 +22,14 @@ FIRST ACTIONS — DO THEM NOW, WITHOUT ASKING ROUTINE QUESTIONS:
 2. Fetch/pull the latest `main` safely and confirm local/remote state before editing. Preserve unrelated local work; do not force-push.
 3. Read `AGENTS.md` completely.
 4. Read `README.md`, `docs/STATUS.md`, `docs/SCORING_AND_RISK.md`, `docs/PROVIDERS.md`, `docs/SECURITY.md`, `docs/TESTING.md` and relevant architecture/data-model docs.
-5. Read the approved design completely:
-   `docs/superpowers/specs/2026-09-01-ultra-early-detection-shadow-execution-design.md`
-6. Read the executable implementation plan completely:
-   `docs/superpowers/plans/2026-09-01-ultra-early-detection-shadow-execution.md`
-7. Inspect the existing implementation before editing, especially:
+5. Read the current canonical contracts completely:
+   `docs/SCORING_AND_RISK.md`, `docs/PROVIDERS.md`, `docs/SECURITY.md`,
+   `docs/TESTING.md`, and `docs/STATUS.md`.
+6. Inspect the existing implementation before editing, especially:
    - packages/application/src/memeradar_application/correlation.py
    - packages/application/src/memeradar_application/alpha_strategy.py
    - packages/application/src/memeradar_application/decision_engine.py
-   - packages/application/src/memeradar_application/paper_trading.py
+   - packages/application/src/memeradar_application/paper_execution.py
    - packages/application/src/memeradar_application/backtesting.py
    - packages/application/src/memeradar_application/calibration.py
    - packages/application/src/memeradar_application/call_performance.py

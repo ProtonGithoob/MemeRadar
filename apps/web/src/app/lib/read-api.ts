@@ -2425,22 +2425,27 @@ export interface GraphFilters {
   evidenceQuality?: string;
 }
 
-export async function fetchWalletGraph(
-  address: string,
-  filters: GraphFilters = {}
-): Promise<ReadResult<WalletGraphRecord>> {
-  if (!isValidWalletAddress(address)) return { ok: false, reason: "INVALID_RESPONSE" };
+function graphQuery(filters: GraphFilters, includeOutcomeFilter: boolean): URLSearchParams {
   const query = singleQuery();
   if (filters.maxDepth) setBoundedNumber(query, "max_depth", filters.maxDepth, 1, 5);
   if (filters.maxNodes) setBoundedNumber(query, "max_nodes", filters.maxNodes, 1, 200);
   if (filters.maxEdges) setBoundedNumber(query, "max_edges", filters.maxEdges, 1, 500);
-  if (filters.outcomeFilter) setBoundedText(query, "outcome_filter", filters.outcomeFilter);
+  if (includeOutcomeFilter && filters.outcomeFilter) setBoundedText(query, "outcome_filter", filters.outcomeFilter);
   if (filters.dateFrom) setBoundedText(query, "date_from", filters.dateFrom);
   if (filters.dateTo) setBoundedText(query, "date_to", filters.dateTo);
   if (filters.venue) setBoundedText(query, "venue", filters.venue);
   if (filters.walletRole) setBoundedText(query, "wallet_role", filters.walletRole);
   if (filters.riskOutcomeClass) setBoundedText(query, "risk_outcome_class", filters.riskOutcomeClass);
   if (filters.evidenceQuality) setBoundedText(query, "evidence_quality", filters.evidenceQuality);
+  return query;
+}
+
+export async function fetchWalletGraph(
+  address: string,
+  filters: GraphFilters = {}
+): Promise<ReadResult<WalletGraphRecord>> {
+  if (!isValidWalletAddress(address)) return { ok: false, reason: "INVALID_RESPONSE" };
+  const query = graphQuery(filters, true);
   const url = endpoint(`/v1/wallet-graph/wallets/${encodeURIComponent(address)}`, query);
   return url === null ? configuredFailure() : request(url, parseWalletGraph);
 }
@@ -2450,17 +2455,7 @@ export async function fetchTokenGraph(
   filters: GraphFilters = {}
 ): Promise<ReadResult<WalletGraphRecord>> {
   if (!isValidWalletAddress(mint)) return { ok: false, reason: "INVALID_RESPONSE" };
-  const query = singleQuery();
-  if (filters.maxDepth) setBoundedNumber(query, "max_depth", filters.maxDepth, 1, 5);
-  if (filters.maxNodes) setBoundedNumber(query, "max_nodes", filters.maxNodes, 1, 200);
-  if (filters.maxEdges) setBoundedNumber(query, "max_edges", filters.maxEdges, 1, 500);
-  if (filters.outcomeFilter) setBoundedText(query, "outcome_filter", filters.outcomeFilter);
-  if (filters.dateFrom) setBoundedText(query, "date_from", filters.dateFrom);
-  if (filters.dateTo) setBoundedText(query, "date_to", filters.dateTo);
-  if (filters.venue) setBoundedText(query, "venue", filters.venue);
-  if (filters.walletRole) setBoundedText(query, "wallet_role", filters.walletRole);
-  if (filters.riskOutcomeClass) setBoundedText(query, "risk_outcome_class", filters.riskOutcomeClass);
-  if (filters.evidenceQuality) setBoundedText(query, "evidence_quality", filters.evidenceQuality);
+  const query = graphQuery(filters, true);
   const url = endpoint(`/v1/wallet-graph/tokens/${encodeURIComponent(mint)}`, query);
   return url === null ? configuredFailure() : request(url, parseWalletGraph);
 }
@@ -2469,16 +2464,7 @@ export async function fetchClusterGraph(
   clusterId: string,
   filters: GraphFilters = {}
 ): Promise<ReadResult<WalletGraphRecord>> {
-  const query = singleQuery();
-  if (filters.maxDepth) setBoundedNumber(query, "max_depth", filters.maxDepth, 1, 5);
-  if (filters.maxNodes) setBoundedNumber(query, "max_nodes", filters.maxNodes, 1, 200);
-  if (filters.maxEdges) setBoundedNumber(query, "max_edges", filters.maxEdges, 1, 500);
-  if (filters.dateFrom) setBoundedText(query, "date_from", filters.dateFrom);
-  if (filters.dateTo) setBoundedText(query, "date_to", filters.dateTo);
-  if (filters.venue) setBoundedText(query, "venue", filters.venue);
-  if (filters.walletRole) setBoundedText(query, "wallet_role", filters.walletRole);
-  if (filters.riskOutcomeClass) setBoundedText(query, "risk_outcome_class", filters.riskOutcomeClass);
-  if (filters.evidenceQuality) setBoundedText(query, "evidence_quality", filters.evidenceQuality);
+  const query = graphQuery(filters, false);
   const url = endpoint(`/v1/wallet-graph/clusters/${encodeURIComponent(clusterId)}`, query);
   return url === null ? configuredFailure() : request(url, parseWalletGraph);
 }

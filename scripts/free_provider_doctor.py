@@ -13,8 +13,6 @@ import argparse
 import asyncio
 import json
 import os
-import sys
-import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,15 +21,10 @@ from uuid import UUID
 
 import httpx
 
+from scripts.doctor_support import SAFE_MODES, configure_paths, latency_ms, perf_counter
+
 ROOT = Path(__file__).resolve().parents[1]
-for source_root in (
-    ROOT / "packages" / "application" / "src",
-    ROOT / "packages" / "domain" / "src",
-    ROOT / "packages" / "providers" / "src",
-):
-    source_root_text = str(source_root)
-    if source_root_text not in sys.path:
-        sys.path.insert(0, source_root_text)
+configure_paths(ROOT)
 
 from memeradar_application.config import Settings  # noqa: E402
 from memeradar_application.provider_contracts import (  # noqa: E402
@@ -68,12 +61,6 @@ from memeradar_providers.transport import (  # noqa: E402
 
 Clock = Callable[[], datetime]
 DoctorReport = dict[str, object]
-_SAFE_MODES = {
-    "analysis_only": True,
-    "paper_trading": True,
-    "manual_execution": False,
-    "auto_execution": False,
-}
 _DOCTOR_TOKEN = TokenIdentity(
     mint_address=SOLANA_NATIVE_MINT,
     id=UUID("00000000-0000-4000-8000-000000000001"),
@@ -238,7 +225,7 @@ def _provider_result(
     authentication: str = "passed",
 ) -> Awaitable[dict[str, object]]:
     async def run() -> dict[str, object]:
-        started_at = time.perf_counter()
+        started_at = perf_counter()
         try:
             await check()
         except ProviderAuthenticationError:
@@ -248,7 +235,7 @@ def _provider_result(
                 classification="credential_blocker",
                 network="reachable",
                 authentication="failed",
-                latency_ms=_latency_ms(started_at),
+                latency_ms=latency_ms(started_at),
             )
         except ProviderSchemaError:
             return _item(
@@ -257,7 +244,7 @@ def _provider_result(
                 network="reachable",
                 authentication=authentication,
                 schema="failed",
-                latency_ms=_latency_ms(started_at),
+                latency_ms=latency_ms(started_at),
             )
         except ProviderRateLimitedError:
             return _item(
@@ -266,7 +253,7 @@ def _provider_result(
                 classification="rate_limiting",
                 network="reachable",
                 authentication=authentication,
-                latency_ms=_latency_ms(started_at),
+                latency_ms=latency_ms(started_at),
             )
         except (ProviderTimeoutError, ProviderUnavailableError):
             return _item(
@@ -275,7 +262,7 @@ def _provider_result(
                 classification="external_blocker",
                 network="unavailable",
                 authentication=authentication,
-                latency_ms=_latency_ms(started_at),
+                latency_ms=latency_ms(started_at),
             )
         except CapabilityUnavailableError:
             return _item(
@@ -283,7 +270,7 @@ def _provider_result(
                 "UNSUPPORTED_CAPABILITY",
                 classification="unsupported_capability",
                 authentication=authentication,
-                latency_ms=_latency_ms(started_at),
+                latency_ms=latency_ms(started_at),
             )
         except ProviderError:
             return _item(
@@ -291,7 +278,7 @@ def _provider_result(
                 "PROVIDER_ERROR",
                 network="reachable",
                 authentication=authentication,
-                latency_ms=_latency_ms(started_at),
+                latency_ms=latency_ms(started_at),
             )
         return _item(
             "PASS",
@@ -299,14 +286,11 @@ def _provider_result(
             network="reachable",
             authentication=authentication,
             schema="passed",
-            latency_ms=_latency_ms(started_at),
+            latency_ms=latency_ms(started_at),
         )
 
     return run()
 
-
-def _latency_ms(started_at: float) -> float:
-    return round(max(0.0, (time.perf_counter() - started_at) * 1000), 3)
 
 
 async def _run_probes(
@@ -540,9 +524,9 @@ def _base_report(settings: Settings, configuration: Mapping[str, str]) -> Doctor
                 classification="core",
             ),
             "protected_modes": _item(
-                "PASS" if _safe_modes(settings) == _SAFE_MODES else "FAIL",
+                "PASS" if _safe_modes(settings) == SAFE_MODES else "FAIL",
                 "PROTECTED_MODES_ENFORCED"
-                if _safe_modes(settings) == _SAFE_MODES
+                if _safe_modes(settings) == SAFE_MODES
                 else "PROTECTED_MODES_INVALID",
                 classification="core",
             ),

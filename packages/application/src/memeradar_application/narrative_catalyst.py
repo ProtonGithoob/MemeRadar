@@ -35,15 +35,10 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import GlobalEventIdempotencyConflict, normalize_reason_codes
 
+from .evidence_helpers import combined_quality as _combined_quality
+
 NARRATIVE_CATALYST_VERSION = "narrative-catalyst-v1"
 
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
 _TOKEN_TYPES = frozenset({"token_created", "token_creation", "mint_created", "new_token"})
 _LIQUIDITY_TYPES = frozenset(
     {"liquidity_added", "liquidity_created", "pool_created", "pair_created", "pool_creation"}
@@ -149,12 +144,6 @@ def _community(event: GlobalEvent) -> str:
 
 def _state_at(event: GlobalEvent, at: datetime) -> QualityState:
     return event.freshness_state(at)
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
 
 
 def _first(

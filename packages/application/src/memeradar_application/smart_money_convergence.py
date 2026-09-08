@@ -37,19 +37,12 @@ from .caller_outcomes import CallerPerformanceProfile
 from .chain_opportunity import ChainOpportunitySnapshot
 from .confluence import TokenSmartMoneyScore
 from .correlation import CorrelationSnapshot, CorrelationWindowFeatures
+from .evidence_helpers import append_unique as _append_unique
+from .evidence_helpers import combined_quality as _combined_quality
 from .narrative_catalyst import NarrativeCatalystSnapshot
 
 SMART_MONEY_CONVERGENCE_VERSION = "smart-money-convergence-v1"
 CALLER_CONVERGENCE_VERSION = "caller-convergence-v1"
-
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
-
 
 class ConvergenceSignalState(str, Enum):
     """Research classification of the currently available signal families."""
@@ -145,18 +138,6 @@ def _state_at(source: _FreshnessSource, now: datetime) -> QualityState:
     if source.as_of > now:
         return QualityState.INVALID
     return source.freshness.state_at(now)
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
-
-
-def _append_unique[T](target: list[T], values: Sequence[T]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
 
 
 def _source_metadata(

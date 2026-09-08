@@ -41,6 +41,15 @@ from .correlation import (
     CorrelationSnapshot,
     CorrelationWindowFeatures,
 )
+from .evidence_helpers import (
+    append_unique as _append_provenance,
+)
+from .evidence_helpers import (
+    append_unique as _append_unique,
+)
+from .evidence_helpers import (
+    combined_quality as _combined_quality,
+)
 from .external_wallet import ExternalWalletReconciliationSnapshot
 from .flow_analysis import LiquiditySnapshot, OrganicFlowScore
 from .holder_graph import HolderConcentrationSnapshot
@@ -78,35 +87,10 @@ _ALPHA_COMPONENT_NAMES: tuple[str, ...] = (
     "HolderQuality",
     "Momentum",
 )
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
 
 
 def _clamp(value: Decimal, lower: Decimal = Decimal("0"), upper: Decimal = Decimal("1")) -> Decimal:
     return max(lower, min(upper, value))
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
-
-
-def _append_unique(target: list[str], values: Sequence[str]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], values: Sequence[Provenance]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
 
 
 def _normalise_count(value: int, cap: int) -> Decimal:

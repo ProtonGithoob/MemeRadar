@@ -33,6 +33,13 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .evidence_helpers import (
+    append_unique as _append_provenance,
+)
+from .evidence_helpers import (
+    append_unique as _append_unique,
+)
+
 ALPHA_SCORE_V1_VERSION = "alpha-score-v1"
 ALPHA_SCORE_V1_STRATEGY_NAME = "alpha-score"
 # EarlyScore is a separate launch-stage strategy. AlphaScore remains the
@@ -114,18 +121,6 @@ def _append_reason(
 ) -> None:
     if code not in {reason.code for reason in reasons}:
         reasons.append(ReasonCode(code, detail=detail, evidence_refs=evidence_refs))
-
-
-def _append_unique(target: list[str], values: tuple[str, ...]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], values: tuple[Provenance, ...]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
 
 
 def _feature_evidence_refs(feature: FeatureSnapshot) -> tuple[str, ...]:

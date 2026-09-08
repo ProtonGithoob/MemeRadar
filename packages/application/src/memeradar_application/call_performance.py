@@ -31,6 +31,16 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .evidence_helpers import (
+    append_unique as _append_unique,
+)
+from .evidence_helpers import (
+    append_unique_value as _append_provenance,
+)
+from .evidence_helpers import (
+    combined_quality as _combined_quality,
+)
+
 _MISSING = object()
 _MARKET_KINDS = frozenset(
     {
@@ -64,15 +74,6 @@ _MULTIPLE_THRESHOLDS = (
     ("50x", Decimal("49")),
     ("100x", Decimal("99")),
 )
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
-
-
 class OutcomeHorizonState(str, Enum):
     """Completeness of one forward outcome horizon."""
 
@@ -609,12 +610,6 @@ def _resolve_optional_bool_alias(
     if primary is not None and alias is not None and primary != alias:
         raise ValueError(f"{primary_name} and {alias_name} conflict")
     return primary if primary is not None else alias
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
 
 
 def _observation_identity(observation: Observation) -> tuple[object, ...]:
@@ -1463,17 +1458,6 @@ def _unique_reason_strings(values: Sequence[str | ReasonCode]) -> tuple[str | Re
         seen.add(code)
         result.append(value)
     return tuple(result)
-
-
-def _append_unique(target: list[str], values: Sequence[str]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], value: Provenance) -> None:
-    if value not in target:
-        target.append(value)
 
 
 def _sorted_provenance(values: Sequence[Provenance]) -> tuple[Provenance, ...]:

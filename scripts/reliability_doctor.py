@@ -3,20 +3,14 @@
 
 from __future__ import annotations
 
-import json
 import os
-import sys
 from collections.abc import Mapping
 from pathlib import Path
 
+from scripts.doctor_support import configure_paths, doctor_main
+
 ROOT = Path(__file__).resolve().parents[1]
-for source_root in (
-    ROOT / "packages" / "application" / "src",
-    ROOT / "packages" / "domain" / "src",
-):
-    source_root_text = str(source_root)
-    if source_root_text not in sys.path:
-        sys.path.insert(0, source_root_text)
+configure_paths(ROOT, include_providers=False)
 
 from memeradar_application.config import Settings  # noqa: E402
 from memeradar_application.reliability import (  # noqa: E402
@@ -68,9 +62,7 @@ def run_doctor(environ: Mapping[str, str] | None = None) -> DoctorReport:
 
 
 def main() -> int:
-    report = run_doctor()
-    print(json.dumps(report, sort_keys=True, separators=(",", ":")))
-    return {"PASS": 0, "BLOCKED_EXTERNAL": 2, "FAIL": 1}[str(report["status"])]
+    return doctor_main(run_doctor, {"PASS": 0, "BLOCKED_EXTERNAL": 2, "FAIL": 1})
 
 
 if __name__ == "__main__":

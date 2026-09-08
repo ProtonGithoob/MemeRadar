@@ -33,16 +33,11 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .evidence_helpers import combined_quality as _combined_quality
+
 SIGNAL_HARDENING_VERSION = "signal-hardening-v1"
 DEFAULT_SIGNAL_EVIDENCE_TTL = timedelta(minutes=5)
 _MISSING = object()
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
 _MARKET_KINDS = frozenset(
     {
         "market.snapshot",
@@ -229,24 +224,6 @@ def _canonical(value: object) -> object:
     if isinstance(value, Enum):
         return value.value
     return value
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
-
-
-def _append_unique(target: list[str], values: Sequence[str]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], values: Sequence[Provenance]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
 
 
 def _reason_code_value(value: ReasonCode | str) -> str:

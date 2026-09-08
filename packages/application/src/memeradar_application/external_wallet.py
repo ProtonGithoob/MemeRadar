@@ -33,6 +33,15 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .evidence_helpers import (
+    append_unique as _append_provenance,
+)
+from .evidence_helpers import (
+    append_unique as _append_unique,
+)
+from .evidence_helpers import (
+    combined_quality as _combined_quality,
+)
 from .holder_graph import WalletGraphSnapshot
 from .provider_contracts import ProviderRequestContext
 from .wallet_scoring import SmartWalletScore
@@ -48,13 +57,6 @@ BUNDLE_CONFIDENCE = "bundle_confidence"
 SIDE_WALLET_CLUSTER_CONFIDENCE = "side_wallet_cluster_confidence"
 
 _LABEL_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9_.:-]{0,63}$")
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
 _POSITIVE_LABELS = (
     "EARLY_ENTRY",
     "KOL",
@@ -70,24 +72,6 @@ _NEGATIVE_LABELS = (
     "RUGGER",
     "SCAMMER",
 )
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
-
-
-def _append_unique(target: list[str], values: Sequence[str]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], values: Sequence[Provenance]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
 
 
 def _normalize_label(value: object, field: str = "label") -> str:

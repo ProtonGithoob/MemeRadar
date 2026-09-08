@@ -31,6 +31,16 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .evidence_helpers import (
+    append_unique as _append_unique,
+)
+from .evidence_helpers import (
+    append_unique_value as _append_provenance,
+)
+from .evidence_helpers import (
+    combined_quality as _combined_quality,
+)
+
 _MISSING = object()
 _ACTIVITY_KINDS = frozenset(
     {
@@ -43,13 +53,6 @@ _ACTIVITY_KINDS = frozenset(
     }
 )
 _RUG_KINDS = frozenset({"risk.rug_event", "risk.token_outcome"})
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
 
 
 def _field(payload: Mapping[str, object], *names: str) -> object:
@@ -58,23 +61,6 @@ def _field(payload: Mapping[str, object], *names: str) -> object:
         if value is not _MISSING:
             return value
     return _MISSING
-
-
-def _append_unique(target: list[str], values: Sequence[str]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], value: Provenance) -> None:
-    if value not in target:
-        target.append(value)
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
 
 
 def _quality_at(observation: Observation, now: datetime, ttl: timedelta) -> QualityState:

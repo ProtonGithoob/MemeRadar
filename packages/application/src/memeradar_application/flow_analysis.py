@@ -27,18 +27,20 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .evidence_helpers import (
+    append_unique as _append_unique,
+)
+from .evidence_helpers import (
+    append_unique_value as _append_provenance,
+)
+from .evidence_helpers import (
+    combined_quality as _combined_quality,
+)
 from .provider_contracts import QuoteSnapshot
 
 _MISSING = object()
 _MARKET_KINDS = frozenset({"market.market_data", "market.liquidity", "market.depth"})
 _TRADE_KINDS = frozenset({"market.trade", "market.trades", "market.trade_data"})
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
 
 
 def _field(payload: Mapping[str, object], *names: str) -> object:
@@ -119,23 +121,6 @@ def _optional_address(value: object, field: str) -> str | None:
         return require_solana_address(value, field)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{field} must be a canonical Solana address") from exc
-
-
-def _append_unique(target: list[str], values: Sequence[str]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], value: Provenance) -> None:
-    if value not in target:
-        target.append(value)
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
 
 
 @dataclass(frozen=True, slots=True)

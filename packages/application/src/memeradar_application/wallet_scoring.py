@@ -6,7 +6,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
-from enum import Enum
 from types import MappingProxyType
 
 from memeradar_domain import Freshness, Provenance, QualityState, ReasonCode, require_solana_address
@@ -19,15 +18,17 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .evidence_helpers import (
+    append_unique as _append_provenance,
+)
+from .evidence_helpers import (
+    append_unique as _append_unique,
+)
+from .evidence_helpers import (
+    combined_quality as _combined_quality,
+)
 from .wallet_tracking import WalletRoundTrip, WalletTier, WalletTrackingSnapshot
 
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
 _QUALITY_CONFIDENCE = {
     QualityState.FRESH: Decimal("1"),
     QualityState.STALE: Decimal("0.5"),
@@ -35,24 +36,6 @@ _QUALITY_CONFIDENCE = {
     QualityState.CONFLICTED: Decimal("0.1"),
     QualityState.INVALID: Decimal("0"),
 }
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
-
-
-def _append_unique(target: list[str], values: Sequence[str]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], values: Sequence[Provenance]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
 
 
 def _clamp(value: Decimal, lower: Decimal, upper: Decimal) -> Decimal:
@@ -63,15 +46,6 @@ def _shrink(value: Decimal | None, *, neutral: Decimal, sample_confidence: Decim
     if value is None:
         return neutral
     return neutral + sample_confidence * (value - neutral)
-
-
-class SmartWalletTier(str, Enum):
-    """Reserved alias for callers that want to name score recommendations."""
-
-    CANDIDATE = WalletTier.CANDIDATE.value
-    TIER_A = WalletTier.TIER_A.value
-    TIER_B = WalletTier.TIER_B.value
-    BLOCKED = WalletTier.BLOCKED.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -680,4 +654,4 @@ class SmartWalletScorer:
         return normalized
 
 
-__all__ = ["SmartWalletScore", "SmartWalletScorer", "SmartWalletScoringPolicy", "SmartWalletTier"]
+__all__ = ["SmartWalletScore", "SmartWalletScorer", "SmartWalletScoringPolicy"]

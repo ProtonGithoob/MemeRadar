@@ -14,8 +14,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import sys
-import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -24,15 +22,10 @@ from uuid import UUID
 
 import httpx
 
+from scripts.doctor_support import SAFE_MODES, configure_paths, latency_ms, perf_counter
+
 ROOT = Path(__file__).resolve().parents[1]
-for source_root in (
-    ROOT / "packages" / "application" / "src",
-    ROOT / "packages" / "domain" / "src",
-    ROOT / "packages" / "providers" / "src",
-):
-    source_root_text = str(source_root)
-    if source_root_text not in sys.path:
-        sys.path.insert(0, source_root_text)
+configure_paths(ROOT)
 
 from memeradar_application.config import Settings  # noqa: E402
 from memeradar_application.early_observability import EarlyDetectionMetrics  # noqa: E402
@@ -64,12 +57,6 @@ from memeradar_providers.transport import (  # noqa: E402
 
 DoctorReport = dict[str, object]
 Clock = Callable[[], datetime]
-_SAFE_MODES = {
-    "analysis_only": True,
-    "paper_trading": True,
-    "manual_execution": False,
-    "auto_execution": False,
-}
 _STREAM_URL_KEYS = (
     "MEMERADAR_SOLANA_STREAM_URL",
     "SOLANA_STREAM_URL",
@@ -132,7 +119,7 @@ def _base_report(
         },
         "external_network": "not_run",
         "live_detection_evidence": "UNVERIFIED",
-        "modes": dict(_SAFE_MODES if modes is None else modes),
+        "modes": dict(SAFE_MODES if modes is None else modes),
     }
 
 
@@ -171,7 +158,7 @@ def _keyless_contract_check() -> str:
 async def _provider_result(
     check: Callable[[], Awaitable[object]],
 ) -> dict[str, object]:
-    started = time.perf_counter()
+    started = perf_counter()
     result: dict[str, object] = {
         "status": "BLOCKED_EXTERNAL",
         "reason": "EXTERNAL_UNAVAILABLE",
@@ -234,7 +221,7 @@ async def _provider_result(
                 "schema": "passed",
             }
         )
-    result["latency_ms"] = round(max(0.0, (time.perf_counter() - started) * 1000), 3)
+    result["latency_ms"] = latency_ms(started)
     return result
 
 

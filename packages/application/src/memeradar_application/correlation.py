@@ -47,6 +47,18 @@ from .confluence import (
     SmartMoneyEventType,
     TokenSmartMoneyScore,
 )
+from .evidence_helpers import (
+    QUALITY_PRIORITY as _QUALITY_PRIORITY,
+)
+from .evidence_helpers import (
+    append_unique as _append_provenance,
+)
+from .evidence_helpers import (
+    append_unique as _append_unique,
+)
+from .evidence_helpers import (
+    combined_quality as _combined_quality,
+)
 from .provider_contracts import SocialMention
 from .signal_hardening import (
     DeployerActivitySnapshot,
@@ -104,13 +116,6 @@ _MARKET_KINDS = frozenset(
 )
 _TRADE_KINDS = frozenset({"market.trade", "market.trades", "market.trade_data"})
 _PROTOCOL_KINDS = frozenset({"protocol.lifecycle", "protocol.event"})
-_QUALITY_PRIORITY = {
-    QualityState.FRESH: 0,
-    QualityState.STALE: 1,
-    QualityState.UNKNOWN: 2,
-    QualityState.CONFLICTED: 3,
-    QualityState.INVALID: 4,
-}
 _QUALITY_CONFIDENCE = {
     QualityState.FRESH: Decimal("1"),
     QualityState.STALE: Decimal("0.5"),
@@ -145,24 +150,6 @@ def _field(payload: Mapping[str, object], *names: str) -> object:
         if value is not _MISSING:
             return value
     return _MISSING
-
-
-def _combined_quality(states: Sequence[QualityState]) -> QualityState:
-    if not states:
-        return QualityState.UNKNOWN
-    return max(states, key=lambda state: _QUALITY_PRIORITY[state])
-
-
-def _append_unique(target: list[str], values: Sequence[str]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], values: Sequence[Provenance]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
 
 
 def _optional_decimal(

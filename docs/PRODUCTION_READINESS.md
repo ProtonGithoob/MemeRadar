@@ -46,9 +46,6 @@ are synchronized (`git rev-list --left-right --count origin/main...HEAD` =
 `0 0`). The four unrelated pre-existing WIP files remain untracked and
 untouched:
 
-- `apps/web/e2e-screenshots.mjs`
-- `apps/web/mock-api.mjs`
-- `apps/web/overflow-debug.mjs`
 - `docs/superpowers/plans/2026-09-05-multichain-extreme-winner.md`
 
 Observed evidence:

@@ -28,6 +28,9 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .evidence_helpers import append_unique as _append_unique
+from .evidence_helpers import append_unique_value as _append_provenance
+
 _MISSING = object()
 _HOLDER_KINDS = frozenset({"market.holder_data"})
 _GRAPH_KINDS = frozenset(
@@ -544,17 +547,6 @@ def _quality_at(observation: Observation, now: datetime, ttl: timedelta) -> Qual
     if now >= observation.observed_at + ttl:
         return QualityState.STALE
     return QualityState.FRESH
-
-
-def _append_unique(target: list[str], values: Sequence[str]) -> None:
-    for value in values:
-        if value not in target:
-            target.append(value)
-
-
-def _append_provenance(target: list[Provenance], value: Provenance) -> None:
-    if value not in target:
-        target.append(value)
 
 
 @dataclass(slots=True)

@@ -259,6 +259,5 @@ tests/unit/test_ollama_doctor.py
 tests/unit/test_ollama_narrative.py
 tests/unit/test_provider_composition.py
 tests/unit/test_solana_rpc.py
-docs/superpowers/specs/2026-09-05-free-first-provider-architecture-design.md
-docs/superpowers/plans/2026-09-05-free-first-provider-architecture.md
+Canonical follow-up references: `docs/PROVIDERS.md` and `docs/STATUS.md`.
 ```

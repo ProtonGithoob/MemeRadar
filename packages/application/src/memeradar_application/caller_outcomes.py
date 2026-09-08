@@ -30,6 +30,7 @@ from memeradar_domain.common import (
 from memeradar_domain.events import normalize_reason_codes
 
 from .call_performance import OutcomeHorizonState
+from .evidence_helpers import append_unique_value as _append_provenance
 from .price_semantics import market_reference_price
 
 if TYPE_CHECKING:
@@ -904,11 +905,6 @@ class HistoricalCallerOutcomeProjector:
 
 
 def _append_ref(values: list[str], value: str) -> None:
-    if value not in values:
-        values.append(value)
-
-
-def _append_provenance(values: list[Provenance], value: Provenance) -> None:
     if value not in values:
         values.append(value)
 
