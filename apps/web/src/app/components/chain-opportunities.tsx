@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { FreshnessBadge } from "./status-badges";
 import { formatConfidence, Unknown, Pill } from "./format";
@@ -22,6 +22,34 @@ function fixed(value: number): string {
   return value.toFixed(2);
 }
 
+function listValue(values: string[]): string {
+  return values.length === 0 ? "UNKNOWN" : values.join(" · ");
+}
+
+function OpportunityDetails({ item }: { item: ChainOpportunityRecord }) {
+  return (
+    <details className="opportunity-details">
+      <summary>OPEN FULL EVIDENCE</summary>
+      <div className="opportunity-details__grid">
+        <span>AS OF / EXPIRES <b>{item.asOf} / {item.expiresAt}</b></span>
+        <span>NEW TOKENS 1H / 24H <b>{item.newTokenCount1h ?? "UNKNOWN"} / {item.newTokenCount24h ?? "UNKNOWN"}</b></span>
+        <span>NEW POOLS 1H / 24H <b>{item.newPoolCount1h ?? "UNKNOWN"} / {item.newPoolCount24h ?? "UNKNOWN"}</b></span>
+        <span>TRANSACTIONS 1H / ACCELERATION <b>{item.transactionCount1h ?? "UNKNOWN"} / {item.transactionAcceleration ?? "UNKNOWN"}</b></span>
+        <span>DEX VOLUME 1H / ACCELERATION <b>{item.dexVolume1h ?? "UNKNOWN"} / {item.dexVolumeAcceleration ?? "UNKNOWN"}</b></span>
+        <span>LIQUIDITY 1H / ACCELERATION <b>{item.liquidityInflow1h ?? "UNKNOWN"} / {item.liquidityInflowAcceleration ?? "UNKNOWN"}</b></span>
+        <span>ACTIVE WALLET ACCELERATION <b>{item.activeWalletAcceleration ?? "UNKNOWN"}</b></span>
+        <span>LAUNCHPAD LAUNCH / GRADUATION <b>{item.launchpadLaunchCount5m ?? "UNKNOWN"} / {item.launchpadGraduationCount5m ?? "UNKNOWN"}</b></span>
+        <span>SUCCESSFUL LAUNCH RATIO <b>{item.successfulLaunchRatio5m ?? "UNKNOWN"}</b></span>
+        <span>SOURCE INDEPENDENCE / DIVERSITY <b>{item.sourceIndependenceCount} / {item.sourceDiversityConfidence}</b></span>
+        <span>VERSION / CONFIG HASH <b>{item.version} / {item.configHash}</b></span>
+        <span>REASON CODES <b>{listValue(item.reasonCodes)}</b></span>
+        <span>EVIDENCE REFS <b>{listValue(item.evidenceRefs)}</b></span>
+        <span>PROVENANCE <b>{item.provenance.length === 0 ? "UNKNOWN" : item.provenance.map((item) => `${item.provider}/${item.sourceId}`).join(" · ")}</b></span>
+      </div>
+    </details>
+  );
+}
+
 function ChainOpportunityTable({ items }: { items: ChainOpportunityRecord[] }) {
   return (
     <div className="dt-wrap">
@@ -41,7 +69,8 @@ function ChainOpportunityTable({ items }: { items: ChainOpportunityRecord[] }) {
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={`${item.chain}-${item.asOf}`}>
+            <Fragment key={`${item.chain}-${item.asOf}`}>
+            <tr>
               <td><strong>{item.chain.toUpperCase()}</strong></td>
               <td className="num">{value(item.newTokenCount5m)}</td>
               <td className="num">{value(item.newPoolCount5m)}</td>
@@ -52,6 +81,10 @@ function ChainOpportunityTable({ items }: { items: ChainOpportunityRecord[] }) {
               <td><FreshnessBadge value={item.qualityState} /></td>
               <td><Pill label={formatConfidence(item.confidence)} tone="info" /></td>
             </tr>
+            <tr key={`${item.chain}-${item.asOf}-details`}>
+              <td colSpan={9}><OpportunityDetails item={item} /></td>
+            </tr>
+            </Fragment>
           ))}
         </tbody>
       </table>

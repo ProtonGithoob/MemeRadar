@@ -38,7 +38,12 @@ const overview: OperationsRecord = {
     observedAt: "2026-09-01T06:00:00.000Z",
     reasonCodes: ["STALE_EVIDENCE"]
   }],
-  metrics: { counters: { queue_saturations: 0 } },
+  metrics: { counters: {
+    queue_saturations: 0,
+    gaps_detected: 2,
+    backfill_retries: 3,
+    verification_failures: 1
+  } },
   earlyDetection: {
     measurement_method: "synthetic_local",
     evidence_class: "SYNTHETIC",
@@ -85,6 +90,9 @@ describe("OperationsDashboard", () => {
     expect(screen.getByText("Ultra-early detection")).toBeInTheDocument();
     expect(screen.getByText("SYNTHETIC / synthetic_local")).toBeInTheDocument();
     expect(screen.getByText("42 ms p50 / 48 ms p95")).toBeInTheDocument();
+    expect(screen.getByText("STREAM GAPS").parentElement).toHaveTextContent("2");
+    expect(screen.getByText("BACKFILL RETRIES").parentElement).toHaveTextContent("3");
+    expect(screen.getByText("VERIFICATION FAILURES").parentElement).toHaveTextContent("1");
     expect(screen.getByText("AUTO EXECUTION: LOCKED")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "MODE: ANALYSIS ONLY" })).toBeInTheDocument();
   });

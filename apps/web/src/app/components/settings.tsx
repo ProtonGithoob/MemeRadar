@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 
 import { SafetyBadge } from "./status-badges";
 import type {
@@ -51,12 +54,32 @@ function runtimeLabel(value: string): string {
 
 function runtimeValue(item: RuntimeSettingRecord): React.ReactNode {
   if (item.secret) return <strong>SECRET VALUE HIDDEN</strong>;
-  if (item.value === null) return <strong>{item.state}</strong>;
-  if (typeof item.value === "boolean") return <strong>{item.value ? "ENABLED" : "DISABLED"}</strong>;
-  return <strong>{String(item.value)}</strong>;
+  const value = item.currentEffectiveValue ?? item.value;
+  if (value === null) return <strong>{item.state}</strong>;
+  if (typeof value === "boolean") return <strong>{value ? "ENABLED" : "DISABLED"}</strong>;
+  return <strong>{String(value)}</strong>;
 }
 
-function RuntimeSettingsPanel({ result }: { result: ReadResult<RuntimeSettingsRecord> }) {
+function settingLabel(item: RuntimeSettingRecord): string {
+  return runtimeLabel(item.key);
+}
+
+function settingValue(item: RuntimeSettingRecord): string | number | boolean {
+  const value = item.currentEffectiveValue ?? item.value;
+  if (typeof value === "boolean" || typeof value === "number") return value;
+  return value ?? "";
+}
+
+function effectiveItems(data: RuntimeSettingsRecord): Array<RuntimeSettingRecord & { category: string }> {
+  if (data.settings && data.settings.length > 0) {
+    return data.settings.map((item) => ({ ...item, category: item.category ?? "general/runtime" }));
+  }
+  return Object.entries(data.groups).flatMap(([category, items]) =>
+    items.map((item) => ({ ...item, category }))
+  );
+}
+
+function LegacyRuntimeSettingsPanel({ result }: { result: ReadResult<RuntimeSettingsRecord> }) {
   if (!result.ok) {
     return (
       <div className="read-state read-state--error" role="status">
@@ -91,6 +114,230 @@ function RuntimeSettingsPanel({ result }: { result: ReadResult<RuntimeSettingsRe
       </div>
     </div>
   );
+}
+
+function RuntimeSettingEditor({ data }: { data: RuntimeSettingsRecord }) {
+  const items = useMemo(() => effectiveItems(data), [data]);
+  const categories = useMemo(
+    () => Array.from(new Set(items.map((item) => item.category))),
+    [items]
+  );
+  const [category, setCategory] = useState(categories[0] ?? "general/runtime");
+  const [drafts, setDrafts] = useState<Record<string, string | number | boolean>>({});
+  const [clearKeys, setClearKeys] = useState<string[]>([]);
+  const [reason, setReason] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const dirty = Object.keys(drafts).length > 0 || clearKeys.length > 0;
+    if (!dirty) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [clearKeys.length, drafts]);
+
+  const selectedCategory = categories.includes(category) ? category : categories[0] ?? "general/runtime";
+  const visibleItems = items.filter((item) => item.category === selectedCategory);
+  const canMutate = data.canMutate === true;
+  const dirty = Object.keys(drafts).length > 0 || clearKeys.length > 0;
+
+  function updateDraft(item: RuntimeSettingRecord, raw: string | boolean): void {
+    let value: string | number | boolean = raw;
+    if (item.type === "integer" || item.type === "number") value = Number(raw);
+    setDrafts((current) => ({ ...current, [item.key]: value }));
+    setClearKeys((current) => current.filter((key) => key !== item.key));
+    setMessage(null);
+  }
+
+  function clearSecret(key: string): void {
+    setDrafts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setClearKeys((current) => current.includes(key)
+      ? current.filter((item) => item !== key)
+      : [...current, key]);
+    setMessage(null);
+  }
+
+  async function save(): Promise<void> {
+    if (!canMutate || !dirty || reason.trim().length === 0) {
+      setMessage("Enter an audit reason and change at least one setting.");
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/control/runtime-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          changes: drafts,
+          clear: clearKeys,
+          reason: reason.trim(),
+          version: data.version ?? null
+        })
+      });
+      if (response.status === 409) {
+        setMessage("VERSION CONFLICT — reload effective state and review the changes.");
+      } else if (!response.ok) {
+        setMessage("SETTINGS UPDATE FAILED — no values were applied.");
+      } else {
+        setMessage("SETTINGS SAVED — reloading effective state.");
+        window.setTimeout(() => window.location.reload(), 250);
+      }
+    } catch {
+      setMessage("CONTROL GATEWAY UNAVAILABLE — no values were applied.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="settings-runtime">
+      <div className="settings-config__meta">
+        <span><b>API</b> {data.apiVersion}</span>
+        <span><b>VERSION</b> {data.version ?? "runtime-settings-v0"}</span>
+        <span><b>UPDATED</b> {readableDate(data.updatedAt ?? data.asOf)}</span>
+        <span><b>BOUNDARY</b> LOCKED</span>
+      </div>
+      <div className="settings-category-tabs" role="tablist" aria-label="Runtime setting categories">
+        {categories.map((item) => (
+          <button
+            aria-selected={selectedCategory === item}
+            className={selectedCategory === item ? "preset-chip preset-chip--active" : "preset-chip"}
+            key={item}
+            onClick={() => setCategory(item)}
+            role="tab"
+            type="button"
+          >
+            {runtimeLabel(item)}
+          </button>
+        ))}
+      </div>
+      <section className="settings-runtime-group" aria-labelledby="runtime-category">
+        <h4 id="runtime-category">{runtimeLabel(selectedCategory)}</h4>
+        {visibleItems.length === 0 ? <p className="muted-copy">UNAVAILABLE</p> : (
+          <div className="settings-runtime-editor">
+            {visibleItems.map((item) => {
+              const current = settingValue(item);
+              const draft = drafts[item.key];
+              const value = draft ?? current;
+              const editable = canMutate && item.mutable === true && item.protected !== true;
+              const isSecret = item.secret;
+              return (
+                <div className="settings-runtime-row" key={item.key}>
+                  <div className="settings-runtime-row__label">
+                    <strong>{settingLabel(item)}</strong>
+                    <small>{item.description ?? "Runtime setting"}</small>
+                  </div>
+                  <div className="settings-runtime-row__control">
+                    {isSecret ? (
+                      <div className="settings-secret-control">
+                        <span>{item.configuredState ?? (item.state === "CONFIGURED" ? "CONFIGURED" : "NOT CONFIGURED")}</span>
+                        {editable ? (
+                          <>
+                            <input
+                              aria-label={"Replace " + settingLabel(item)}
+                              onChange={(event) => updateDraft(item, event.target.value)}
+                              placeholder="Replace secret"
+                              type="password"
+                              value={typeof draft === "string" ? draft : ""}
+                            />
+                            <button onClick={() => clearSecret(item.key)} type="button">
+                              {clearKeys.includes(item.key) ? "Undo clear" : "Clear"}
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : item.type === "boolean" ? (
+                      <label className="settings-toggle">
+                        <input
+                          aria-label={settingLabel(item)}
+                          checked={Boolean(value)}
+                          disabled={!editable}
+                          onChange={(event) => updateDraft(item, event.target.checked)}
+                          type="checkbox"
+                        />
+                        <span>{value ? "ENABLED" : "DISABLED"}</span>
+                      </label>
+                    ) : item.allowedValues && item.allowedValues.length > 0 ? (
+                      <select
+                        aria-label={settingLabel(item)}
+                        disabled={!editable}
+                        onChange={(event) => updateDraft(item, event.target.value)}
+                        value={String(value)}
+                      >
+                        {item.allowedValues.map((allowed) => <option key={allowed} value={allowed}>{allowed}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        aria-label={settingLabel(item)}
+                        disabled={!editable}
+                        max={item.maximum ?? undefined}
+                        min={item.minimum ?? undefined}
+                        onChange={(event) => updateDraft(item, event.target.value)}
+                        step={item.type === "integer" ? 1 : "any"}
+                        type={item.type === "integer" || item.type === "number" ? "number" : "text"}
+                        value={String(value)}
+                      />
+                    )}
+                    <div className="settings-runtime-row__meta">
+                      <span className="settings-mode-badge">{item.mode ?? "READ ONLY"}</span>
+                      {item.pendingValue !== null && item.pendingValue !== undefined ? (
+                        <span className="settings-pending">PENDING {String(item.pendingValue)}</span>
+                      ) : item.pendingConfiguredState ? (
+                        <span className="settings-pending">PENDING {item.pendingConfiguredState}</span>
+                      ) : null}
+                      {!isSecret ? <span>{runtimeValue(item)}</span> : null}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+      {canMutate ? (
+        <div className="settings-runtime-actions">
+          <label>
+            <span>AUDIT REASON</span>
+            <input
+              aria-label="Audit reason"
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Why is this setting changing?"
+              value={reason}
+            />
+          </label>
+          <div>
+            <button disabled={!dirty || saving} onClick={() => void save()} type="button">
+              {saving ? "SAVING…" : "SAVE CHANGED SETTINGS"}
+            </button>
+            <button onClick={() => window.location.reload()} type="button">RELOAD EFFECTIVE STATE</button>
+            {dirty ? <span className="settings-dirty-warning">UNSAVED CHANGES</span> : null}
+            {message ? <span className="settings-save-message" role="status">{message}</span> : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RuntimeSettingsPanel({ result }: { result: ReadResult<RuntimeSettingsRecord> }) {
+  if (!result.ok) {
+    return (
+      <div className="read-state read-state--error" role="status">
+        <strong>{failureMessage(result.reason, "RUNTIME SETTINGS")}</strong>
+        <p>No runtime provider or credential values were substituted.</p>
+      </div>
+    );
+  }
+  return <RuntimeSettingEditor data={result.data} />;
 }
 
 function ProtectedModesPanel({ result }: { result: ReadResult<ControlStateRecord> }) {
@@ -186,7 +433,7 @@ function PermissionMatrix() {
     <section className="detail-panel permission-panel" aria-labelledby="permission-title">
       <div className="panel-heading">
         <div><p className="eyebrow">AUTHENTICATED CONTROL BOUNDARY</p><h3 id="permission-title">Permission gates</h3></div>
-        <small>READ-ONLY UI</small>
+        <small>VIEWER / OPERATOR READ-ONLY · ADMIN EDITS ALLOW-LIST</small>
       </div>
       <p className="muted-copy">The API, not the browser, enforces each role. Settings changes require a server-side authenticated control request.</p>
       <div className="permission-list">
@@ -219,7 +466,7 @@ export function SettingsDashboard({
             <p className="eyebrow">CONTROL PLANE / VALIDATED READ</p>
             <h3 id="settings-title">Settings and controls</h3>
           </div>
-          <p className="section-note">Configuration is immutable, audited and permission-gated.</p>
+          <p className="section-note">Runtime changes are allow-listed, audited and permission-gated.</p>
         </div>
         <ProtectedModesPanel result={stateResult} />
         <div className="settings-block">
@@ -231,7 +478,7 @@ export function SettingsDashboard({
           <ConfigPanel result={configResult} />
         </div>
         <div className="settings-block">
-          <div className="panel-heading"><div><p className="eyebrow">RUNTIME / SECRET-SAFE READ</p><h3>Runtime configuration</h3></div><small>VALUES ARE ALLOW-LISTED</small></div>
+          <div className="panel-heading"><div><p className="eyebrow">RUNTIME / SECRET-SAFE CONTROL</p><h3>Runtime configuration</h3></div><small>VALUES ARE ALLOW-LISTED</small></div>
           <RuntimeSettingsPanel result={runtimeSettingsResult} />
         </div>
         <PermissionMatrix />

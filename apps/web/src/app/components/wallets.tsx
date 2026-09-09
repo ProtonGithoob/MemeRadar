@@ -38,13 +38,15 @@ function failureMessage(result: ReadResult<ReadPage<WalletRecord>>): string | nu
 
 function WalletCard({ wallet, rank }: { wallet: WalletRecord; rank: number }) {
   const label = wallet.label || "UNLABELED WALLET";
+  const chain = wallet.chain ?? "solana";
+  const routeAddress = chain === "solana" ? wallet.address : chain + ":" + wallet.address;
   return (
     <article className="wallet-card">
       <div className="wallet-card__identity">
         <span className="wallet-rank">#{rank}</span>
         <div>
           {isValidWalletAddress(wallet.address) ? (
-            <Link className="wallet-label" href={`/wallets/${wallet.address}`}>
+            <Link className="wallet-label" href={`/wallets/${routeAddress}`}>
               {label}
             </Link>
           ) : (
@@ -52,7 +54,7 @@ function WalletCard({ wallet, rank }: { wallet: WalletRecord; rank: number }) {
           )}
           <code title={wallet.address}>{shortIdentity(wallet.address, 10)}</code>
         </div>
-        <small>AS OF {readableDate(wallet.asOf)}</small>
+        <small>{chain.toUpperCase()} · AS OF {readableDate(wallet.asOf)}</small>
       </div>
       <div className="wallet-card__tiers">
         <span className="card-label">REGISTRY / RECOMMENDED</span>
@@ -128,4 +130,3 @@ export function WalletsDashboard({ result }: { result: ReadResult<ReadPage<Walle
     </>
   );
 }
-

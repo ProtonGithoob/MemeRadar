@@ -53,7 +53,7 @@ export function WalletDetailView({ result }: { result: ReadResult<WalletRecord |
     <>
       <section className="token-overview wallet-overview" aria-labelledby="wallet-detail-title">
         <div className="token-identity">
-          <p className="eyebrow">WALLET INTELLIGENCE / ADVISORY</p>
+          <p className="eyebrow">{(wallet.chain ?? "UNKNOWN").toUpperCase()} / WALLET INTELLIGENCE / ADVISORY</p>
           <h2 id="wallet-detail-title" aria-label={wallet.label}>{wallet.label}<span>{wallet.recommendedTier} RECOMMENDATION</span></h2>
           <code>{wallet.address}</code>
           <p className="muted-copy">Observed {readableDate(wallet.asOf)}; expires {readableDate(wallet.expiresAt)}.</p>

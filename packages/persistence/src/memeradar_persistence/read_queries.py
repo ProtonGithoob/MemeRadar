@@ -204,6 +204,7 @@ def _candidate_view(
     return CandidateView(
         id=row.id,
         token_id=token.id,
+        chain=token.chain,
         mint_address=token.mint_address,
         symbol=token.symbol,
         name=token.name,
@@ -229,6 +230,7 @@ def _pool_view(row: PoolRow) -> PoolView:
         venue=row.venue,
         pool_address=row.pool_address,
         quote_mint=row.quote_mint,
+        chain=row.token.chain,
     )
 
 
@@ -755,6 +757,36 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
 
     async def get_wallet(self, address: str) -> WalletView | None:
         return await self._catalog.get_wallet(address)
+
+    async def find_tokens_by_address(
+        self, address: str, chain: str | None = None
+    ) -> tuple[TokenView, ...]:
+        async with self._session_factory() as session:
+            statement = select(TokenRow).where(TokenRow.mint_address == address)
+            if chain is not None:
+                statement = statement.where(TokenRow.chain == normalize_chain(chain).value)
+            rows = (
+                await session.scalars(
+                    statement.options(
+                        selectinload(TokenRow.pools), selectinload(TokenRow.candidate)
+                    )
+                )
+            ).all()
+            values: list[TokenView] = []
+            for row in rows:
+                candidate = (
+                    None
+                    if row.candidate is None
+                    else await self._candidate_view_for_row(session, row.candidate)
+                )
+                values.append(_token_view(row, candidate))
+            return tuple(values)
+
+    async def find_wallets_by_address(
+        self, address: str, chain: str | None = None
+    ) -> tuple[WalletView, ...]:
+        values = await self._catalog.find_wallets_by_address(address, chain)
+        return tuple(values)
 
     async def list_caller_profiles(self, query: CallerProfileQuery) -> Page[CallerProfileView]:
         return await self._catalog.list_caller_profiles(query)

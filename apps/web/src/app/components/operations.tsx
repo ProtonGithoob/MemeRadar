@@ -242,7 +242,10 @@ function OperationsContent({ result }: { result: ReadResult<OperationsRecord> })
             ["QUEUE SATURATION", "queue_saturations"],
             ["OUTBOX DEAD LETTERS", "outbox_dead_letters"],
             ["RECOVERY FAILURES", "recovery_failures"],
-            ["STREAM RECONNECTS", "stream_reconnects"]
+            ["STREAM RECONNECTS", "stream_reconnects"],
+            ["STREAM GAPS", "gaps_detected"],
+            ["BACKFILL RETRIES", "backfill_retries"],
+            ["VERIFICATION FAILURES", "verification_failures"]
           ].map(([label, name]) => (
             <div className="detail-panel" key={name}>
               <span className="card-label">{label}</span>

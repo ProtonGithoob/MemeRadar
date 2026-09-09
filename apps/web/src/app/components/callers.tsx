@@ -1,3 +1,7 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
 import { SafetyBadge, FreshnessBadge } from "./status-badges";
 import type {
   CallerConvergenceRecord,
@@ -170,6 +174,8 @@ function ConvergenceEvidence({ convergence }: { convergence: CallerConvergenceRe
           <strong>{convergence.kolBundleState ?? "UNKNOWN"} / {convergence.kolBundleConfidenceTier ?? "UNKNOWN"}</strong>
           <small>{convergence.probableRelatedSideWalletCount ?? "UNKNOWN"} probable wallets · {convergence.kolBundleCount ?? "UNKNOWN"} bundles</small>
           <small>{convergence.kolBundleTemporalProximitySeconds ?? "UNKNOWN"}s temporal proximity</small>
+          <small>POSITION {convergence.visibleCallerPosition ?? "UNKNOWN"} · CLUSTER ACCUMULATION {convergence.clusterAdjustedAccumulation ?? "UNKNOWN"}</small>
+          <small>{percent(convergence.kolBundleConfidence ?? null)} confidence · {(convergence.kolBundleReasonCodes ?? []).join(" · ") || "REASONS UNKNOWN"}</small>
         </div>
         <div>
           <span className="card-label">PROVENANCE</span>
@@ -194,6 +200,58 @@ function ConvergenceSection({ result }: { result: ReadResult<ReadPage<CallerConv
   </div>;
 }
 
+function withItems<T>(result: ReadResult<ReadPage<T>>, items: T[]): ReadResult<ReadPage<T>> {
+  return result.ok ? { ...result, data: { ...result.data, items } } : result;
+}
+
+function numberForSort(value: number | null): number {
+  return value ?? Number.NEGATIVE_INFINITY;
+}
+
+function CallerFilters({
+  platform,
+  setPlatform,
+  chain,
+  setChain,
+  evidenceClass,
+  setEvidenceClass,
+  minSamples,
+  setMinSamples,
+  minConfidence,
+  setMinConfidence,
+  kolTier,
+  setKolTier,
+  sort,
+  setSort
+}: {
+  platform: string;
+  setPlatform: (value: string) => void;
+  chain: string;
+  setChain: (value: string) => void;
+  evidenceClass: string;
+  setEvidenceClass: (value: string) => void;
+  minSamples: string;
+  setMinSamples: (value: string) => void;
+  minConfidence: string;
+  setMinConfidence: (value: string) => void;
+  kolTier: string;
+  setKolTier: (value: string) => void;
+  sort: string;
+  setSort: (value: string) => void;
+}) {
+  return (
+    <div className="caller-filters" aria-label="Caller filters and sort">
+      <label>PLATFORM<select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="">ALL</option><option value="x">X</option><option value="telegram">TELEGRAM</option></select></label>
+      <label>CHAIN<select value={chain} onChange={(event) => setChain(event.target.value)}><option value="">ALL</option><option value="solana">SOLANA</option><option value="bnb">BNB</option><option value="robinhood">ROBINHOOD</option></select></label>
+      <label>EVIDENCE<select value={evidenceClass} onChange={(event) => setEvidenceClass(event.target.value)}><option value="">ALL</option><option value="EARLY">EARLY</option><option value="LATE">LATE</option></select></label>
+      <label>MIN SAMPLES<input min="0" onChange={(event) => setMinSamples(event.target.value)} type="number" value={minSamples} /></label>
+      <label>MIN CONFIDENCE<input max="1" min="0" onChange={(event) => setMinConfidence(event.target.value)} step="0.05" type="number" value={minConfidence} /></label>
+      <label>KOL BUNDLE<select value={kolTier} onChange={(event) => setKolTier(event.target.value)}><option value="">ALL</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option><option value="UNKNOWN">UNKNOWN</option></select></label>
+      <label>SORT<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="confidence">CONFIDENCE</option><option value="samples">SAMPLE COUNT</option><option value="mfe">EXECUTABLE MFE</option><option value="early">EARLIEST-ENTRY QUALITY</option></select></label>
+    </div>
+  );
+}
+
 export function CallersDashboard({
   profiles,
   calls,
@@ -203,6 +261,39 @@ export function CallersDashboard({
   calls: ReadResult<ReadPage<SocialCallRecord>>;
   convergence: ReadResult<ReadPage<CallerConvergenceRecord>>;
 }) {
+  const [platform, setPlatform] = useState("");
+  const [chain, setChain] = useState("");
+  const [evidenceClass, setEvidenceClass] = useState("");
+  const [minSamples, setMinSamples] = useState("");
+  const [minConfidence, setMinConfidence] = useState("");
+  const [kolTier, setKolTier] = useState("");
+  const [sort, setSort] = useState("confidence");
+  const filteredProfiles = useMemo(() => {
+    if (!profiles.ok) return profiles;
+    const sampleMinimum = minSamples === "" ? 0 : Number(minSamples);
+    const confidenceMinimum = minConfidence === "" ? 0 : Number(minConfidence);
+    const values = profiles.data.items.filter((profile) =>
+      (!platform || profile.platform.toLowerCase() === platform) &&
+      (!evidenceClass || profile.evidenceClass.toUpperCase() === evidenceClass) &&
+      profile.sampleCount >= sampleMinimum && profile.confidence >= confidenceMinimum
+    );
+    values.sort((left, right) => {
+      const l = sort === "samples" ? left.sampleCount : sort === "mfe" ? numberForSort(left.medianExecutableMfe) : sort === "early" ? numberForSort(left.earlyEntryQuality) : left.confidence;
+      const r = sort === "samples" ? right.sampleCount : sort === "mfe" ? numberForSort(right.medianExecutableMfe) : sort === "early" ? numberForSort(right.earlyEntryQuality) : right.confidence;
+      return r - l;
+    });
+    return withItems(profiles, values);
+  }, [evidenceClass, minConfidence, minSamples, platform, profiles, sort]);
+  const filteredCalls = useMemo(() => {
+    if (!calls.ok) return calls;
+    return withItems(calls, calls.data.items.filter((call) => !platform || call.source.toLowerCase() === platform).filter((call) => !chain || call.chain === chain));
+  }, [calls, chain, platform]);
+  const filteredConvergence = useMemo(() => {
+    if (!convergence.ok) return convergence;
+    return withItems(convergence, convergence.data.items.filter((item) =>
+      (!chain || item.chain === chain) && (!kolTier || (item.kolBundleConfidenceTier ?? "UNKNOWN") === kolTier)
+    ));
+  }, [chain, convergence, kolTier]);
   return (
     <>
       <div className="page-heading">
@@ -212,26 +303,35 @@ export function CallersDashboard({
         </div>
         <small>Historical caller and convergence evidence is advisory and no-lookahead scoped.</small>
       </div>
+      <section className="section-block" aria-labelledby="caller-filters-title">
+        <div className="section-heading"><div><p className="eyebrow">EXISTING EVIDENCE FIELDS</p><h3 id="caller-filters-title">Filter and sort</h3></div><p className="section-note">No unsupported statistics are calculated in the browser.</p></div>
+        <CallerFilters
+          chain={chain} evidenceClass={evidenceClass} kolTier={kolTier} minConfidence={minConfidence}
+          minSamples={minSamples} platform={platform} setChain={setChain} setEvidenceClass={setEvidenceClass}
+          setKolTier={setKolTier} setMinConfidence={setMinConfidence} setMinSamples={setMinSamples}
+          setPlatform={setPlatform} setSort={setSort} sort={sort}
+        />
+      </section>
       <section className="section-block intelligence-section" aria-labelledby="caller-profiles-title">
         <div className="section-heading">
           <div><p className="eyebrow">MEASUREMENT-ONLY HISTORY</p><h3 id="caller-profiles-title">Caller leaderboard</h3></div>
           <p className="section-note">Unknown outcomes remain unknown.</p>
         </div>
-        <ProfileSection result={profiles} />
+        <ProfileSection result={filteredProfiles} />
       </section>
       <section className="section-block intelligence-section" aria-labelledby="social-calls-title">
         <div className="section-heading">
           <div><p className="eyebrow">NORMALIZED PUBLIC EVIDENCE</p><h3 id="social-calls-title">Social calls</h3></div>
           <p className="section-note">X and Telegram observations retain provenance.</p>
         </div>
-        <CallsSection result={calls} />
+        <CallsSection result={filteredCalls} />
       </section>
       <section className="section-block intelligence-section" aria-labelledby="caller-convergence-title">
         <div className="section-heading">
           <div><p className="eyebrow">SMART-MONEY / CALLER JOIN</p><h3 id="caller-convergence-title">Caller convergence</h3></div>
           <p className="section-note">Convergence is evidence, not a strategy promotion.</p>
         </div>
-        <ConvergenceSection result={convergence} />
+        <ConvergenceSection result={filteredConvergence} />
       </section>
       <section className="boundary-strip" aria-labelledby="caller-boundary-title">
         <div>

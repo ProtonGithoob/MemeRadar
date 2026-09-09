@@ -32,6 +32,7 @@ const POSITION_ID = "44444444-4444-4444-8444-444444444444";
 const candidatePayload: CandidateRecord = {
   id: CANDIDATE_ID,
   tokenId: TOKEN_ID,
+  chain: "solana",
   mintAddress: "So11111111111111111111111111111111111111112",
   symbol: "MOON",
   name: "Moon Fixture",

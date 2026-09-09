@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Annotated, TypeVar
 from urllib.parse import SplitResult, urlsplit, urlunsplit
@@ -10,7 +10,13 @@ from urllib.parse import SplitResult, urlsplit, urlunsplit
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from memeradar_application.config import Settings
+from memeradar_application.config import (
+    RUNTIME_SETTING_SPECS,
+    RuntimeSettingSpec,
+    Settings,
+    runtime_configured_state,
+    runtime_setting_value,
+)
 from memeradar_application.control import (
     CONTROL_API_VERSION,
     LOCKED_EXECUTION_BOUNDARY,
@@ -19,6 +25,7 @@ from memeradar_application.control import (
     ControlPlanePort,
     ControlSafetyError,
     ControlState,
+    ControlVersionConflictError,
 )
 from memeradar_application.read_api import ConfigVersionView
 from memeradar_telemetry.logging import CORRELATION_ID_HEADER, resolve_correlation_id
@@ -46,6 +53,15 @@ class ConfigMutationRequest(_StrictModel):
     reason: str = Field(min_length=1, max_length=512)
 
 
+class RuntimeSettingsMutationRequest(_StrictModel):
+    """Admin-only patch for allow-listed runtime settings."""
+
+    changes: dict[str, object] = Field(default_factory=dict, max_length=64)
+    clear: list[str] = Field(default_factory=list, max_length=64)
+    reason: str = Field(min_length=1, max_length=512)
+    version: str | None = Field(default=None, max_length=64)
+
+
 class ControlStateResponse(_StrictModel):
     api_version: str
     analysis_paused: bool
@@ -71,15 +87,48 @@ class ControlConfigResponse(_StrictModel):
 
 class RuntimeSettingResponse(_StrictModel):
     key: str
+    category: str = "general/runtime"
+    type: str = "string"
+    current_effective_value: str | bool | int | float | None = None
+    pending_value: str | bool | int | float | None = None
+    value: str | bool | int | float | None = None
+    state: str
+    configured_state: str = "NOT_CONFIGURED"
+    pending_configured_state: str | None = None
+    configured: bool = False
+    mutable: bool = False
+    secret: bool
+    protected: bool = False
+    restart_required: bool = False
+    decision_affecting: bool = False
+    mode: str = "IMMUTABLE"
+    allowed_values: list[str] | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    description: str = ""
+
+
+class LegacyRuntimeSettingResponse(_StrictModel):
+    """Compatibility projection retained for existing read-only consumers."""
+
+    key: str
     value: str | bool | int | float | None = None
     state: str
     secret: bool
 
 
+RuntimeSettingValue = str | bool | int | float | None
+
+
 class RuntimeSettingsResponse(_StrictModel):
     api_version: str
     as_of: datetime
-    groups: dict[str, list[RuntimeSettingResponse]]
+    version: str
+    updated_at: datetime
+    updated_by: str
+    can_mutate: bool
+    groups: dict[str, list[LegacyRuntimeSettingResponse]]
+    settings: list[RuntimeSettingResponse]
     protected_modes: dict[str, bool]
     execution_eligible: bool
 
@@ -132,155 +181,112 @@ def _safe_url(value: str | None) -> str | None:
     return urlunsplit(SplitResult(parsed.scheme, host, parsed.path, "", ""))
 
 
-def _runtime_setting(
-    key: str,
-    value: str | bool | int | float | None,
-    *,
-    secret: bool = False,
-    default: str | bool | int | float | None = None,
-    safe_url: bool = False,
-) -> RuntimeSettingResponse:
-    state = "UNCONFIGURED_OPTIONAL" if value is None else "CONFIGURED"
+def _legacy_runtime_state(value: object, default: object = None) -> str:
     if value is not None and value == default:
-        state = "DEFAULTED"
-    safe_value: str | bool | int | float | None = value
-    if safe_url and isinstance(value, str):
+        return "DEFAULTED"
+    return "CONFIGURED" if value is not None else "UNCONFIGURED_OPTIONAL"
+
+
+def _public_runtime_scalar(value: object) -> RuntimeSettingValue:
+    return value if value is None or isinstance(value, str | bool | int | float) else None
+
+
+def _public_runtime_value(
+    spec: RuntimeSettingSpec, value: object
+) -> tuple[RuntimeSettingValue, str]:
+    if spec.secret:
+        return None, runtime_configured_state(value)
+    if value is None:
+        return None, "UNCONFIGURED_OPTIONAL"
+    if spec.type == "string_list" and isinstance(value, tuple | list):
+        value = ",".join(str(item) for item in value)
+    if isinstance(value, str) and ("url" in spec.key or "stream" in spec.key):
         safe_value = _safe_url(value)
-        if safe_value is None:
-            state = "UNKNOWN"
-    if secret:
-        safe_value = None
-    return RuntimeSettingResponse(key=key, value=safe_value, state=state, secret=secret)
+        return (
+            safe_value,
+            _legacy_runtime_state(value, spec.default) if safe_value is not None else "UNKNOWN",
+        )
+    return _public_runtime_scalar(value), _legacy_runtime_state(value, spec.default)
 
 
-def _runtime_settings_response(settings: Settings) -> RuntimeSettingsResponse:
-    groups = {
-        "providers": [
-            _runtime_setting(
-                "solana_rpc_url",
-                settings.solana_rpc_url,
-                default="https://api.mainnet.solana.com",
-                safe_url=True,
-            ),
-            _runtime_setting("helius_rpc_url", settings.helius_rpc_url, safe_url=True),
-            _runtime_setting("helius_api_key", settings.helius_api_key, secret=True),
-            _runtime_setting(
-                "dexscreener_api_url",
-                settings.dexscreener_api_url,
-                default="https://api.dexscreener.com",
-                safe_url=True,
-            ),
-            _runtime_setting("dexscreener_api_key", settings.dexscreener_api_key, secret=True),
-            _runtime_setting("market_data_provider", settings.market_data_provider),
-            _runtime_setting("birdeye_api_url", settings.birdeye_api_url, safe_url=True),
-            _runtime_setting("birdeye_api_key", settings.birdeye_api_key, secret=True),
-            _runtime_setting("rugcheck_api_url", settings.rugcheck_api_url, safe_url=True),
-            _runtime_setting("rugcheck_api_key", settings.rugcheck_api_key, secret=True),
-        ],
-        "chains": [
-            _runtime_setting("enabled_chains", ",".join(settings.enabled_chains)),
-            _runtime_setting("solana_stream_url", settings.solana_stream_url, safe_url=True),
-            _runtime_setting("solana_backfill_url", settings.solana_backfill_url, safe_url=True),
-            _runtime_setting("bnb_rpc_url", settings.bnb_rpc_url, safe_url=True),
-            _runtime_setting("bnb_rpc_fallback_url", settings.bnb_rpc_fallback_url, safe_url=True),
-            _runtime_setting("bnb_chain_id", settings.bnb_chain_id, default=56),
-            _runtime_setting(
-                "robinhood_rpc_url",
-                settings.robinhood_rpc_url,
-                default="https://rpc.mainnet.chain.robinhood.com",
-                safe_url=True,
-            ),
-            _runtime_setting(
-                "robinhood_rpc_fallback_url", settings.robinhood_rpc_fallback_url, safe_url=True
-            ),
-            _runtime_setting("robinhood_chain_id", settings.robinhood_chain_id, default=4663),
-            _runtime_setting(
-                "robinhood_sequencer_feed_url", settings.robinhood_sequencer_feed_url, safe_url=True
-            ),
-            _runtime_setting(
-                "robinhood_blockscout_api_url", settings.robinhood_blockscout_api_url, safe_url=True
-            ),
-        ],
-        "telegram": [
-            _runtime_setting(
-                "api_url",
-                settings.telegram_api_url,
-                default="https://api.telegram.org",
-                safe_url=True,
-            ),
-            _runtime_setting("bot_username", settings.telegram_bot_username),
-            _runtime_setting("bot_token", settings.telegram_bot_token, secret=True),
-            _runtime_setting("chat_id", settings.telegram_chat_id, secret=True),
-            _runtime_setting(
-                "alert_max_messages_per_window", settings.alert_max_messages_per_window, default=20
-            ),
-            _runtime_setting(
-                "alert_rate_limit_window_seconds",
-                settings.alert_rate_limit_window_seconds,
-                default=60.0,
-            ),
-        ],
-        "x": [
-            _runtime_setting("enabled", settings.x_provider_enabled, default=False),
-            _runtime_setting("api_key", settings.x_provider_api_key, secret=True),
-            _runtime_setting("bearer_token", settings.x_provider_bearer_token, secret=True),
-        ],
-        "social": [
-            _runtime_setting(
-                "metadata_provider", settings.social_metadata_provider, default="dexscreener"
-            ),
-            _runtime_setting("api_url", settings.social_api_url, safe_url=True),
-            _runtime_setting("api_key", settings.social_api_key, secret=True),
-        ],
-        "website": [
-            _runtime_setting("url", settings.website_url, safe_url=True),
-            _runtime_setting("name", settings.website_name),
-        ],
-        "wallet": [
-            _runtime_setting(
-                "intelligence_provider", settings.wallet_intelligence_provider, default="local"
-            ),
-            _runtime_setting("external_api_url", settings.external_wallet_api_url, safe_url=True),
-            _runtime_setting("external_api_key", settings.external_wallet_api_key, secret=True),
-            _runtime_setting(
-                "external_stream_url", settings.external_wallet_stream_url, safe_url=True
-            ),
-        ],
-        "security": [
-            _runtime_setting("app_env", settings.app_env),
-            _runtime_setting("log_level", settings.log_level),
-            _runtime_setting(
-                "readiness_timeout_seconds", settings.readiness_timeout_seconds, default=0.25
-            ),
-            _runtime_setting(
-                "database_required_for_readiness",
-                settings.require_database_for_readiness,
-                default=False,
-            ),
-            _runtime_setting(
-                "redis_required_for_readiness", settings.require_redis_for_readiness, default=False
-            ),
-            _runtime_setting("viewer_token", settings.viewer_api_token, secret=True),
-            _runtime_setting("operator_token", settings.operator_api_token, secret=True),
-            _runtime_setting("admin_token", settings.admin_api_token, secret=True),
-            _runtime_setting("execution_token", settings.execution_api_token, secret=True),
-        ],
-        "llm": [
-            _runtime_setting("provider", settings.narrative_provider, default="ollama"),
-            _runtime_setting(
-                "api_url",
-                settings.narrative_api_url,
-                default="http://host.docker.internal:11434",
-                safe_url=True,
-            ),
-            _runtime_setting("api_key", settings.narrative_api_key, secret=True),
-            _runtime_setting("model", settings.narrative_model),
-        ],
-    }
+def _runtime_settings_response(
+    settings: Settings,
+    snapshot: object | None = None,
+    *,
+    can_mutate: bool = False,
+    control_values: Mapping[str, object] | None = None,
+) -> RuntimeSettingsResponse:
+    from memeradar_application.control import RuntimeSettingsSnapshot
+
+    runtime = (
+        snapshot
+        if isinstance(snapshot, RuntimeSettingsSnapshot)
+        else RuntimeSettingsSnapshot(
+            version="runtime-settings-v0",
+            updated_at=datetime.now(UTC),
+            updated_by="system",
+        )
+    )
+    control = {} if control_values is None else control_values
+    settings_payload: list[RuntimeSettingResponse] = []
+    groups: dict[str, list[LegacyRuntimeSettingResponse]] = {}
+    for spec in RUNTIME_SETTING_SPECS:
+        value = runtime_setting_value(
+            settings, spec, overrides=runtime.effective_overrides, control_values=control
+        )
+        pending = (
+            runtime.pending_values.get(spec.key) if spec.key in runtime.pending_values else None
+        )
+        public_value, state = _public_runtime_value(spec, value)
+        public_pending = None if spec.secret else _public_runtime_scalar(pending)
+        settings_payload.append(
+            RuntimeSettingResponse(
+                key=spec.key,
+                category=spec.category,
+                type=spec.type,
+                current_effective_value=public_value,
+                pending_value=public_pending,
+                value=public_value,
+                state=state,
+                configured_state=runtime_configured_state(value),
+                pending_configured_state=(
+                    runtime_configured_state(pending)
+                    if spec.key in runtime.pending_values
+                    else None
+                ),
+                configured=runtime_configured_state(value) == "CONFIGURED",
+                mutable=spec.mutable,
+                secret=spec.secret,
+                protected=spec.protected,
+                restart_required=spec.restart_required,
+                decision_affecting=spec.decision_affecting,
+                mode=spec.mode,
+                allowed_values=None if spec.allowed_values is None else list(spec.allowed_values),
+                minimum=None if spec.minimum is None else float(spec.minimum),
+                maximum=None if spec.maximum is None else float(spec.maximum),
+                description=spec.description,
+            )
+        )
+        legacy_value, legacy_state = _public_runtime_value(spec, value)
+        if spec.secret and value is None:
+            legacy_state = "UNCONFIGURED_OPTIONAL"
+        groups.setdefault(spec.legacy_group, []).append(
+            LegacyRuntimeSettingResponse(
+                key=spec.legacy_key or spec.key,
+                value=legacy_value,
+                state=legacy_state,
+                secret=spec.secret,
+            )
+        )
     return RuntimeSettingsResponse(
         api_version="runtime-settings-v1",
         as_of=datetime.now(UTC),
+        version=runtime.version,
+        updated_at=runtime.updated_at,
+        updated_by=runtime.updated_by,
+        can_mutate=can_mutate,
         groups=groups,
+        settings=settings_payload,
         protected_modes={
             "analysis_only": settings.analysis_only,
             "paper_trading": settings.paper_trading,
@@ -307,6 +313,11 @@ async def _call(operation: Awaitable[T]) -> T:
             status_code=status.HTTP_409_CONFLICT,
             detail="control action is blocked by protected operating modes",
         ) from None
+    except ControlVersionConflictError as exc:
+        del exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="runtime settings version conflict"
+        ) from None
     except (ControlConfigError, TypeError, ValueError) as exc:
         del exc
         raise _invalid_control_request() from None
@@ -317,6 +328,8 @@ def build_control_router(
     service: ControlPlanePort,
     *,
     authenticator: RoleTokenAuthenticator | None = None,
+    settings_provider: Callable[[], Settings] | None = None,
+    apply_hot_settings: Callable[[Mapping[str, object]], None] | None = None,
 ) -> APIRouter:
     """Build authenticated control routes over an application control port."""
 
@@ -325,6 +338,7 @@ def build_control_router(
     if service is None:
         raise TypeError("service must be a control plane")
     role_authenticator = authenticator or RoleTokenAuthenticator(settings)
+    get_settings = settings_provider or (lambda: settings)
     router = APIRouter(prefix="/v1/control", tags=["control"])
 
     def correlation_id(request: Request) -> str:
@@ -348,8 +362,42 @@ def build_control_router(
     async def get_runtime_settings(
         authorization: Annotated[str | None, Header()] = None,
     ) -> RuntimeSettingsResponse:
-        role_authenticator.require(authorization, ControlAction.READ_CONFIG)
-        return _runtime_settings_response(settings)
+        principal = role_authenticator.require(authorization, ControlAction.READ_CONFIG)
+        snapshot = await _call(service.get_runtime_settings())
+        config = await _call(service.get_config())
+        return _runtime_settings_response(
+            get_settings(),
+            snapshot,
+            can_mutate=principal.role.value == "ADMIN",
+            control_values=config.config,
+        )
+
+    @router.post("/runtime-settings", response_model=RuntimeSettingsResponse)
+    async def mutate_runtime_settings(
+        body: RuntimeSettingsMutationRequest,
+        request: Request,
+        authorization: Annotated[str | None, Header()] = None,
+    ) -> RuntimeSettingsResponse:
+        principal = role_authenticator.require(authorization, ControlAction.MUTATE_CONFIG)
+        snapshot = await _call(
+            service.mutate_runtime_settings(
+                principal,
+                changes=body.changes,
+                clear=body.clear,
+                reason=body.reason,
+                correlation_id=correlation_id(request),
+                expected_version=body.version,
+            )
+        )
+        if apply_hot_settings is not None:
+            apply_hot_settings(snapshot.effective_overrides)
+        config = await _call(service.get_config())
+        return _runtime_settings_response(
+            get_settings(),
+            snapshot,
+            can_mutate=True,
+            control_values=config.config,
+        )
 
     @router.post("/analysis-kill-switch", response_model=ControlStateResponse)
     async def set_analysis_kill_switch(
@@ -417,6 +465,7 @@ __all__ = [
     "ControlMutationRequest",
     "ControlStateResponse",
     "RuntimeSettingResponse",
+    "RuntimeSettingsMutationRequest",
     "RuntimeSettingsResponse",
     "build_control_router",
 ]

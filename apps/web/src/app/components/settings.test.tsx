@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SettingsDashboard } from "./settings";
@@ -99,10 +99,14 @@ describe("SettingsDashboard", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Runtime configuration" })).toBeInTheDocument();
-    expect(screen.getByText("PROVIDERS")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "PROVIDERS" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "CHAINS" }));
     expect(screen.getByText("solana,bnb,robinhood")).toBeInTheDocument();
-    expect(screen.getByText("SECRET VALUE HIDDEN")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "TELEGRAM" }));
+    expect(screen.getByText("NOT CONFIGURED")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "WEBSITE" }));
     expect(screen.getByText("https://memeradar.example")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "LLM" }));
     expect(screen.getByText("ollama")).toBeInTheDocument();
   });
 

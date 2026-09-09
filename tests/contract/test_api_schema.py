@@ -51,6 +51,8 @@ def test_business_routes_use_v1_and_mutations_are_explicitly_allow_listed() -> N
         "/v1/positions",
         "/v1/positions/{position_id}",
         "/v1/providers/health",
+        "/v1/readiness",
+        "/v1/search/resolve",
         "/v1/social-calls",
         "/v1/tokens/{token_id}",
         "/v1/tokens/{token_id}/timeline",
@@ -70,12 +72,14 @@ def test_business_routes_use_v1_and_mutations_are_explicitly_allow_listed() -> N
     assert set(paths["/v1/control/analysis-kill-switch"]) == {"post"}
     assert set(paths["/v1/control/execution-kill-switch"]) == {"post"}
     assert set(paths["/v1/control/config"]) == {"get", "post"}
+    assert set(paths["/v1/control/runtime-settings"]) == {"get", "post"}
     assert set(paths["/v1/manual/mints"]) == {"post"}
 
     read_paths = versioned - {
         "/v1/control/analysis-kill-switch",
         "/v1/control/execution-kill-switch",
         "/v1/control/config",
+        "/v1/control/runtime-settings",
         "/v1/manual/mints",
     }
     assert all(set(paths[path]) == {"get"} for path in read_paths)

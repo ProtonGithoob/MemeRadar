@@ -22,12 +22,41 @@ function toneForState(state: string): ChipTone {
   return "unknown";
 }
 
+function chainState(
+  providers: OperationsRecord["providers"],
+  matcher: RegExp
+): OperationalState {
+  const matches = providers.filter((provider) => matcher.test(`${provider.provider} ${provider.capability}`));
+  if (matches.some((provider) => provider.state === "DOWN")) return "DOWN";
+  if (matches.some((provider) => provider.state === "DEGRADED")) return "DEGRADED";
+  if (matches.some((provider) => provider.state === "HEALTHY")) return "HEALTHY";
+  return "UNKNOWN";
+}
+
+type OperationalState = OperationsRecord["overallState"];
+
+function ChainStatus({
+  label,
+  providers,
+  matcher
+}: {
+  label: string;
+  providers: OperationsRecord["providers"];
+  matcher: RegExp;
+}) {
+  const state = chainState(providers, matcher);
+  return <StatusChip label={label} value={state} tone={toneForState(state)} />;
+}
+
 function TopBarStatus({ operations }: { operations: ReadResult<OperationsRecord> }) {
   if (!operations.ok) {
     return (
       <div className="ws-topbar__status" aria-label="System status">
         <StatusChip label="STACK" value="UNKNOWN" tone="unknown" />
         <StatusChip label="PROVIDERS" value="UNKNOWN" tone="unknown" />
+        <ChainStatus label="SOLANA" providers={[]} matcher={/solana|helius/i} />
+        <ChainStatus label="BNB" providers={[]} matcher={/bnb|binance/i} />
+        <ChainStatus label="ROBINHOOD" providers={[]} matcher={/robinhood/i} />
       </div>
     );
   }
@@ -53,6 +82,33 @@ function TopBarStatus({ operations }: { operations: ReadResult<OperationsRecord>
     <div className="ws-topbar__status" aria-label="System status">
       <StatusChip label="STACK" value={overview.overallState} tone={toneForState(overview.overallState)} />
       <StatusChip label="PROVIDERS" value={providerSummary} tone={providerTone} />
+      <ChainStatus label="SOLANA" providers={providers} matcher={/solana|helius/i} />
+      <ChainStatus label="BNB" providers={providers} matcher={/bnb|binance/i} />
+      <ChainStatus label="ROBINHOOD" providers={providers} matcher={/robinhood/i} />
+    </div>
+  );
+}
+
+function ProtectedModeStatus({ operations }: { operations: ReadResult<OperationsRecord> }) {
+  if (!operations.ok) {
+    return (
+      <div className="ws-topbar__actions" aria-label="Protected operating modes">
+        <StatusChip label="ANALYSIS ONLY" value="UNKNOWN" tone="unknown" />
+        <StatusChip label="PAPER TRADING" value="UNKNOWN" tone="unknown" />
+        <StatusChip label="EXECUTION" value="UNKNOWN" tone="unknown" />
+        <RealtimeStatus />
+        <ThemeToggle />
+      </div>
+    );
+  }
+  const modes = operations.data.modes;
+  return (
+    <div className="ws-topbar__actions" aria-label="Protected operating modes">
+      <StatusChip label="ANALYSIS ONLY" value={modes.analysisOnly ? "ON" : "INVALID"} tone={modes.analysisOnly ? "ok" : "danger"} />
+      <StatusChip label="PAPER TRADING" value={modes.paperTrading ? "ON" : "INVALID"} tone={modes.paperTrading ? "warn" : "danger"} />
+      <StatusChip label="EXECUTION" value={!modes.manualExecution && !modes.autoExecution ? "LOCKED" : "INVALID"} tone={!modes.manualExecution && !modes.autoExecution ? "disabled" : "danger"} />
+      <RealtimeStatus />
+      <ThemeToggle />
     </div>
   );
 }
@@ -69,19 +125,13 @@ export function WorkstationShell({
       <header className="ws-topbar">
         <div className="ws-brand">
           <Link className="ws-brand__name" href="/">MemeRadar</Link>
-          <span className="ws-brand__tag">SOLANA INTELLIGENCE</span>
+          <span className="ws-brand__tag">MULTICHAIN INTELLIGENCE</span>
         </div>
         <TopBarStatus operations={operations} />
         <div className="ws-topbar__search">
           <SearchForm />
         </div>
-        <div className="ws-topbar__actions" aria-label="Protected operating modes">
-          <span className="chip chip--ok chip--mode">ANALYSIS ONLY</span>
-          <span className="chip chip--warn chip--mode">PAPER TRADING</span>
-          <span className="chip chip--disabled chip--mode">EXECUTION LOCKED</span>
-          <RealtimeStatus />
-          <ThemeToggle />
-        </div>
+        <ProtectedModeStatus operations={operations} />
       </header>
       <div className="ws-body">
         <SidebarNav />

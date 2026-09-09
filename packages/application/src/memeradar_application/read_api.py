@@ -659,16 +659,23 @@ class PoolView:
     venue: str
     pool_address: str
     quote_mint: str
+    chain: str = "solana"
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
             raise TypeError("pool id must be a UUID")
         object.__setattr__(self, "venue", require_text(self.venue, "venue", max_length=64))
+        normalized_chain = normalize_chain(self.chain).value
+        object.__setattr__(self, "chain", normalized_chain)
         object.__setattr__(
-            self, "pool_address", require_solana_address(self.pool_address, "pool_address")
+            self,
+            "pool_address",
+            require_chain_address(self.pool_address, normalized_chain, "pool_address"),
         )
         object.__setattr__(
-            self, "quote_mint", require_solana_address(self.quote_mint, "quote_mint")
+            self,
+            "quote_mint",
+            require_chain_address(self.quote_mint, normalized_chain, "quote_mint"),
         )
 
 
@@ -692,12 +699,17 @@ class CandidateView:
     risk_reason_codes: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     execution_eligible: bool = False
+    chain: str = "solana"
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID) or not isinstance(self.token_id, UUID):
             raise TypeError("candidate and token IDs must be UUIDs")
+        normalized_chain = normalize_chain(self.chain).value
+        object.__setattr__(self, "chain", normalized_chain)
         object.__setattr__(
-            self, "mint_address", require_solana_address(self.mint_address, "mint_address")
+            self,
+            "mint_address",
+            require_chain_address(self.mint_address, normalized_chain, "mint_address"),
         )
         for field_name, max_length in (("symbol", 64), ("name", 256)):
             value = getattr(self, field_name)
@@ -1072,9 +1084,12 @@ class TokenView:
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
             raise TypeError("token id must be a UUID")
-        object.__setattr__(self, "chain", require_text(self.chain, "chain", max_length=32).lower())
+        normalized_chain = normalize_chain(self.chain).value
+        object.__setattr__(self, "chain", normalized_chain)
         object.__setattr__(
-            self, "mint_address", require_solana_address(self.mint_address, "mint_address")
+            self,
+            "mint_address",
+            require_chain_address(self.mint_address, normalized_chain, "mint_address"),
         )
         object.__setattr__(
             self, "token_program", require_text(self.token_program, "token_program", max_length=64)
@@ -1100,7 +1115,7 @@ class TokenView:
             object.__setattr__(
                 self,
                 "creator_wallet",
-                require_solana_address(self.creator_wallet, "creator_wallet"),
+                require_chain_address(self.creator_wallet, normalized_chain, "creator_wallet"),
             )
         pools = tuple(self.pools)
         if any(not isinstance(pool, PoolView) for pool in pools):
@@ -1789,12 +1804,8 @@ def caller_convergence_view(
             if value.kol_bundle is None
             else value.kol_bundle.probable_related_side_wallet_count
         ),
-        kol_bundle_confidence=(
-            None if value.kol_bundle is None else value.kol_bundle.confidence
-        ),
-        kol_bundle_reason_codes=(
-            () if value.kol_bundle is None else value.kol_bundle.reason_codes
-        ),
+        kol_bundle_confidence=(None if value.kol_bundle is None else value.kol_bundle.confidence),
+        kol_bundle_reason_codes=(() if value.kol_bundle is None else value.kol_bundle.reason_codes),
         kol_bundle_confidence_tier=(
             "UNKNOWN" if value.kol_bundle is None else value.kol_bundle.confidence_tier
         ),
@@ -1861,9 +1872,14 @@ class WalletView:
     reason_codes: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     execution_eligible: bool = False
+    chain: str = "solana"
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "address", require_solana_address(self.address, "wallet address"))
+        normalized_chain = normalize_chain(self.chain).value
+        object.__setattr__(self, "chain", normalized_chain)
+        object.__setattr__(
+            self, "address", require_chain_address(self.address, normalized_chain, "wallet address")
+        )
         object.__setattr__(self, "label", require_text(self.label, "label", max_length=256))
         object.__setattr__(
             self,
@@ -2956,8 +2972,39 @@ class InMemoryReadQueryService:
         )
 
     async def get_wallet(self, address: str) -> WalletView | None:
-        normalized = require_solana_address(address, "wallet address")
-        return next((value for value in self.wallets if value.address == normalized), None)
+        raw_chain, raw_address = address.split(":", 1) if ":" in address else ("solana", address)
+        normalized_chain = normalize_chain(raw_chain).value
+        normalized = require_chain_address(raw_address, normalized_chain, "wallet address")
+        return next(
+            (
+                value
+                for value in self.wallets
+                if value.chain == normalized_chain and value.address == normalized
+            ),
+            None,
+        )
+
+    async def find_tokens_by_address(
+        self, address: str, chain: str | None = None
+    ) -> tuple[TokenView, ...]:
+        normalized_chain = None if chain is None else normalize_chain(chain).value
+        return tuple(
+            value
+            for value in self.tokens
+            if value.mint_address == address
+            and (normalized_chain is None or value.chain == normalized_chain)
+        )
+
+    async def find_wallets_by_address(
+        self, address: str, chain: str | None = None
+    ) -> tuple[WalletView, ...]:
+        normalized_chain = None if chain is None else normalize_chain(chain).value
+        return tuple(
+            value
+            for value in self.wallets
+            if value.address == address
+            and (normalized_chain is None or value.chain == normalized_chain)
+        )
 
     async def list_caller_profiles(self, query: CallerProfileQuery) -> Page[CallerProfileView]:
         if not isinstance(query, CallerProfileQuery):

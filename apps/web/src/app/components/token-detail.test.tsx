@@ -26,6 +26,7 @@ const token: TokenRecord = {
   candidate: {
     id: "11111111-1111-4111-8111-111111111111",
     tokenId: TOKEN_ID,
+    chain: "solana",
     mintAddress: "So11111111111111111111111111111111111111112",
     symbol: "MOON",
     name: "Moon Fixture",

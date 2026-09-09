@@ -85,7 +85,9 @@ function Row({ row, now }: { row: RadarRow; now: number }) {
       <td>
         <div className="dt-token">
           <Link href={`/tokens/${candidate.tokenId}`}>{displayName}</Link>
-          <code title={candidate.mintAddress}>{shortIdentity(candidate.mintAddress)}</code>
+          <code title={`${candidate.chain}:${candidate.mintAddress}`}>
+            {candidate.chain.toUpperCase()} · {shortIdentity(candidate.mintAddress)}
+          </code>
         </div>
       </td>
       <td className="num" suppressHydrationWarning>

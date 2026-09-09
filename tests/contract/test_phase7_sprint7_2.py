@@ -139,6 +139,8 @@ def test_read_api_route_surface_is_bounded_get_only_and_provider_free_at_applica
             "/v1/social-calls",
             "/v1/caller-convergence",
             "/v1/providers/health",
+        "/v1/readiness",
+        "/v1/search/resolve",
         "/v1/audit/events",
         "/v1/config/versions",
         "/v1/positions",

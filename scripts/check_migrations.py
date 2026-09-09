@@ -40,6 +40,7 @@ def main() -> int:
         "domain_events",
         "outbox",
         "control_state",
+        "runtime_settings",
         "config_versions",
         "audit_events",
         "chain_cursors",
@@ -52,9 +53,9 @@ def main() -> int:
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0008_alpha_caller_intelligence"]:
+    if heads != ["0009_runtime_settings"]:
         print(
-            "migration_error: expected exactly one 0008_alpha_caller_intelligence head",
+            "migration_error: expected exactly one 0009_runtime_settings head",
             file=sys.stderr,
         )
         return 1

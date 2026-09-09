@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -9,6 +10,76 @@ from dataclasses import dataclass
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 SUPPORTED_CHAINS = ("solana", "bnb", "robinhood")
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeSettingSpec:
+    """One canonical, provider-neutral description of an editable setting."""
+
+    key: str
+    category: str
+    type: str
+    mode: str
+    attr: str | None = None
+    legacy_group: str = "security"
+    legacy_key: str | None = None
+    default: object = None
+    secret: bool = False
+    protected: bool = False
+    decision_affecting: bool = False
+    allowed_values: tuple[str, ...] | None = None
+    minimum: int | float | None = None
+    maximum: int | float | None = None
+    description: str = ""
+
+    @property
+    def mutable(self) -> bool:
+        return self.mode in {"HOT_APPLY", "RESTART_REQUIRED"}
+
+    @property
+    def restart_required(self) -> bool:
+        return self.mode == "RESTART_REQUIRED"
+
+
+class RuntimeSettingValidationError(ValueError):
+    """Raised when a runtime setting patch is invalid or unsafe."""
+
+
+def _spec(
+    key: str,
+    category: str,
+    type_: str,
+    mode: str,
+    *,
+    attr: str | None = None,
+    group: str = "security",
+    legacy_key: str | None = None,
+    default: object = None,
+    secret: bool = False,
+    protected: bool = False,
+    decision_affecting: bool = False,
+    allowed: tuple[str, ...] | None = None,
+    minimum: int | float | None = None,
+    maximum: int | float | None = None,
+    description: str = "",
+) -> RuntimeSettingSpec:
+    return RuntimeSettingSpec(
+        key=key,
+        category=category,
+        type=type_,
+        mode=mode,
+        attr=attr or key,
+        legacy_group=group,
+        legacy_key=legacy_key or key,
+        default=default,
+        secret=secret,
+        protected=protected,
+        decision_affecting=decision_affecting,
+        allowed_values=allowed,
+        minimum=minimum,
+        maximum=maximum,
+        description=description,
+    )
 
 
 def _parse_bool(name: str, value: str) -> bool:
@@ -368,3 +439,754 @@ class Settings:
             website_url=_optional_value(values, "WEBSITE_URL"),
             website_name=_optional_value(values, "WEBSITE_NAME"),
         )
+
+
+RUNTIME_SETTING_SPECS: tuple[RuntimeSettingSpec, ...] = (
+    _spec(
+        "app_env",
+        "general/runtime",
+        "string",
+        "IMMUTABLE",
+        description="Application environment name.",
+    ),
+    _spec(
+        "log_level",
+        "general/runtime",
+        "string",
+        "RESTART_REQUIRED",
+        allowed=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
+        description="Application log level.",
+    ),
+    _spec("api_host", "general/runtime", "string", "IMMUTABLE", description="API bind host."),
+    _spec(
+        "api_port",
+        "general/runtime",
+        "integer",
+        "IMMUTABLE",
+        minimum=1,
+        maximum=65535,
+        description="API bind port.",
+    ),
+    _spec(
+        "worker_poll_interval_seconds",
+        "general/runtime",
+        "number",
+        "RESTART_REQUIRED",
+        minimum=0.1,
+        maximum=3600.0,
+        description="Worker polling interval in seconds.",
+    ),
+    _spec(
+        "enabled_chains",
+        "general/runtime",
+        "string_list",
+        "RESTART_REQUIRED",
+        allowed=SUPPORTED_CHAINS,
+        description="Enabled analysis chains.",
+    ),
+    _spec(
+        "early_score_handoff_seconds",
+        "decision/research",
+        "integer",
+        "RESTART_REQUIRED",
+        minimum=1,
+        maximum=86400,
+        decision_affecting=True,
+        description="Early-score handoff age in seconds.",
+    ),
+    _spec(
+        "readiness_timeout_seconds",
+        "general/runtime",
+        "number",
+        "RESTART_REQUIRED",
+        legacy_key="readiness_timeout_seconds",
+        default=0.25,
+        minimum=0.01,
+        maximum=10.0,
+        description="Dependency readiness probe timeout.",
+    ),
+    _spec(
+        "database_url",
+        "general/runtime",
+        "secret",
+        "RESTART_REQUIRED",
+        secret=True,
+        description="Database connection URL.",
+    ),
+    _spec(
+        "redis_url",
+        "general/runtime",
+        "secret",
+        "RESTART_REQUIRED",
+        secret=True,
+        description="Redis connection URL.",
+    ),
+    _spec(
+        "require_database_for_readiness",
+        "general/runtime",
+        "boolean",
+        "RESTART_REQUIRED",
+        legacy_key="database_required_for_readiness",
+        default=False,
+        description="Require the database for readiness.",
+    ),
+    _spec(
+        "require_redis_for_readiness",
+        "general/runtime",
+        "boolean",
+        "RESTART_REQUIRED",
+        legacy_key="redis_required_for_readiness",
+        default=False,
+        description="Require Redis for readiness.",
+    ),
+    _spec(
+        "analysis_only",
+        "general/runtime",
+        "boolean",
+        "PROTECTED",
+        protected=True,
+        description="Analysis-only safety mode.",
+    ),
+    _spec(
+        "paper_trading",
+        "general/runtime",
+        "boolean",
+        "PROTECTED",
+        protected=True,
+        description="Paper-trading safety mode.",
+    ),
+    _spec(
+        "manual_execution",
+        "general/runtime",
+        "boolean",
+        "PROTECTED",
+        protected=True,
+        description="Manual execution safety mode.",
+    ),
+    _spec(
+        "auto_execution",
+        "general/runtime",
+        "boolean",
+        "PROTECTED",
+        protected=True,
+        description="Automatic execution safety mode.",
+    ),
+    _spec(
+        "viewer_api_token",
+        "general/runtime",
+        "secret",
+        "RESTART_REQUIRED",
+        legacy_key="viewer_token",
+        secret=True,
+        description="Viewer control credential.",
+    ),
+    _spec(
+        "operator_api_token",
+        "general/runtime",
+        "secret",
+        "RESTART_REQUIRED",
+        legacy_key="operator_token",
+        secret=True,
+        description="Operator control credential.",
+    ),
+    _spec(
+        "admin_api_token",
+        "general/runtime",
+        "secret",
+        "RESTART_REQUIRED",
+        legacy_key="admin_token",
+        secret=True,
+        description="Admin control credential.",
+    ),
+    _spec(
+        "execution_api_token",
+        "general/runtime",
+        "secret",
+        "PROTECTED",
+        legacy_key="execution_token",
+        secret=True,
+        protected=True,
+        description="Execution credential; execution remains locked.",
+    ),
+    _spec(
+        "solana_rpc_url",
+        "solana",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        default="https://api.mainnet.solana.com",
+        description="Solana JSON-RPC endpoint.",
+    ),
+    _spec(
+        "solana_stream_url",
+        "solana",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Solana stream endpoint.",
+    ),
+    _spec(
+        "solana_backfill_url",
+        "solana",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Solana backfill endpoint.",
+    ),
+    _spec(
+        "helius_rpc_url",
+        "helius",
+        "string",
+        "RESTART_REQUIRED",
+        group="providers",
+        description="Helius RPC endpoint.",
+    ),
+    _spec(
+        "helius_api_key",
+        "helius",
+        "secret",
+        "RESTART_REQUIRED",
+        group="providers",
+        secret=True,
+        description="Helius API key.",
+    ),
+    _spec(
+        "helius_stream_url",
+        "helius",
+        "string",
+        "RESTART_REQUIRED",
+        group="providers",
+        description="Helius stream endpoint.",
+    ),
+    _spec(
+        "dexscreener_api_url",
+        "dexscreener",
+        "string",
+        "RESTART_REQUIRED",
+        group="providers",
+        default="https://api.dexscreener.com",
+        description="DexScreener API endpoint.",
+    ),
+    _spec(
+        "dexscreener_api_key",
+        "dexscreener",
+        "secret",
+        "RESTART_REQUIRED",
+        group="providers",
+        secret=True,
+        description="DexScreener API key.",
+    ),
+    _spec(
+        "market_data_provider",
+        "market data",
+        "select",
+        "RESTART_REQUIRED",
+        group="providers",
+        default="dexscreener",
+        allowed=("birdeye", "dexscreener"),
+        description="Primary market-data provider.",
+    ),
+    _spec(
+        "paper_quote_provider",
+        "market data",
+        "select",
+        "RESTART_REQUIRED",
+        group="providers",
+        default="dexscreener",
+        allowed=("custom", "dexscreener", "birdeye"),
+        description="Paper quote provider.",
+    ),
+    _spec(
+        "paper_quote_url",
+        "market data",
+        "string",
+        "RESTART_REQUIRED",
+        group="providers",
+        description="Paper quote endpoint.",
+    ),
+    _spec(
+        "paper_quote_api_key",
+        "market data",
+        "secret",
+        "RESTART_REQUIRED",
+        group="providers",
+        secret=True,
+        description="Paper quote credential.",
+    ),
+    _spec(
+        "birdeye_api_url",
+        "birdeye",
+        "string",
+        "RESTART_REQUIRED",
+        group="providers",
+        description="Birdeye API endpoint.",
+    ),
+    _spec(
+        "birdeye_api_key",
+        "birdeye",
+        "secret",
+        "RESTART_REQUIRED",
+        group="providers",
+        secret=True,
+        description="Birdeye API key.",
+    ),
+    _spec(
+        "rugcheck_api_url",
+        "rugcheck/security",
+        "string",
+        "RESTART_REQUIRED",
+        group="providers",
+        description="RugCheck API endpoint.",
+    ),
+    _spec(
+        "rugcheck_api_key",
+        "rugcheck/security",
+        "secret",
+        "RESTART_REQUIRED",
+        group="providers",
+        secret=True,
+        description="RugCheck API key.",
+    ),
+    _spec(
+        "bnb_rpc_url",
+        "bnb",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="BNB Chain JSON-RPC endpoint.",
+    ),
+    _spec(
+        "bnb_rpc_fallback_url",
+        "bnb",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="BNB Chain fallback RPC endpoint.",
+    ),
+    _spec(
+        "bnb_chain_id",
+        "bnb",
+        "integer",
+        "IMMUTABLE",
+        group="chains",
+        default=56,
+        minimum=1,
+        maximum=2**64 - 1,
+        description="BNB Chain ID.",
+    ),
+    _spec(
+        "robinhood_rpc_url",
+        "robinhood",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        default="https://rpc.mainnet.chain.robinhood.com",
+        description="Robinhood Chain JSON-RPC endpoint.",
+    ),
+    _spec(
+        "robinhood_rpc_fallback_url",
+        "robinhood",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Robinhood Chain fallback RPC endpoint.",
+    ),
+    _spec(
+        "robinhood_chain_id",
+        "robinhood",
+        "integer",
+        "IMMUTABLE",
+        group="chains",
+        default=4663,
+        minimum=1,
+        maximum=2**64 - 1,
+        description="Robinhood Chain ID is fixed at 4663.",
+    ),
+    _spec(
+        "robinhood_sequencer_feed_url",
+        "robinhood",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        default="wss://feed.mainnet.chain.robinhood.com",
+        description="Robinhood sequencer feed endpoint.",
+    ),
+    _spec(
+        "robinhood_blockscout_api_url",
+        "robinhood",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Robinhood Blockscout endpoint.",
+    ),
+    _spec(
+        "wallet_intelligence_provider",
+        "external wallet intelligence/stream",
+        "select",
+        "RESTART_REQUIRED",
+        group="wallet",
+        legacy_key="intelligence_provider",
+        default="local",
+        allowed=("external", "local"),
+        description="External wallet intelligence provider.",
+    ),
+    _spec(
+        "external_wallet_api_url",
+        "external wallet intelligence/stream",
+        "string",
+        "RESTART_REQUIRED",
+        group="wallet",
+        legacy_key="external_api_url",
+        description="External wallet intelligence endpoint.",
+    ),
+    _spec(
+        "external_wallet_api_key",
+        "external wallet intelligence/stream",
+        "secret",
+        "RESTART_REQUIRED",
+        group="wallet",
+        legacy_key="external_api_key",
+        secret=True,
+        description="External wallet intelligence credential.",
+    ),
+    _spec(
+        "external_wallet_stream_url",
+        "external wallet intelligence/stream",
+        "string",
+        "RESTART_REQUIRED",
+        group="wallet",
+        legacy_key="external_stream_url",
+        description="External wallet stream endpoint.",
+    ),
+    _spec(
+        "x_provider_enabled",
+        "x",
+        "boolean",
+        "RESTART_REQUIRED",
+        group="x",
+        legacy_key="enabled",
+        default=False,
+        description="Enable configured X/social ingestion.",
+    ),
+    _spec(
+        "x_provider_api_key",
+        "x",
+        "secret",
+        "RESTART_REQUIRED",
+        group="x",
+        legacy_key="api_key",
+        secret=True,
+        description="X provider API key.",
+    ),
+    _spec(
+        "x_provider_bearer_token",
+        "x",
+        "secret",
+        "RESTART_REQUIRED",
+        group="x",
+        legacy_key="bearer_token",
+        secret=True,
+        description="X provider bearer token.",
+    ),
+    _spec(
+        "telegram_api_url",
+        "telegram notification",
+        "string",
+        "RESTART_REQUIRED",
+        group="telegram",
+        legacy_key="api_url",
+        default="https://api.telegram.org",
+        description="Telegram API endpoint.",
+    ),
+    _spec(
+        "telegram_bot_token",
+        "telegram notification",
+        "secret",
+        "RESTART_REQUIRED",
+        group="telegram",
+        legacy_key="bot_token",
+        secret=True,
+        description="Telegram bot token.",
+    ),
+    _spec(
+        "telegram_bot_username",
+        "telegram notification",
+        "string",
+        "RESTART_REQUIRED",
+        group="telegram",
+        legacy_key="bot_username",
+        description="Telegram bot username.",
+    ),
+    _spec(
+        "telegram_chat_id",
+        "telegram notification",
+        "secret",
+        "RESTART_REQUIRED",
+        group="telegram",
+        legacy_key="chat_id",
+        secret=True,
+        description="Telegram notification chat identifier.",
+    ),
+    _spec(
+        "social_api_url",
+        "telegram/social ingestion",
+        "string",
+        "RESTART_REQUIRED",
+        group="social",
+        legacy_key="api_url",
+        description="Social ingestion endpoint.",
+    ),
+    _spec(
+        "social_api_key",
+        "telegram/social ingestion",
+        "secret",
+        "RESTART_REQUIRED",
+        group="social",
+        legacy_key="api_key",
+        secret=True,
+        description="Social ingestion credential.",
+    ),
+    _spec(
+        "social_metadata_provider",
+        "social/website metadata",
+        "select",
+        "RESTART_REQUIRED",
+        group="social",
+        legacy_key="metadata_provider",
+        allowed=("dexscreener", "disabled"),
+        description="Social metadata provider.",
+    ),
+    _spec(
+        "website_url",
+        "social/website metadata",
+        "string",
+        "RESTART_REQUIRED",
+        group="website",
+        legacy_key="url",
+        description="Project website URL.",
+    ),
+    _spec(
+        "website_name",
+        "social/website metadata",
+        "string",
+        "RESTART_REQUIRED",
+        group="website",
+        legacy_key="name",
+        description="Project website display name.",
+    ),
+    _spec(
+        "narrative_provider",
+        "narrative/LLM",
+        "select",
+        "RESTART_REQUIRED",
+        group="llm",
+        legacy_key="provider",
+        allowed=("disabled", "external", "ollama"),
+        description="Narrative provider.",
+    ),
+    _spec(
+        "narrative_api_url",
+        "narrative/LLM",
+        "string",
+        "RESTART_REQUIRED",
+        group="llm",
+        legacy_key="api_url",
+        description="Narrative provider endpoint.",
+    ),
+    _spec(
+        "narrative_api_key",
+        "narrative/LLM",
+        "secret",
+        "RESTART_REQUIRED",
+        group="llm",
+        legacy_key="api_key",
+        secret=True,
+        description="Narrative provider credential.",
+    ),
+    _spec(
+        "narrative_model",
+        "narrative/LLM",
+        "string",
+        "RESTART_REQUIRED",
+        group="llm",
+        legacy_key="model",
+        description="Narrative model name.",
+    ),
+    _spec(
+        "alert_max_messages_per_window",
+        "alerts",
+        "integer",
+        "HOT_APPLY",
+        group="telegram",
+        attr="alert_max_messages_per_window",
+        default=20,
+        minimum=1,
+        maximum=1000,
+        description="Maximum alert messages allowed per rate-limit window.",
+    ),
+    _spec(
+        "alert_rate_limit_window_seconds",
+        "alerts",
+        "number",
+        "HOT_APPLY",
+        group="telegram",
+        attr="alert_rate_limit_window_seconds",
+        default=60.0,
+        minimum=1.0,
+        maximum=86400.0,
+        description="Alert rate-limit window in seconds.",
+    ),
+    _spec(
+        "decision_watch_threshold",
+        "decision/research",
+        "number",
+        "HOT_APPLY",
+        default=40.0,
+        minimum=0.0,
+        maximum=100.0,
+        decision_affecting=True,
+        description="Minimum score for WATCH.",
+    ),
+    _spec(
+        "decision_strong_setup_threshold",
+        "decision/research",
+        "number",
+        "HOT_APPLY",
+        default=75.0,
+        minimum=0.0,
+        maximum=100.0,
+        decision_affecting=True,
+        description="Minimum score for STRONG_SETUP.",
+    ),
+    _spec(
+        "decision_entry_ready_threshold",
+        "decision/research",
+        "number",
+        "HOT_APPLY",
+        default=85.0,
+        minimum=0.0,
+        maximum=100.0,
+        decision_affecting=True,
+        description="Minimum score for ENTRY_READY.",
+    ),
+    _spec(
+        "decision_minimum_confidence",
+        "decision/research",
+        "number",
+        "HOT_APPLY",
+        default=0.60,
+        minimum=0.0,
+        maximum=1.0,
+        decision_affecting=True,
+        description="Minimum decision confidence.",
+    ),
+)
+
+RUNTIME_SETTING_SPEC_BY_KEY = {item.key: item for item in RUNTIME_SETTING_SPECS}
+
+
+def runtime_setting_spec(key: str) -> RuntimeSettingSpec:
+    try:
+        return RUNTIME_SETTING_SPEC_BY_KEY[key]
+    except KeyError as exc:
+        raise RuntimeSettingValidationError(f"unknown runtime setting: {key}") from exc
+
+
+def runtime_setting_value(
+    settings: Settings,
+    spec: RuntimeSettingSpec,
+    *,
+    overrides: Mapping[str, object] | None = None,
+    control_values: Mapping[str, object] | None = None,
+) -> object:
+    runtime_overrides = {} if overrides is None else overrides
+    configured_values = {} if control_values is None else control_values
+    if spec.key in runtime_overrides:
+        return runtime_overrides[spec.key]
+    if spec.key in configured_values:
+        return configured_values[spec.key]
+    if spec.attr is None:
+        return spec.default
+    value = getattr(settings, spec.attr, spec.default)
+    return spec.default if value is None and spec.default is not None else value
+
+
+def validate_runtime_setting(spec: RuntimeSettingSpec, value: object) -> object:
+    if spec.protected:
+        raise RuntimeSettingValidationError(f"{spec.key} is protected")
+    if not spec.mutable:
+        raise RuntimeSettingValidationError(f"{spec.key} is immutable")
+    if value is None:
+        return None
+    if spec.type == "boolean":
+        if not isinstance(value, bool):
+            raise RuntimeSettingValidationError(f"{spec.key} must be a boolean")
+        return value
+    if spec.type == "integer":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise RuntimeSettingValidationError(f"{spec.key} must be an integer")
+        if (
+            spec.minimum is not None
+            and value < spec.minimum
+            or spec.maximum is not None
+            and value > spec.maximum
+        ):
+            raise RuntimeSettingValidationError(f"{spec.key} is outside its allowed range")
+        return value
+    if spec.type == "number":
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise RuntimeSettingValidationError(f"{spec.key} must be a number")
+        numeric = float(value)
+        if (
+            not math.isfinite(numeric)
+            or spec.minimum is not None
+            and numeric < spec.minimum
+            or spec.maximum is not None
+            and numeric > spec.maximum
+        ):
+            raise RuntimeSettingValidationError(f"{spec.key} is outside its allowed range")
+        return numeric
+    if spec.type == "string_list":
+        if not isinstance(value, str):
+            raise RuntimeSettingValidationError(f"{spec.key} must be a comma-separated list")
+        values = tuple(item.strip().lower() for item in value.split(",") if item.strip())
+        if (
+            not values
+            or len(values) != len(set(values))
+            or spec.allowed_values is None
+            or any(item not in spec.allowed_values for item in values)
+        ):
+            raise RuntimeSettingValidationError(
+                f"{spec.key} contains unsupported or duplicate values"
+            )
+        return ",".join(values)
+    if not isinstance(value, str) or not value.strip() or len(value) > 4096:
+        raise RuntimeSettingValidationError(f"{spec.key} must be a bounded string")
+    normalized = value.strip()
+    if spec.allowed_values is None:
+        return normalized
+    canonical = next(
+        (allowed for allowed in spec.allowed_values if allowed.lower() == normalized.lower()),
+        None,
+    )
+    if canonical is None:
+        raise RuntimeSettingValidationError(f"{spec.key} has an unsupported value")
+    return canonical
+
+
+def runtime_configured_state(value: object) -> str:
+    return "CONFIGURED" if value is not None and value != "" else "NOT_CONFIGURED"
+
+
+__all__ = [
+    "RUNTIME_SETTING_SPECS",
+    "RUNTIME_SETTING_SPEC_BY_KEY",
+    "RuntimeSettingSpec",
+    "RuntimeSettingValidationError",
+    "Settings",
+    "SUPPORTED_CHAINS",
+    "runtime_configured_state",
+    "runtime_setting_spec",
+    "runtime_setting_value",
+    "validate_runtime_setting",
+]

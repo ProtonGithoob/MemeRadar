@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -14,10 +14,18 @@ from uuid import UUID, uuid4
 
 from memeradar_domain.common import ensure_utc, freeze_mapping, require_text
 
+from .config import (
+    RuntimeSettingSpec,
+    RuntimeSettingValidationError,
+    runtime_configured_state,
+    runtime_setting_spec,
+    validate_runtime_setting,
+)
 from .read_api import AuditEventView, ConfigVersionView
 
 CONTROL_API_VERSION = "control-api-v1"
 _CONFIG_VERSION_PREFIX = "control-config-v"
+_RUNTIME_SETTINGS_VERSION_PREFIX = "runtime-settings-v"
 _ZERO_UUID = UUID(int=0)
 
 DEFAULT_CONTROL_CONFIG: Mapping[str, object] = freeze_mapping(
@@ -97,6 +105,10 @@ class ControlSafetyError(RuntimeError):
     """Raised when a requested control action would loosen protected safety."""
 
 
+class ControlVersionConflictError(RuntimeError):
+    """Raised when an optimistic runtime-settings version is stale."""
+
+
 @dataclass(frozen=True, slots=True)
 class LockedExecutionBoundary:
     """Describe the future execution seam without exposing an execution port."""
@@ -163,10 +175,31 @@ class ControlState:
             "updated_by",
             require_text(self.updated_by, "updated_by", max_length=256),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeSettingsSnapshot:
+    """Versioned runtime overrides; values are never a browser-safe payload."""
+
+    version: str
+    updated_at: datetime
+    updated_by: str
+    effective_overrides: Mapping[str, object] = field(default_factory=dict)
+    pending_values: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+        object.__setattr__(self, "updated_at", ensure_utc(self.updated_at, "updated_at"))
+        object.__setattr__(
+            self, "updated_by", require_text(self.updated_by, "updated_by", max_length=256)
+        )
         object.__setattr__(
             self,
-            "correlation_id",
-            require_text(self.correlation_id, "correlation_id", max_length=128),
+            "effective_overrides",
+            freeze_mapping(self.effective_overrides, "effective overrides"),
+        )
+        object.__setattr__(
+            self, "pending_values", freeze_mapping(self.pending_values, "pending values")
         )
 
 
@@ -218,6 +251,61 @@ def _normalize_reason(reason: str) -> str:
 
 def _normalize_correlation_id(correlation_id: str) -> str:
     return require_text(correlation_id, "correlation_id", max_length=128)
+
+
+def _runtime_patch(
+    changes: Mapping[str, object], clear: Sequence[str]
+) -> dict[str, tuple[RuntimeSettingSpec, object]]:
+    if (
+        not isinstance(changes, Mapping)
+        or not isinstance(clear, Sequence)
+        or isinstance(clear, str)
+    ):
+        raise RuntimeSettingValidationError("runtime changes and clear must be bounded collections")
+    if len(changes) + len(clear) == 0:
+        raise RuntimeSettingValidationError("runtime changes must not be empty")
+    if len(changes) + len(clear) > 64:
+        raise RuntimeSettingValidationError("runtime changes contain too many fields")
+    normalized: dict[str, tuple[RuntimeSettingSpec, object]] = {}
+    for raw_key, value in changes.items():
+        if not isinstance(raw_key, str):
+            raise RuntimeSettingValidationError("runtime setting keys must be strings")
+        spec = runtime_setting_spec(raw_key)
+        if raw_key in normalized:
+            raise RuntimeSettingValidationError(f"duplicate runtime setting: {raw_key}")
+        if value is None:
+            raise RuntimeSettingValidationError(f"{raw_key} must use clear for secret removal")
+        normalized[raw_key] = (spec, validate_runtime_setting(spec, value))
+    for raw_key in clear:
+        if not isinstance(raw_key, str):
+            raise RuntimeSettingValidationError("runtime setting keys must be strings")
+        spec = runtime_setting_spec(raw_key)
+        if not spec.secret:
+            raise RuntimeSettingValidationError(f"{raw_key} is not a secret setting")
+        if raw_key in normalized:
+            raise RuntimeSettingValidationError(
+                f"runtime setting appears in changes and clear: {raw_key}"
+            )
+        if spec.protected or not spec.mutable:
+            raise RuntimeSettingValidationError(f"{raw_key} cannot be cleared")
+        normalized[raw_key] = (spec, None)
+    return normalized
+
+
+def _runtime_state_payload(
+    spec: RuntimeSettingSpec,
+    value: object,
+    *,
+    pending: bool,
+    reason: str,
+) -> Mapping[str, object]:
+    return {
+        "key": spec.key,
+        "mode": spec.mode,
+        "configured_state": runtime_configured_state(value),
+        "pending": pending,
+        "reason": reason,
+    }
 
 
 def _normalize_config_value(field_name: str, value: object) -> object:
@@ -435,6 +523,21 @@ class ControlPlanePort(Protocol):
     ) -> ConfigVersionView:
         raise NotImplementedError
 
+    async def get_runtime_settings(self) -> RuntimeSettingsSnapshot:
+        raise NotImplementedError
+
+    async def mutate_runtime_settings(
+        self,
+        principal: ControlPrincipal,
+        *,
+        changes: Mapping[str, object],
+        clear: Sequence[str],
+        reason: str,
+        correlation_id: str,
+        expected_version: str | None = None,
+    ) -> RuntimeSettingsSnapshot:
+        raise NotImplementedError
+
 
 @dataclass(slots=True)
 class InMemoryControlPlane(ControlPlanePort):
@@ -447,12 +550,18 @@ class InMemoryControlPlane(ControlPlanePort):
     _config: ConfigVersionView = field(init=False)
     _audit_events: list[AuditEventView] = field(init=False, default_factory=list)
     _config_versions: list[ConfigVersionView] = field(init=False, default_factory=list)
+    _runtime_version: str = field(init=False, default=_RUNTIME_SETTINGS_VERSION_PREFIX + "0")
+    _runtime_updated_at: datetime = field(init=False)
+    _runtime_updated_by: str = field(init=False, default="system")
+    _runtime_effective: dict[str, object] = field(init=False, default_factory=dict)
+    _runtime_pending: dict[str, object] = field(init=False, default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.execution_clear_allowed, bool):
             raise TypeError("execution_clear_allowed must be a boolean")
         now = ensure_utc(self.clock(), "clock timestamp")
         self._state = ControlState(updated_at=now)
+        self._runtime_updated_at = now
         self._config = make_config_version(
             self.initial_config,
             version=_CONFIG_VERSION_PREFIX + "0",
@@ -603,6 +712,87 @@ class InMemoryControlPlane(ControlPlanePort):
         )
         return updated
 
+    async def get_runtime_settings(self) -> RuntimeSettingsSnapshot:
+        return RuntimeSettingsSnapshot(
+            version=self._runtime_version,
+            updated_at=self._runtime_updated_at,
+            updated_by=self._runtime_updated_by,
+            effective_overrides=dict(self._runtime_effective),
+            pending_values=dict(self._runtime_pending),
+        )
+
+    async def mutate_runtime_settings(
+        self,
+        principal: ControlPrincipal,
+        *,
+        changes: Mapping[str, object],
+        clear: Sequence[str],
+        reason: str,
+        correlation_id: str,
+        expected_version: str | None = None,
+    ) -> RuntimeSettingsSnapshot:
+        normalized_reason = _normalize_reason(reason)
+        normalized_correlation = _normalize_correlation_id(correlation_id)
+        authorize(principal, ControlAction.MUTATE_CONFIG)
+        patch = _runtime_patch(changes, clear)
+        if expected_version is not None and expected_version != self._runtime_version:
+            raise ControlVersionConflictError("runtime settings version conflict")
+        before_effective = dict(self._runtime_effective)
+        before_pending = dict(self._runtime_pending)
+        for key, (spec, value) in patch.items():
+            target = self._runtime_effective if spec.mode == "HOT_APPLY" else self._runtime_pending
+            target[key] = value
+            if spec.mode == "HOT_APPLY":
+                self._runtime_pending.pop(key, None)
+        hot_config = {
+            key: value
+            for key, (spec, value) in patch.items()
+            if spec.mode == "HOT_APPLY" and key in _ALLOWED_CONFIG_FIELDS
+        }
+        if hot_config:
+            await self.mutate_config(
+                principal,
+                changes=hot_config,
+                reason=normalized_reason,
+                correlation_id=normalized_correlation,
+            )
+        if before_effective == self._runtime_effective and before_pending == self._runtime_pending:
+            return await self.get_runtime_settings()
+        now = ensure_utc(self.clock(), "clock timestamp")
+        self._runtime_version = _RUNTIME_SETTINGS_VERSION_PREFIX + str(
+            int(self._runtime_version.removeprefix(_RUNTIME_SETTINGS_VERSION_PREFIX)) + 1
+        )
+        self._runtime_updated_at = now
+        self._runtime_updated_by = principal.subject
+        for key, (spec, value) in patch.items():
+            before_value = (
+                before_effective.get(key) if spec.mode == "HOT_APPLY" else before_pending.get(key)
+            )
+            before_pending_flag = key in before_pending
+            after_pending_flag = key in self._runtime_pending
+            self._audit_events.append(
+                _audit_event(
+                    principal=principal,
+                    action=ControlAction.MUTATE_CONFIG,
+                    target=f"runtime-setting:{key}",
+                    before=_runtime_state_payload(
+                        spec,
+                        before_value,
+                        pending=before_pending_flag,
+                        reason=normalized_reason,
+                    ),
+                    after=_runtime_state_payload(
+                        spec,
+                        value,
+                        pending=after_pending_flag,
+                        reason=normalized_reason,
+                    ),
+                    occurred_at=now,
+                    correlation_id=normalized_correlation,
+                )
+            )
+        return await self.get_runtime_settings()
+
 
 __all__ = [
     "CONTROL_API_VERSION",
@@ -617,8 +807,10 @@ __all__ = [
     "ControlRole",
     "ControlSafetyError",
     "ControlState",
+    "ControlVersionConflictError",
     "InMemoryControlPlane",
     "LockedExecutionBoundary",
+    "RuntimeSettingsSnapshot",
     "apply_config_patch",
     "authorize",
     "canonical_config_hash",

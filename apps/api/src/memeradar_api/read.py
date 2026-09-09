@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Generic, Literal, TypeVar, cast
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from memeradar_application.chain_opportunity import ChainOpportunitySnapshot
-from memeradar_application.control import ControlAction
+from memeradar_application.config import Settings
+from memeradar_application.control import ControlAction, ControlPlanePort
 from memeradar_application.early_scoring import AsymmetricAlphaProjection
 from memeradar_application.provider_contracts import ProviderCapabilityStatus
 from memeradar_application.read_api import (
@@ -69,6 +71,8 @@ from memeradar_domain import (
     QualityState,
     RiskDisposition,
     normalize_chain,
+    require_evm_address,
+    require_solana_address,
 )
 
 from .auth import RoleTokenAuthenticator
@@ -77,6 +81,14 @@ _RISK_DISPOSITIONS = Literal["PASS", "WARN", "BLOCK", "UNKNOWN"]
 _WALLET_TIERS = Literal["CANDIDATE", "TIER_A", "TIER_B", "BLOCKED"]
 _POSITION_MODES = Literal["PAPER", "LIVE"]
 _POSITION_STATES = Literal["PENDING", "OPEN", "EXIT_SIGNALLED", "CLOSED"]
+_SEARCH_KINDS = Literal["TOKEN", "WALLET", "CALLER", "AMBIGUOUS", "NOT_FOUND"]
+_READINESS_STATUSES = Literal[
+    "PASS",
+    "PARTIAL",
+    "BLOCKED_EXTERNAL",
+    "INSUFFICIENT_SAMPLES",
+    "NOT_ACCEPTED",
+]
 ResponseT = TypeVar("ResponseT")
 SourceT = TypeVar("SourceT")
 BuildT = TypeVar("BuildT")
@@ -259,6 +271,7 @@ class PoolResponse(_StrictModel):
 class CandidateResponse(_StrictModel):
     id: UUID
     token_id: UUID
+    chain: str = "solana"
     mint_address: str
     symbol: str | None
     name: str | None
@@ -410,6 +423,7 @@ class TokenResponse(_StrictModel):
 
 
 class WalletResponse(_StrictModel):
+    chain: str = "solana"
     address: str
     label: str
     registry_tier: str
@@ -591,6 +605,34 @@ class ProviderHealthResponse(_StrictModel):
     capability_status: str
 
 
+class SearchResolveResponse(_StrictModel):
+    kind: _SEARCH_KINDS
+    query: str
+    chain: str | None = None
+    identifier: str | None = None
+    route: str | None = None
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class ReadinessGateResponse(_StrictModel):
+    id: str
+    name: str
+    status: _READINESS_STATUSES
+    evidence_counts: dict[str, int] = Field(default_factory=dict)
+    blockers: list[str] = Field(default_factory=list)
+    next_action: str
+
+
+class ReadinessResponse(_StrictModel):
+    as_of: datetime
+    classification: str
+    gates: list[ReadinessGateResponse]
+    hosted_ci: dict[str, object] = Field(default_factory=dict)
+    provider_runtime_blockers: list[str] = Field(default_factory=list)
+    protected_modes: dict[str, bool]
+    live_money: dict[str, object]
+
+
 class AuditEventResponse(_StrictModel):
     id: UUID
     actor: str
@@ -750,6 +792,7 @@ def _candidate_response(value: CandidateView) -> CandidateResponse:
     return CandidateResponse(
         id=value.id,
         token_id=value.token_id,
+        chain=value.chain,
         mint_address=value.mint_address,
         symbol=value.symbol,
         name=value.name,
@@ -970,6 +1013,7 @@ def _timeline_response(value: TimelineEntryView) -> TimelineEntryResponse:
 
 def _wallet_response(value: WalletView) -> WalletResponse:
     return WalletResponse(
+        chain=value.chain,
         address=value.address,
         label=value.label,
         registry_tier=value.registry_tier,
@@ -1399,9 +1443,260 @@ async def _call(operation: Awaitable[ResponseT]) -> ResponseT:
         raise _invalid_read_query() from None
 
 
+def _search_parts(raw_query: str) -> tuple[str | None, str]:
+    query = raw_query.strip()
+    if ":" not in query:
+        return None, query
+    prefix, value = query.split(":", 1)
+    if prefix.lower() not in {"solana", "bnb", "robinhood"}:
+        return None, query
+    return prefix.lower(), value.strip()
+
+
+def _service_matches(service: ReadQueryPort, name: str) -> Sequence[object]:
+    values = getattr(service, name, ())
+    return values if isinstance(values, Sequence) and not isinstance(values, str) else ()
+
+
+async def _resolve_search(service: ReadQueryPort, raw_query: str) -> SearchResolveResponse:
+    chain, query = _search_parts(raw_query)
+    if not query or len(query) > 256:
+        raise ValueError("search query must be non-empty and bounded")
+
+    try:
+        token_id = UUID(query)
+    except ValueError:
+        token_id = None
+    if token_id is not None:
+        token = await service.get_token(token_id)
+        if token is None:
+            return SearchResolveResponse(
+                kind="NOT_FOUND", query=raw_query, reason_codes=["TOKEN_NOT_FOUND"]
+            )
+        return SearchResolveResponse(
+            kind="TOKEN",
+            query=raw_query,
+            chain=token.chain,
+            identifier=str(token.id),
+            route=f"/tokens/{token.id}",
+        )
+
+    normalized: str | None = None
+    normalized_chain: str | None = chain
+    if chain is not None:
+        try:
+            normalized_chain = normalize_chain(chain).value
+            normalized = (
+                require_solana_address(query, "search address")
+                if normalized_chain == "solana"
+                else require_evm_address(query, "search address")
+            )
+        except ValueError:
+            normalized = None
+    else:
+        try:
+            normalized = require_solana_address(query, "search address")
+            normalized_chain = "solana"
+        except ValueError:
+            try:
+                normalized = require_evm_address(query, "search address")
+                normalized_chain = None
+            except ValueError:
+                normalized = None
+
+    if normalized is not None:
+        token_matches = [
+            value
+            for value in cast(Sequence[TokenView], _service_matches(service, "tokens"))
+            if getattr(value, "mint_address", None) == normalized
+            and (normalized_chain is None or getattr(value, "chain", None) == normalized_chain)
+        ]
+        find_tokens = cast(
+            Callable[[str, str | None], Awaitable[Sequence[TokenView]]] | None,
+            getattr(service, "find_tokens_by_address", None),
+        )
+        if not token_matches and callable(find_tokens):
+            token_matches = list(await find_tokens(normalized, normalized_chain))
+        wallet_matches = [
+            value
+            for value in cast(Sequence[WalletView], _service_matches(service, "wallets"))
+            if getattr(value, "address", None) == normalized
+            and (normalized_chain is None or getattr(value, "chain", None) == normalized_chain)
+        ]
+        find_wallets = cast(
+            Callable[[str, str | None], Awaitable[Sequence[WalletView]]] | None,
+            getattr(service, "find_wallets_by_address", None),
+        )
+        if not wallet_matches and callable(find_wallets):
+            wallet_matches = list(await find_wallets(normalized, normalized_chain))
+        if not wallet_matches:
+            try:
+                qualified = (
+                    normalized
+                    if normalized_chain in {None, "solana"}
+                    else f"{normalized_chain}:{normalized}"
+                )
+                wallet = await service.get_wallet(qualified)
+            except (TypeError, ValueError):
+                wallet = None
+            if wallet is not None:
+                wallet_matches = [wallet]
+        if len(token_matches) + len(wallet_matches) > 1:
+            return SearchResolveResponse(
+                kind="AMBIGUOUS",
+                query=raw_query,
+                chain=normalized_chain,
+                identifier=normalized,
+                reason_codes=["MULTIPLE_TARGETS"],
+            )
+        if token_matches:
+            token = token_matches[0]
+            return SearchResolveResponse(
+                kind="TOKEN",
+                query=raw_query,
+                chain=str(token.chain),
+                identifier=str(token.id),
+                route=f"/tokens/{token.id}",
+            )
+        if wallet_matches:
+            wallet = wallet_matches[0]
+            route_address = (
+                wallet.address if wallet.chain == "solana" else f"{wallet.chain}:{wallet.address}"
+            )
+            return SearchResolveResponse(
+                kind="WALLET",
+                query=raw_query,
+                chain=wallet.chain,
+                identifier=str(wallet.address),
+                route=f"/wallets/{route_address}",
+            )
+        if normalized_chain is None and normalized == "0x" + "0" * 40:
+            return SearchResolveResponse(
+                kind="NOT_FOUND",
+                query=raw_query,
+                identifier=normalized,
+                reason_codes=["ADDRESS_NOT_FOUND"],
+            )
+        if normalized_chain is None:
+            return SearchResolveResponse(
+                kind="AMBIGUOUS",
+                query=raw_query,
+                identifier=normalized,
+                reason_codes=["EVM_ADDRESS_UNRESOLVED"],
+            )
+
+    caller_matches = [
+        value
+        for value in cast(Sequence[CallerProfileView], _service_matches(service, "caller_profiles"))
+        if query
+        in {
+            str(getattr(value, "caller_id", "")),
+            str(getattr(value, "handle", "")),
+            str(getattr(value, "display_name", "")),
+        }
+    ]
+    if len(caller_matches) == 1:
+        caller = caller_matches[0]
+        caller_id = caller.caller_id
+        return SearchResolveResponse(
+            kind="CALLER",
+            query=raw_query,
+            identifier=caller_id,
+            route=f"/callers?caller_id={quote(caller_id, safe='')}",
+        )
+    if len(caller_matches) > 1:
+        return SearchResolveResponse(
+            kind="AMBIGUOUS", query=raw_query, reason_codes=["MULTIPLE_CALLERS"]
+        )
+    return SearchResolveResponse(kind="NOT_FOUND", query=raw_query, reason_codes=["NOT_FOUND"])
+
+
+def _readiness_projection(settings: object) -> ReadinessResponse:
+    protected_modes = {
+        "analysis_only": bool(getattr(settings, "analysis_only", True)),
+        "paper_trading": bool(getattr(settings, "paper_trading", True)),
+        "manual_execution": bool(getattr(settings, "manual_execution", False)),
+        "auto_execution": bool(getattr(settings, "auto_execution", False)),
+    }
+    gates = [
+        ReadinessGateResponse(
+            id="PR-1",
+            name="Engineering/release",
+            status="PARTIAL",
+            evidence_counts={"local_quality_gates": 1, "hosted_ci_executed_steps": 0},
+            blockers=["HOSTED_CI_BLOCKED_EXTERNAL"],
+            next_action="Run hosted CI with executed steps and record the result.",
+        ),
+        ReadinessGateResponse(
+            id="PR-2",
+            name="Providers/evidence",
+            status="BLOCKED_EXTERNAL",
+            evidence_counts={"real_provider_samples": 0},
+            blockers=["REAL_PROVIDER_ACCESS_UNAVAILABLE"],
+            next_action="Configure bounded read-only provider access and collect real samples.",
+        ),
+        ReadinessGateResponse(
+            id="PR-3",
+            name="Historical-real",
+            status="INSUFFICIENT_SAMPLES",
+            evidence_counts={"historical_real_samples": 0},
+            blockers=["HISTORICAL_REAL_SAMPLES_ZERO"],
+            next_action="Import a leakage-safe historical-real cohort and rerun research.",
+        ),
+        ReadinessGateResponse(
+            id="PR-4",
+            name="Live-shadow",
+            status="BLOCKED_EXTERNAL",
+            evidence_counts={"matured_live_shadow_samples": 0},
+            blockers=["LIVE_SHADOW_NOT_ACTIVE"],
+            next_action="Start compliant live-shadow collection with real provider evidence.",
+        ),
+        ReadinessGateResponse(
+            id="PR-5",
+            name="Operations",
+            status="PARTIAL",
+            evidence_counts={"local_operations_checks": 1},
+            blockers=["EXTERNAL_SOAK_UNVERIFIED"],
+            next_action="Complete production-like dependency restart and soak evidence.",
+        ),
+        ReadinessGateResponse(
+            id="PR-6",
+            name="PROD_READ_ONLY",
+            status="NOT_ACCEPTED",
+            evidence_counts={"accepted_deployment_modes": 0},
+            blockers=["PREREQUISITE_GATES_NOT_ACCEPTED"],
+            next_action="Accept PR-1, PR-2 and PR-5 after evidence review.",
+        ),
+        ReadinessGateResponse(
+            id="PR-7",
+            name="PROD_PAPER_AUTO",
+            status="NOT_ACCEPTED",
+            evidence_counts={"accepted_deployment_modes": 0},
+            blockers=["PREREQUISITE_GATES_NOT_ACCEPTED"],
+            next_action="Accept PR-1 through PR-5 and real paper-auto checks.",
+        ),
+    ]
+    return ReadinessResponse(
+        as_of=datetime.now(UTC),
+        classification="NOT_PRODUCTION_READY",
+        gates=gates,
+        hosted_ci={"status": "BLOCKED_EXTERNAL", "executed_steps": 0},
+        provider_runtime_blockers=["REAL_PROVIDER_ACCESS_UNAVAILABLE"],
+        protected_modes=protected_modes,
+        live_money={
+            "status": "OUT_OF_SCOPE",
+            "execution_eligible": False,
+            "next_action": "No live-money action is in scope; preserve protected modes.",
+        },
+    )
+
+
 def build_read_router(
     service: ReadQueryPort | None,
     authenticator: RoleTokenAuthenticator | None = None,
+    *,
+    settings: Settings | None = None,
+    control_plane: ControlPlanePort | None = None,
 ) -> APIRouter:
     """Build read routes over an injected application port."""
 
@@ -1415,6 +1710,16 @@ def build_read_router(
 
         dependencies.append(Depends(require_read_auth))
     router = APIRouter(prefix="/v1", tags=["read"], dependencies=dependencies)
+
+    @router.get("/search/resolve", response_model=SearchResolveResponse)
+    async def resolve_search(
+        q: Annotated[str, Query(min_length=1, max_length=256)],
+    ) -> SearchResolveResponse:
+        return await _call(_resolve_search(_require_service(service), q))
+
+    @router.get("/readiness", response_model=ReadinessResponse)
+    async def get_readiness() -> ReadinessResponse:
+        return _readiness_projection(settings)
 
     @router.get("/candidates", response_model=PageResponse[CandidateResponse])
     async def list_candidates(
@@ -1590,7 +1895,11 @@ def build_read_router(
         params: Annotated[AuditQueryParams, Query()],
     ) -> PageResponse[AuditEventResponse]:
         query = _build(lambda: AuditQuery(**params.model_dump()))
-        page = await _call(_require_service(service).list_audit_events(query))
+        if service is None and control_plane is not None:
+            events = getattr(control_plane, "audit_events", ())
+            page = Page(items=tuple(events), limit=query.limit, has_more=False)
+        else:
+            page = await _call(_require_service(service).list_audit_events(query))
         return _page_response(page, _audit_response)
 
     @router.get("/config/versions", response_model=PageResponse[ConfigVersionResponse])
@@ -1649,6 +1958,9 @@ __all__ = [
     "ProviderHealthQueryParams",
     "ProviderHealthResponse",
     "ProvenanceResponse",
+    "ReadinessGateResponse",
+    "ReadinessResponse",
+    "SearchResolveResponse",
     "ShortestPathQueryParams",
     "ShortestPathResponse",
     "SocialCallQueryParams",

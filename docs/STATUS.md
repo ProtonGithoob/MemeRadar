@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-08
+Last updated: 2026-09-09
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -40,9 +40,10 @@ zero or safe evidence.
   is `INSUFFICIENT_SAMPLES`.
 - Hosted CI triggered for the pushed commit but its jobs failed before any
   steps executed (runner/API state unavailable); managed backup/restore and
-  production-like dependency restart/soak remain externally unverified. Local browser acceptance is
-  blocked by the intentionally unconfigured control-auth gateway; no auth
-  bypass was added.
+  production-like dependency restart/soak remain externally unverified. The
+  browser gateway remains fail-closed when server credentials are absent; with
+  injected test-only server credentials, authenticated acceptance is covered
+  without exposing tokens to browser JavaScript.
 - Optional Helius, Birdeye, social, Telegram, stream, narrative, and external
   wallet enrichment may report unavailable or degraded; the free core remains
   provider-independent.
@@ -51,17 +52,28 @@ No blocker changes the readiness classification or authorizes a mode change.
 
 ## Latest engineering evidence
 
-The latest local full gate recorded after the evidence hardening:
+The latest local full gate recorded after the evidence hardening and parity
+completion:
 
-- `make verify`: 1141 Python tests passed, 11 skipped, 1 warning; 60 Vitest
-  tests passed. Focused hardening tests: 48 passed; provider-contract drift
-  check: 8 passed.
+- `make verify`: 1146 Python tests passed, 11 skipped, 1 warning; 21 frontend
+  test files and 61 Vitest tests passed.
 - Ruff, strict mypy across 126 source files, frontend lint/typecheck,
   production build, Compose validation, tracked-file secret scan, migrations,
   security review, SBOM, and `git diff --check`: passed.
-- Migration head: `0008_alpha_caller_intelligence`; metadata tables: 25.
+- Migration head: `0009_runtime_settings`; metadata tables: 26.
 - SBOM: 581 components, digest
   `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
+- Backend/API/frontend parity is closed for the current routes: canonical
+  runtime-settings mutation with restart-required and secret-safe semantics,
+  protected-mode enforcement, authenticated server gateways, universal
+  multichain search, multichain shell state, readiness projection, provider
+  configuration/runtime-health views, caller/opportunity evidence, and a
+  generated route parity manifest are covered by focused tests.
+- Browser acceptance across 1440x900, 1024x768, 768x1024, and 390x844: the
+  unconfigured run was `32 passed, 4 skipped`; the authenticated run was
+  `29 passed, 7 skipped`, including the desktop ADMIN settings mutation.
+  Skips are credential/stateful-duplicate cases, not passes for blocked
+  journeys; the explicit missing-credentials failure-state test passed.
 - Release identity and synthetic soak evidence remain local/measurement-only;
   external acceptance remains `BLOCKED_EXTERNAL`.
 
@@ -83,9 +95,8 @@ Real external samples: 0. Calibration: `INSUFFICIENT_SAMPLES`, promotion
 false. CabalSpy-compatible stream, X/Telegram compliant backfill, Robinhood
 sequencer runtime, launchpad identity verification and Chainlink feed runtime
 are `BLOCKED_EXTERNAL`; deterministic transport, gap, no-lookahead, negative
-control, dedupe, resume and failure tests pass. Browser run: 4/7 passed, 3
-blocked by control-auth configuration. No unverified launchpad or external
-provider score is authoritative.
+control, dedupe, resume and failure tests pass. No unverified launchpad or
+external provider score is authoritative.
 
 ## Current operational references
 
@@ -127,6 +138,11 @@ provider score is authoritative.
   social, provider-health, generic-EVM, read-model and quote semantics seams;
   external provider runtime validation remains blocked without compliant
   credentials/data.
+- The 2026-09-09 parity checkpoint made Settings an audited ADMIN workspace,
+  added the server-side browser control gateway, universal multichain search,
+  readiness projection, provider configuration/runtime parity, and route
+  parity coverage without changing scoring, production classification, or
+  protected modes.
 - Real-alpha production-readiness evaluation retained
   `NOT_PRODUCTION_READY`; the next meaningful acceptance step is external
   evidence collection and replay-cohort maturation, not a code or mode change.
@@ -135,7 +151,7 @@ Exact next unfinished task: obtain compliant real X/Telegram and optional
 wallet/KOL provider data plus verified Robinhood feed identities, populate all
 winner/ordinary/flat/severe-loser/rug/fake-hype/late/failed cohorts, then run
 the existing no-lookahead ablation/promotion gates without changing protected
-modes or production weights. Latest implementation commit SHA: `92cb5da`.
+modes or production weights. Latest implementation commit SHA: `PENDING_COMMIT`.
 
 Historical plans and checkpoint logs are intentionally archived from this
 status file. The canonical documents and the current plans above are the

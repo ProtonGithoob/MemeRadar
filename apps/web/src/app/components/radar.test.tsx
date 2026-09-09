@@ -12,6 +12,7 @@ import type {
 const first: CandidateRecord = {
   id: "11111111-1111-4111-8111-111111111111",
   tokenId: "22222222-2222-4222-8222-222222222222",
+  chain: "solana",
   mintAddress: "So11111111111111111111111111111111111111112",
   symbol: "MOON",
   name: "Moon Fixture",

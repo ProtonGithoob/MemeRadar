@@ -146,7 +146,14 @@ def create_app(
             authenticator=role_authenticator,
         )
     )
-    app.include_router(build_read_router(read_service, authenticator=role_authenticator))
+    app.include_router(
+        build_read_router(
+            read_service,
+            authenticator=role_authenticator,
+            settings=runtime_settings,
+            control_plane=control_plane,
+        )
+    )
     app.include_router(
         build_operations_router(operations_service, authenticator=role_authenticator)
     )

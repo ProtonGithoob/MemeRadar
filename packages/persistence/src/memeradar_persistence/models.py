@@ -738,6 +738,19 @@ class ControlStateRow(Base):
     correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
 
 
+class RuntimeSettingsRow(Base):
+    """Singleton durable runtime overrides and restart-required values."""
+
+    __tablename__ = "runtime_settings"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(256), nullable=False)
+    effective_overrides: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    pending_values: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
 class ConfigVersionRow(Base):
     """Immutable validated configuration snapshots used for replay identity."""
 

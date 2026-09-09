@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
@@ -17,6 +17,10 @@ from memeradar_application.control import (
     ControlPrincipal,
     ControlSafetyError,
     ControlState,
+    ControlVersionConflictError,
+    RuntimeSettingsSnapshot,
+    _runtime_patch,
+    _runtime_state_payload,
     apply_config_patch,
     authorize,
     config_is_decision_affecting,
@@ -27,9 +31,11 @@ from memeradar_application.control import (
 from memeradar_application.read_api import AuditEventView, ConfigVersionView
 from memeradar_domain.common import ensure_utc, require_text
 
-from .models import AuditEventRow, ConfigVersionRow, ControlStateRow
+from .models import AuditEventRow, ConfigVersionRow, ControlStateRow, RuntimeSettingsRow
 
 CONTROL_STATE_KEY = "global"
+RUNTIME_SETTINGS_KEY = "global"
+RUNTIME_SETTINGS_VERSION_PREFIX = "runtime-settings-v"
 
 
 def _now() -> datetime:
@@ -101,6 +107,22 @@ def _audit_view(row: AuditEventRow) -> AuditEventView:
     )
 
 
+def _runtime_snapshot(row: RuntimeSettingsRow | None, *, now: datetime) -> RuntimeSettingsSnapshot:
+    if row is None:
+        return RuntimeSettingsSnapshot(
+            version=RUNTIME_SETTINGS_VERSION_PREFIX + "0",
+            updated_at=now,
+            updated_by="system",
+        )
+    return RuntimeSettingsSnapshot(
+        version=row.version,
+        updated_at=row.updated_at,
+        updated_by=row.updated_by,
+        effective_overrides=dict(row.effective_overrides),
+        pending_values=dict(row.pending_values),
+    )
+
+
 class SqlAlchemyControlPlane(ControlPlanePort):
     """Persist control mutations and their audit records in one transaction."""
 
@@ -165,6 +187,16 @@ class SqlAlchemyControlPlane(ControlPlanePort):
                 actor="system",
                 created_at=ensure_utc(self._clock(), "clock timestamp"),
             )
+
+    async def get_runtime_settings(self) -> RuntimeSettingsSnapshot:
+        async with self._session_factory() as session:
+            row = cast(
+                RuntimeSettingsRow | None,
+                await session.scalar(
+                    select(RuntimeSettingsRow).where(RuntimeSettingsRow.id == RUNTIME_SETTINGS_KEY)
+                ),
+            )
+            return _runtime_snapshot(row, now=ensure_utc(self._clock(), "clock timestamp"))
 
     async def _append_audit(
         self,
@@ -383,6 +415,158 @@ class SqlAlchemyControlPlane(ControlPlanePort):
                 occurred_at=now,
                 correlation_id=normalized_correlation,
             )
+            return updated
+
+    async def mutate_runtime_settings(
+        self,
+        principal: ControlPrincipal,
+        *,
+        changes: Mapping[str, object],
+        clear: Sequence[str],
+        reason: str,
+        correlation_id: str,
+        expected_version: str | None = None,
+    ) -> RuntimeSettingsSnapshot:
+        require_text(reason, "reason", max_length=512)
+        normalized_correlation = require_text(correlation_id, "correlation_id", max_length=128)
+        authorize(principal, ControlAction.MUTATE_CONFIG)
+        patch = _runtime_patch(changes, clear)
+        async with self._session_factory() as session, session.begin():
+            row = cast(
+                RuntimeSettingsRow | None,
+                await session.scalar(
+                    select(RuntimeSettingsRow)
+                    .where(RuntimeSettingsRow.id == RUNTIME_SETTINGS_KEY)
+                    .with_for_update()
+                ),
+            )
+            now = ensure_utc(self._clock(), "clock timestamp")
+            current = _runtime_snapshot(row, now=now)
+            if expected_version is not None and expected_version != current.version:
+                raise ControlVersionConflictError("runtime settings version conflict")
+            effective = dict(current.effective_overrides)
+            pending = dict(current.pending_values)
+            before_effective = dict(effective)
+            before_pending = dict(pending)
+            for key, (spec, value) in patch.items():
+                if spec.mode == "HOT_APPLY":
+                    effective[key] = value
+                    pending.pop(key, None)
+                else:
+                    pending[key] = value
+            if effective == before_effective and pending == before_pending:
+                return current
+            version_number = (
+                int(current.version.removeprefix(RUNTIME_SETTINGS_VERSION_PREFIX) or "0") + 1
+            )
+            updated = RuntimeSettingsSnapshot(
+                version=f"{RUNTIME_SETTINGS_VERSION_PREFIX}{version_number}",
+                updated_at=now,
+                updated_by=principal.subject,
+                effective_overrides=effective,
+                pending_values=pending,
+            )
+            hot_config = {
+                key: value
+                for key, (spec, value) in patch.items()
+                if spec.mode == "HOT_APPLY" and key in DEFAULT_CONTROL_CONFIG
+            }
+            if hot_config:
+                config_row = await self._latest_config(session)
+                current_config = (
+                    _config_view(config_row)
+                    if config_row is not None
+                    else make_config_version(
+                        self._initial_config,
+                        version="control-config-v0",
+                        actor="system",
+                        created_at=now,
+                    )
+                )
+                updated_values = apply_config_patch(current_config.config, hot_config)
+                if updated_values != current_config.config:
+                    updated_config = make_config_version(
+                        updated_values,
+                        version=next_config_version(current_config.version),
+                        actor=principal.subject,
+                        created_at=now,
+                        identifier=uuid4(),
+                        decision_affecting=config_is_decision_affecting(hot_config),
+                    )
+                    session.add(
+                        ConfigVersionRow(
+                            id=updated_config.id,
+                            version=updated_config.version,
+                            created_at=updated_config.created_at,
+                            actor=updated_config.actor,
+                            config_hash=updated_config.config_hash,
+                            decision_affecting=updated_config.decision_affecting,
+                            config=_plain_json(updated_config.config),
+                        )
+                    )
+                    await self._append_audit(
+                        session,
+                        principal=principal,
+                        action=ControlAction.MUTATE_CONFIG,
+                        target="runtime-config",
+                        before={
+                            "version": current_config.version,
+                            "config_hash": current_config.config_hash,
+                            "decision_affecting": current_config.decision_affecting,
+                            "config": current_config.config,
+                        },
+                        after={
+                            "version": updated_config.version,
+                            "config_hash": updated_config.config_hash,
+                            "decision_affecting": updated_config.decision_affecting,
+                            "config": updated_config.config,
+                        },
+                        occurred_at=now,
+                        correlation_id=normalized_correlation,
+                    )
+            if row is None:
+                session.add(
+                    RuntimeSettingsRow(
+                        id=RUNTIME_SETTINGS_KEY,
+                        version=updated.version,
+                        updated_at=updated.updated_at,
+                        updated_by=updated.updated_by,
+                        effective_overrides=_plain_json(effective),
+                        pending_values=_plain_json(pending),
+                    )
+                )
+            else:
+                row.version = updated.version
+                row.updated_at = updated.updated_at
+                row.updated_by = updated.updated_by
+                row.effective_overrides = cast(dict[str, object], _plain_json(effective))
+                row.pending_values = cast(dict[str, object], _plain_json(pending))
+            for key, (spec, value) in patch.items():
+                before_value = (
+                    before_effective.get(key)
+                    if spec.mode == "HOT_APPLY"
+                    else before_pending.get(key)
+                )
+                await self._append_audit(
+                    session,
+                    principal=principal,
+                    action=ControlAction.MUTATE_CONFIG,
+                    target=f"runtime-setting:{key}",
+                    before=_runtime_state_payload(
+                        spec,
+                        before_value,
+                        pending=key in before_pending,
+                        reason=reason,
+                    ),
+                    after=_runtime_state_payload(
+                        spec,
+                        value,
+                        pending=key in pending,
+                        reason=reason,
+                    ),
+                    occurred_at=now,
+                    correlation_id=normalized_correlation,
+                )
             return updated
 
 

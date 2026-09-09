@@ -41,6 +41,7 @@ export interface RadarFilters {
 export interface CandidateRecord {
   id: string;
   tokenId: string;
+  chain: string;
   mintAddress: string;
   symbol: string | null;
   name: string | null;
@@ -169,6 +170,7 @@ export interface TimelineRecord {
 export type WalletTier = "CANDIDATE" | "TIER_A" | "TIER_B" | "BLOCKED" | "UNKNOWN";
 
 export interface WalletRecord {
+  chain?: string;
   address: string;
   label: string;
   registryTier: WalletTier;
@@ -479,21 +481,80 @@ export type RuntimeSettingState =
   | "CONFIGURED"
   | "DEFAULTED"
   | "UNCONFIGURED_OPTIONAL"
+  | "NOT_CONFIGURED"
   | "UNKNOWN";
 
 export interface RuntimeSettingRecord {
   key: string;
+  category?: string;
+  type?: string;
+  currentEffectiveValue?: RuntimeSettingValue;
+  pendingValue?: RuntimeSettingValue;
   value: RuntimeSettingValue;
   state: RuntimeSettingState;
+  configuredState?: "CONFIGURED" | "NOT_CONFIGURED";
+  pendingConfiguredState?: "CONFIGURED" | "NOT_CONFIGURED" | null;
+  configured?: boolean;
+  mutable?: boolean;
   secret: boolean;
+  protected?: boolean;
+  restartRequired?: boolean;
+  decisionAffecting?: boolean;
+  mode?: "HOT_APPLY" | "RESTART_REQUIRED" | "IMMUTABLE" | "PROTECTED";
+  allowedValues?: string[] | null;
+  minimum?: number | null;
+  maximum?: number | null;
+  description?: string;
 }
 
 export interface RuntimeSettingsRecord {
   apiVersion: string;
   asOf: string;
+  version?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  canMutate?: boolean;
   groups: Record<string, RuntimeSettingRecord[]>;
+  settings?: RuntimeSettingRecord[];
   protectedModes: ProtectedModesRecord;
   executionEligible: false;
+}
+
+export type SearchResolveKind = "TOKEN" | "WALLET" | "CALLER" | "AMBIGUOUS" | "NOT_FOUND";
+
+export interface SearchResolveRecord {
+  kind: SearchResolveKind;
+  query: string;
+  chain: string | null;
+  identifier: string | null;
+  route: string | null;
+  reasonCodes: string[];
+}
+
+export type ReadinessStatus =
+  | "PASS"
+  | "PARTIAL"
+  | "BLOCKED_EXTERNAL"
+  | "INSUFFICIENT_SAMPLES"
+  | "NOT_ACCEPTED";
+
+export interface ReadinessGateRecord {
+  id: string;
+  name: string;
+  status: ReadinessStatus;
+  evidenceCounts: Record<string, number>;
+  blockers: string[];
+  nextAction: string;
+}
+
+export interface ReadinessRecord {
+  asOf: string;
+  classification: string;
+  gates: ReadinessGateRecord[];
+  hostedCi: Record<string, unknown>;
+  providerRuntimeBlockers: string[];
+  protectedModes: ProtectedModesRecord;
+  liveMoney: Record<string, unknown>;
 }
 
 export interface ChainOpportunityFilters {
@@ -631,14 +692,16 @@ const DEFAULT_LIMIT = 50;
 const MAX_PAGE_LIMIT = 100;
 const MAX_STRING_LENGTH = 512;
 const MAX_ARRAY_LENGTH = 64;
+const MAX_RUNTIME_SETTINGS = 128;
 const MAX_PAYLOAD_KEYS = 64;
 const MAX_PAYLOAD_DEPTH = 4;
 const RUNTIME_SETTING_GROUPS = new Set([
   "providers", "chains", "telegram", "x", "social", "website", "wallet", "security", "llm"
 ]);
 const RUNTIME_SETTING_STATES = new Set<RuntimeSettingState>([
-  "CONFIGURED", "DEFAULTED", "UNCONFIGURED_OPTIONAL", "UNKNOWN"
+  "CONFIGURED", "DEFAULTED", "UNCONFIGURED_OPTIONAL", "NOT_CONFIGURED", "UNKNOWN"
 ]);
+const SUPPORTED_CHAINS = new Set(["solana", "bnb", "robinhood"]);
 const REQUEST_TIMEOUT_MS = 4_000;
 const SECRET_KEY_PATTERN =
   /(?:api[_ -]?key|access[_ -]?token|authorization|bearer|bot[_ -]?token|client[_ -]?secret|cookie|password|private[_ -]?key|seed(?:[_ -]?phrase)?|session[_ -]?token)/i;
@@ -779,6 +842,7 @@ function parseCandidate(value: unknown): CandidateRecord | null {
   if (!isRecord(value)) return null;
   const id = uuid(value.id);
   const tokenId = uuid(value.token_id);
+  const chain = value.chain === undefined ? "solana" : boundedString(value.chain, 32);
   const mintAddress = boundedString(value.mint_address, 128);
   const symbol = nullableString(value.symbol, 64);
   const name = nullableString(value.name, 256);
@@ -804,7 +868,8 @@ function parseCandidate(value: unknown): CandidateRecord | null {
   const evidenceRefs = stringArray(value.evidence_refs, 256);
 
   if (
-    id === null || tokenId === null || mintAddress === null || state === null ||
+    id === null || tokenId === null || chain === null || !SUPPORTED_CHAINS.has(chain) ||
+    mintAddress === null || !validChainAddress(chain, mintAddress) || state === null ||
     !CANDIDATE_STATES.has(state) || discoveredAt === null || discoverySource === null ||
     stateChangedAt === null || score === undefined || scoreConfidence === undefined ||
     scoreAsOf === undefined || scoreExpiresAt === undefined || riskDisposition === null ||
@@ -818,6 +883,7 @@ function parseCandidate(value: unknown): CandidateRecord | null {
   return {
     id,
     tokenId,
+    chain,
     mintAddress,
     symbol,
     name,
@@ -1107,6 +1173,7 @@ function parseConfidenceIntervals(value: unknown): Record<string, [number, numbe
 
 function validChainAddress(chain: string | null, address: string | null): boolean {
   if (chain === null || address === null) return true;
+  if (!SUPPORTED_CHAINS.has(chain)) return false;
   if (chain === "bnb" || chain === "robinhood") return /^0x[0-9a-fA-F]{40}$/.test(address);
   return SOLANA_ADDRESS_PATTERN.test(address);
 }
@@ -1496,6 +1563,7 @@ function optionalQuality(value: unknown): TimelineQuality | null | undefined {
 
 function parseWallet(value: unknown): WalletRecord | null {
   if (!isRecord(value)) return null;
+  const chain = value.chain === undefined ? "solana" : boundedString(value.chain, 32);
   const address = boundedString(value.address, 64);
   const label = boundedString(value.label, 256);
   const registryTier = boundedString(value.registry_tier, 32);
@@ -1513,7 +1581,8 @@ function parseWallet(value: unknown): WalletRecord | null {
   const evidenceRefs = stringArray(value.evidence_refs, 256);
 
   if (
-    address === null || !SOLANA_ADDRESS_PATTERN.test(address) || label === null ||
+    chain === null || !["solana", "bnb", "robinhood"].includes(chain) || address === null ||
+    (chain === "solana" ? !SOLANA_ADDRESS_PATTERN.test(address) : !/^0x[0-9a-fA-F]{40}$/.test(address)) || label === null ||
     registryTier === null || !WALLET_TIERS.has(registryTier as WalletTier) ||
     recommendedTier === null || !WALLET_TIERS.has(recommendedTier as WalletTier) ||
     asOf === null || expiresAt === null || Date.parse(expiresAt) <= Date.parse(asOf) ||
@@ -1526,6 +1595,7 @@ function parseWallet(value: unknown): WalletRecord | null {
   }
 
   return {
+    chain,
     address,
     label,
     registryTier: registryTier as WalletTier,
@@ -2044,20 +2114,90 @@ function parseRuntimeSetting(value: unknown): RuntimeSettingRecord | null {
     typeof settingValue === "boolean" || (typeof settingValue === "number" && Number.isFinite(settingValue))
     ? settingValue as RuntimeSettingValue
     : undefined;
+  const currentRaw = value.current_effective_value;
+  const currentEffectiveValue = currentRaw === undefined
+    ? safeValue
+    : currentRaw === null || typeof currentRaw === "string" || typeof currentRaw === "boolean" ||
+        (typeof currentRaw === "number" && Number.isFinite(currentRaw))
+      ? currentRaw as RuntimeSettingValue
+      : undefined;
+  const pendingRaw = value.pending_value;
+  const pendingValue = pendingRaw === undefined
+    ? null
+    : pendingRaw === null || typeof pendingRaw === "string" || typeof pendingRaw === "boolean" ||
+        (typeof pendingRaw === "number" && Number.isFinite(pendingRaw))
+      ? pendingRaw as RuntimeSettingValue
+      : undefined;
+  const category = value.category === undefined ? undefined : boundedString(value.category, 128);
+  const type = value.type === undefined ? undefined : boundedString(value.type, 32);
+  const configuredState = value.configured_state === undefined
+    ? undefined
+    : value.configured_state === "CONFIGURED" || value.configured_state === "NOT_CONFIGURED"
+      ? value.configured_state
+      : null;
+  const pendingConfiguredState = value.pending_configured_state === undefined || value.pending_configured_state === null
+    ? null
+    : value.pending_configured_state === "CONFIGURED" || value.pending_configured_state === "NOT_CONFIGURED"
+      ? value.pending_configured_state
+      : undefined;
+  const mode = value.mode === undefined
+    ? undefined
+    : value.mode === "HOT_APPLY" || value.mode === "RESTART_REQUIRED" ||
+        value.mode === "IMMUTABLE" || value.mode === "PROTECTED"
+      ? value.mode
+      : null;
+  const allowedValues = value.allowed_values === undefined || value.allowed_values === null
+    ? null
+    : stringArray(value.allowed_values, 128);
+  const minimum = value.minimum === undefined || value.minimum === null
+    ? null
+    : finiteNumber(value.minimum, -1e18, 1e18);
+  const maximum = value.maximum === undefined || value.maximum === null
+    ? null
+    : finiteNumber(value.maximum, -1e18, 1e18);
+  const description = value.description === undefined ? undefined : boundedString(value.description, 512);
   if (
     key === null || state === null || !RUNTIME_SETTING_STATES.has(state as RuntimeSettingState) ||
-    typeof value.secret !== "boolean" || safeValue === undefined ||
-    (value.secret && safeValue !== null)
+    typeof value.secret !== "boolean" || safeValue === undefined || currentEffectiveValue === undefined ||
+    pendingValue === undefined || category === null || type === null || configuredState === null ||
+    pendingConfiguredState === undefined ||
+    mode === null || allowedValues === undefined || minimum === undefined || maximum === undefined ||
+    description === null || (value.secret && (safeValue !== null || currentEffectiveValue !== null || pendingValue !== null))
   ) {
     return null;
   }
-  return { key, value: safeValue, state: state as RuntimeSettingState, secret: value.secret };
+  return {
+    key,
+    category,
+    type,
+    currentEffectiveValue,
+    pendingValue,
+    value: safeValue,
+    state: state as RuntimeSettingState,
+    configuredState,
+    pendingConfiguredState,
+    configured: typeof value.configured === "boolean" ? value.configured : configuredState === "CONFIGURED",
+    mutable: typeof value.mutable === "boolean" ? value.mutable : undefined,
+    secret: value.secret,
+    protected: typeof value.protected === "boolean" ? value.protected : undefined,
+    restartRequired: typeof value.restart_required === "boolean" ? value.restart_required : undefined,
+    decisionAffecting: typeof value.decision_affecting === "boolean" ? value.decision_affecting : undefined,
+    mode,
+    allowedValues,
+    minimum,
+    maximum,
+    description
+  };
 }
 
 function parseRuntimeSettings(value: unknown): RuntimeSettingsRecord | null {
   if (!isRecord(value) || !isRecord(value.groups) || !isRecord(value.protected_modes)) return null;
   const apiVersion = boundedString(value.api_version, 64);
   const asOf = timestamp(value.as_of);
+  const version = value.version === undefined ? "runtime-settings-v0" : boundedString(value.version, 64);
+  const updatedAt = value.updated_at === undefined ? asOf : timestamp(value.updated_at);
+  const updatedBy = value.updated_by === undefined ? "system" : boundedString(value.updated_by, 256);
+  const canMutate = value.can_mutate === undefined ? false : value.can_mutate;
   const modes = value.protected_modes;
   const protectedModes = {
     analysisOnly: modes.analysis_only,
@@ -2075,9 +2215,17 @@ function parseRuntimeSettings(value: unknown): RuntimeSettingsRecord | null {
     if (items.some((item): item is null => item === null)) return null;
     groups[name] = items as RuntimeSettingRecord[];
   }
+  const rawSettings = value.settings;
+  const settings = rawSettings === undefined
+    ? Object.values(groups).flat()
+    : Array.isArray(rawSettings) && rawSettings.length <= MAX_RUNTIME_SETTINGS
+      ? rawSettings.map(parseRuntimeSetting)
+      : null;
   if (
     apiVersion === null || asOf === null || groupEntries.length !== RUNTIME_SETTING_GROUPS.size ||
     Object.keys(groups).length !== RUNTIME_SETTING_GROUPS.size ||
+    version === null || updatedAt === null || updatedBy === null || typeof canMutate !== "boolean" ||
+    settings === null || settings.some((item): item is null => item === null) ||
     Object.values(protectedModes).some((mode) => typeof mode !== "boolean") ||
     protectedModes.analysisOnly !== true || protectedModes.paperTrading !== true ||
     protectedModes.manualExecution !== false || protectedModes.autoExecution !== false ||
@@ -2088,7 +2236,12 @@ function parseRuntimeSettings(value: unknown): RuntimeSettingsRecord | null {
   return {
     apiVersion,
     asOf,
+    version,
+    updatedAt,
+    updatedBy,
+    canMutate,
     groups,
+    settings: rawSettings === undefined ? undefined : settings as RuntimeSettingRecord[],
     protectedModes: protectedModes as ProtectedModesRecord,
     executionEligible: false
   };
@@ -2172,6 +2325,87 @@ function parseChainOpportunity(value: unknown): ChainOpportunityRecord | null {
   };
 }
 
+function parseSearchResolve(value: unknown): SearchResolveRecord | null {
+  if (!isRecord(value)) return null;
+  const kind = boundedString(value.kind, 16);
+  const query = boundedString(value.query, 256);
+  const chain = nullableString(value.chain, 32);
+  const identifier = nullableString(value.identifier, 512);
+  const route = nullableString(value.route, 1024);
+  const reasonCodes = stringArray(value.reason_codes ?? [], 128);
+  if (
+    kind === null || !["TOKEN", "WALLET", "CALLER", "AMBIGUOUS", "NOT_FOUND"].includes(kind) ||
+    query === null || chain === undefined || identifier === undefined || route === undefined ||
+    reasonCodes === null
+  ) {
+    return null;
+  }
+  return {
+    kind: kind as SearchResolveKind,
+    query,
+    chain,
+    identifier,
+    route,
+    reasonCodes
+  };
+}
+
+function parseReadinessGate(value: unknown): ReadinessGateRecord | null {
+  if (!isRecord(value)) return null;
+  const id = boundedString(value.id, 32);
+  const name = boundedString(value.name, 128);
+  const status = boundedString(value.status, 32);
+  const rawCounts = value.evidence_counts;
+  const blockers = stringArray(value.blockers ?? [], 128);
+  const nextAction = boundedString(value.next_action, 512);
+  if (id === null || name === null || status === null || ![
+    "PASS", "PARTIAL", "BLOCKED_EXTERNAL", "INSUFFICIENT_SAMPLES", "NOT_ACCEPTED"
+  ].includes(status) || !isRecord(rawCounts) || blockers === null || nextAction === null) {
+    return null;
+  }
+  const evidenceCounts: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(rawCounts)) {
+    const parsed = integer(raw, 0, 1_000_000_000);
+    if (parsed === null) return null;
+    evidenceCounts[key] = parsed;
+  }
+  return { id, name, status: status as ReadinessStatus, evidenceCounts, blockers, nextAction };
+}
+
+function parseReadiness(value: unknown): ReadinessRecord | null {
+  if (!isRecord(value)) return null;
+  const asOf = timestamp(value.as_of);
+  const classification = boundedString(value.classification, 64);
+  const rawGates = value.gates;
+  const gates = Array.isArray(rawGates) ? rawGates.map(parseReadinessGate) : null;
+  const hostedCi = safePayload(value.hosted_ci ?? {});
+  const providerRuntimeBlockers = stringArray(value.provider_runtime_blockers ?? [], 128);
+  const liveMoney = safePayload(value.live_money ?? {});
+  const modes = value.protected_modes;
+  if (
+    asOf === null || classification === null || gates === null || gates.some((gate) => gate === null) ||
+    hostedCi === null || providerRuntimeBlockers === null || liveMoney === null || !isRecord(modes) ||
+    modes.analysis_only !== true || modes.paper_trading !== true ||
+    modes.manual_execution !== false || modes.auto_execution !== false
+  ) {
+    return null;
+  }
+  return {
+    asOf,
+    classification,
+    gates: gates as ReadinessGateRecord[],
+    hostedCi,
+    providerRuntimeBlockers,
+    protectedModes: {
+      analysisOnly: true,
+      paperTrading: true,
+      manualExecution: false,
+      autoExecution: false
+    },
+    liveMoney
+  };
+}
+
 function parsePage<T>(value: unknown, parseItem: (item: unknown) => T | null): ReadPage<T> | null {
   if (!isRecord(value) || !Array.isArray(value.items) || value.items.length > MAX_PAGE_LIMIT) {
     return null;
@@ -2222,7 +2456,10 @@ function failureForStatus(status: number): ReadFailureReason {
 
 async function request<T>(url: string, parse: (value: unknown) => T | null): Promise<ReadResult<T>> {
   const viewerToken = process.env.MEMERADAR_VIEWER_API_TOKEN?.trim();
-  const headers = viewerToken ? { Authorization: `Bearer ${viewerToken}` } : undefined;
+  const controlToken = url.includes("/v1/control/")
+    ? process.env.MEMERADAR_ADMIN_API_TOKEN?.trim() || viewerToken
+    : viewerToken;
+  const headers = controlToken ? { Authorization: `Bearer ${controlToken}` } : undefined;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -2353,7 +2590,12 @@ function setBoundedText(query: URLSearchParams, name: string, value: string | un
 }
 
 export function isValidWalletAddress(address: string): boolean {
-  return typeof address === "string" && SOLANA_ADDRESS_PATTERN.test(address);
+  if (typeof address !== "string") return false;
+  const [prefix, raw] = address.includes(":") ? address.split(":", 2) : ["solana", address];
+  if (!raw || !["solana", "bnb", "robinhood"].includes(prefix.toLowerCase())) return false;
+  return prefix.toLowerCase() === "solana"
+    ? SOLANA_ADDRESS_PATTERN.test(raw)
+    : /^0x[0-9a-fA-F]{40}$/.test(raw);
 }
 
 export async function fetchWallets(
@@ -2498,6 +2740,20 @@ export async function fetchControlConfig(): Promise<ReadResult<ControlConfigReco
 export async function fetchRuntimeSettings(): Promise<ReadResult<RuntimeSettingsRecord>> {
   const url = endpoint("/v1/control/runtime-settings");
   return url === null ? configuredFailure() : request(url, parseRuntimeSettings);
+}
+
+export async function fetchSearchResolve(
+  queryValue: string
+): Promise<ReadResult<SearchResolveRecord>> {
+  const query = singleQuery();
+  setBoundedText(query, "q", queryValue);
+  const url = endpoint("/v1/search/resolve", query);
+  return url === null ? configuredFailure() : request(url, parseSearchResolve);
+}
+
+export async function fetchReadiness(): Promise<ReadResult<ReadinessRecord>> {
+  const url = endpoint("/v1/readiness");
+  return url === null ? configuredFailure() : request(url, parseReadiness);
 }
 
 export async function fetchChainOpportunities(

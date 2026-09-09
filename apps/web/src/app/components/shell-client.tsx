@@ -31,6 +31,7 @@ const NAV_SECTIONS: Array<{
     items: [
       { href: "/providers", label: "Providers", glyph: "PV" },
       { href: "/operations", label: "Operations", glyph: "OP" },
+      { href: "/readiness", label: "Readiness", glyph: "RS" },
       { href: "/audit", label: "Audit", glyph: "AU" },
       { href: "/settings", label: "Settings", glyph: "ST" }
     ]
@@ -94,34 +95,53 @@ export function SidebarNav() {
   );
 }
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SOLANA_ADDRESS_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,64}$/;
-
 export function SearchForm() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  function submit(): void {
+  async function submit(): Promise<void> {
     const value = query.trim();
-    if (UUID_PATTERN.test(value)) {
-      setError(null);
-      router.push(`/tokens/${value}`);
+    if (!value) {
+      setError("Enter a token, wallet, caller, or chain-qualified address");
       return;
     }
-    if (SOLANA_ADDRESS_PATTERN.test(value)) {
-      setError(null);
-      router.push(`/wallets/${value}`);
-      return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/search/resolve?q=${encodeURIComponent(value)}`, {
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => null) as {
+        kind?: string;
+        route?: string | null;
+        reason_codes?: unknown;
+      } | null;
+      const route = body?.route;
+      if (response.ok && body?.kind && typeof route === "string" && route.startsWith("/") && !route.startsWith("//")) {
+        router.push(route);
+        return;
+      }
+      const reasons = Array.isArray(body?.reason_codes)
+        ? body.reason_codes.filter((item): item is string => typeof item === "string").join(", ")
+        : "";
+      setError(body?.kind === "AMBIGUOUS"
+        ? "Search is ambiguous — use a chain-qualified address"
+        : body?.kind === "NOT_FOUND"
+          ? "No matching token, wallet, or caller was found"
+          : reasons || "Search service unavailable");
+    } catch {
+      setError("Search service unavailable");
+    } finally {
+      setLoading(false);
     }
-    setError("Enter a token UUID or a base58 wallet address");
   }
 
   return (
     <div aria-label="Operator search" className="ws-search" role="search">
       <input
-        aria-label="Search by token UUID or wallet address"
+        aria-label="Search token, wallet, caller, or chain-qualified address"
         aria-invalid={error !== null}
         onChange={(event) => {
           setQuery(event.target.value);
@@ -130,15 +150,15 @@ export function SearchForm() {
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
-            submit();
+            void submit();
           }
         }}
-        placeholder="Token UUID / wallet address…"
-        title={error ?? "Deep-link to a token UUID or wallet address"}
+        placeholder="Token / wallet / caller / chain:address…"
+        title={error ?? "Resolve a token, wallet, caller, or chain-qualified address"}
         type="search"
         value={query}
       />
-      <button onClick={submit} type="button">GO</button>
+      <button disabled={loading} onClick={() => void submit()} type="button">{loading ? "…" : "GO"}</button>
       {error ? (
         <span className="sr-only" role="alert">{error}</span>
       ) : null}
