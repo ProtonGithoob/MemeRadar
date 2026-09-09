@@ -151,7 +151,7 @@ Exact next unfinished task: obtain compliant real X/Telegram and optional
 wallet/KOL provider data plus verified Robinhood feed identities, populate all
 winner/ordinary/flat/severe-loser/rug/fake-hype/late/failed cohorts, then run
 the existing no-lookahead ablation/promotion gates without changing protected
-modes or production weights. Latest implementation commit SHA: `PENDING_COMMIT`.
+modes or production weights. Latest implementation commit SHA: `431e258`.
 
 Historical plans and checkpoint logs are intentionally archived from this
 status file. The canonical documents and the current plans above are the
