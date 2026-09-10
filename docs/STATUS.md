@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -52,12 +52,12 @@ No blocker changes the readiness classification or authorizes a mode change.
 
 ## Latest engineering evidence
 
-The latest local full gate recorded after the evidence hardening and parity
-completion:
+The latest local full gate recorded after the evidence hardening, parity
+completion, and alpha-gap delta:
 
-- `make verify`: 1146 Python tests passed, 11 skipped, 1 warning; 21 frontend
+- `make verify`: 1161 Python tests passed, 11 skipped, 1 warning; 21 frontend
   test files and 61 Vitest tests passed.
-- Ruff, strict mypy across 126 source files, frontend lint/typecheck,
+- Ruff, strict mypy across 128 source files, frontend lint/typecheck,
   production build, Compose validation, tracked-file secret scan, migrations,
   security review, SBOM, and `git diff --check`: passed.
 - Migration head: `0009_runtime_settings`; metadata tables: 26.
@@ -97,6 +97,21 @@ sequencer runtime, launchpad identity verification and Chainlink feed runtime
 are `BLOCKED_EXTERNAL`; deterministic transport, gap, no-lookahead, negative
 control, dedupe, resume and failure tests pass. No unverified launchpad or
 external provider score is authoritative.
+
+The 2026-09-10 external-alpha-gap delta is complete for the currently feasible
+local scope. Robinhood launch evidence now requires a verified launchpad
+identity plus finalized canonical RPC receipt reconciliation, and the shared
+launch lifecycle projection carries `CREATED`, `BONDING`, `GRADUATING`,
+`DEX_LIVE`, `UNKNOWN` with `BONDING_ROUTE`, `DEX_ROUTE`, `NO_ROUTE`, and
+`UNKNOWN` route semantics. Graduation route evidence is deduplicated by
+canonical event identity, time-bounded, and projected through token detail;
+bonding cannot become false `NO_ROUTE`. Candidate-only wallet relationship
+evidence now covers shared/repeated funding, timing, bridge origin,
+same-token behavior, cross-chain continuity, service-address exclusion, and
+provider contradiction without asserting ownership or changing production
+weights. Focused evidence tests plus the full gate pass. The free-first Solana
+launch path was audited and already covers public RPC, launchpad lifecycle, and
+DexScreener route discovery, so no duplicate fallback engine was added.
 
 ## Current operational references
 
@@ -147,11 +162,12 @@ external provider score is authoritative.
   `NOT_PRODUCTION_READY`; the next meaningful acceptance step is external
   evidence collection and replay-cohort maturation, not a code or mode change.
 
-Exact next unfinished task: obtain compliant real X/Telegram and optional
-wallet/KOL provider data plus verified Robinhood feed identities, populate all
-winner/ordinary/flat/severe-loser/rug/fake-hype/late/failed cohorts, then run
-the existing no-lookahead ablation/promotion gates without changing protected
-modes or production weights. Latest implementation commit SHA: `431e258`.
+Exact next unfinished task: obtain independently verified Robinhood launchpad
+contract/event identities and compliant real X/Telegram plus optional
+wallet/KOL provider data; then populate all winner/ordinary/flat/severe-loser/
+rug/fake-hype/late/failed cohorts and run the existing no-lookahead
+ablation/promotion gates without changing protected modes or production
+weights. Latest implementation commit SHA: `8d3e944`.
 
 Historical plans and checkpoint logs are intentionally archived from this
 status file. The canonical documents and the current plans above are the
