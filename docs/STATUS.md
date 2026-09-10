@@ -38,7 +38,7 @@ zero or safe evidence.
   data, Chainlink feed identities, and matured live-shadow observations are
   unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
   is `INSUFFICIENT_SAMPLES`.
-- Hosted CI run `34521037248` triggered for `38dd9e2`, but Backend quality,
+- Hosted CI run `34522180767` triggered for `868c709`, but Backend quality,
   Frontend quality, Compose contract, and Secret scan were not started because
   GitHub reported failed recent account payments/spending-limit exhaustion;
   hosted CI is therefore `BLOCKED_EXTERNAL`, not PASS. The workflow contains
@@ -62,7 +62,7 @@ No blocker changes the readiness classification or authorizes a mode change.
 The latest local full gate recorded after the evidence hardening, parity
 completion, and alpha-gap delta:
 
-- `make verify`: 1187 Python tests passed, 11 skipped, 1 warning; 21 frontend
+- `make verify`: 1188 Python tests passed, 11 skipped, 1 warning; 21 frontend
   test files and 67 Vitest tests passed. Skips remain environment/optional
   provider cases and are not counted as passes.
 - Ruff, strict mypy across 128 source files, frontend lint/typecheck,
@@ -200,8 +200,8 @@ contract/event identities and compliant real X/Telegram plus optional
 wallet/KOL provider data; then populate all winner/ordinary/flat/severe-loser/
 rug/fake-hype/late/failed cohorts and run the existing no-lookahead
 ablation/promotion gates without changing protected modes or production
-weights. Implementation commits: `db7cebc` and `38dd9e2`; final
-implementation HEAD SHA: `38dd9e2`. The final status reconciliation commit
+weights. Implementation commits: `db7cebc`, `38dd9e2`, and `868c709`; final
+implementation HEAD SHA: `868c709`. The final status reconciliation commit
 must preserve `HEAD == origin/main`. Hosted CI billing and main-branch
 protection remain separate operational blockers.
 
