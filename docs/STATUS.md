@@ -38,12 +38,19 @@ zero or safe evidence.
   data, Chainlink feed identities, and matured live-shadow observations are
   unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
   is `INSUFFICIENT_SAMPLES`.
-- Hosted CI triggered for the pushed commit but its jobs failed before any
-  steps executed (runner/API state unavailable); managed backup/restore and
-  production-like dependency restart/soak remain externally unverified. The
-  browser gateway remains fail-closed when server credentials are absent; with
-  injected test-only server credentials, authenticated acceptance is covered
-  without exposing tokens to browser JavaScript.
+- Hosted CI run `34521037248` triggered for `38dd9e2`, but Backend quality,
+  Frontend quality, Compose contract, and Secret scan were not started because
+  GitHub reported failed recent account payments/spending-limit exhaustion;
+  hosted CI is therefore `BLOCKED_EXTERNAL`, not PASS. The workflow contains
+  real lint, typecheck, test, migration, security, SBOM, Compose, browser,
+  build, and release-identity gates. Managed backup/restore and
+  production-like dependency restart/soak remain externally unverified.
+- `MAIN_BRANCH_PROTECTION_NOT_ENFORCED`: the GitHub branch-protection API
+  returned HTTP 403 because the private repository requires GitHub Pro or
+  public visibility for that feature. No repository protection is claimed.
+- The browser gateway remains fail-closed when server credentials are absent;
+  with injected test-only server credentials, authenticated acceptance is
+  covered without exposing tokens to browser JavaScript.
 - Optional Helius, Birdeye, social, Telegram, stream, narrative, and external
   wallet enrichment may report unavailable or degraded; the free core remains
   provider-independent.
@@ -55,14 +62,18 @@ No blocker changes the readiness classification or authorizes a mode change.
 The latest local full gate recorded after the evidence hardening, parity
 completion, and alpha-gap delta:
 
-- `make verify`: 1161 Python tests passed, 11 skipped, 1 warning; 21 frontend
-  test files and 61 Vitest tests passed.
+- `make verify`: 1187 Python tests passed, 11 skipped, 1 warning; 21 frontend
+  test files and 67 Vitest tests passed. Skips remain environment/optional
+  provider cases and are not counted as passes.
 - Ruff, strict mypy across 128 source files, frontend lint/typecheck,
   production build, Compose validation, tracked-file secret scan, migrations,
   security review, SBOM, and `git diff --check`: passed.
 - Migration head: `0009_runtime_settings`; metadata tables: 26.
 - SBOM: 581 components, digest
   `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
+- Security review returned `PASS` with protected modes verified, while its
+  external acceptance remained `BLOCKED_EXTERNAL` and container/npm/pip
+  external scans remained `NOT_RUN`.
 - Backend/API/frontend parity is closed for the current routes: canonical
   runtime-settings mutation with restart-required and secret-safe semantics,
   protected-mode enforcement, authenticated server gateways, universal
@@ -74,6 +85,9 @@ completion, and alpha-gap delta:
   `29 passed, 7 skipped`, including the desktop ADMIN settings mutation.
   Skips are credential/stateful-duplicate cases, not passes for blocked
   journeys; the explicit missing-credentials failure-state test passed.
+- A fresh isolated production frontend server with empty server credentials
+  passed browser acceptance: `32 passed, 4 skipped`. The browser suite did not
+  exercise live-money execution.
 - Release identity and synthetic soak evidence remain local/measurement-only;
   external acceptance remains `BLOCKED_EXTERNAL`.
 
@@ -98,20 +112,39 @@ are `BLOCKED_EXTERNAL`; deterministic transport, gap, no-lookahead, negative
 control, dedupe, resume and failure tests pass. No unverified launchpad or
 external provider score is authoritative.
 
-The 2026-09-10 external-alpha-gap delta is complete for the currently feasible
-local scope. Robinhood launch evidence now requires a verified launchpad
-identity plus finalized canonical RPC receipt reconciliation, and the shared
-launch lifecycle projection carries `CREATED`, `BONDING`, `GRADUATING`,
-`DEX_LIVE`, `UNKNOWN` with `BONDING_ROUTE`, `DEX_ROUTE`, `NO_ROUTE`, and
-`UNKNOWN` route semantics. Graduation route evidence is deduplicated by
-canonical event identity, time-bounded, and projected through token detail;
-bonding cannot become false `NO_ROUTE`. Candidate-only wallet relationship
-evidence now covers shared/repeated funding, timing, bridge origin,
-same-token behavior, cross-chain continuity, service-address exclusion, and
-provider contradiction without asserting ownership or changing production
-weights. Focused evidence tests plus the full gate pass. The free-first Solana
-launch path was audited and already covers public RPC, launchpad lifecycle, and
-DexScreener route discovery, so no duplicate fallback engine was added.
+The 2026-09-10 completion/hardening sprint is implemented for the feasible
+local scope. The reused `GraduationAwareRouteAnalyzer` now materializes bounded
+SQL-backed lifecycle reads from persisted observations, preserving freshness,
+provenance, ordering, provider conflict, and no-lookahead semantics. Robinhood
+sequencer observations have a bounded read-only automatic RPC reconciliation
+service: chain 4663, receipt success, contract/event identity, and finality
+must all verify before an observation becomes authoritative; missing external
+feed access and an empty verified launchpad registry remain
+`BLOCKED_EXTERNAL`. Candidate-only wallet relationship evidence now flows from
+bounded persisted funding/transfer/bridge/activity/link observations through
+the existing creator graph and wallet read surface. Known exchange, bridge,
+router, aggregator, custodian, pool, program, system, and shared-service
+addresses are excluded fail-closed across all relationship paths; ownership is
+never asserted and production weights are unchanged. Strict lifecycle parsing,
+operator lifecycle/relationship evidence, parity-manifest coverage, and
+conflicted/unknown display states are exposed in the existing frontend.
+The free-first Solana launch path was audited and already covers public RPC,
+launchpad lifecycle, and DexScreener route discovery, so no duplicate fallback
+engine was added.
+
+## Hardening sprint layer status
+
+| Capability | Domain implemented | Runtime wired | Persisted | API exposed | Frontend exposed | Real data verified |
+|---|---|---|---|---|---|---|
+| Launch lifecycle and graduation-aware route discovery | `YES` | `YES` | `YES` via observations and bounded SQL materialization | `YES` via token reads | `YES` via Token Detail | `NO` (`0` real samples) |
+| Robinhood sequencer → canonical RPC reconciliation | `YES` | `YES` via bounded reconciler/persistence callback | `YES` when the runtime callback persists the canonical observation | `YES` through canonical lifecycle evidence; operational counters are not persisted | `PARTIAL` (lifecycle evidence; no fabricated Operations counters) | `NO` (`BLOCKED_EXTERNAL`) |
+| Exact event-time/no-lookahead semantics | `YES` | `YES` | `YES` with nullable occurred/observed/ingested times | `YES` with time quality | `YES` where displayed | `NO` |
+| Wallet relationship evidence | `YES` | `YES` | `YES` from normalized observations | `YES` via wallet graph/read model | `YES` via relationship edge details | `NO` (`0` real samples) |
+| Solana free-first launch path | `YES` existing architecture | `YES` existing providers | `YES` existing normalized path | `YES` existing reads | `YES` existing lifecycle projections | `NO` real-alpha verification |
+
+Relationship evidence remains measurement-only, candidate-only,
+`ownership_asserted=false`, and `execution_eligible=false`. No new lifecycle,
+relationship, graph, optimizer, or Solana fallback engine was added.
 
 ## Current operational references
 
@@ -167,7 +200,10 @@ contract/event identities and compliant real X/Telegram plus optional
 wallet/KOL provider data; then populate all winner/ordinary/flat/severe-loser/
 rug/fake-hype/late/failed cohorts and run the existing no-lookahead
 ablation/promotion gates without changing protected modes or production
-weights. Latest implementation commit SHA: `8d3e944`.
+weights. Implementation commits: `db7cebc` and `38dd9e2`; final
+implementation HEAD SHA: `38dd9e2`. The final status reconciliation commit
+must preserve `HEAD == origin/main`. Hosted CI billing and main-branch
+protection remain separate operational blockers.
 
 Historical plans and checkpoint logs are intentionally archived from this
 status file. The canonical documents and the current plans above are the
