@@ -161,7 +161,7 @@ class BirdeyeMarketRecord:
     token: TokenIdentity
     kind: str
     payload: Mapping[str, object]
-    occurred_at: datetime
+    occurred_at: datetime | None
     observed_at: datetime
     ingested_at: datetime
     quality_state: QualityState
@@ -181,7 +181,6 @@ class BirdeyeMarketRecord:
             self.observed_at,
             self.ingested_at,
         )
-        assert occurred is not None
         object.__setattr__(self, "occurred_at", occurred)
         object.__setattr__(self, "observed_at", observed)
         object.__setattr__(self, "ingested_at", ingested)
@@ -218,24 +217,25 @@ def _record(
     required_present: bool,
     source_path: str,
 ) -> BirdeyeMarketRecord:
-    occurred_at = (
-        _optional_timestamp(
-            data,
-            "updateUnixTime",
-            "update_unix_time",
-            "unixTime",
-            "timestamp",
-            "listedAt",
-            "listed_at",
-            "createdAt",
-            "created_at",
-        )
-        or observed_at
+    occurred_at = _optional_timestamp(
+        data,
+        "updateUnixTime",
+        "update_unix_time",
+        "unixTime",
+        "timestamp",
+        "listedAt",
+        "listed_at",
+        "createdAt",
+        "created_at",
+    )
+    normalized_payload = dict(payload)
+    normalized_payload["event_time_quality"] = (
+        "EXACT" if occurred_at is not None else "UNKNOWN"
     )
     return BirdeyeMarketRecord(
         token=token,
         kind=kind,
-        payload=payload,
+        payload=normalized_payload,
         occurred_at=occurred_at,
         observed_at=observed_at,
         ingested_at=ingested_at,
@@ -709,16 +709,17 @@ class BirdeyeRestAdapter(CandidateDiscoveryPort, MarketDataPort):
                 mint = require_solana_address(raw_address, "token address")  # type: ignore[arg-type]
             except (TypeError, ValueError) as exc:
                 raise ProviderSchemaError("listing token address was invalid") from exc
-            occurred_at = (
-                _optional_timestamp(
-                    item,
-                    "listedAt",
-                    "listed_at",
-                    "createdAt",
-                    "created_at",
-                )
-                or observed_at
+            occurred_at = _optional_timestamp(
+                item,
+                "listedAt",
+                "listed_at",
+                "createdAt",
+                "created_at",
             )
+            if occurred_at is None:
+                # A discovery candidate requires an exact listing time; do not
+                # turn provider observation time into historical event time.
+                continue
             raw_program = _field(item, "tokenProgram", "token_program")
             token_program = (
                 require_text(raw_program, "token_program", max_length=128)

@@ -157,9 +157,28 @@ def test_market_trade_holder_and_security_reads_become_observations() -> None:
     assert market.normalized_payload["price"] == Decimal("0.00125")
     assert market.normalized_payload["liquidity"] == Decimal("125000.5")
     assert market.quality_state is QualityState.FRESH
+    trade = next(item for item in result if item.kind == "market.trade_data")
+    assert trade.occurred_at is None
+    assert trade.normalized_payload["event_time_quality"] == "UNKNOWN"
     security = next(item for item in result if item.kind == "risk.security")
     assert security.normalized_payload["is_freezable"] is False
     assert security.normalized_payload["is_mintable"] is False
+
+
+def test_listing_without_event_time_is_not_dated_at_observation_time() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"success": True, "data": {"items": [{"address": MINT}]}},
+        )
+
+    adapter, client = make_adapter(httpx.MockTransport(handler))
+    try:
+        result = asyncio.run(adapter.discover(DiscoveryRequest(context=context(), limit=1)))
+    finally:
+        asyncio.run(client.aclose())
+
+    assert result == ()
 
 
 def test_endpoint_rejects_credential_query_and_repr_hides_api_key() -> None:
