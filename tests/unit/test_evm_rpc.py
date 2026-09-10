@@ -75,6 +75,44 @@ def test_robinhood_rpc_verifies_eth_chain_id_without_write_methods() -> None:
     asyncio.run(scenario())
 
 
+def test_evm_rpc_fetches_transaction_receipt_without_exposing_write_methods() -> None:
+    calls: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body["method"])
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"transactionHash": "0x" + "12" * 32, "status": "0x1"},
+            },
+        )
+
+    async def scenario() -> None:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter = EvmRpcAdapter(
+            Chain.ROBINHOOD,
+            "https://fixture.robinhood.example",
+            client=client,
+            transport=transport(),
+            clock=lambda: NOW,
+        )
+        try:
+            receipt = await adapter.fetch_transaction_receipt(
+                "0x" + "12" * 32,
+                context=context(),
+            )
+            assert receipt["transactionHash"] == "0x" + "12" * 32
+            assert calls == ["eth_getTransactionReceipt"]
+            assert not hasattr(adapter, "send_transaction")
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())
+
+
 def test_evm_rpc_rejects_a_wrong_chain_before_enrichment() -> None:
     async def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": "0x38"})

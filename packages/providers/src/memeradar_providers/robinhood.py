@@ -108,7 +108,72 @@ class RobinhoodLaunchpadDecoder:
             + hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
         )
 
-    def decode(self, message: object, context: ProviderRequestContext) -> Observation:
+    @staticmethod
+    def _receipt_reconciliation(
+        message: Mapping[str, object],
+        receipt: Mapping[str, object],
+        *,
+        contract: str,
+        selector: str,
+    ) -> tuple[bool, str, str]:
+        tx_hash = message.get("tx_hash")
+        receipt_hash = receipt.get("transactionHash", receipt.get("tx_hash"))
+        if not isinstance(tx_hash, str) or not isinstance(receipt_hash, str):
+            return False, "UNKNOWN", "RPC_RECONCILIATION_FAILED"
+        if tx_hash.lower() != receipt_hash.lower():
+            return False, "UNKNOWN", "RPC_RECONCILIATION_FAILED"
+        chain_id = receipt.get("chainId", receipt.get("chain_id"))
+        if chain_id is not None:
+            try:
+                parsed_chain_id = int(
+                    str(chain_id), 16 if str(chain_id).lower().startswith("0x") else 10
+                )
+            except (TypeError, ValueError):
+                return False, "UNKNOWN", "RPC_RECONCILIATION_FAILED"
+            if parsed_chain_id != ROBINHOOD_CHAIN_ID:
+                return False, "UNKNOWN", "RPC_RECONCILIATION_FAILED"
+        status = str(receipt.get("status", "")).lower()
+        if status not in {"0x1", "1", "success"}:
+            return False, "UNKNOWN", "RPC_RECONCILIATION_FAILED"
+        logs = receipt.get("logs")
+        if not isinstance(logs, Sequence) or isinstance(logs, str | bytes | bytearray):
+            return False, "UNKNOWN", "RPC_RECONCILIATION_FAILED"
+        matched_log = False
+        for item in logs:
+            if not isinstance(item, Mapping):
+                continue
+            raw_address = item.get("address", item.get("contract_address"))
+            if not isinstance(raw_address, str) or raw_address.lower() != contract.lower():
+                continue
+            raw_selector = item.get("selector")
+            topics = item.get("topics")
+            topic_selector = (
+                topics[0]
+                if isinstance(topics, Sequence)
+                and not isinstance(topics, str | bytes | bytearray)
+                and topics
+                else None
+            )
+            if raw_selector == selector or topic_selector == selector:
+                matched_log = True
+                break
+        if not matched_log:
+            return False, "UNKNOWN", "RPC_RECONCILIATION_FAILED"
+        raw_finality = receipt.get("finality", receipt.get("commitment"))
+        if raw_finality is None:
+            return True, "UNKNOWN", "RPC_FINALITY_UNKNOWN"
+        finality = str(raw_finality).upper()
+        if finality != "FINALIZED":
+            return True, finality, "RPC_FINALITY_UNKNOWN"
+        return True, finality, ""
+
+    def decode(
+        self,
+        message: object,
+        context: ProviderRequestContext,
+        *,
+        canonical_receipt: Mapping[str, object] | None = None,
+    ) -> Observation:
         if not isinstance(message, Mapping):
             raise ValueError("launchpad message must be a mapping")
         observed = ensure_utc(context.requested_at, "observed_at")
@@ -135,6 +200,10 @@ class RobinhoodLaunchpadDecoder:
             "token_address": message.get("token_address"),
             "creator_address": message.get("creator_address"),
             "source_id": f"robinhood:{source}",
+            "source_layer": "SEQUENCER",
+            "authoritative": False,
+            "rpc_reconciled": False,
+            "commitment": "UNKNOWN",
         }
         quality = QualityState.FRESH if identity is not None else QualityState.UNKNOWN
         if identity is None:
@@ -146,6 +215,25 @@ class RobinhoodLaunchpadDecoder:
             payload["verified_at"] = identity.verified_at.isoformat()
             payload["chain_id"] = identity.chain_id
             parser_version = identity.parser_version
+            if canonical_receipt is None:
+                quality = QualityState.UNKNOWN
+                payload["reason_codes"] = ("RPC_RECONCILIATION_REQUIRED",)
+            else:
+                reconciled, commitment, reason = self._receipt_reconciliation(
+                    message,
+                    canonical_receipt,
+                    contract=contract,
+                    selector=selector,
+                )
+                payload["rpc_reconciled"] = reconciled
+                payload["commitment"] = commitment
+                if reason:
+                    quality = QualityState.UNKNOWN
+                    payload["reason_codes"] = (reason,)
+                else:
+                    quality = QualityState.FRESH
+                    payload["source_layer"] = "RPC_RECONCILIATION"
+                    payload["authoritative"] = True
         return Observation(
             kind="chain.launchpad",
             provenance=Provenance(

@@ -420,6 +420,7 @@ class TokenResponse(_StrictModel):
     creator_wallet: str | None = None
     pools: list[PoolResponse] = Field(default_factory=list)
     candidate: CandidateResponse | None = None
+    launch_lifecycle: dict[str, object] = Field(default_factory=dict)
 
 
 class WalletResponse(_StrictModel):
@@ -980,6 +981,7 @@ def _token_response(value: TokenView) -> TokenResponse:
         creator_wallet=value.creator_wallet,
         pools=[_pool_response(pool) for pool in value.pools],
         candidate=None if value.candidate is None else _candidate_response(value.candidate),
+        launch_lifecycle=_mapping(value.launch_lifecycle),
     )
 
 

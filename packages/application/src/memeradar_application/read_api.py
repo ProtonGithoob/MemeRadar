@@ -1080,6 +1080,7 @@ class TokenView:
     creator_wallet: str | None = None
     pools: tuple[PoolView, ...] = ()
     candidate: CandidateView | None = None
+    launch_lifecycle: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
@@ -1123,6 +1124,7 @@ class TokenView:
         object.__setattr__(self, "pools", pools)
         if self.candidate is not None and not isinstance(self.candidate, CandidateView):
             raise TypeError("candidate must be a CandidateView or None")
+        object.__setattr__(self, "launch_lifecycle", safe_read_payload(self.launch_lifecycle))
 
 
 @dataclass(frozen=True, slots=True)

@@ -68,6 +68,12 @@ def _service() -> tuple[InMemoryReadQueryService, object, object]:
             ),
         ),
         candidate=candidate,
+        launch_lifecycle={
+            "lifecycle_state": "BONDING",
+            "route_state": "BONDING",
+            "route_available": None,
+            "quality_state": "FRESH",
+        },
     )
     timeline = (
         TimelineEntryView(
@@ -178,6 +184,7 @@ def test_all_read_routes_return_bounded_safe_envelopes() -> None:
     assert candidate.json()["execution_eligible"] is False
     assert token.status_code == 200
     assert token.json()["candidate"]["risk_disposition"] == "PASS"
+    assert token.json()["launch_lifecycle"]["route_state"] == "BONDING"
     assert timeline.status_code == 200
     assert [item["kind"] for item in timeline.json()["items"]] == ["candidate.state_transition"]
     assert wallets.status_code == 200

@@ -249,6 +249,7 @@ def _token_view(row: TokenRow, candidate: CandidateView | None) -> TokenView:
         creator_wallet=row.creator_wallet,
         pools=tuple(_pool_view(pool) for pool in row.pools),
         candidate=candidate,
+        launch_lifecycle={},
     )
 
 

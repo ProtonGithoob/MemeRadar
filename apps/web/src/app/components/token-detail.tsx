@@ -368,6 +368,9 @@ function ProvenancePanel({ token, entries }: { token: TokenRecord; entries: Time
 }
 
 function MetadataPanels({ token }: { token: TokenRecord }) {
+  const lifecycle = token.launchLifecycle ?? {};
+  const lifecycleState = typeof lifecycle.lifecycle_state === "string" ? lifecycle.lifecycle_state : "UNKNOWN";
+  const routeState = typeof lifecycle.route_state === "string" ? lifecycle.route_state : "UNKNOWN";
   return (
     <section aria-label="Token metadata" className="overview-grid">
       <article className="detail-panel">
@@ -395,6 +398,11 @@ function MetadataPanels({ token }: { token: TokenRecord }) {
             ))}
           </div>
         )}
+      </article>
+      <article className="detail-panel">
+        <span className="card-label">LAUNCH / ROUTE</span>
+        <strong>{lifecycleState}</strong>
+        <small className="muted-copy">ROUTE {routeState}; unknown remains unknown until discovery evidence is complete.</small>
       </article>
     </section>
   );

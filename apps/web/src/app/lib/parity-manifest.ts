@@ -55,8 +55,8 @@ export const PARITY_MANIFEST: Record<string, ParityManifestEntry> = {
     omissions: [{ field: "failure_rate", reason: "no normalized failure-rate field exists; failure count remains displayed" }]
   },
   "/tokens/[tokenId]": {
-    apiFields: ["chain", "mint", "pools", "candidate", "timeline", "quality", "provenance"],
-    frontendFields: ["chain", "identity", "pools", "candidate", "timeline", "quality", "provenance"],
+    apiFields: ["chain", "mint", "pools", "candidate", "launch_lifecycle", "timeline", "quality", "provenance"],
+    frontendFields: ["chain", "identity", "pools", "candidate", "launch_lifecycle", "timeline", "quality", "provenance"],
     omissions: [{ field: "provider raw payload", reason: "normalized timeline payload is the operator boundary" }]
   },
   "/providers": {

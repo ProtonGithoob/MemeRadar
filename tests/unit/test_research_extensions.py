@@ -545,9 +545,17 @@ def test_robinhood_sequencer_orders_events_and_unverified_launchpad_is_unknown()
             "contract_address": EVM_TOKEN,
             "selector": "0x12345678",
             "event_id": "launch-2",
+            "tx_hash": "0x" + "12" * 32,
             "event_type": "first_liquidity",
         },
         ProviderRequestContext("rh-launch-verified", NOW),
+        canonical_receipt={
+            "transactionHash": "0x" + "12" * 32,
+            "chainId": 4663,
+            "status": "0x1",
+            "finality": "FINALIZED",
+            "logs": [{"address": EVM_TOKEN, "selector": "0x12345678"}],
+        },
     )
     assert verified.quality_state is QualityState.FRESH
     assert verified.normalized_payload["launchpad"] == "verified-launchpad"

@@ -55,6 +55,7 @@ _CREDENTIAL_QUERY_KEYS = {
     "token",
 }
 _EVM_HEX_INT = re.compile(r"^0x[0-9a-fA-F]+$")
+_EVM_TX_HASH = re.compile(r"^0x[0-9a-fA-F]{64}$")
 
 
 def _payload_hash(value: object) -> str:
@@ -308,6 +309,28 @@ class EvmRpcAdapter(OnChainPort):
             ({"to": normalized_address, "data": data}, "latest"),
             context=context,
         )
+
+    async def fetch_transaction_receipt(
+        self,
+        transaction_hash: str,
+        *,
+        context: ProviderRequestContext,
+    ) -> Mapping[str, object] | None:
+        """Read a canonical receipt; this adapter intentionally has no write methods."""
+
+        normalized_hash = require_text(transaction_hash, "transaction_hash", max_length=66)
+        if _EVM_TX_HASH.fullmatch(normalized_hash) is None:
+            raise ValueError("transaction_hash must be a canonical EVM transaction hash")
+        result = await self._rpc(
+            "eth_getTransactionReceipt",
+            (normalized_hash,),
+            context=context,
+        )
+        if result is None:
+            return None
+        if not isinstance(result, Mapping):
+            raise ProviderSchemaError("provider transaction receipt was invalid")
+        return dict(result)
 
     async def probe_health(self, *, context: ProviderRequestContext) -> Mapping[str, object]:
         status = EvmRpcHealthStatus.PASS

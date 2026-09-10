@@ -143,6 +143,7 @@ export interface TokenRecord {
   creatorWallet: string | null;
   pools: PoolRecord[];
   candidate: CandidateRecord | null;
+  launchLifecycle?: Record<string, unknown>;
 }
 
 export interface ProvenanceRecord {
@@ -1071,6 +1072,7 @@ function parseToken(value: unknown): TokenRecord | null {
   const candidate = value.candidate === null || value.candidate === undefined
     ? null
     : parseCandidate(value.candidate);
+  const launchLifecycle = safePayload(value.launch_lifecycle ?? {});
 
   if (
     id === null || chain === null || mintAddress === null || tokenProgram === null ||
@@ -1078,6 +1080,7 @@ function parseToken(value: unknown): TokenRecord | null {
     createdOnchainAt === undefined || firstSeenAt === undefined ||
     status === null || creatorWallet === undefined || pools === null ||
     pools.some((pool): pool is null => pool === null) ||
+    launchLifecycle === null ||
     (value.candidate !== null && value.candidate !== undefined && candidate === null)
   ) {
     return null;
@@ -1096,7 +1099,8 @@ function parseToken(value: unknown): TokenRecord | null {
     status,
     creatorWallet,
     pools: pools as PoolRecord[],
-    candidate
+    candidate,
+    launchLifecycle
   };
 }
 
