@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -29,6 +29,7 @@ from memeradar_domain import (
     IdempotencyConflict,
     IdentityEvidenceType,
     IdentityLinkState,
+    Observation,
     PoolIdentity,
     QualityState,
     ReasonCode,
@@ -54,6 +55,7 @@ from .models import (
     CrossChainIdentityEvidenceRow,
     DomainEventRow,
     FeatureSnapshotRow,
+    ObservationRow,
     OutboxRow,
     RiskAssessmentRow,
     ScoreSnapshotRow,
@@ -77,6 +79,91 @@ class OutboxLeaseLost(RuntimeError):
 _CALLER_IDENTITY_NAMESPACE = "https://memeradar.local/caller/"
 _SOCIAL_CALL_NAMESPACE = "https://memeradar.local/social-call/"
 _CROSS_CHAIN_EVIDENCE_NAMESPACE = "https://memeradar.local/cross-chain-evidence/"
+
+
+def _payload_text(payload: Mapping[str, object], key: str, max_length: int) -> str | None:
+    value = payload.get(key)
+    return value if isinstance(value, str) and 0 < len(value) <= max_length else None
+
+
+def _payload_int(payload: Mapping[str, object], key: str) -> int | None:
+    value = payload.get(key)
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def observation_to_row(observation: Observation) -> ObservationRow:
+    """Map a normalized observation into the existing append-oriented table."""
+
+    if not isinstance(observation, Observation):
+        raise TypeError("observation must be an Observation")
+    payload = observation.normalized_payload
+    raw_reason_codes = payload.get("reason_codes", ())
+    reason_codes: list[dict[str, object]] = (
+        [
+            {"code": str(value), "detail": None, "evidence_refs": []}
+            for value in raw_reason_codes
+        ]
+        if isinstance(raw_reason_codes, Sequence)
+        and not isinstance(raw_reason_codes, str | bytes | bytearray)
+        else []
+    )
+    return ObservationRow(
+        id=observation.id,
+        candidate_id=observation.candidate_id,
+        token_id=observation.token_id,
+        kind=observation.kind,
+        provider=observation.provenance.provider,
+        source_id=observation.provenance.source_id,
+        occurred_at=observation.occurred_at,
+        observed_at=observation.observed_at,
+        ingested_at=observation.ingested_at,
+        parser_version=observation.provenance.parser_version,
+        quality_state=observation.quality_state.value,
+        raw_payload_hash=observation.provenance.raw_payload_hash,
+        raw_payload_ref=observation.provenance.raw_payload_ref,
+        normalized_payload=dict(json_safe(payload)),
+        chain=_payload_text(payload, "chain", 32),
+        slot=_payload_int(payload, "slot"),
+        signature=_payload_text(payload, "signature", 256),
+        event_index=_payload_int(payload, "event_index"),
+        program_id=_payload_text(payload, "program_id", 64),
+        discriminator_or_tag=_payload_text(payload, "discriminator_or_tag", 128),
+        protocol=_payload_text(payload, "protocol", 128),
+        event_type=_payload_text(payload, "event_type", 128),
+        source_transport=_payload_text(payload, "source_transport", 128),
+        commitment=_payload_text(payload, "commitment", 32),
+        recovery_state=_payload_text(payload, "recovery_state", 32),
+        backfill_source=_payload_text(payload, "backfill_source", 128),
+        registry_version=_payload_text(payload, "registry_version", 128),
+        event_schema_version=_payload_int(payload, "event_schema_version"),
+        strategy_name=_payload_text(payload, "strategy_name", 128),
+        strategy_version=_payload_text(payload, "strategy_version", 128),
+        config_hash=_payload_text(payload, "config_hash", 128),
+        reason_codes=reason_codes,
+        provenance=provenance_to_json((observation.provenance,)),
+    )
+
+
+def _observation_row_matches(row: ObservationRow, mapped: ObservationRow) -> bool:
+    return (
+        row.occurred_at == mapped.occurred_at
+        and row.observed_at == mapped.observed_at
+        and row.ingested_at == mapped.ingested_at
+        and row.parser_version == mapped.parser_version
+        and row.quality_state == mapped.quality_state
+        and row.normalized_payload == mapped.normalized_payload
+        and row.raw_payload_hash == mapped.raw_payload_hash
+        and row.raw_payload_ref == mapped.raw_payload_ref
+    )
 
 
 def _caller_identity_id(identity: CallerIdentity) -> UUID:
@@ -409,6 +496,33 @@ class CallerIdentityRepository:
     async def get(self, identity_id: UUID) -> CallerIdentity | None:
         row = await self._session.get(CallerIdentityRow, identity_id)
         return None if row is None else caller_identity_from_row(row)
+
+
+class ObservationRepository:
+    """Persist generic normalized evidence without silently mutating replays."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, observation: Observation) -> ObservationRow:
+        mapped = observation_to_row(observation)
+        row = await self._session.scalar(
+            select(ObservationRow).where(
+                ObservationRow.provider == mapped.provider,
+                ObservationRow.kind == mapped.kind,
+                ObservationRow.source_id == mapped.source_id,
+            )
+        )
+        if row is not None:
+            if not _observation_row_matches(row, mapped):
+                raise IdempotencyConflict("observation conflicts with persisted source identity")
+            return row
+        self._session.add(mapped)
+        await self._session.flush()
+        return mapped
+
+    async def save(self, observation: Observation) -> ObservationRow:
+        return await self.add(observation)
 
 
 class SocialCallObservationRepository:

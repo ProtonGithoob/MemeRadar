@@ -205,6 +205,8 @@ def _event_from_row(row: ObservationRow) -> NormalizedChainEvent:
     protocol = row.protocol
     if not isinstance(event_type, str) or not isinstance(protocol, str):
         raise ValueError("chain event row has invalid protocol/event type metadata")
+    if row.occurred_at is None:
+        raise ValueError("chain event row is missing exact occurred_at")
     return NormalizedChainEvent(
         id=row.id,
         chain=Chain(cast(str, row.chain)),
@@ -216,7 +218,7 @@ def _event_from_row(row: ObservationRow) -> NormalizedChainEvent:
         protocol=protocol,
         event_type=event_type,
         source_transport=cast(str, row.source_transport),
-        occurred_at=row.occurred_at or row.observed_at,
+        occurred_at=row.occurred_at,
         observed_at=row.observed_at,
         ingested_at=row.ingested_at,
         commitment=CommitmentState(cast(str, row.commitment)),

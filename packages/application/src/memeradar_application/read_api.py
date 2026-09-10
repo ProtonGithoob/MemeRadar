@@ -44,6 +44,7 @@ from .caller_outcomes import CallerPerformanceProfile
 from .chain_opportunity import ChainOpportunitySnapshot
 from .creator_graph import CreatorOutcomeGraph
 from .early_scoring import AsymmetricAlphaProjection
+from .event_time import EventTimeQuality
 from .exit_engine import ExitEvaluation
 from .provider_contracts import ProviderCapabilityStatus, provider_capability_status
 from .smart_money_convergence import CallerConvergenceEvidence, CallerConvergenceState
@@ -1824,10 +1825,11 @@ class TimelineEntryView:
     token_id: UUID
     kind: str
     source_id: str
-    occurred_at: datetime
+    occurred_at: datetime | None
     observed_at: datetime
     ingested_at: datetime
     quality_state: QualityState | str
+    time_quality: EventTimeQuality | str = EventTimeQuality.EXACT
     reason_codes: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     payload: Mapping[str, object] = field(default_factory=dict)
@@ -1840,11 +1842,23 @@ class TimelineEntryView:
         object.__setattr__(
             self, "source_id", require_text(self.source_id, "source_id", max_length=256)
         )
-        for field_name in ("occurred_at", "observed_at", "ingested_at"):
+        if self.occurred_at is not None:
+            object.__setattr__(
+                self, "occurred_at", ensure_utc(self.occurred_at, "occurred_at")
+            )
+        for field_name in ("observed_at", "ingested_at"):
             object.__setattr__(self, field_name, ensure_utc(getattr(self, field_name), field_name))
-        if self.occurred_at > self.observed_at or self.observed_at > self.ingested_at:
+        if (
+            self.occurred_at is not None
+            and self.occurred_at > self.observed_at
+            or self.observed_at > self.ingested_at
+        ):
             raise ValueError("timeline timestamps must be ordered")
         object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        normalized_time_quality = EventTimeQuality(self.time_quality)
+        if self.occurred_at is None and normalized_time_quality is EventTimeQuality.EXACT:
+            normalized_time_quality = EventTimeQuality.UNKNOWN
+        object.__setattr__(self, "time_quality", normalized_time_quality)
         object.__setattr__(self, "reason_codes", normalize_texts(self.reason_codes, "reason_codes"))
         object.__setattr__(
             self, "evidence_refs", normalize_texts(self.evidence_refs, "evidence_refs")
@@ -2111,7 +2125,7 @@ class PositionMarkView:
     """Observed current market mark used to derive live position metrics."""
 
     price: Decimal | None
-    occurred_at: datetime
+    occurred_at: datetime | None
     observed_at: datetime
     ingested_at: datetime
     provider: str
@@ -2119,6 +2133,7 @@ class PositionMarkView:
     parser_version: str
     quality_state: QualityState | str = QualityState.UNKNOWN
     evidence_refs: tuple[str, ...] = ()
+    time_quality: EventTimeQuality | str = EventTimeQuality.EXACT
 
     def __post_init__(self) -> None:
         if self.price is not None:
@@ -2126,9 +2141,17 @@ class PositionMarkView:
             if price <= 0:
                 raise ValueError("price must be positive when present")
             object.__setattr__(self, "price", price)
-        for field_name in ("occurred_at", "observed_at", "ingested_at"):
+        if self.occurred_at is not None:
+            object.__setattr__(
+                self, "occurred_at", ensure_utc(self.occurred_at, "occurred_at")
+            )
+        for field_name in ("observed_at", "ingested_at"):
             object.__setattr__(self, field_name, ensure_utc(getattr(self, field_name), field_name))
-        if self.occurred_at > self.observed_at or self.observed_at > self.ingested_at:
+        if (
+            self.occurred_at is not None
+            and self.occurred_at > self.observed_at
+            or self.observed_at > self.ingested_at
+        ):
             raise ValueError("position mark timestamps must be ordered")
         for field_name, max_length in (
             ("provider", 128),
@@ -2141,6 +2164,10 @@ class PositionMarkView:
                 require_text(getattr(self, field_name), field_name, max_length=max_length),
             )
         object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        normalized_time_quality = EventTimeQuality(self.time_quality)
+        if self.occurred_at is None and normalized_time_quality is EventTimeQuality.EXACT:
+            normalized_time_quality = EventTimeQuality.UNKNOWN
+        object.__setattr__(self, "time_quality", normalized_time_quality)
         object.__setattr__(
             self, "evidence_refs", normalize_texts(self.evidence_refs, "evidence_refs")
         )
@@ -2380,6 +2407,7 @@ class PositionView:
                 self.current_mark.observed_at,
                 self.current_mark.ingested_at,
             )
+            if timestamp is not None
         )
         risk_is_future = self.exit_risk is not None and self.exit_risk.evaluated_at > boundary
         closed_trade_is_future = (
@@ -2688,7 +2716,10 @@ def _chain_opportunity_cursor(value: ChainOpportunitySnapshot) -> tuple[str, ...
 
 
 def _timeline_cursor(value: TimelineEntryView) -> tuple[str, ...]:
-    return (value.occurred_at.isoformat(), str(value.id))
+    return (
+        (value.occurred_at or value.observed_at).isoformat(),
+        str(value.id),
+    )
 
 
 def _wallet_cursor(value: WalletView) -> tuple[str, ...]:
@@ -2920,14 +2951,23 @@ class InMemoryReadQueryService:
             raise TypeError("query must match token_id")
         values = []
         for value in self._timelines.get(token_id, ()):
-            if query.as_of is not None and value.occurred_at > query.as_of:
+            ordering_at = value.occurred_at or value.observed_at
+            if query.as_of is not None and (
+                value.observed_at > query.as_of
+                or value.ingested_at > query.as_of
+                or ordering_at > query.as_of
+            ):
                 continue
-            if query.from_at is not None and value.occurred_at < query.from_at:
+            if query.from_at is not None and (
+                value.occurred_at is None or value.occurred_at < query.from_at
+            ):
                 continue
-            if query.to_at is not None and value.occurred_at >= query.to_at:
+            if query.to_at is not None and (
+                value.occurred_at is None or value.occurred_at >= query.to_at
+            ):
                 continue
             values.append(value)
-        values.sort(key=lambda value: (value.occurred_at, str(value.id)))
+        values.sort(key=lambda value: (value.occurred_at or value.observed_at, str(value.id)))
         return _page(
             "timeline",
             values,

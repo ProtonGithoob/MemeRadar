@@ -16,6 +16,7 @@ from memeradar_application.chain_opportunity import ChainOpportunitySnapshot
 from memeradar_application.config import Settings
 from memeradar_application.control import ControlAction, ControlPlanePort
 from memeradar_application.early_scoring import AsymmetricAlphaProjection
+from memeradar_application.event_time import EventTimeQuality
 from memeradar_application.provider_contracts import ProviderCapabilityStatus
 from memeradar_application.read_api import (
     DEFAULT_PAGE_LIMIT,
@@ -396,10 +397,11 @@ class TimelineEntryResponse(_StrictModel):
     token_id: UUID
     kind: str
     source_id: str
-    occurred_at: datetime
+    occurred_at: datetime | None
     observed_at: datetime
     ingested_at: datetime
     quality_state: QualityState
+    time_quality: str
     reason_codes: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     payload: dict[str, object] = Field(default_factory=dict)
@@ -657,7 +659,7 @@ class ConfigVersionResponse(_StrictModel):
 
 class PositionMarkResponse(_StrictModel):
     price: Decimal | None = None
-    occurred_at: datetime
+    occurred_at: datetime | None
     observed_at: datetime
     ingested_at: datetime
     provider: str
@@ -665,6 +667,7 @@ class PositionMarkResponse(_StrictModel):
     parser_version: str
     quality_state: QualityState
     evidence_refs: list[str] = Field(default_factory=list)
+    time_quality: str
 
 
 class PositionPerformanceResponse(_StrictModel):
@@ -750,7 +753,7 @@ class GraphEdgeResponse(_StrictModel):
     from_id: str
     to_id: str
     kind: str
-    occurred_at: str
+    occurred_at: str | None
     observed_at: str
     ingested_at: str
     token_mint: str | None = None
@@ -1006,6 +1009,7 @@ def _timeline_response(value: TimelineEntryView) -> TimelineEntryResponse:
         observed_at=value.observed_at,
         ingested_at=value.ingested_at,
         quality_state=QualityState(value.quality_state),
+        time_quality=EventTimeQuality(value.time_quality).value,
         reason_codes=list(value.reason_codes),
         evidence_refs=list(value.evidence_refs),
         payload=_mapping(value.payload),
@@ -1259,6 +1263,7 @@ def _position_mark_response(value: PositionMarkView) -> PositionMarkResponse:
         parser_version=value.parser_version,
         quality_state=QualityState(value.quality_state),
         evidence_refs=list(value.evidence_refs),
+        time_quality=EventTimeQuality(value.time_quality).value,
     )
 
 
@@ -1375,7 +1380,11 @@ def _wallet_graph_response(value: WalletGraphView) -> WalletGraphResponse:
                     from_id=str(edge.get("from_id", "")),
                     to_id=str(edge.get("to_id", "")),
                     kind=str(edge.get("kind", "")),
-                    occurred_at=str(edge.get("occurred_at", "")),
+                    occurred_at=(
+                        None
+                        if edge.get("occurred_at") is None
+                        else str(edge.get("occurred_at"))
+                    ),
                     observed_at=str(edge.get("observed_at", "")),
                     ingested_at=str(edge.get("ingested_at", "")),
                     properties=(

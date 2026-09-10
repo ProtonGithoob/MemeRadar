@@ -26,6 +26,7 @@ from memeradar_domain.common import (
 from memeradar_domain.events import normalize_reason_codes
 
 from .correlation import ULTRA_EARLY_CORRELATION_WINDOWS
+from .event_time import exact_event_time
 
 EARLY_WINDOW_LABELS = tuple(name for name, _ in ULTRA_EARLY_CORRELATION_WINDOWS)
 EARLY_WINDOW_DURATIONS: Mapping[str, timedelta] = MappingProxyType(
@@ -82,7 +83,10 @@ def _side(observation: Observation) -> str | None:
 
 
 def _event_time(observation: Observation) -> datetime:
-    return observation.occurred_at or observation.observed_at
+    occurred_at = exact_event_time(observation)
+    if occurred_at is None:
+        raise ValueError("early feature calculations require exact occurred_at")
+    return occurred_at
 
 
 def _amount(observation: Observation) -> Decimal | None:
@@ -259,17 +263,30 @@ class EarlyFeatureEngine:
         normalized = tuple(observations)
         if any(not isinstance(observation, Observation) for observation in normalized):
             raise TypeError("observations must contain Observation values")
+        candidates = tuple(
+            observation
+            for observation in normalized
+            if observation.token_id in {None, token_id}
+        )
+        future_count = sum(
+            observation.observed_at > checkpoint
+            or observation.ingested_at > checkpoint
+            or (
+                observation.occurred_at is not None
+                and observation.occurred_at > checkpoint
+            )
+            for observation in candidates
+        )
         matching = tuple(
             sorted(
                 (
                     observation
-                    for observation in normalized
-                    if observation.token_id in {None, token_id}
+                    for observation in candidates
+                    if exact_event_time(observation) is not None
                 ),
                 key=lambda observation: (_event_time(observation), str(observation.id)),
             )
         )
-        future_count = sum(_event_time(observation) > checkpoint for observation in matching)
         bounded = tuple(
             observation for observation in matching if _event_time(observation) <= checkpoint
         )

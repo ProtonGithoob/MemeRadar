@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import delete
 
-from memeradar_application.read_api import CandidateQuery, TimelineQuery
+from memeradar_application.read_api import CandidateQuery, TimelineQuery, WalletGraphQuery
 from memeradar_domain import (
     Alert,
     AlertSeverity,
@@ -168,6 +168,77 @@ async def _exercise_read_query_service(database_url: str) -> None:
         quality_state="FRESH",
         normalized_payload={"price": "1.2"},
     )
+    lifecycle_observation = ObservationRow(
+        id=uuid4(),
+        candidate_id=candidate_id,
+        token_id=None,
+        kind="protocol.lifecycle",
+        provider="fixture-launchpad",
+        source_id=f"lifecycle:{candidate_id}",
+        occurred_at=NOW,
+        observed_at=NOW,
+        ingested_at=NOW,
+        parser_version="fixture-launch-v1",
+        quality_state="FRESH",
+        normalized_payload={
+            "chain": "solana",
+            "token_address": token.mint_address,
+            "event_type": "bonding_curve_progress",
+            "bonding_curve_progress_bps": 4200,
+        },
+    )
+    future_lifecycle = ObservationRow(
+        id=uuid4(),
+        candidate_id=candidate_id,
+        token_id=token_id,
+        kind="protocol.lifecycle",
+        provider="fixture-launchpad",
+        source_id=f"lifecycle:future:{candidate_id}",
+        occurred_at=NOW + timedelta(minutes=10),
+        observed_at=NOW + timedelta(minutes=10),
+        ingested_at=NOW + timedelta(minutes=10),
+        parser_version="fixture-launch-v1",
+        quality_state="FRESH",
+        normalized_payload={
+            "chain": "solana",
+            "token_address": token.mint_address,
+            "event_type": "graduation",
+        },
+    )
+    relationship_a = ObservationRow(
+        id=uuid4(),
+        kind="wallet.funding",
+        provider="fixture-wallet",
+        source_id=f"funding:a:{candidate_id}",
+        occurred_at=NOW,
+        observed_at=NOW,
+        ingested_at=NOW,
+        parser_version="fixture-wallet-v1",
+        quality_state="FRESH",
+        normalized_payload={
+            "from_chain": "solana",
+            "from_address": "11111111111111111111111111111115",
+            "to_chain": "solana",
+            "to_address": "11111111111111111111111111111112",
+        },
+    )
+    relationship_b = ObservationRow(
+        id=uuid4(),
+        kind="wallet.funding",
+        provider="fixture-wallet",
+        source_id=f"funding:b:{candidate_id}",
+        occurred_at=NOW,
+        observed_at=NOW,
+        ingested_at=NOW,
+        parser_version="fixture-wallet-v1",
+        quality_state="FRESH",
+        normalized_payload={
+            "from_chain": "solana",
+            "from_address": "11111111111111111111111111111115",
+            "to_chain": "solana",
+            "to_address": "11111111111111111111111111111113",
+        },
+    )
 
     try:
         async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
@@ -177,9 +248,13 @@ async def _exercise_read_query_service(database_url: str) -> None:
             await unit_of_work.scores.add(score)
             await unit_of_work.alerts.save(alert)
             unit_of_work._session.add(observation)  # noqa: SLF001 - integration seam setup
+            unit_of_work._session.add(lifecycle_observation)  # noqa: SLF001 - integration seam setup
+            unit_of_work._session.add(future_lifecycle)  # noqa: SLF001 - integration seam setup
+            unit_of_work._session.add(relationship_a)  # noqa: SLF001 - integration seam setup
+            unit_of_work._session.add(relationship_b)  # noqa: SLF001 - integration seam setup
             await unit_of_work.commit()
 
-        service = SqlAlchemyReadQueryService(engine)
+        service = SqlAlchemyReadQueryService(engine, clock=lambda: NOW + timedelta(seconds=8))
         ranked = await service.list_candidates(CandidateQuery(limit=10))
         assert ranked.items[0].id == candidate_id
         assert ranked.items[0].score == Decimal("82.000")
@@ -189,6 +264,21 @@ async def _exercise_read_query_service(database_url: str) -> None:
         assert token_view is not None
         assert token_view.candidate is not None
         assert token_view.candidate.risk_disposition == "PASS"
+        assert token_view.launch_lifecycle["lifecycle_state"] == "BONDING"
+        assert token_view.launch_lifecycle["route_state"] == "BONDING_ROUTE"
+        assert token_view.launch_lifecycle["bonding_curve_progress_bps"] == 4200
+        assert token_view.launch_lifecycle["time_quality"] == "EXACT"
+        graph_view = await service.get_wallet_graph(
+            WalletGraphQuery(
+                address="11111111111111111111111111111112",
+            )
+        )
+        relationship_edges = [
+            edge for edge in graph_view.edges if edge["kind"] == "RELATIONSHIP_EVIDENCE"
+        ]
+        assert relationship_edges
+        assert relationship_edges[0]["properties"]["candidate_only"] is True
+        assert relationship_edges[0]["properties"]["ownership_asserted"] is False
 
         first_page = await service.list_timeline(
             token_id,

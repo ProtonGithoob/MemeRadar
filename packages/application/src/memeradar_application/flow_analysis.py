@@ -27,6 +27,7 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .event_time import exact_event_time
 from .evidence_helpers import (
     append_unique as _append_unique,
 )
@@ -373,7 +374,7 @@ class _TradeRecord:
     amount: Decimal | None
     buyer: str | None
     seller: str | None
-    observed_at: datetime
+    event_at: datetime
     source_id: str
 
 
@@ -579,6 +580,9 @@ class FlowAnalyzer:
     @staticmethod
     def _parse_trade(observation: Observation) -> _TradeRecord:
         payload = observation.normalized_payload
+        event_at = exact_event_time(observation)
+        if event_at is None:
+            raise ValueError("trade analysis requires exact occurred_at")
         return _TradeRecord(
             maker=_optional_address(
                 _field(payload, "maker", "maker_address", "trader", "wallet", "owner"),
@@ -605,7 +609,7 @@ class FlowAnalyzer:
                 _field(payload, "seller", "seller_address", "to_address", "to"),
                 "seller",
             ),
-            observed_at=observation.occurred_at or observation.observed_at,
+            event_at=event_at,
             source_id=observation.provenance.source_id,
         )
 
@@ -678,6 +682,14 @@ class FlowAnalyzer:
                 (),
                 (),
                 (ReasonCode("FLOW_DATA_INVALID"),),
+            )
+        if any(exact_event_time(item) is None for item in matched):
+            return (
+                self._empty_metrics(),
+                QualityState.UNKNOWN,
+                tuple(item.provenance.source_id for item in matched),
+                tuple(item.provenance for item in matched),
+                (ReasonCode("TRADE_EVENT_TIME_UNKNOWN"),),
             )
         states = tuple(_quality_at(item, now, self.policy.evidence_ttl) for item in matched)
         quality_state = _combined_quality(states)
@@ -778,7 +790,7 @@ class FlowAnalyzer:
             by_maker: defaultdict[str, list[tuple[datetime, str]]] = defaultdict(list)
             for record in individual:
                 if record.maker is not None and record.side is not None:
-                    by_maker[record.maker].append((record.observed_at, record.side))
+                    by_maker[record.maker].append((record.event_at, record.side))
             rapid_makers = 0
             for maker_records in by_maker.values():
                 maker_records.sort()

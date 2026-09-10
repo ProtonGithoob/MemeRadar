@@ -149,7 +149,10 @@ class ProtocolEventStreamFallback:
             sorted(
                 events,
                 key=lambda event: (
-                    event.occurred_at,
+                    event.occurred_at is None,
+                    event.occurred_at
+                    if event.occurred_at is not None
+                    else event.observed_at,
                     event.observed_at,
                     event.ingested_at,
                     event.source_id,

@@ -28,6 +28,7 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .event_time import exact_event_time
 from .evidence_helpers import append_unique as _append_unique
 from .evidence_helpers import append_unique_value as _append_provenance
 
@@ -876,7 +877,11 @@ class HolderGraphAnalyzer:
         seeds = tuple(
             value for value in seeds if self.classifier.classify(value).kind not in _EXCLUDED_KINDS
         )
-        matched = self._graph_observations(token, observations)
+        matched = tuple(
+            observation
+            for observation in self._graph_observations(token, observations)
+            if exact_event_time(observation) is not None
+        )
         if not matched:
             return WalletGraphSnapshot(
                 token=token,
@@ -980,7 +985,10 @@ class HolderGraphAnalyzer:
                     )
                     effective_amount = amount or Decimal("0")
                     key = (from_address, to_address, relation_type)
-                    event_time = observation.occurred_at or observation.observed_at
+                    event_time = exact_event_time(observation)
+                    if event_time is None:
+                        accepted.add(index)
+                        continue
                     aggregate = aggregates.get(key)
                     if aggregate is None:
                         aggregates[key] = _EdgeAggregate(

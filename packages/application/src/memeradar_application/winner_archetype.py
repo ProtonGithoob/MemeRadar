@@ -36,6 +36,7 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import GlobalEventIdempotencyConflict, normalize_reason_codes
 
+from .event_time import exact_event_time
 from .narrative_catalyst import _event_type, _is_external
 from .protocol_velocity import _metric_name
 
@@ -458,13 +459,13 @@ class WinnerArchetypeAnalyzer:
             for event in selected_events
             for timestamp in (event.occurred_at, event.observed_at, event.ingested_at)
         ) or any(
-            timestamp > checked_at
-            for observation in selected_observations_tuple
-            for timestamp in (
-                _event_time(observation),
-                observation.observed_at,
-                observation.ingested_at,
+            observation.observed_at > checked_at
+            or observation.ingested_at > checked_at
+            or (
+                (event_at := exact_event_time(observation)) is not None
+                and event_at > checked_at
             )
+            for observation in selected_observations_tuple
         )
         try:
             unique_events = deduplicate_global_events(selected_events)
@@ -513,9 +514,10 @@ class WinnerArchetypeAnalyzer:
         relevant_observations = tuple(
             observation
             for observation in unique_observations
-            if checked_at - self.policy.history_window
-            < _event_time(observation)
-            <= checked_at
+            if (
+                (event_at := exact_event_time(observation)) is not None
+                and checked_at - self.policy.history_window < event_at <= checked_at
+            )
         )
         quality_state = _quality(
             tuple(event.freshness_state(checked_at) for event in relevant_events)
@@ -668,7 +670,10 @@ ArchetypeSnapshot = WinnerArchetypeSnapshot
 
 
 def _event_time(observation: Observation) -> datetime:
-    return observation.occurred_at or observation.observed_at
+    occurred_at = exact_event_time(observation)
+    if occurred_at is None:
+        raise ValueError("winner archetype calculations require exact occurred_at")
+    return occurred_at
 
 
 __all__ = [

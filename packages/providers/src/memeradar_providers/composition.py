@@ -44,6 +44,11 @@ from .narrative import (
     NarrativeRestAdapter,
     OllamaNarrativeAdapter,
 )
+from .robinhood import (
+    ROBINHOOD_VERIFIED_LAUNCHPADS,
+    RobinhoodLaunchpadDecoder,
+    RobinhoodLaunchpadReconciler,
+)
 from .rugcheck import RugCheckRestAdapter
 from .social import SocialRestAdapter
 from .solana_rpc import SolanaRpcAdapter
@@ -212,6 +217,7 @@ class ProviderBundle:
     solana_rpc: SolanaRpcAdapter
     bnb_rpc: EvmRpcAdapter | None
     robinhood_rpc: EvmRpcAdapter | None
+    robinhood_launchpad_reconciler: RobinhoodLaunchpadReconciler | None
     chain: OnChainPort
     chain_routes: Mapping[str, OnChainPort]
     helius: HeliusRpcAdapter | None
@@ -562,6 +568,13 @@ def build_provider_bundle(
         solana_rpc=solana_rpc,
         bnb_rpc=bnb_rpc,
         robinhood_rpc=robinhood_rpc,
+        robinhood_launchpad_reconciler=(
+            None
+            if robinhood_rpc is None
+            else RobinhoodLaunchpadReconciler(
+                RobinhoodLaunchpadDecoder(ROBINHOOD_VERIFIED_LAUNCHPADS), robinhood_rpc
+            )
+        ),
         chain=chain,
         chain_routes=chain_routes,
         helius=helius,

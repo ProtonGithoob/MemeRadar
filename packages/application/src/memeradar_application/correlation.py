@@ -47,6 +47,7 @@ from .confluence import (
     SmartMoneyEventType,
     TokenSmartMoneyScore,
 )
+from .event_time import exact_event_time
 from .evidence_helpers import (
     QUALITY_PRIORITY as _QUALITY_PRIORITY,
 )
@@ -1319,7 +1320,13 @@ class CorrelationWindowBuilder:
                 category = "protocol"
             else:
                 continue
-            event_at = value.occurred_at or value.observed_at
+            event_at = exact_event_time(value)
+            if event_at is None:
+                if value.observed_at > now or value.ingested_at > now:
+                    future_evidence = True
+                add_metadata((value.provenance,), (value.provenance.source_id,))
+                reasons.append(ReasonCode("OBSERVATION_EVENT_TIME_UNKNOWN"))
+                continue
             state, future = self._quality_at(
                 quality_state=value.quality_state,
                 event_at=event_at,

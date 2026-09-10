@@ -332,6 +332,34 @@ class EvmRpcAdapter(OnChainPort):
             raise ProviderSchemaError("provider transaction receipt was invalid")
         return dict(result)
 
+    async def fetch_transaction_finality(
+        self,
+        receipt: Mapping[str, object],
+        *,
+        context: ProviderRequestContext,
+    ) -> str | None:
+        """Reconcile receipt inclusion against the canonical finalized block tag."""
+
+        raw_block = receipt.get("blockNumber", receipt.get("block_number"))
+        if raw_block is None:
+            return None
+        receipt_block = _hex_int(raw_block, "receipt_block_number")
+        result = await self._rpc(
+            "eth_getBlockByNumber",
+            ("finalized", False),
+            context=context,
+        )
+        if not isinstance(result, Mapping):
+            return None
+        finalized_block = result.get("number")
+        if finalized_block is None:
+            return None
+        return (
+            "FINALIZED"
+            if _hex_int(finalized_block, "finalized_block_number") >= receipt_block
+            else "PENDING"
+        )
+
     async def probe_health(self, *, context: ProviderRequestContext) -> Mapping[str, object]:
         status = EvmRpcHealthStatus.PASS
         error_class: str | None = None

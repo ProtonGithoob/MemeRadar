@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 from collections.abc import Mapping, Sequence
@@ -369,7 +370,7 @@ class ParsedProtocolEvent:
     quote_mint: str | None
     token_program: str
     source_id: str
-    occurred_at: datetime
+    occurred_at: datetime | None
     observed_at: datetime
     ingested_at: datetime
     payload: Mapping[str, object]
@@ -443,7 +444,6 @@ class ParsedProtocolEvent:
             self.observed_at,
             self.ingested_at,
         )
-        assert occurred is not None
         object.__setattr__(self, "occurred_at", occurred)
         object.__setattr__(self, "observed_at", observed)
         object.__setattr__(self, "ingested_at", ingested)
@@ -481,6 +481,9 @@ class ParsedProtocolEvent:
                 "schema_version": self.schema_version,
                 "venue": self.venue.value,
                 "mint_address": self.mint_address,
+                "event_time_quality": "EXACT"
+                if self.occurred_at is not None
+                else "UNKNOWN",
             }
         )
         if self.pool_address is not None:
@@ -630,7 +633,6 @@ class LaunchpadDexAdapter:
                 "created_at",
                 "createdAt",
             )
-            or context.requested_at
         )
         observed_at = context.requested_at
         ingested_at = context.requested_at
@@ -642,7 +644,6 @@ class LaunchpadDexAdapter:
             )
         except (TypeError, ValueError) as exc:
             raise ProviderSchemaError("protocol event timestamp ordering is invalid") from exc
-        assert occurred_at is not None
         raw_source = _field(
             message,
             "source_id",
@@ -658,7 +659,9 @@ class LaunchpadDexAdapter:
         if raw_source is _MISSING or raw_source is None:
             raw_source = hashlib.sha256(
                 (
-                    f"{self.venue.value}:{event_type}:{mint}:{pool or ''}:{occurred_at.isoformat()}"
+                    f"{self.venue.value}:{event_type}:{mint}:{pool or ''}:"
+                    f"{'' if occurred_at is None else occurred_at.isoformat()}:"
+                    f"{json.dumps(data, sort_keys=True, separators=(',', ':'), default=str)}"
                 ).encode()
             ).hexdigest()[:32]
         if not isinstance(raw_source, str):
@@ -772,6 +775,8 @@ class CanonicalIdentityMapper:
     def candidate(self, event: ParsedProtocolEvent) -> DiscoveryCandidate:
         if not isinstance(event, ParsedProtocolEvent):
             raise TypeError("event must be a ParsedProtocolEvent")
+        if event.occurred_at is None:
+            raise ProviderSchemaError("candidate requires exact occurred_at")
         token = self.token(event.mint_address, event.token_program)
         pool = (
             None

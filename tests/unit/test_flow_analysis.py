@@ -40,7 +40,7 @@ def observation(
             observed_at=observed_at,
             parser_version="flow-fixture-v1",
         ),
-        occurred_at=None,
+        occurred_at=observed_at,
         observed_at=observed_at,
         ingested_at=observed_at + timedelta(seconds=1),
         quality_state=quality_state,

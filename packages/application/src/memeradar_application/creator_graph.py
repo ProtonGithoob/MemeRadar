@@ -90,7 +90,7 @@ class GraphEdge:
     from_id: str
     to_id: str
     kind: EdgeKind = EdgeKind.CREATED
-    occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    occurred_at: datetime | None = field(default_factory=lambda: datetime.now(UTC))
     observed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     ingested_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     token_mint: str | None = None
@@ -102,7 +102,8 @@ class GraphEdge:
         object.__setattr__(self, "id", require_text(self.id, "id", max_length=256))
         object.__setattr__(self, "from_id", require_text(self.from_id, "from_id", max_length=256))
         object.__setattr__(self, "to_id", require_text(self.to_id, "to_id", max_length=256))
-        object.__setattr__(self, "occurred_at", ensure_utc(self.occurred_at, "occurred_at"))
+        if self.occurred_at is not None:
+            object.__setattr__(self, "occurred_at", ensure_utc(self.occurred_at, "occurred_at"))
         object.__setattr__(self, "observed_at", ensure_utc(self.observed_at, "observed_at"))
         object.__setattr__(self, "ingested_at", ensure_utc(self.ingested_at, "ingested_at"))
         if self.token_mint is not None:
@@ -264,7 +265,7 @@ class CreatorOutcomeGraph:
                 continue
 
             neighbors = self._adj_out.get(curr_id, set()) | self._adj_in.get(curr_id, set())
-            for nxt_id in neighbors:
+            for nxt_id in sorted(neighbors):
                 if len(visited_nodes) >= max_nodes:
                     has_more = True
                     break
@@ -281,10 +282,20 @@ class CreatorOutcomeGraph:
                     (nxt_id, curr_id), []
                 )
                 for e in edges:
-                    if e.occurred_at <= as_of_dt and len(visited_edges) < max_edges:
-                        if date_from and e.occurred_at < date_from:
+                    if e.occurred_at is None:
+                        if (
+                            e.observed_at > as_of_dt
+                            or e.ingested_at > as_of_dt
+                            or date_from
+                            or date_to
+                        ):
                             continue
-                        if date_to and e.occurred_at > date_to:
+                    elif e.occurred_at > as_of_dt:
+                        continue
+                    if len(visited_edges) < max_edges:
+                        if date_from and e.occurred_at is not None and e.occurred_at < date_from:
+                            continue
+                        if date_to and e.occurred_at is not None and e.occurred_at > date_to:
                             continue
                         if (
                             venue
@@ -327,7 +338,7 @@ class CreatorOutcomeGraph:
                 "quality_state": self.nodes[nid].quality_state.value,
                 "created_at": self.nodes[nid].created_at.isoformat(),
             }
-            for nid in visited_nodes
+            for nid in sorted(visited_nodes)
             if nid in self.nodes
         ]
 
@@ -337,7 +348,11 @@ class CreatorOutcomeGraph:
                 "from_id": self.edges[eid].from_id,
                 "to_id": self.edges[eid].to_id,
                 "kind": self.edges[eid].kind.value,
-                "occurred_at": self.edges[eid].occurred_at.isoformat(),
+                "occurred_at": (
+                    occurred_at.isoformat()
+                    if (occurred_at := self.edges[eid].occurred_at) is not None
+                    else None
+                ),
                 "observed_at": self.edges[eid].observed_at.isoformat(),
                 "ingested_at": self.edges[eid].ingested_at.isoformat(),
                 "token_mint": self.edges[eid].token_mint,
@@ -345,7 +360,7 @@ class CreatorOutcomeGraph:
                 "quality_state": self.edges[eid].quality_state.value,
                 "reason_codes": [str(r) for r in self.edges[eid].reason_codes],
             }
-            for eid in visited_edges
+            for eid in sorted(visited_edges)
             if eid in self.edges
         ]
 
@@ -423,7 +438,7 @@ class CreatorReputationAnalyzer:
         # Collect created tokens
         created_token_ids: list[str] = []
         for edge in self.graph.edges.values():
-            if edge.occurred_at > as_of_dt:
+            if edge.occurred_at is None or edge.occurred_at > as_of_dt:
                 continue
             is_created = edge.kind in (EdgeKind.CREATED, EdgeKind.DEPLOYED)
             if edge.from_id == wallet_node_id and is_created:
@@ -435,7 +450,7 @@ class CreatorReputationAnalyzer:
         # Check funding graph for fresh deployer / shared funder patterns
         funder_ids: set[str] = set()
         for edge in self.graph.edges.values():
-            if edge.occurred_at > as_of_dt:
+            if edge.occurred_at is None or edge.occurred_at > as_of_dt:
                 continue
             if edge.to_id == wallet_node_id and edge.kind == EdgeKind.FUNDED:
                 funder_ids.add(edge.from_id)
@@ -445,7 +460,7 @@ class CreatorReputationAnalyzer:
             # Check if funder funded other deployers
             for funder_id in funder_ids:
                 for edge in self.graph.edges.values():
-                    if edge.occurred_at > as_of_dt:
+                    if edge.occurred_at is None or edge.occurred_at > as_of_dt:
                         continue
                     is_other_funded = (
                         edge.from_id == funder_id

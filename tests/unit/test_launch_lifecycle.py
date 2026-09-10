@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+from memeradar_application.event_time import EventTimeQuality
 from memeradar_application.launch_lifecycle import (
     GraduationAwareRouteAnalyzer,
     LaunchLifecycleState,
@@ -79,7 +80,7 @@ def test_bonding_token_is_not_classified_as_no_route_and_graduation_finds_pool()
         "market:pool",
         graduated_at,
         {
-            "kind": "market.snapshot",
+            "kind": "market.market_snapshot",
             "provider": "dexscreener",
             "chain": "robinhood",
             "token_address": TOKEN,
@@ -148,6 +149,32 @@ def test_graduation_without_completed_discovery_remains_unknown() -> None:
     )
     assert no_route.route_state is RouteState.NO_ROUTE
     assert no_route.route_available is False
+
+
+def test_expired_lifecycle_evidence_is_stale_without_becoming_a_route() -> None:
+    token = _token()
+    snapshot = GraduationAwareRouteAnalyzer().snapshot(
+        token,
+        (
+            _observation(
+                "launch:stale-bonding",
+                NOW,
+                {
+                    "chain": "robinhood",
+                    "token_address": TOKEN,
+                    "event_type": "bonding_curve_progress",
+                    "bonding_curve_progress_bps": 4200,
+                },
+            ),
+        ),
+        now=NOW + timedelta(minutes=5, seconds=1),
+        config_hash="launch-route-test-v1",
+    )
+
+    assert snapshot.lifecycle_state is LaunchLifecycleState.BONDING
+    assert snapshot.route_state is RouteState.BONDING_ROUTE
+    assert snapshot.quality_state is QualityState.STALE
+    assert snapshot.confidence == 0
 
 
 def test_required_lifecycle_states_and_verified_market_fields_are_replayable() -> None:
@@ -268,6 +295,41 @@ def test_feed_and_rpc_duplicates_with_one_canonical_event_are_deduplicated() -> 
     assert len(snapshot.evidence_refs) == 1
 
 
+def test_same_source_payload_mutation_is_conflicted_not_overwritten() -> None:
+    token = _token()
+    first = _observation(
+        "launch:mutable",
+        NOW,
+        {
+            "chain": "robinhood",
+            "token_address": TOKEN,
+            "event_type": "graduation",
+            "creator_address": "0x" + "ef" * 20,
+        },
+    )
+    second = _observation(
+        "launch:mutable",
+        NOW,
+        {
+            "chain": "robinhood",
+            "token_address": TOKEN,
+            "event_type": "graduation",
+            "creator_address": "0x" + "12" * 20,
+        },
+    )
+
+    snapshot = GraduationAwareRouteAnalyzer().snapshot(
+        token,
+        (first, second),
+        now=NOW + timedelta(seconds=1),
+        config_hash="launch-route-test-v1",
+    )
+
+    assert snapshot.quality_state is QualityState.CONFLICTED
+    assert snapshot.lifecycle_state is LaunchLifecycleState.UNKNOWN
+    assert snapshot.route_state is RouteState.UNKNOWN
+
+
 def test_conflicting_latest_providers_are_conflicted_and_future_route_is_ignored() -> None:
     token = _token()
     at = NOW + timedelta(minutes=1)
@@ -314,3 +376,93 @@ def test_conflicting_latest_providers_are_conflicted_and_future_route_is_ignored
     assert snapshot.route_state is RouteState.UNKNOWN
     assert snapshot.pool_address is None
     assert "PROVIDER_DISAGREEMENT" in {reason.code for reason in snapshot.reason_codes}
+
+
+def test_missing_event_time_is_unknown_and_delayed_observation_cannot_look_back() -> None:
+    token = _token()
+    delayed = Observation(
+        kind="protocol.lifecycle",
+        provenance=Provenance(
+            provider="fixture",
+            source_id="delayed:event",
+            observed_at=NOW + timedelta(minutes=2),
+            parser_version="fixture-v1",
+        ),
+        occurred_at=NOW,
+        observed_at=NOW + timedelta(minutes=2),
+        ingested_at=NOW + timedelta(minutes=2),
+        quality_state=QualityState.FRESH,
+        normalized_payload={
+            "chain": "robinhood",
+            "token_address": TOKEN,
+            "event_type": "graduation",
+        },
+    )
+    missing_time = Observation(
+        kind="protocol.lifecycle",
+        provenance=Provenance(
+            provider="fixture",
+            source_id="missing:event",
+            observed_at=NOW,
+            parser_version="fixture-v1",
+        ),
+        occurred_at=None,
+        observed_at=NOW,
+        ingested_at=NOW,
+        quality_state=QualityState.FRESH,
+        normalized_payload={
+            "chain": "robinhood",
+            "token_address": TOKEN,
+            "event_type": "graduation",
+        },
+    )
+
+    delayed_snapshot = GraduationAwareRouteAnalyzer().snapshot(
+        token,
+        (delayed,),
+        now=NOW + timedelta(minutes=1),
+        config_hash="launch-route-test-v1",
+    )
+    missing_snapshot = GraduationAwareRouteAnalyzer().snapshot(
+        token,
+        (missing_time,),
+        now=NOW + timedelta(seconds=1),
+        config_hash="launch-route-test-v1",
+    )
+
+    assert delayed_snapshot.lifecycle_state is LaunchLifecycleState.UNKNOWN
+    assert missing_snapshot.lifecycle_state is LaunchLifecycleState.GRADUATING
+    assert missing_snapshot.graduated_at is None
+    assert missing_snapshot.time_quality is EventTimeQuality.UNKNOWN
+    assert missing_snapshot.quality_state is QualityState.UNKNOWN
+
+
+def test_same_transaction_different_logs_remain_distinct_lifecycle_events() -> None:
+    token = _token()
+    at = NOW + timedelta(minutes=1)
+    observations = tuple(
+        _observation(
+            f"rpc:log:{index}",
+            at,
+            {
+                "chain": "robinhood",
+                "token_address": TOKEN,
+                "event_type": "graduation",
+                "tx_hash": "0x" + "12" * 32,
+                "log_index": index,
+                "topic0": "0x" + ("aa" if index == 0 else "bb") * 32,
+            },
+        )
+        for index in (0, 1)
+    )
+    snapshot = GraduationAwareRouteAnalyzer().snapshot(
+        token,
+        observations,
+        now=at + timedelta(seconds=1),
+        config_hash="launch-route-test-v1",
+    )
+
+    assert len(snapshot.evidence_refs) == 2
+    assert "DUPLICATE_CANONICAL_EVENT_DEDUPED" not in {
+        reason.code for reason in snapshot.reason_codes
+    }

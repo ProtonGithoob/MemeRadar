@@ -41,6 +41,7 @@ from .correlation import (
     CorrelationWindowBuilder,
     SignalHardeningEvidence,
 )
+from .event_time import exact_event_time
 from .feature_windows import FeatureWindowAggregator
 from .price_semantics import market_reference_price
 from .signal_hardening import SIGNAL_HARDENING_VERSION, SignalHardeningAnalyzer
@@ -287,6 +288,8 @@ class ReplayEventRecord:
             raise TypeError("observation.id must be a UUID")
         if self.observation.token_id is None:
             raise ValueError("replay observations require token_id")
+        if exact_event_time(self.observation) is None:
+            raise ValueError("replay observations require exact occurred_at")
         object.__setattr__(
             self,
             "registry_version",
@@ -316,7 +319,9 @@ class ReplayEventRecord:
 
     @property
     def event_at(self) -> datetime:
-        return self.observation.occurred_at or self.observation.observed_at
+        event_at = exact_event_time(self.observation)
+        assert event_at is not None
+        return event_at
 
     @property
     def source_key(self) -> tuple[str, str, str]:

@@ -33,6 +33,7 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .event_time import exact_event_time
 from .evidence_helpers import combined_quality as _combined_quality
 
 SIGNAL_HARDENING_VERSION = "signal-hardening-v1"
@@ -1210,8 +1211,12 @@ class SignalHardeningAnalyzer:
                 raise TypeError("observations must contain Observation values")
             if not self._matches(observation, token):
                 continue
-            event_at = observation.occurred_at or observation.observed_at
-            if event_at > now or observation.observed_at > now or observation.ingested_at > now:
+            event_at = exact_event_time(observation)
+            if (
+                (event_at is not None and event_at > now)
+                or observation.observed_at > now
+                or observation.ingested_at > now
+            ):
                 future = True
             key = (
                 observation.provenance.provider,
@@ -1224,6 +1229,8 @@ class SignalHardeningAnalyzer:
                 conflict = True
             else:
                 by_source[key] = signature
+            if event_at is None:
+                continue
             state = observation.quality_state
             if state is QualityState.FRESH:
                 if event_at > now or observation.observed_at > now or observation.ingested_at > now:

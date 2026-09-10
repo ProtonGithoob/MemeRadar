@@ -35,6 +35,8 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .event_time import exact_event_time
+
 PROTOCOL_VELOCITY_VERSION = "protocol-velocity-v1"
 _QUALITY_PRIORITY = {
     QualityState.FRESH: 0,
@@ -125,7 +127,10 @@ def _quality(states: Sequence[QualityState]) -> QualityState:
 
 
 def _event_time(observation: Observation) -> datetime:
-    return observation.occurred_at or observation.observed_at
+    occurred_at = exact_event_time(observation)
+    if occurred_at is None:
+        raise ValueError("protocol velocity calculations require exact occurred_at")
+    return occurred_at
 
 
 def _minutes(start: datetime, end: datetime) -> Decimal | None:
@@ -598,12 +603,15 @@ class ProtocolVelocityAnalyzer:
             if value is None:
                 invalid_metric = True
                 continue
-            event_at = _event_time(observation)
-            if any(
-                timestamp > as_of
-                for timestamp in (event_at, observation.observed_at, observation.ingested_at)
+            event_at = exact_event_time(observation)
+            if (
+                (event_at is not None and event_at > as_of)
+                or observation.observed_at > as_of
+                or observation.ingested_at > as_of
             ):
                 future = True
+            if event_at is None:
+                continue
             records.append(_MetricRecord(observation, metric, value, event_at))
         unique, conflict = self._deduplicate(records)
         trace = tuple(

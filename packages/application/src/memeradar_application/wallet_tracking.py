@@ -31,6 +31,7 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .event_time import exact_event_time
 from .evidence_helpers import (
     append_unique as _append_unique,
 )
@@ -1045,6 +1046,7 @@ class WalletTrackingAnalyzer:
         states: list[QualityState] = []
         valid_values: list[tuple[datetime, bool]] = []
         invalid = False
+        unknown_time = False
         for observation in observations:
             state = _quality_at(observation, now, self.policy.evidence_ttl)
             states.append(state)
@@ -1052,13 +1054,20 @@ class WalletTrackingAnalyzer:
             if not isinstance(raw_value, bool):
                 invalid = True
                 continue
-            event_at = observation.occurred_at or observation.observed_at
+            event_at = exact_event_time(observation)
+            if event_at is None:
+                unknown_time = True
+                continue
             valid_values.append((event_at, raw_value))
         quality_state = _combined_quality(states)
+        if unknown_time:
+            quality_state = _combined_quality((quality_state, QualityState.UNKNOWN))
         if invalid:
             quality_state = _combined_quality((quality_state, QualityState.INVALID))
         if not valid_values:
-            return quality_state, None, ("RUG_EVIDENCE_INVALID",)
+            return quality_state, None, (
+                "RUG_EVIDENCE_TIME_UNKNOWN" if unknown_time else "RUG_EVIDENCE_INVALID",
+            )
         if quality_state is not QualityState.FRESH:
             return quality_state, None, (f"RUG_EVIDENCE_{quality_state.value}",)
         exposed = any(

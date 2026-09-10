@@ -136,6 +136,22 @@ def test_parser_rejects_unsupported_event_type() -> None:
         )
 
 
+def test_parser_preserves_unknown_event_time_and_does_not_create_a_candidate() -> None:
+    parsed = PumpFunAdapter().parse(
+        {"event_type": "launch", "event_id": "unknown-time", "data": {"mint": MINT}},
+        context(),
+    )
+
+    assert parsed.occurred_at is None
+    assert parsed.to_observation().occurred_at is None
+    assert parsed.to_observation().normalized_payload["event_time_quality"] == "UNKNOWN"
+    with pytest.raises(ProviderSchemaError, match="exact occurred_at"):
+        PumpFunAdapter().normalize(
+            {"event_type": "launch", "event_id": "unknown-time", "data": {"mint": MINT}},
+            context(),
+        )
+
+
 def test_parser_rejects_non_solana_identity_and_incomplete_pool() -> None:
     with pytest.raises(ProviderSchemaError, match="mint"):
         RaydiumAdapter().parse(

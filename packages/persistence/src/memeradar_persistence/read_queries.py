@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from datetime import datetime
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
+from typing import cast
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from memeradar_application.chain_opportunity import ChainOpportunitySnapshot
+from memeradar_application.creator_graph import CreatorOutcomeGraph
+from memeradar_application.event_time import event_time_quality
 from memeradar_application.exit_engine import ExitEvaluation
+from memeradar_application.launch_lifecycle import GraduationAwareRouteAnalyzer, _token_matches
 from memeradar_application.read_api import (
     AuditEventView,
     AuditQuery,
@@ -53,14 +57,19 @@ from memeradar_application.read_api import (
     build_position_view,
     social_call_view,
 )
+from memeradar_application.wallet_relationship import WalletRelationshipAnalyzer
 from memeradar_domain import (
     CandidateState,
+    Observation,
     Position,
     PositionMode,
     PositionState,
+    Provenance,
     QualityState,
+    TokenIdentity,
     normalize_chain,
 )
+from memeradar_domain.common import ensure_utc
 
 from .exit import evaluation_from_row
 from .models import (
@@ -90,6 +99,24 @@ _POSITION_MARK_KINDS = (
     "market.observation",
     "market.quote",
     "market.trade",
+)
+_LIFECYCLE_OBSERVATION_KINDS = (
+    "chain.launchpad",
+    "protocol.lifecycle",
+    "market.snapshot",
+    "market.market_snapshot",
+    "market.pair",
+    "market.quote",
+)
+_TOKEN_ADDRESS_PAYLOAD_KEYS = ("token_address", "mint_address", "token", "asset_address")
+_RELATIONSHIP_OBSERVATION_KINDS = (
+    "wallet.funding",
+    "wallet.transfer",
+    "onchain.transfer",
+    "wallet.bridge",
+    "wallet.activity",
+    "wallet.relationship",
+    "wallet.link",
 )
 _PRICE_KEYS = ("price", "price_usd", "token_price", "close")
 
@@ -131,6 +158,39 @@ def _quality_state(value: object) -> QualityState:
         return QualityState.UNKNOWN
 
 
+def _observation_from_row(row: ObservationRow) -> Observation:
+    """Rehydrate a generic observation without inventing a source event time."""
+
+    return Observation(
+        id=row.id,
+        candidate_id=row.candidate_id,
+        token_id=row.token_id,
+        kind=row.kind,
+        provenance=Provenance(
+            provider=row.provider,
+            source_id=row.source_id,
+            observed_at=row.observed_at,
+            parser_version=row.parser_version,
+            raw_payload_hash=row.raw_payload_hash,
+            raw_payload_ref=row.raw_payload_ref,
+        ),
+        occurred_at=row.occurred_at,
+        observed_at=row.observed_at,
+        ingested_at=row.ingested_at,
+        quality_state=_quality_state(row.quality_state),
+        normalized_payload=row.normalized_payload,
+    )
+
+
+def _token_identity(row: TokenRow) -> TokenIdentity:
+    return TokenIdentity(
+        id=row.id,
+        mint_address=row.mint_address,
+        chain=row.chain,
+        token_program=row.token_program,
+    )
+
+
 def _price_from_payload(payload: Mapping[str, object]) -> Decimal | None:
     """Extract only allow-listed price fields from normalized market payloads."""
 
@@ -167,11 +227,12 @@ def _mark_evidence_refs(row: ObservationRow) -> tuple[str, ...]:
 
 
 def _position_mark(row: ObservationRow) -> PositionMarkView:
-    occurred_at = row.occurred_at or row.observed_at
+    occurred_at = row.occurred_at
     quality_state = _quality_state(row.quality_state)
     price = _price_from_payload(row.normalized_payload)
     if price is None:
         quality_state = QualityState.INVALID
+    time_quality = event_time_quality(_observation_from_row(row))
     return PositionMarkView(
         price=price,
         occurred_at=occurred_at,
@@ -182,6 +243,7 @@ def _position_mark(row: ObservationRow) -> PositionMarkView:
         parser_version=row.parser_version,
         quality_state=quality_state,
         evidence_refs=_mark_evidence_refs(row),
+        time_quality=time_quality,
     )
 
 
@@ -234,7 +296,12 @@ def _pool_view(row: PoolRow) -> PoolView:
     )
 
 
-def _token_view(row: TokenRow, candidate: CandidateView | None) -> TokenView:
+def _token_view(
+    row: TokenRow,
+    candidate: CandidateView | None,
+    *,
+    launch_lifecycle: Mapping[str, object] | None = None,
+) -> TokenView:
     return TokenView(
         id=row.id,
         chain=row.chain,
@@ -249,21 +316,22 @@ def _token_view(row: TokenRow, candidate: CandidateView | None) -> TokenView:
         creator_wallet=row.creator_wallet,
         pools=tuple(_pool_view(pool) for pool in row.pools),
         candidate=candidate,
-        launch_lifecycle={},
+        launch_lifecycle={} if launch_lifecycle is None else launch_lifecycle,
     )
 
 
 def _observation_timeline(row: ObservationRow) -> TimelineEntryView:
-    occurred_at = row.occurred_at or row.observed_at
+    observation = _observation_from_row(row)
     return TimelineEntryView(
         id=row.id,
         token_id=row.token_id or row.candidate_id or UUID(int=0),
         kind=row.kind,
         source_id=f"{row.provider}:{row.source_id}",
-        occurred_at=occurred_at,
+        occurred_at=row.occurred_at,
         observed_at=row.observed_at,
         ingested_at=row.ingested_at,
         quality_state=QualityState(row.quality_state),
+        time_quality=event_time_quality(observation),
         payload=row.normalized_payload,
         provenance=(
             ProvenanceView(
@@ -440,6 +508,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         provider_health: Sequence[ProviderHealthView] = (),
         audit_events: Sequence[AuditEventView] = (),
         config_versions: Sequence[ConfigVersionView] = (),
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._session_factory = async_sessionmaker(
             engine,
@@ -447,6 +516,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             autoflush=False,
         )
         self._engine = engine
+        self._clock = clock or (lambda: datetime.now(UTC))
         self._catalog = InMemoryReadQueryService(
             early_radar=early_radar,
             chain_opportunities=chain_opportunities,
@@ -457,6 +527,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             provider_health=provider_health,
             audit_events=audit_events,
             config_versions=config_versions,
+            clock=self._clock,
         )
 
     async def aclose(self) -> None:
@@ -490,6 +561,145 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             else await session.get(RiskAssessmentRow, row.latest_risk_id)
         )
         return _candidate_view(row, score=score, risk=risk)
+
+    async def _launch_lifecycle_for_tokens(
+        self,
+        session: AsyncSession,
+        token_rows: Sequence[TokenRow],
+        *,
+        as_of: datetime,
+    ) -> dict[UUID, Mapping[str, object]]:
+        """Materialize bounded lifecycle evidence for many tokens in one query."""
+
+        if not token_rows:
+            return {}
+        checked_at = ensure_utc(as_of, "as_of")
+        token_ids = tuple(row.id for row in token_rows)
+        token_addresses = tuple(row.mint_address for row in token_rows)
+        payload_address_matches = or_(
+            *(
+                ObservationRow.normalized_payload[key].as_string().in_(token_addresses)
+                for key in _TOKEN_ADDRESS_PAYLOAD_KEYS
+            )
+        )
+        statement = (
+            select(ObservationRow)
+            .where(
+                or_(
+                    ObservationRow.token_id.in_(token_ids),
+                    and_(ObservationRow.token_id.is_(None), payload_address_matches),
+                ),
+                ObservationRow.kind.in_(_LIFECYCLE_OBSERVATION_KINDS),
+                ObservationRow.observed_at <= checked_at,
+                ObservationRow.ingested_at <= checked_at,
+                or_(
+                    ObservationRow.occurred_at <= checked_at,
+                    ObservationRow.occurred_at.is_(None),
+                ),
+            )
+            # The coalesce is a deterministic database sort key only; the
+            # rehydrated Observation retains occurred_at=None when it is unknown.
+            .order_by(
+                ObservationRow.token_id,
+                func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at).desc(),
+                ObservationRow.observed_at.desc(),
+                ObservationRow.ingested_at.desc(),
+                ObservationRow.id.desc(),
+            )
+            .limit(MAX_STORAGE_ROWS)
+        )
+        rows = (await session.scalars(statement)).all()
+        grouped: dict[UUID, list[Observation]] = {token_id: [] for token_id in token_ids}
+        for row in rows:
+            try:
+                observation = _observation_from_row(row)
+            except (TypeError, ValueError):
+                continue
+            if row.token_id is not None:
+                grouped.setdefault(row.token_id, []).append(observation)
+                continue
+            for token_row in token_rows:
+                token = _token_identity(token_row)
+                if _token_matches(observation, token):
+                    grouped[token_row.id].append(observation)
+
+        analyzer = GraduationAwareRouteAnalyzer()
+        values: dict[UUID, Mapping[str, object]] = {}
+        for token_row in token_rows:
+            try:
+                values[token_row.id] = analyzer.snapshot(
+                    _token_identity(token_row),
+                    tuple(grouped.get(token_row.id, ())),
+                    now=checked_at,
+                    config_hash="launch-lifecycle-read-v2",
+                ).as_mapping()
+            except (TypeError, ValueError, OverflowError):
+                # A malformed persisted row is not allowed to become a
+                # fabricated lifecycle state in the read API.
+                values[token_row.id] = {}
+        return values
+
+    async def _relationship_subgraph(
+        self,
+        session: AsyncSession,
+        query: WalletGraphQuery,
+        *,
+        as_of: datetime,
+    ) -> Mapping[str, object]:
+        checked_at = ensure_utc(as_of, "as_of")
+        rows = (
+            await session.scalars(
+                select(ObservationRow)
+                .where(
+                    ObservationRow.kind.in_(_RELATIONSHIP_OBSERVATION_KINDS),
+                    ObservationRow.observed_at <= checked_at,
+                    ObservationRow.ingested_at <= checked_at,
+                    or_(
+                        ObservationRow.occurred_at <= checked_at,
+                        ObservationRow.occurred_at.is_(None),
+                    ),
+                )
+                .order_by(
+                    func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at).desc(),
+                    ObservationRow.observed_at.desc(),
+                    ObservationRow.ingested_at.desc(),
+                    ObservationRow.id.desc(),
+                )
+                .limit(MAX_STORAGE_ROWS)
+            )
+        ).all()
+        observations: list[Observation] = []
+        for row in rows:
+            try:
+                observations.append(_observation_from_row(row))
+            except (TypeError, ValueError):
+                continue
+        evidence = WalletRelationshipAnalyzer().analyze(
+            tuple(observations),
+            now=checked_at,
+            config_hash="wallet-relationship-read-v1",
+        )
+        graph = CreatorOutcomeGraph()
+        for value in evidence:
+            graph.add_edge(value.to_graph_edge())
+        return graph.get_subgraph(
+            [
+                f"wallet:{query.address}",
+                f"wallet:solana:{query.address}",
+                query.address,
+            ],
+            max_depth=query.max_depth,
+            max_nodes=query.max_nodes,
+            max_edges=query.max_edges,
+            as_of=checked_at,
+            outcome_filter=query.outcome_filter,
+            date_from=query.date_from,
+            date_to=query.date_to,
+            venue=query.venue,
+            wallet_role=query.wallet_role,
+            risk_outcome_class=query.risk_outcome_class,
+            evidence_quality=query.evidence_quality,
+        )
 
     async def list_candidates(self, query: CandidateQuery) -> Page[CandidateView]:
         if not isinstance(query, CandidateQuery):
@@ -538,7 +748,10 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                 if row.candidate is None
                 else await self._candidate_view_for_row(session, row.candidate)
             )
-            return _token_view(row, candidate)
+            lifecycle = await self._launch_lifecycle_for_tokens(
+                session, (row,), as_of=self._clock()
+            )
+            return _token_view(row, candidate, launch_lifecycle=lifecycle.get(row.id, {}))
 
     async def _position_mark_for_token(
         self,
@@ -675,18 +888,26 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             if token is None or token.candidate is None:
                 return Page(items=(), limit=query.limit, has_more=False)
             candidate_id = token.candidate.id
-            observations = (
-                await session.scalars(
-                    select(ObservationRow)
-                    .where(
-                        or_(
-                            ObservationRow.token_id == token_id,
-                            ObservationRow.candidate_id == candidate_id,
-                        )
+            observation_statement = (
+                select(ObservationRow)
+                .where(
+                    or_(
+                        ObservationRow.token_id == token_id,
+                        ObservationRow.candidate_id == candidate_id,
                     )
-                    .limit(MAX_STORAGE_ROWS)
                 )
-            ).all()
+            )
+            if query.as_of is not None:
+                observation_statement = observation_statement.where(
+                    ObservationRow.observed_at <= query.as_of,
+                    ObservationRow.ingested_at <= query.as_of,
+                    or_(
+                        ObservationRow.occurred_at <= query.as_of,
+                        ObservationRow.occurred_at.is_(None),
+                    ),
+                )
+            observation_statement = observation_statement.limit(MAX_STORAGE_ROWS)
+            observations = (await session.scalars(observation_statement)).all()
             transitions = (
                 await session.scalars(
                     select(StateTransitionRow)
@@ -742,6 +963,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                 observed_at=entry.observed_at,
                 ingested_at=entry.ingested_at,
                 quality_state=entry.quality_state,
+                time_quality=entry.time_quality,
                 reason_codes=entry.reason_codes,
                 evidence_refs=entry.evidence_refs,
                 payload=entry.payload,
@@ -774,13 +996,18 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                 )
             ).all()
             values: list[TokenView] = []
+            lifecycle = await self._launch_lifecycle_for_tokens(
+                session, rows, as_of=self._clock()
+            )
             for row in rows:
                 candidate = (
                     None
                     if row.candidate is None
                     else await self._candidate_view_for_row(session, row.candidate)
                 )
-                values.append(_token_view(row, candidate))
+                values.append(
+                    _token_view(row, candidate, launch_lifecycle=lifecycle.get(row.id, {}))
+                )
             return tuple(values)
 
     async def find_wallets_by_address(
@@ -861,7 +1088,47 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         return await InMemoryReadQueryService().get_creator_reputation(address)
 
     async def get_wallet_graph(self, query: WalletGraphQuery) -> WalletGraphView:
-        return await self._catalog.get_wallet_graph(query)
+        if not isinstance(query, WalletGraphQuery):
+            raise TypeError("query must be a WalletGraphQuery")
+        base = await self._catalog.get_wallet_graph(query)
+        async with self._session_factory() as session:
+            relationship = await self._relationship_subgraph(
+                session, query, as_of=self._clock()
+            )
+        relationship_nodes = cast(
+            Sequence[Mapping[str, object]], relationship.get("nodes", ())
+        )
+        relationship_edges = cast(
+            Sequence[Mapping[str, object]], relationship.get("edges", ())
+        )
+        if not relationship_edges:
+            return base
+        nodes = {str(item["id"]): item for item in base.nodes}
+        for item in relationship_nodes:
+            nodes.setdefault(str(item["id"]), item)
+        edges = {str(item["id"]): item for item in base.edges}
+        edges.update({str(item["id"]): item for item in relationship_edges})
+        node_values = tuple(nodes.values())[: query.max_nodes]
+        node_ids = {str(item["id"]) for item in node_values}
+        edge_values = tuple(
+            item
+            for item in edges.values()
+            if str(item["from_id"]) in node_ids and str(item["to_id"]) in node_ids
+        )[: query.max_edges]
+        return WalletGraphView(
+            nodes=node_values,
+            edges=edge_values,
+            max_depth=query.max_depth,
+            max_nodes=query.max_nodes,
+            max_edges=query.max_edges,
+            has_more=(
+                base.has_more
+                or bool(relationship.get("has_more"))
+                or len(nodes) > query.max_nodes
+                or len(edges) > query.max_edges
+            ),
+            as_of=ensure_utc(self._clock(), "as_of"),
+        )
 
     async def get_token_graph(self, query: TokenGraphQuery) -> WalletGraphView:
         return await self._catalog.get_token_graph(query)

@@ -22,6 +22,7 @@ from .repositories import (
     CandidateRepository,
     CrossChainIdentityEvidenceRepository,
     FeatureSnapshotRepository,
+    ObservationRepository,
     OutboxRepository,
     RiskAssessmentRepository,
     ScoreSnapshotRepository,
@@ -47,6 +48,7 @@ class SqlAlchemyUnitOfWork:
         self.candidates: CandidateRepository
         self.callers: CallerIdentityRepository
         self.social_calls: SocialCallObservationRepository
+        self.observations: ObservationRepository
         self.cross_chain_identity_evidence: CrossChainIdentityEvidenceRepository
         self.alerts: AlertRepository
         self.features: FeatureSnapshotRepository
@@ -59,6 +61,7 @@ class SqlAlchemyUnitOfWork:
         self.candidates = CandidateRepository(self._session)
         self.callers = CallerIdentityRepository(self._session)
         self.social_calls = SocialCallObservationRepository(self._session)
+        self.observations = ObservationRepository(self._session)
         self.cross_chain_identity_evidence = CrossChainIdentityEvidenceRepository(self._session)
         self.alerts = AlertRepository(self._session)
         self.features = FeatureSnapshotRepository(self._session)

@@ -140,31 +140,12 @@ def test_wallet_graph_fixture_replay_is_bounded_explainable_and_credential_free(
         TOKEN_PROGRAM,
     }
     assert holder_snapshot.evidence_refs == ("holders:wallet-graph-fixture",)
-    assert graph.quality_state is QualityState.FRESH
-    assert len(graph.edges) == 3
-    assert OUTSIDE not in graph.nodes
-    assert SYSTEM not in graph.nodes
-    assert TOKEN_PROGRAM not in graph.nodes
-    assert graph.evidence_refs == (
-        "transfer:1",
-        "transfer:2",
-        "transfer:3",
-        "transfer:4",
-    )
-    shared_funder = next(
-        edge for edge in graph.edges if edge.from_address == FUNDER and edge.to_address == WALLET_B
-    )
-    assert shared_funder.relation_type == "funded_by"
-    assert shared_funder.weight == Decimal("15")
-    assert shared_funder.transfer_count == 2
-    assert shared_funder.evidence_refs == ("transfer:2", "transfer:3")
-    assert clustered.quality_state is QualityState.FRESH
-    assert clustered.clustered_top == Decimal("0.63")
-    assert any(
-        cluster.addresses == tuple(sorted((WALLET_A, WALLET_B, WALLET_C, FUNDER)))
-        for cluster in clustered.clusters
-    )
-    assert "SHARED_FUNDER_CLUSTER" in {reason.code for reason in clustered.reason_codes}
+    assert graph.quality_state is QualityState.UNKNOWN
+    assert graph.edges == ()
+    assert graph.evidence_refs == ()
+    assert "WALLET_GRAPH_EVIDENCE_MISSING" in {reason.code for reason in graph.reason_codes}
+    assert clustered.quality_state is QualityState.UNKNOWN
+    assert clustered.clustered_top is None
 
 
 def test_wallet_graph_fixture_preserves_all_protected_runtime_modes() -> None:

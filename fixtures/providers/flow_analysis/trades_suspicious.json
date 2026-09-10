@@ -5,6 +5,7 @@
   "events": [
     {
       "source_id": "trade:suspicious:1",
+      "occurred_at": "2026-08-27T14:58:20+00:00",
       "observed_at": "2026-08-27T14:58:20+00:00",
       "maker": "11111111111111111111111111111112",
       "side": "buy",
@@ -14,6 +15,7 @@
     },
     {
       "source_id": "trade:suspicious:2",
+      "occurred_at": "2026-08-27T14:58:40+00:00",
       "observed_at": "2026-08-27T14:58:40+00:00",
       "maker": "11111111111111111111111111111112",
       "side": "sell",
@@ -23,6 +25,7 @@
     },
     {
       "source_id": "trade:suspicious:3",
+      "occurred_at": "2026-08-27T14:58:50+00:00",
       "observed_at": "2026-08-27T14:58:50+00:00",
       "maker": "11111111111111111111111111111113",
       "side": "buy",
@@ -32,6 +35,7 @@
     },
     {
       "source_id": "trade:suspicious:4",
+      "occurred_at": "2026-08-27T14:59:10+00:00",
       "observed_at": "2026-08-27T14:59:10+00:00",
       "maker": "11111111111111111111111111111113",
       "side": "sell",

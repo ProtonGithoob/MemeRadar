@@ -5,12 +5,14 @@
   "observations": [
     {
       "source_id": "market:suspicious:previous",
+      "occurred_at": "2026-08-27T14:57:00+00:00",
       "observed_at": "2026-08-27T14:57:00+00:00",
       "liquidity": "100000",
       "depth": "60000"
     },
     {
       "source_id": "market:suspicious:latest",
+      "occurred_at": "2026-08-27T14:59:00+00:00",
       "observed_at": "2026-08-27T14:59:00+00:00",
       "liquidity": "6000",
       "depth": "1000"

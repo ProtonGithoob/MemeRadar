@@ -52,6 +52,7 @@ def observation(
     kind: str,
     payload: dict[str, object],
     source_id: str,
+    occurred_at: datetime | None,
     observed_at: datetime,
 ) -> Observation:
     return Observation(
@@ -62,7 +63,7 @@ def observation(
             observed_at=observed_at,
             parser_version="flow-analysis-fixture-v1",
         ),
-        occurred_at=None,
+        occurred_at=occurred_at,
         observed_at=observed_at,
         ingested_at=observed_at + timedelta(seconds=1),
         quality_state=QualityState.FRESH,
@@ -83,6 +84,7 @@ def market_observations(
             kind="market.market_data",
             payload={"liquidity": record["liquidity"], "depth": record["depth"]},
             source_id=str(record["source_id"]),
+            occurred_at=datetime.fromisoformat(str(record["occurred_at"])),
             observed_at=datetime.fromisoformat(str(record["observed_at"])),
         )
         for record in records
@@ -108,6 +110,7 @@ def trade_observations(
                 "seller": record["seller"],
             },
             source_id=str(record["source_id"]),
+            occurred_at=datetime.fromisoformat(str(record["occurred_at"])),
             observed_at=datetime.fromisoformat(str(record["observed_at"])),
         )
         for record in records

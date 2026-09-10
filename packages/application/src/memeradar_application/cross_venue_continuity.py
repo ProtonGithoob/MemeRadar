@@ -14,6 +14,7 @@ from memeradar_domain import Observation, Provenance, QualityState, ReasonCode, 
 from memeradar_domain.common import ensure_utc, require_text, to_decimal
 from memeradar_domain.events import normalize_reason_codes
 
+from .event_time import exact_event_time
 from .wallet_tracking import (
     TrackedWalletRegistry,
     WalletAction,
@@ -392,6 +393,8 @@ class CrossVenuePositionContinuity:
                     else ContinuityQuality.INVALID
                 )
                 return None, quality, ("MIGRATION_EVIDENCE_UNSAFE",), False
+            if exact_event_time(observation) is None:
+                continue
             candidates.append(observation)
         if reverted_seen and not candidates:
             return None, ContinuityQuality.UNKNOWN, ("MIGRATION_REVERTED",), True
@@ -401,7 +404,7 @@ class CrossVenuePositionContinuity:
         ordered = sorted(
             candidates,
             key=lambda item: (
-                item.occurred_at or item.observed_at,
+                exact_event_time(item),
                 item.observed_at,
                 item.provenance.source_id,
             ),
@@ -428,9 +431,11 @@ class CrossVenuePositionContinuity:
         if len(known_pools) > 1 or len(successor_venues) > 1:
             return None, ContinuityQuality.CONFLICTED, ("MIGRATION_SUCCESSOR_CONFLICTED",), False
 
-        first_time = first.occurred_at or first.observed_at
+        first_time = exact_event_time(first)
+        assert first_time is not None
         for item in ordered[1:]:
-            later = item.occurred_at or item.observed_at
+            later = exact_event_time(item)
+            assert later is not None
             if abs((later - first_time).total_seconds()) > 5:
                 return (
                     None,

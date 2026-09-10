@@ -49,7 +49,7 @@ def observation(
             observed_at=observed,
             parser_version="wallet-graph-fixture-v1",
         ),
-        occurred_at=None,
+        occurred_at=observed,
         observed_at=observed,
         ingested_at=observed + timedelta(seconds=1),
         quality_state=quality_state,

@@ -35,6 +35,7 @@ def pump_swap_message(source_id: str, pool: str = POOL) -> dict[str, object]:
     return {
         "event_type": "pool_created",
         "event_id": source_id,
+        "occurred_at": NOW.isoformat(),
         "data": {"mint": MINT, "pool": pool, "quote_mint": QUOTE},
     }
 
@@ -95,11 +96,21 @@ def test_mapper_requires_complete_pool_identity() -> None:
 def test_duplicate_detector_reports_same_token_without_dropping_candidate() -> None:
     detector = CanonicalDuplicateDetector()
     first = PumpFunAdapter().normalize(
-        {"event_type": "token_created", "event_id": "first", "data": {"mint": MINT}},
+        {
+            "event_type": "token_created",
+            "event_id": "first",
+            "occurred_at": NOW.isoformat(),
+            "data": {"mint": MINT},
+        },
         context(),
     )
     second = PumpFunAdapter().normalize(
-        {"event_type": "token_created", "event_id": "second", "data": {"mint": MINT}},
+        {
+            "event_type": "token_created",
+            "event_id": "second",
+            "occurred_at": NOW.isoformat(),
+            "data": {"mint": MINT},
+        },
         context(),
     )
 

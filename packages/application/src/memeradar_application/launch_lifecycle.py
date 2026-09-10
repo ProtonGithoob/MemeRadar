@@ -21,6 +21,14 @@ from memeradar_domain import (
 )
 from memeradar_domain.common import bounded_decimal, ensure_utc, require_text
 
+from .event_time import (
+    EventTimeQuality,
+    eligible_at,
+    event_time,
+    event_time_quality,
+    ordering_time,
+)
+
 
 class LaunchLifecycleState(str, Enum):
     UNKNOWN = "UNKNOWN"
@@ -79,6 +87,7 @@ class LaunchLifecycleEvidence:
     confidence: Decimal = Decimal("0")
     config_hash: str = "launch-lifecycle-v2"
     quality_state: QualityState = QualityState.UNKNOWN
+    time_quality: EventTimeQuality | str = EventTimeQuality.UNKNOWN
     version: str = "launch-lifecycle-v2"
 
     def __post_init__(self) -> None:
@@ -152,6 +161,7 @@ class LaunchLifecycleEvidence:
         )
         object.__setattr__(self, "config_hash", require_text(self.config_hash, "config_hash"))
         object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        object.__setattr__(self, "time_quality", EventTimeQuality(self.time_quality))
         object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
 
     @property
@@ -163,6 +173,7 @@ class LaunchLifecycleEvidence:
         return None
 
     def as_mapping(self) -> Mapping[str, object]:
+        time_quality = EventTimeQuality(self.time_quality)
         return {
             "lifecycle_state": LaunchLifecycleState(self.lifecycle_state).value,
             "route_state": RouteState(self.route_state).value,
@@ -191,6 +202,7 @@ class LaunchLifecycleEvidence:
             "as_of": self.as_of.isoformat(),
             "expires_at": self.expires_at.isoformat(),
             "quality_state": self.quality_state.value,
+            "time_quality": time_quality.value,
             "confidence": self.confidence,
             "config_hash": self.config_hash,
             "version": self.version,
@@ -213,7 +225,14 @@ LaunchLifecycleSnapshot = LaunchLifecycleEvidence
 
 _LIFECYCLE_KINDS = frozenset({"chain.launchpad", "protocol.lifecycle"})
 _ROUTE_KINDS = frozenset(
-    {"market.snapshot", "market.pair", "market.quote", "protocol.lifecycle", "chain.launchpad"}
+    {
+        "market.snapshot",
+        "market.market_snapshot",
+        "market.pair",
+        "market.quote",
+        "protocol.lifecycle",
+        "chain.launchpad",
+    }
 )
 _CREATED_EVENTS = frozenset({"created", "launch", "token_created", "launchpad_launch"})
 _BONDING_EVENTS = frozenset(
@@ -247,10 +266,9 @@ _QUALITY_ORDER = {
     QualityState.CONFLICTED: 3,
     QualityState.INVALID: 4,
 }
-
-
-def _event_at(observation: Observation) -> datetime:
-    return ensure_utc(observation.occurred_at or observation.observed_at, "event_at")
+_RECONCILIATION_METADATA = frozenset(
+    {"authoritative", "commitment", "reason_codes", "rpc_reconciled", "source_layer"}
+)
 
 
 def _token_matches(observation: Observation, token: TokenIdentity) -> bool:
@@ -369,37 +387,74 @@ def _route_signal(
     return None, pool, venue, progress, verified
 
 
-def _canonical_key(observation: Observation) -> tuple[str, str, str]:
+def _canonical_key(observation: Observation) -> tuple[str, str]:
     payload = observation.normalized_payload
-    identity = next(
-        (
-            str(payload[key])
-            for key in ("canonical_event_id", "tx_hash", "signature", "event_id")
-            if payload.get(key) is not None
-        ),
-        observation.provenance.source_id,
-    )
-    event_type = str(payload.get("event_type", payload.get("lifecycle_state", ""))).lower()
-    return (str(payload.get("chain", "")), identity.lower(), event_type)
+    chain = str(payload.get("chain", "")).lower()
+    transaction_hash = payload.get("tx_hash")
+    if transaction_hash is not None:
+        identity_parts = [chain, str(transaction_hash).lower()]
+        has_log_identity = False
+        for key in ("log_index", "event_index"):
+            if payload.get(key) is not None:
+                identity_parts.append(f"{key}={payload[key]}")
+                has_log_identity = True
+        topic = payload.get("topic0", payload.get("topic"))
+        if topic is not None:
+            identity_parts.append(f"topic={str(topic).lower()}")
+            has_log_identity = True
+        if has_log_identity:
+            identity = ":".join(identity_parts)
+        else:
+            event_id = payload.get("event_id")
+            identity = ":".join(
+                (
+                    *identity_parts,
+                    f"event={event_id}"
+                    if event_id is not None
+                    else (
+                        f"source={observation.provenance.provider}:"
+                        f"{observation.provenance.source_id}"
+                    ),
+                )
+            )
+    else:
+        identity = next(
+            (
+                str(payload[key])
+                for key in ("canonical_event_id", "signature", "event_id")
+                if payload.get(key) is not None
+            ),
+            observation.provenance.source_id,
+        )
+    return (chain, identity.lower())
+
+
+def _semantic_payload(observation: Observation) -> str:
+    payload = {
+        str(key): value
+        for key, value in observation.normalized_payload.items()
+        if key not in _RECONCILIATION_METADATA
+    }
+    return repr(sorted(payload.items(), key=lambda item: item[0]))
 
 
 def _collapse(
     rows: Sequence[tuple[Observation, object]],
 ) -> tuple[tuple[tuple[Observation, object], ...], bool, bool]:
-    groups: dict[tuple[str, str, str], list[tuple[Observation, object]]] = defaultdict(list)
+    groups: dict[tuple[str, str], list[tuple[Observation, object]]] = defaultdict(list)
     for row in rows:
         groups[_canonical_key(row[0])].append(row)
     representatives: list[tuple[Observation, object]] = []
     conflict = False
     deduped = False
     for group in groups.values():
-        if len({repr(row[1]) for row in group}) > 1:
+        if len({_semantic_payload(row[0]) for row in group}) > 1:
             conflict = True
         representative = min(
             group,
             key=lambda row: (
                 _QUALITY_ORDER[row[0].quality_state],
-                -_event_at(row[0]).timestamp(),
+                -ordering_time(row[0]).timestamp(),
                 row[0].provenance.source_id,
             ),
         )
@@ -417,7 +472,7 @@ def _quality(observations: Sequence[Observation]) -> QualityState:
 def _latest_value(
     observations: Sequence[Observation], keys: Sequence[str]
 ) -> object | None:
-    for observation in sorted(observations, key=_event_at, reverse=True):
+    for observation in sorted(observations, key=ordering_time, reverse=True):
         for key in keys:
             value = observation.normalized_payload.get(key)
             if value is not None:
@@ -439,7 +494,9 @@ def _first_event_time(
             or observation.normalized_payload.get("rpc_reconciled") is True
         ):
             continue
-        values.append(_event_at(observation))
+        occurred = event_time(observation)
+        if occurred is not None and event_time_quality(observation) is EventTimeQuality.EXACT:
+            values.append(occurred)
     return min(values) if values else None
 
 
@@ -473,13 +530,13 @@ class GraduationAwareRouteAnalyzer:
                 continue
             if not _token_matches(observation, token):
                 continue
-            if observation.observed_at > checked_at or _event_at(observation) > checked_at:
+            if not eligible_at(observation, checked_at):
                 continue
             matched.append(observation)
 
         lifecycle_rows: list[tuple[Observation, object]] = []
         route_rows: list[tuple[Observation, object]] = []
-        route_details: dict[str, tuple[str | None, str | None, int | None]] = {}
+        route_details: dict[tuple[str, str], tuple[str | None, str | None, int | None]] = {}
         for observation in matched:
             try:
                 row_lifecycle = _lifecycle_signal(observation.normalized_payload)
@@ -496,7 +553,9 @@ class GraduationAwareRouteAnalyzer:
                 lifecycle_rows.append((observation, row_lifecycle))
             if row_route is not None:
                 route_rows.append((observation, row_route))
-                route_details[observation.provenance.source_id] = (
+                route_details[
+                    (observation.provenance.provider, observation.provenance.source_id)
+                ] = (
                     row_pool,
                     row_venue,
                     row_progress,
@@ -510,9 +569,9 @@ class GraduationAwareRouteAnalyzer:
         reasons: list[ReasonCode] = []
         lifecycle = LaunchLifecycleState.UNKNOWN
         if collapsed_lifecycle_rows:
-            latest_at = max(_event_at(row[0]) for row in collapsed_lifecycle_rows)
+            latest_at = max(ordering_time(row[0]) for row in collapsed_lifecycle_rows)
             latest_lifecycle = [
-                row for row in collapsed_lifecycle_rows if _event_at(row[0]) == latest_at
+                row for row in collapsed_lifecycle_rows if ordering_time(row[0]) == latest_at
             ]
             lifecycle_values = {row[1] for row in latest_lifecycle}
             selected.extend(row[0] for row in latest_lifecycle)
@@ -527,16 +586,28 @@ class GraduationAwareRouteAnalyzer:
         venue: str | None = None
         progress: int | None = None
         if collapsed_route_rows:
-            latest_at = max(_event_at(row[0]) for row in collapsed_route_rows)
+            latest_at = max(ordering_time(row[0]) for row in collapsed_route_rows)
             latest_route = [
-                row for row in collapsed_route_rows if _event_at(row[0]) == latest_at
+                row for row in collapsed_route_rows if ordering_time(row[0]) == latest_at
             ]
             route_values = {row[1] for row in latest_route}
             selected.extend(row[0] for row in latest_route)
             route_latest_conflict = len(route_values) > 1
             if not route_latest_conflict:
                 route = RouteState(next(iter(route_values)))
-                details = route_details.get(latest_route[-1][0].provenance.source_id)
+                selected_route = max(
+                    latest_route,
+                    key=lambda row: (
+                        row[0].provenance.provider,
+                        row[0].provenance.source_id,
+                    ),
+                )
+                details = route_details.get(
+                    (
+                        selected_route[0].provenance.provider,
+                        selected_route[0].provenance.source_id,
+                    )
+                )
                 if details is not None:
                     pool, venue, progress = details
         else:
@@ -573,7 +644,7 @@ class GraduationAwareRouteAnalyzer:
         unique_selected: list[Observation] = []
         selected_keys: set[tuple[str, str]] = set()
         for item in sorted(
-            selected, key=lambda value: (_event_at(value), value.provenance.source_id)
+            selected, key=lambda value: (ordering_time(value), value.provenance.source_id)
         ):
             key = (item.provenance.provider, item.provenance.source_id)
             if key not in selected_keys:
@@ -584,7 +655,7 @@ class GraduationAwareRouteAnalyzer:
         supporting_keys: set[tuple[str, str]] = set()
         for item in sorted(
             (row[0] for row in (*collapsed_lifecycle_rows, *collapsed_route_rows)),
-            key=lambda value: (_event_at(value), value.provenance.source_id),
+            key=lambda value: (ordering_time(value), value.provenance.source_id),
         ):
             key = (item.provenance.provider, item.provenance.source_id)
             if key not in supporting_keys:
@@ -602,11 +673,21 @@ class GraduationAwareRouteAnalyzer:
         elif invalid:
             quality = QualityState.INVALID
         elif selected_tuple and quality is QualityState.FRESH:
-            latest_selected = max(_event_at(item) for item in selected_tuple)
+            latest_selected = max(ordering_time(item) for item in selected_tuple)
             if checked_at >= latest_selected + self.policy.evidence_ttl:
                 quality = QualityState.STALE
 
-        as_of = max((_event_at(item) for item in selected_tuple), default=checked_at)
+        supporting_time_quality = (
+            EventTimeQuality.UNKNOWN
+            if any(
+                event_time_quality(item) is not EventTimeQuality.EXACT
+                for item in supporting_tuple
+            )
+            else EventTimeQuality.EXACT
+        )
+        if supporting_time_quality is not EventTimeQuality.EXACT and quality is QualityState.FRESH:
+            quality = QualityState.UNKNOWN
+        as_of = max((ordering_time(item) for item in selected_tuple), default=checked_at)
         creator_value = _latest_value(matched, ("creator_address", "creator"))
         pool_value = pool
         if pool_value is None and route is RouteState.DEX_ROUTE:
@@ -675,6 +756,7 @@ class GraduationAwareRouteAnalyzer:
             confidence=Decimal("1") if quality is QualityState.FRESH else Decimal("0"),
             config_hash=normalized_config,
             quality_state=quality,
+            time_quality=supporting_time_quality,
             version=self.policy.version,
         )
 

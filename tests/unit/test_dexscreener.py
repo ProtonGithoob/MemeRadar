@@ -106,6 +106,32 @@ def test_snapshot_filters_chain_and_selects_highest_quality_liquid_pair() -> Non
     assert observation.normalized_payload["volume_24h_usd"] == Decimal("25000")
 
 
+def test_snapshot_does_not_promote_missing_pair_creation_time_to_observed_time() -> None:
+    payload = fixture("token_pairs.json")
+    assert isinstance(payload, list)
+    for item in payload:
+        if isinstance(item, dict) and item.get("pairAddress") == PAIR_HIGH:
+            item.pop("pairCreatedAt", None)
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    adapter, client = make_adapter(httpx.MockTransport(handler))
+
+    async def scenario() -> object:
+        try:
+            return await adapter.snapshot(
+                MarketDataRequest(context=context(), token_ids=(TOKEN_ID,))
+            )
+        finally:
+            await client.aclose()
+
+    observation = asyncio.run(scenario())[0]
+    assert observation.occurred_at is None
+    assert observation.observed_at == NOW
+    assert observation.normalized_payload["event_time_quality"] == "UNKNOWN"
+
+
 def test_quote_is_a_fresh_market_reference_with_pair_context_and_no_key_requirement() -> None:
     payload = fixture("token_pairs.json")
 

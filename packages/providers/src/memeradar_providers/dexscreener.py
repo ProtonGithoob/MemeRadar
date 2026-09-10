@@ -941,11 +941,16 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
                         observed_at,
                         pair.raw,
                     ),
-                    occurred_at=pair.pair_created_at or observed_at,
+                    occurred_at=pair.pair_created_at,
                     observed_at=observed_at,
                     ingested_at=ingested_at,
                     quality_state=quality,
-                    normalized_payload=self._market_payload(pair, token.address),
+                    normalized_payload={
+                        **self._market_payload(pair, token.address),
+                        "event_time_quality": (
+                            "EXACT" if pair.pair_created_at is not None else "UNKNOWN"
+                        ),
+                    },
                     token_id=token.id,
                 )
             )

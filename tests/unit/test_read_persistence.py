@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from memeradar_domain import QualityState
+from memeradar_domain import IdempotencyConflict, Observation, Provenance, QualityState
 from memeradar_persistence.models import (
     AlertRow,
     CandidateRow,
@@ -20,6 +20,7 @@ from memeradar_persistence.read_queries import (
     _alert_timeline,
     _candidate_view,
     _feature_timeline,
+    _observation_from_row,
     _observation_timeline,
     _pool_view,
     _risk_timeline,
@@ -27,6 +28,7 @@ from memeradar_persistence.read_queries import (
     _token_view,
     _transition_timeline,
 )
+from memeradar_persistence.repositories import ObservationRepository, observation_to_row
 
 NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
 MINT = "So11111111111111111111111111111111111111112"
@@ -205,3 +207,96 @@ def test_persisted_timeline_mappers_are_bounded_and_redacted() -> None:
         "alert.strong_setup",
     }
     assert all(entry.token_id in {token.id, UUID(int=0)} for entry in entries)
+
+
+def test_persisted_observation_mapper_preserves_unknown_event_time() -> None:
+    token, candidate, _score, _risk = _rows()
+    row = ObservationRow(
+        id=uuid4(),
+        candidate_id=candidate.id,
+        token_id=token.id,
+        kind="protocol.lifecycle",
+        provider="fixture-lifecycle",
+        source_id="lifecycle:unknown-time",
+        occurred_at=None,
+        observed_at=NOW,
+        ingested_at=NOW,
+        parser_version="fixture-v1",
+        quality_state="FRESH",
+        normalized_payload={
+            "chain": "solana",
+            "token_address": MINT,
+            "event_type": "bonding",
+        },
+    )
+
+    observation = _observation_from_row(row)
+
+    assert observation.occurred_at is None
+    assert observation.observed_at == NOW
+    assert observation.ingested_at == NOW
+
+
+def test_generic_observation_repository_is_idempotent_and_conflicts_on_mutation() -> None:
+    observation = Observation(
+        kind="chain.launchpad",
+        provenance=Provenance(
+            provider="robinhood-sequencer",
+            source_id="robinhood:launch-1",
+            observed_at=NOW,
+            parser_version="robinhood-v1",
+        ),
+        occurred_at=None,
+        observed_at=NOW,
+        ingested_at=NOW,
+        quality_state=QualityState.UNKNOWN,
+        normalized_payload={
+            "chain": "robinhood",
+            "tx_hash": "0x" + "12" * 32,
+            "event_type": "graduation",
+            "reason_codes": ("RPC_RECONCILIATION_REQUIRED",),
+        },
+    )
+    mapped = observation_to_row(observation)
+    assert mapped.occurred_at is None
+    assert mapped.normalized_payload["event_type"] == "graduation"
+
+    class Session:
+        row: ObservationRow | None = None
+        added: ObservationRow | None = None
+
+        async def scalar(self, _statement: object) -> ObservationRow | None:
+            return self.row
+
+        def add(self, row: ObservationRow) -> None:
+            self.row = row
+            self.added = row
+
+        async def flush(self) -> None:
+            return None
+
+    async def exercise() -> None:
+        session = Session()
+        repository = ObservationRepository(session)  # type: ignore[arg-type]
+        first = await repository.add(observation)
+        second = await repository.add(observation)
+        assert first is second
+        changed = Observation(
+            kind=observation.kind,
+            provenance=observation.provenance,
+            occurred_at=observation.occurred_at,
+            observed_at=observation.observed_at,
+            ingested_at=observation.ingested_at,
+            quality_state=observation.quality_state,
+            normalized_payload={**observation.normalized_payload, "event_type": "launch"},
+        )
+        try:
+            await repository.add(changed)
+        except IdempotencyConflict as exc:
+            assert "conflicts" in str(exc)
+        else:
+            raise AssertionError("changed source identity was accepted")
+
+    import asyncio
+
+    asyncio.run(exercise())

@@ -34,6 +34,8 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .event_time import exact_event_time
+
 CHAIN_OPPORTUNITY_VERSION = "chain-opportunity-v1"
 DEFAULT_CHAIN_OPPORTUNITY_WINDOWS: tuple[tuple[str, timedelta], ...] = (
     ("5m", timedelta(minutes=5)),
@@ -87,7 +89,10 @@ def _event_type(observation: Observation) -> str:
 
 
 def _event_time(observation: Observation) -> datetime:
-    return observation.occurred_at or observation.observed_at
+    occurred_at = exact_event_time(observation)
+    if occurred_at is None:
+        raise ValueError("chain opportunity calculations require exact occurred_at")
+    return occurred_at
 
 
 def _decimal(value: object, field_name: str, *, signed: bool = False) -> Decimal | None:
@@ -555,13 +560,18 @@ class ChainOpportunityAnalyzer:
                     continue
             except (TypeError, ValueError):
                 continue
-            event_at = _event_time(observation)
+            event_at = exact_event_time(observation)
             if (
-                event_at > as_of
+                (
+                    event_at is not None
+                    and event_at > as_of
+                )
                 or observation.observed_at > as_of
                 or observation.ingested_at > as_of
             ):
                 future = True
+                continue
+            if event_at is None:
                 continue
             records.append(_Record(observation, _event_type(observation), event_at))
         deduplicated, conflict = _deduplicate(records)
