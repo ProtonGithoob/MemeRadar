@@ -31,7 +31,8 @@ const position: PositionRecord = {
     sourceId: "market:position",
     parserVersion: "fixture-v1",
     qualityState: "FRESH",
-    evidenceRefs: ["observation:1"]
+    evidenceRefs: ["observation:1"],
+    timeQuality: "EXACT"
   },
   performance: {
     asOf: "2026-08-31T12:05:01.000Z",

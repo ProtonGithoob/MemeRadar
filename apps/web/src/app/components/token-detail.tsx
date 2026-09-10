@@ -68,7 +68,7 @@ function pointsFor(entries: TimelineRecord[], keys: readonly string[]): MetricPo
   const points: MetricPoint[] = [];
   for (const entry of entries) {
     const value = metricFromEntry(entry, keys);
-    if (value !== null) points.push({ at: entry.occurredAt, value });
+    if (value !== null && entry.occurredAt !== null) points.push({ at: entry.occurredAt, value });
   }
   return points.slice(-MAX_CHART_POINTS);
 }
@@ -78,14 +78,15 @@ function netFlowPointsFor(entries: TimelineRecord[]): MetricPoint[] {
   for (const entry of entries) {
     const buy = metricFromEntry(entry, METRIC_KEYS.buy);
     const sell = metricFromEntry(entry, METRIC_KEYS.sell);
-    if (buy !== null && sell !== null) {
+    if (buy !== null && sell !== null && entry.occurredAt !== null) {
       points.push({ at: entry.occurredAt, value: buy - sell });
     }
   }
   return points.slice(-MAX_CHART_POINTS);
 }
 
-function displayDate(value: string): string {
+function displayDate(value: string | null): string {
+  if (value === null) return "UNKNOWN TIME";
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : "UNKNOWN TIME";
 }
@@ -368,9 +369,25 @@ function ProvenancePanel({ token, entries }: { token: TokenRecord; entries: Time
 }
 
 function MetadataPanels({ token }: { token: TokenRecord }) {
-  const lifecycle = token.launchLifecycle ?? {};
-  const lifecycleState = typeof lifecycle.lifecycle_state === "string" ? lifecycle.lifecycle_state : "UNKNOWN";
-  const routeState = typeof lifecycle.route_state === "string" ? lifecycle.route_state : "UNKNOWN";
+  const lifecycle = token.launchLifecycle;
+  const lifecycleState = lifecycle?.lifecycleState ?? "UNKNOWN";
+  const routeState = lifecycle?.routeState ?? "UNKNOWN";
+  const routeAvailable = lifecycle?.routeAvailable === null || lifecycle?.routeAvailable === undefined
+    ? "UNKNOWN"
+    : lifecycle.routeAvailable ? "YES" : "NO";
+  const lifecycleNumber = (value: number | null, divisor = 1): string =>
+    value === null || !Number.isFinite(value / divisor) ? "UNKNOWN" : (value / divisor).toFixed(1);
+  const lifecycleDate = (value: string | null): string => displayDate(value);
+  const lifecycleText = (value: string | null): string => value ?? "UNKNOWN";
+  const lifecycleAddress = (value: string | null): string =>
+    value === null ? "UNKNOWN" : shortIdentity(value, 10);
+  const provenance = lifecycle?.provenance.length
+    ? [...new Set(lifecycle.provenance.map((item) => item.provider))].join(", ")
+    : "UNKNOWN";
+  const lifecycleConfidence = lifecycle === null ||
+    ["UNKNOWN", "CONFLICTED", "INVALID"].includes(lifecycle.qualityState)
+    ? "UNKNOWN"
+    : formatConfidence(lifecycle.confidence);
   return (
     <section aria-label="Token metadata" className="overview-grid">
       <article className="detail-panel">
@@ -403,6 +420,34 @@ function MetadataPanels({ token }: { token: TokenRecord }) {
         <span className="card-label">LAUNCH / ROUTE</span>
         <strong>{lifecycleState}</strong>
         <small className="muted-copy">ROUTE {routeState}; unknown remains unknown until discovery evidence is complete.</small>
+      </article>
+      <article aria-label="Launch lifecycle evidence" className="detail-panel detail-panel--wide">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Launch intelligence</p>
+            <h3>LIFECYCLE EVIDENCE</h3>
+          </div>
+          <small>{lifecycle?.qualityState ?? "UNKNOWN"}</small>
+        </div>
+        <dl className="detail-list">
+          <div><dt>CURRENT LIFECYCLE</dt><dd>{lifecycleState}</dd></div>
+          <div><dt>ROUTE STATE</dt><dd>{routeState} / {routeAvailable}</dd></div>
+          <div><dt>LAUNCHPAD</dt><dd>{lifecycleText(lifecycle?.launchpad ?? null)}</dd></div>
+          <div><dt>CREATOR ADDRESS</dt><dd>{lifecycleAddress(lifecycle?.creatorAddress ?? null)}</dd></div>
+          <div><dt>BONDING PROGRESS</dt><dd>{lifecycleNumber(lifecycle?.bondingCurveProgressBps ?? null, 100)}%</dd></div>
+          <div><dt>QUOTE ASSET</dt><dd>{lifecycleText(lifecycle?.quoteAsset ?? null)}</dd></div>
+          <div><dt>GRADUATION THRESHOLD</dt><dd>{lifecycleNumber(lifecycle?.graduationThresholdBps ?? null, 100)}%</dd></div>
+          <div><dt>GRADUATED AT</dt><dd>{lifecycleDate(lifecycle?.graduatedAt ?? null)}</dd></div>
+          <div><dt>FIRST VERIFIED LIQUIDITY</dt><dd>{lifecycleDate(lifecycle?.firstVerifiedDexLiquidityAt ?? null)}</dd></div>
+          <div><dt>FIRST VERIFIED SWAP</dt><dd>{lifecycleDate(lifecycle?.firstVerifiedSwapAt ?? null)}</dd></div>
+          <div><dt>POOL / VENUE</dt><dd>{lifecycleText(lifecycle?.poolAddress ?? null)} / {lifecycleText(lifecycle?.venue ?? null)}</dd></div>
+          <div><dt>LIQUIDITY LOCK</dt><dd>{lifecycleText(lifecycle?.liquidityLockState ?? null)}</dd></div>
+          <div><dt>AS OF / EXPIRES</dt><dd>{lifecycle ? `${lifecycleDate(lifecycle.asOf)} / ${lifecycleDate(lifecycle.expiresAt)}` : "UNKNOWN"}</dd></div>
+          <div><dt>QUALITY / TIME</dt><dd>{lifecycle?.qualityState ?? "UNKNOWN"} / {lifecycle?.timeQuality ?? "UNKNOWN"}</dd></div>
+          <div><dt>CONFIDENCE</dt><dd>{lifecycleConfidence}</dd></div>
+          <div><dt>REASON CODES</dt><dd>{lifecycle?.reasonCodes.length ? lifecycle.reasonCodes.join(", ") : "UNKNOWN"}</dd></div>
+          <div><dt>PROVENANCE</dt><dd>{provenance}</dd></div>
+        </dl>
       </article>
     </section>
   );
@@ -448,6 +493,7 @@ function TokenTimeline({ entries }: { entries: TimelineRecord[] }) {
         <article className="timeline-entry" key={entry.id}>
           <div className="timeline-entry__time">
             <strong>{displayDate(entry.occurredAt)}</strong>
+            <small>TIME QUALITY {entry.timeQuality}</small>
             <small>OBSERVED {displayDate(entry.observedAt)}</small>
           </div>
           <div className="timeline-entry__body">

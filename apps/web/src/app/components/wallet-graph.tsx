@@ -22,6 +22,64 @@ function shortId(val: string, visible = 8): string {
   return `${val.slice(0, visible)}…${val.slice(-visible)}`;
 }
 
+const RELATIONSHIP_DIMENSION_LABELS: Record<string, string> = {
+  SHARED_FUNDING: "SHARED FUNDING",
+  FUNDING_TIME_PROXIMITY: "FUNDING-TIME PROXIMITY",
+  REPEATED_COMMON_FUNDING: "REPEATED COMMON FUNDING",
+  BRIDGE_ORIGIN: "BRIDGE ORIGIN",
+  CROSS_CHAIN_FUNDING: "CROSS-CHAIN",
+  SAME_TOKEN_PARTICIPATION: "SAME-TOKEN PARTICIPATION",
+  BEHAVIORAL_CORRELATION: "BEHAVIORAL"
+};
+
+function relationshipValue(properties: Record<string, unknown>, key: string): string {
+  const value = properties[key];
+  return value === null || value === undefined || value === "" ? "UNKNOWN" : String(value);
+}
+
+function relationshipDimensions(properties: Record<string, unknown>): string {
+  const raw = properties.dimensions;
+  if (!Array.isArray(raw) || raw.length === 0) return "UNKNOWN";
+  return raw
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => RELATIONSHIP_DIMENSION_LABELS[value] ?? value.replaceAll("_", " "))
+    .join(" · ") || "UNKNOWN";
+}
+
+function relationshipRefs(properties: Record<string, unknown>): string {
+  const raw = properties.evidence_refs;
+  if (!Array.isArray(raw) || raw.length === 0) return "UNKNOWN";
+  const refs = raw.filter((value): value is string => typeof value === "string").slice(0, 4);
+  return refs.length > 0 ? refs.join(", ") : "UNKNOWN";
+}
+
+function RelationshipEvidenceDetails({ edge }: { edge: GraphEdgeRecord }) {
+  if (edge.kind !== "RELATIONSHIP_EVIDENCE") return null;
+  const properties = edge.properties;
+  const candidateOnly = properties.candidate_only === true;
+  const ownershipAsserted = properties.ownership_asserted === true;
+  const delta = properties.funding_time_delta_seconds;
+  const deltaLabel = typeof delta === "number" && Number.isFinite(delta)
+    ? `${delta.toFixed(1)}s`
+    : typeof delta === "string" && Number.isFinite(Number(delta))
+      ? `${Number(delta).toFixed(1)}s`
+      : "UNKNOWN";
+  return (
+    <div aria-label="Relationship evidence details" className="w-full grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 pt-2 mt-1 border-t border-slate-800/60 text-[10px]">
+      <span>TYPE <strong className="text-slate-200">{relationshipValue(properties, "relationship_type")}</strong></span>
+      <span>DIMENSIONS <strong className="text-slate-200">{relationshipDimensions(properties)}</strong></span>
+      <span>CONFIDENCE <strong className={properties.confidence === "UNKNOWN" || edge.qualityState !== "FRESH" ? "text-amber-400" : "text-slate-200"}>{relationshipValue(properties, "confidence")}</strong></span>
+      <span>QUALITY <strong className="text-slate-200">{edge.qualityState}</strong></span>
+      <span>EVENT COUNT <strong className="text-slate-200">{relationshipValue(properties, "event_count")}</strong></span>
+      <span>FUNDING DELTA <strong className="text-slate-200">{deltaLabel}</strong></span>
+      <span className="text-amber-400">{candidateOnly ? "CANDIDATE ONLY" : "CANDIDATE STATUS UNKNOWN"}</span>
+      <span className="text-amber-400">OWNERSHIP ASSERTED: {ownershipAsserted ? "TRUE" : "FALSE"}</span>
+      <span className="sm:col-span-2">REASONS <strong className="text-slate-200">{Array.isArray(properties.reason_codes) && properties.reason_codes.length > 0 ? properties.reason_codes.join(", ") : "UNKNOWN"}</strong></span>
+      <span className="sm:col-span-2">EVIDENCE <strong className="text-slate-200 break-all">{relationshipRefs(properties)}</strong></span>
+    </div>
+  );
+}
+
 interface NodePosition {
   x: number;
   y: number;
@@ -567,6 +625,7 @@ export function WalletGraphExplorer() {
                         <span className="text-[10px] font-mono text-slate-500">
                           {edge.qualityState}
                         </span>
+                        <RelationshipEvidenceDetails edge={edge} />
                       </div>
                     ))
                   )}

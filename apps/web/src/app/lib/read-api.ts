@@ -129,6 +129,42 @@ export interface PoolRecord {
   quoteMint: string;
 }
 
+export type LaunchLifecycleState =
+  | "UNKNOWN"
+  | "CREATED"
+  | "BONDING"
+  | "GRADUATING"
+  | "DEX_LIVE";
+export type LaunchRouteState = "BONDING_ROUTE" | "DEX_ROUTE" | "NO_ROUTE" | "UNKNOWN";
+export type EventTimeQuality = "EXACT" | "ESTIMATED" | "UNKNOWN";
+
+export interface LaunchLifecycleRecord {
+  lifecycleState: LaunchLifecycleState;
+  routeState: LaunchRouteState;
+  routeAvailable: boolean | null;
+  launchpad: string | null;
+  creatorAddress: string | null;
+  bondingCurveProgressBps: number | null;
+  quoteAsset: string | null;
+  graduationThresholdBps: number | null;
+  graduatedAt: string | null;
+  firstVerifiedDexLiquidityAt: string | null;
+  firstVerifiedSwapAt: string | null;
+  liquidityLockState: string | null;
+  poolAddress: string | null;
+  venue: string | null;
+  asOf: string;
+  expiresAt: string;
+  qualityState: TimelineQuality;
+  timeQuality: EventTimeQuality;
+  confidence: number;
+  reasonCodes: string[];
+  evidenceRefs: string[];
+  provenance: ProvenanceRecord[];
+  configHash: string;
+  version: string;
+}
+
 export interface TokenRecord {
   id: string;
   chain: string;
@@ -143,7 +179,7 @@ export interface TokenRecord {
   creatorWallet: string | null;
   pools: PoolRecord[];
   candidate: CandidateRecord | null;
-  launchLifecycle?: Record<string, unknown>;
+  launchLifecycle: LaunchLifecycleRecord | null;
 }
 
 export interface ProvenanceRecord {
@@ -158,10 +194,11 @@ export interface TimelineRecord {
   tokenId: string;
   kind: string;
   sourceId: string;
-  occurredAt: string;
+  occurredAt: string | null;
   observedAt: string;
   ingestedAt: string;
   qualityState: TimelineQuality;
+  timeQuality: EventTimeQuality;
   reasonCodes: string[];
   evidenceRefs: string[];
   payload: Record<string, unknown>;
@@ -604,7 +641,7 @@ export type PositionState = "PENDING" | "OPEN" | "EXIT_SIGNALLED" | "CLOSED";
 
 export interface PositionMarkRecord {
   price: number | null;
-  occurredAt: string;
+  occurredAt: string | null;
   observedAt: string;
   ingestedAt: string;
   provider: string;
@@ -612,6 +649,7 @@ export interface PositionMarkRecord {
   parserVersion: string;
   qualityState: TimelineQuality;
   evidenceRefs: string[];
+  timeQuality: EventTimeQuality;
 }
 
 export interface PositionPerformanceRecord {
@@ -731,6 +769,20 @@ const QUALITY_STATES = new Set<CandidateQuality>([
   "INVALID",
   "CONFLICTED"
 ]);
+const LAUNCH_LIFECYCLE_STATES = new Set<LaunchLifecycleState>([
+  "UNKNOWN",
+  "CREATED",
+  "BONDING",
+  "GRADUATING",
+  "DEX_LIVE"
+]);
+const LAUNCH_ROUTE_STATES = new Set<LaunchRouteState>([
+  "BONDING_ROUTE",
+  "DEX_ROUTE",
+  "NO_ROUTE",
+  "UNKNOWN"
+]);
+const EVENT_TIME_QUALITIES = new Set<EventTimeQuality>(["EXACT", "ESTIMATED", "UNKNOWN"]);
 const WALLET_TIERS = new Set<WalletTier>([
   "CANDIDATE",
   "TIER_A",
@@ -1048,6 +1100,95 @@ function parsePool(value: unknown): PoolRecord | null {
   return id && venue && poolAddress && quoteMint ? { id, venue, poolAddress, quoteMint } : null;
 }
 
+function parseLaunchLifecycle(value: unknown): LaunchLifecycleRecord | null {
+  if (!isRecord(value)) return null;
+  const rawLifecycleState = boundedString(value.lifecycle_state, 32);
+  const lifecycleState = rawLifecycleState === "GRADUATED" ? "GRADUATING" : rawLifecycleState;
+  const rawRouteState = boundedString(value.route_state, 32);
+  const routeState = rawRouteState === "BONDING"
+    ? "BONDING_ROUTE"
+    : rawRouteState === "FOUND"
+      ? "DEX_ROUTE"
+      : rawRouteState;
+  const routeAvailable = value.route_available === null
+    ? null
+    : typeof value.route_available === "boolean"
+      ? value.route_available
+      : undefined;
+  const launchpad = optionalBoundedString(value.launchpad, 128);
+  const creatorAddress = optionalBoundedString(value.creator_address, 128);
+  const bondingCurveProgressBps = optionalInteger(value.bonding_curve_progress_bps, 0, 10_000);
+  const quoteAsset = optionalBoundedString(value.quote_asset, 128);
+  const graduationThresholdBps = optionalInteger(value.graduation_threshold_bps, 0, 10_000);
+  const graduatedAt = optionalTimestamp(value.graduated_at);
+  const firstVerifiedDexLiquidityAt = optionalTimestamp(value.first_verified_dex_liquidity_at);
+  const firstVerifiedSwapAt = optionalTimestamp(value.first_verified_swap_at);
+  const liquidityLockState = optionalBoundedString(value.liquidity_lock_state, 64);
+  const poolAddress = optionalBoundedString(value.pool_address, 128);
+  const venue = optionalBoundedString(value.venue, 128);
+  const asOf = timestamp(value.as_of);
+  const expiresAt = timestamp(value.expires_at);
+  const qualityState = boundedString(value.quality_state, 16);
+  const timeQuality = boundedString(value.time_quality, 16);
+  const confidence = finiteNumber(value.confidence, 0, 1);
+  const reasonCodes = stringArray(value.reason_codes ?? [], 128);
+  const evidenceRefs = stringArray(value.evidence_refs ?? [], 256);
+  const provenance = parseProvenanceList(value.provenance ?? []);
+  const configHash = boundedString(value.config_hash, 128);
+  const version = boundedString(value.version, 64);
+
+  if (
+    lifecycleState === null || !LAUNCH_LIFECYCLE_STATES.has(lifecycleState as LaunchLifecycleState) ||
+    routeState === null || !LAUNCH_ROUTE_STATES.has(routeState as LaunchRouteState) ||
+    routeAvailable === undefined || launchpad === undefined || creatorAddress === undefined ||
+    bondingCurveProgressBps === undefined || quoteAsset === undefined ||
+    graduationThresholdBps === undefined || graduatedAt === undefined ||
+    firstVerifiedDexLiquidityAt === undefined || firstVerifiedSwapAt === undefined ||
+    liquidityLockState === undefined || poolAddress === undefined || venue === undefined ||
+    asOf === null || expiresAt === null || qualityState === null ||
+    !QUALITY_STATES.has(qualityState as TimelineQuality) || timeQuality === null ||
+    !EVENT_TIME_QUALITIES.has(timeQuality as EventTimeQuality) || confidence === null ||
+    reasonCodes === null || evidenceRefs === null || provenance === null ||
+    configHash === null || version === null
+  ) {
+    return null;
+  }
+  if (Date.parse(expiresAt) <= Date.parse(asOf)) return null;
+  if (graduatedAt !== null && Date.parse(graduatedAt) > Date.parse(asOf)) return null;
+  if (
+    firstVerifiedDexLiquidityAt !== null &&
+    Date.parse(firstVerifiedDexLiquidityAt) > Date.parse(asOf)
+  ) return null;
+  if (firstVerifiedSwapAt !== null && Date.parse(firstVerifiedSwapAt) > Date.parse(asOf)) return null;
+
+  return {
+    lifecycleState: lifecycleState as LaunchLifecycleState,
+    routeState: routeState as LaunchRouteState,
+    routeAvailable,
+    launchpad,
+    creatorAddress,
+    bondingCurveProgressBps,
+    quoteAsset,
+    graduationThresholdBps,
+    graduatedAt,
+    firstVerifiedDexLiquidityAt,
+    firstVerifiedSwapAt,
+    liquidityLockState,
+    poolAddress,
+    venue,
+    asOf,
+    expiresAt,
+    qualityState: qualityState as TimelineQuality,
+    timeQuality: timeQuality as EventTimeQuality,
+    confidence,
+    reasonCodes,
+    evidenceRefs,
+    provenance,
+    configHash,
+    version
+  };
+}
+
 function parseToken(value: unknown): TokenRecord | null {
   if (!isRecord(value)) return null;
   const id = uuid(value.id);
@@ -1072,7 +1213,10 @@ function parseToken(value: unknown): TokenRecord | null {
   const candidate = value.candidate === null || value.candidate === undefined
     ? null
     : parseCandidate(value.candidate);
-  const launchLifecycle = safePayload(value.launch_lifecycle ?? {});
+  const rawLifecycle = value.launch_lifecycle;
+  const lifecycleMissing = rawLifecycle === null || rawLifecycle === undefined ||
+    (isRecord(rawLifecycle) && Object.keys(rawLifecycle).length === 0);
+  const launchLifecycle = lifecycleMissing ? null : parseLaunchLifecycle(rawLifecycle);
 
   if (
     id === null || chain === null || mintAddress === null || tokenProgram === null ||
@@ -1080,7 +1224,7 @@ function parseToken(value: unknown): TokenRecord | null {
     createdOnchainAt === undefined || firstSeenAt === undefined ||
     status === null || creatorWallet === undefined || pools === null ||
     pools.some((pool): pool is null => pool === null) ||
-    launchLifecycle === null ||
+    (!lifecycleMissing && launchLifecycle === null) ||
     (value.candidate !== null && value.candidate !== undefined && candidate === null)
   ) {
     return null;
@@ -1493,10 +1637,13 @@ function parseTimeline(value: unknown): TimelineRecord | null {
   const tokenId = uuid(value.token_id);
   const kind = boundedString(value.kind, 128);
   const sourceId = boundedString(value.source_id, 256);
-  const occurredAt = timestamp(value.occurred_at);
+  const occurredAt = optionalTimestamp(value.occurred_at);
   const observedAt = timestamp(value.observed_at);
   const ingestedAt = timestamp(value.ingested_at);
   const qualityState = boundedString(value.quality_state, 16);
+  const timeQuality = value.time_quality === undefined
+    ? occurredAt === null ? "UNKNOWN" : "EXACT"
+    : boundedString(value.time_quality, 16);
   const reasonCodes = stringArray(value.reason_codes, 128);
   const evidenceRefs = stringArray(value.evidence_refs, 256);
   const payload = safePayload(value.payload ?? {});
@@ -1507,14 +1654,19 @@ function parseTimeline(value: unknown): TimelineRecord | null {
 
   if (
     id === null || tokenId === null || kind === null || sourceId === null ||
-    occurredAt === null || observedAt === null || ingestedAt === null ||
+    occurredAt === undefined || observedAt === null || ingestedAt === null ||
     qualityState === null || !QUALITY_STATES.has(qualityState as TimelineQuality) ||
+    timeQuality === null || !EVENT_TIME_QUALITIES.has(timeQuality as EventTimeQuality) ||
     reasonCodes === null || evidenceRefs === null || payload === null || provenance === null ||
     provenance.some((item): item is null => item === null)
   ) {
     return null;
   }
-  if (Date.parse(occurredAt) > Date.parse(observedAt) || Date.parse(observedAt) > Date.parse(ingestedAt)) {
+  if (
+    (occurredAt !== null && Date.parse(occurredAt) > Date.parse(observedAt)) ||
+    Date.parse(observedAt) > Date.parse(ingestedAt) ||
+    (occurredAt === null && timeQuality === "EXACT")
+  ) {
     return null;
   }
 
@@ -1527,6 +1679,7 @@ function parseTimeline(value: unknown): TimelineRecord | null {
     observedAt,
     ingestedAt,
     qualityState: qualityState as TimelineQuality,
+    timeQuality: timeQuality as EventTimeQuality,
     reasonCodes,
     evidenceRefs,
     payload,
@@ -1837,20 +1990,26 @@ function parsePositionMark(value: unknown): PositionMarkRecord | null | undefine
   const rawPrice = parseOptionalPositionNumber(value.price, 0, 1e24);
   if (rawPrice === undefined) return undefined;
   const price = rawPrice;
-  const occurredAt = timestamp(value.occurred_at);
+  const occurredAt = optionalTimestamp(value.occurred_at);
   const observedAt = timestamp(value.observed_at);
   const ingestedAt = timestamp(value.ingested_at);
   const provider = boundedString(value.provider, 128);
   const sourceId = boundedString(value.source_id, 256);
   const parserVersion = boundedString(value.parser_version, 128);
   const qualityState = optionalQuality(value.quality_state);
+  const timeQuality = value.time_quality === undefined
+    ? occurredAt === null ? "UNKNOWN" : "EXACT"
+    : boundedString(value.time_quality, 16);
   const evidenceRefs = stringArray(value.evidence_refs, 256);
   if (
-    (price !== null && price <= 0) || occurredAt === null ||
+    (price !== null && price <= 0) || occurredAt === undefined ||
     observedAt === null || ingestedAt === null || provider === null || sourceId === null ||
     parserVersion === null || qualityState === null || qualityState === undefined ||
-    evidenceRefs === null || Date.parse(occurredAt) > Date.parse(observedAt) ||
-    Date.parse(observedAt) > Date.parse(ingestedAt)
+    timeQuality === null || !EVENT_TIME_QUALITIES.has(timeQuality as EventTimeQuality) ||
+    evidenceRefs === null ||
+    (occurredAt !== null && Date.parse(occurredAt) > Date.parse(observedAt)) ||
+    Date.parse(observedAt) > Date.parse(ingestedAt) ||
+    (occurredAt === null && timeQuality === "EXACT")
   ) {
     return undefined;
   }
@@ -1863,7 +2022,8 @@ function parsePositionMark(value: unknown): PositionMarkRecord | null | undefine
     sourceId,
     parserVersion,
     qualityState,
-    evidenceRefs
+    evidenceRefs,
+    timeQuality: timeQuality as EventTimeQuality
   };
 }
 
@@ -2862,7 +3022,7 @@ export interface GraphEdgeRecord {
   fromId: string;
   toId: string;
   kind: string;
-  occurredAt: string;
+  occurredAt: string | null;
   observedAt: string;
   ingestedAt: string;
   tokenMint: string | null;
@@ -2907,7 +3067,9 @@ function parseGraphEdge(val: unknown): GraphEdgeRecord | null {
     fromId: String(obj.from_id ?? ""),
     toId: String(obj.to_id ?? ""),
     kind: String(obj.kind ?? ""),
-    occurredAt: String(obj.occurred_at ?? ""),
+    occurredAt: obj.occurred_at === null || obj.occurred_at === undefined
+      ? null
+      : String(obj.occurred_at),
     observedAt: String(obj.observed_at ?? ""),
     ingestedAt: String(obj.ingested_at ?? ""),
     tokenMint: obj.token_mint !== null && obj.token_mint !== undefined ? String(obj.token_mint) : null,

@@ -377,6 +377,94 @@ describe("server-side read gateway", () => {
     expect(await fetchToken("not-a-uuid")).toEqual({ ok: false, reason: "INVALID_RESPONSE" });
   });
 
+  it("strictly parses lifecycle projections and rejects malformed lifecycle payloads", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    const lifecycle = {
+      lifecycle_state: "BONDING",
+      route_state: "BONDING_ROUTE",
+      route_available: null,
+      launchpad: "fixturepad",
+      creator_address: null,
+      bonding_curve_progress_bps: 4200,
+      quote_asset: "USDC",
+      graduation_threshold_bps: 8000,
+      graduated_at: null,
+      first_verified_dex_liquidity_at: null,
+      first_verified_swap_at: null,
+      liquidity_lock_state: null,
+      pool_address: null,
+      venue: null,
+      as_of: "2026-08-31T12:00:00.000Z",
+      expires_at: "2026-08-31T12:05:00.000Z",
+      quality_state: "FRESH",
+      time_quality: "EXACT",
+      confidence: "0.7",
+      reason_codes: ["BONDING_ROUTE"],
+      evidence_refs: ["observation:1"],
+      provenance: [{
+        provider: "fixture-launchpad",
+        source_id: "launch:1",
+        observed_at: "2026-08-31T12:00:00.000Z",
+        parser_version: "fixture-v1"
+      }],
+      config_hash: "launch-lifecycle-read-v2",
+      version: "launch-lifecycle-v2"
+    };
+    const tokenPayload = {
+      id: TOKEN_ID,
+      chain: "solana",
+      mint_address: candidatePayload.mintAddress,
+      token_program: "spl-token",
+      symbol: "MOON",
+      name: "Moon Fixture",
+      decimals: 6,
+      status: "ACTIVE",
+      creator_wallet: null,
+      pools: [],
+      candidate: null,
+      launch_lifecycle: lifecycle
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(tokenPayload))
+      .mockResolvedValueOnce(response({ ...tokenPayload, launch_lifecycle: { lifecycle_state: "BONDING" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const parsed = await fetchToken(TOKEN_ID);
+    const malformed = await fetchToken(TOKEN_ID);
+
+    expect(parsed.ok && parsed.data.launchLifecycle?.bondingCurveProgressBps).toBe(4200);
+    expect(malformed).toEqual({ ok: false, reason: "INVALID_RESPONSE" });
+  });
+
+  it("keeps unknown occurrence time distinct from observed time", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({
+      items: [{
+        id: "66666666-6666-4666-8666-666666666666",
+        token_id: TOKEN_ID,
+        kind: "chain.launchpad",
+        source_id: "launch:unknown-time",
+        occurred_at: null,
+        observed_at: "2026-08-31T12:03:00.000Z",
+        ingested_at: "2026-08-31T12:03:01.000Z",
+        quality_state: "UNKNOWN",
+        time_quality: "UNKNOWN",
+        reason_codes: ["EVENT_TIME_UNKNOWN"],
+        evidence_refs: [],
+        payload: {},
+        provenance: []
+      }],
+      limit: 50,
+      has_more: false,
+      next_cursor: null
+    })));
+
+    const result = await fetchTimeline(TOKEN_ID);
+
+    expect(result.ok && result.data.items[0]?.occurredAt).toBeNull();
+    expect(result.ok && result.data.items[0]?.timeQuality).toBe("UNKNOWN");
+  });
+
   it("rejects timeline entries whose event timestamps are not ordered", async () => {
     vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
     vi.stubGlobal(

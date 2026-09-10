@@ -2,7 +2,13 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { TokenDetailView } from "./token-detail";
-import type { ReadPage, ReadResult, TimelineRecord, TokenRecord } from "../lib/read-api";
+import type {
+  LaunchLifecycleRecord,
+  ReadPage,
+  ReadResult,
+  TimelineRecord,
+  TokenRecord
+} from "../lib/read-api";
 
 const TOKEN_ID = "22222222-2222-4222-8222-222222222222";
 const token: TokenRecord = {
@@ -40,7 +46,35 @@ const token: TokenRecord = {
     riskQualityState: "FRESH",
     riskReasonCodes: ["AUTHORITY_CLEAR"],
     evidenceRefs: ["market:1"]
-  }
+  },
+  launchLifecycle: null
+};
+
+const lifecycle: LaunchLifecycleRecord = {
+  lifecycleState: "BONDING",
+  routeState: "BONDING_ROUTE",
+  routeAvailable: null,
+  launchpad: "fixturepad",
+  creatorAddress: null,
+  bondingCurveProgressBps: 4200,
+  quoteAsset: "USDC",
+  graduationThresholdBps: 8000,
+  graduatedAt: null,
+  firstVerifiedDexLiquidityAt: null,
+  firstVerifiedSwapAt: null,
+  liquidityLockState: null,
+  poolAddress: null,
+  venue: null,
+  asOf: "2026-08-31T12:03:00.000Z",
+  expiresAt: "2026-08-31T12:08:00.000Z",
+  qualityState: "FRESH",
+  timeQuality: "EXACT",
+  confidence: 0.8,
+  reasonCodes: ["BONDING_ROUTE_NOT_NO_ROUTE"],
+  evidenceRefs: ["launch:fixture"],
+  provenance: [{ provider: "fixture-launchpad", sourceId: "launch:fixture", observedAt: "2026-08-31T12:03:00.000Z", parserVersion: "fixture-v1" }],
+  configHash: "launch-lifecycle-read-v2",
+  version: "launch-lifecycle-v2"
 };
 
 const timeline: TimelineRecord[] = [
@@ -53,6 +87,7 @@ const timeline: TimelineRecord[] = [
     observedAt: "2026-08-31T12:02:00.000Z",
     ingestedAt: "2026-08-31T12:02:01.000Z",
     qualityState: "FRESH",
+    timeQuality: "EXACT",
     reasonCodes: ["SCORE_READY"],
     evidenceRefs: ["feature:1"],
     payload: { alpha_score: 84, confidence: 0.9 },
@@ -67,6 +102,7 @@ const timeline: TimelineRecord[] = [
     observedAt: "2026-08-31T12:03:00.000Z",
     ingestedAt: "2026-08-31T12:03:01.000Z",
     qualityState: "FRESH",
+    timeQuality: "EXACT",
     reasonCodes: [],
     evidenceRefs: ["market:fixture"],
     payload: { price: 1.2, liquidity: 125000, buy_volume: 900, sell_volume: 300 },
@@ -81,6 +117,7 @@ const timeline: TimelineRecord[] = [
     observedAt: "2026-08-31T12:04:00.000Z",
     ingestedAt: "2026-08-31T12:04:01.000Z",
     qualityState: "FRESH",
+    timeQuality: "EXACT",
     reasonCodes: ["HOLDER_CLUSTERED"],
     evidenceRefs: ["holder:fixture"],
     payload: { top10_hold_percent: 0.42, clustered_supply_pct: 0.55 },
@@ -95,6 +132,7 @@ const timeline: TimelineRecord[] = [
     observedAt: "2026-08-31T12:05:00.000Z",
     ingestedAt: "2026-08-31T12:05:01.000Z",
     qualityState: "FRESH",
+    timeQuality: "EXACT",
     reasonCodes: ["SOCIAL_MENTION"],
     evidenceRefs: ["post:fixture"],
     payload: { text: "raw post must not be rendered", author_id: "author-fixture" },
@@ -109,6 +147,7 @@ const timeline: TimelineRecord[] = [
     observedAt: "2026-08-31T12:06:00.000Z",
     ingestedAt: "2026-08-31T12:06:01.000Z",
     qualityState: "FRESH",
+    timeQuality: "EXACT",
     reasonCodes: ["NARRATIVE_ADVISORY"],
     evidenceRefs: ["narrative:fixture"],
     payload: { narrative: "raw narrative must not be rendered" },
@@ -167,5 +206,45 @@ describe("TokenDetailView", () => {
       />
     );
     expect(screen.getByText("INVALID READ RESPONSE")).toBeInTheDocument();
+  });
+
+  it("shows lifecycle evidence and keeps bonding route state visible", () => {
+    render(
+      <TokenDetailView
+        tokenResult={{ ok: true, data: { ...token, launchLifecycle: lifecycle } }}
+        timelineResult={page([])}
+      />
+    );
+
+    expect(screen.getByLabelText("Launch lifecycle evidence")).toBeInTheDocument();
+    expect(screen.getAllByText("BONDING").length).toBeGreaterThan(0);
+    expect(screen.getByText("42.0%")).toBeInTheDocument();
+    expect(screen.getByText("BONDING_ROUTE / UNKNOWN")).toBeInTheDocument();
+    expect(screen.getByText("BONDING_ROUTE_NOT_NO_ROUTE")).toBeInTheDocument();
+  });
+
+  it("shows unknown instead of zero for unavailable lifecycle confidence", () => {
+    render(
+      <TokenDetailView
+        tokenResult={{
+          ok: true,
+          data: {
+            ...token,
+            launchLifecycle: {
+              ...lifecycle,
+              lifecycleState: "UNKNOWN",
+              routeState: "UNKNOWN",
+              routeAvailable: null,
+              qualityState: "UNKNOWN",
+              confidence: 0,
+            },
+          },
+        }}
+        timelineResult={page([])}
+      />
+    );
+
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
+    expect(screen.getAllByText("UNKNOWN").length).toBeGreaterThan(0);
   });
 });

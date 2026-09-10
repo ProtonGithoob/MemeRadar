@@ -18,4 +18,16 @@ describe("route parity manifest", () => {
       expect(entry.omissions.every((item) => item.field.length > 0 && item.reason.length > 0), route).toBe(true);
     }
   });
+
+  it("tracks lifecycle, relationship, and Robinhood reconciliation contracts", () => {
+    expect(PARITY_MANIFEST["/tokens/[tokenId]"].apiFields).toContain("launch_lifecycle.route_state");
+    expect(PARITY_MANIFEST["/tokens/[tokenId]"].frontendFields).toContain("launchLifecycle.routeState");
+    expect(PARITY_MANIFEST["/wallet-graph"].apiFields).toContain("relationship_evidence");
+    expect(PARITY_MANIFEST["/wallet-graph"].frontendFields).toContain("ownership_asserted");
+    expect(PARITY_MANIFEST["/providers"].omissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "robinhood_sequencer_rpc_launchpad_state" })
+      ])
+    );
+  });
 });
