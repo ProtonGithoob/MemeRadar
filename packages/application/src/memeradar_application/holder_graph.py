@@ -39,9 +39,10 @@ _GRAPH_KINDS = frozenset(
         "wallet.activity",
         "wallet.funding",
         "wallet.transfer",
+        "wallet.bridge",
     }
 )
-_EXCLUDED_KINDS = frozenset({"POOL", "PROGRAM", "SYSTEM"})
+_EXCLUDED_KINDS = frozenset({"POOL", "PROGRAM", "SYSTEM", "EXCHANGE", "BRIDGE", "SERVICE"})
 _DEFAULT_SYSTEM_ADDRESSES = frozenset({"11111111111111111111111111111111"})
 _DEFAULT_PROGRAM_ADDRESSES = frozenset(
     {
@@ -58,6 +59,9 @@ class AddressKind(str, Enum):
     POOL = "POOL"
     PROGRAM = "PROGRAM"
     SYSTEM = "SYSTEM"
+    EXCHANGE = "EXCHANGE"
+    BRIDGE = "BRIDGE"
+    SERVICE = "SERVICE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +90,9 @@ class AddressClassifier:
         pool_addresses: Sequence[str] = (),
         program_addresses: Sequence[str] = (),
         system_addresses: Sequence[str] = (),
+        exchange_addresses: Sequence[str] = (),
+        bridge_addresses: Sequence[str] = (),
+        shared_service_addresses: Sequence[str] = (),
     ) -> None:
         known: dict[str, AddressKind] = {
             address: AddressKind.SYSTEM for address in _DEFAULT_SYSTEM_ADDRESSES
@@ -94,6 +101,9 @@ class AddressClassifier:
         self._add_addresses(known, pool_addresses, AddressKind.POOL)
         self._add_addresses(known, program_addresses, AddressKind.PROGRAM)
         self._add_addresses(known, system_addresses, AddressKind.SYSTEM)
+        self._add_addresses(known, exchange_addresses, AddressKind.EXCHANGE)
+        self._add_addresses(known, bridge_addresses, AddressKind.BRIDGE)
+        self._add_addresses(known, shared_service_addresses, AddressKind.SERVICE)
         if known_addresses is not None:
             for address, kind in known_addresses.items():
                 normalized_address = require_solana_address(address, "known address")
@@ -113,8 +123,20 @@ class AddressClassifier:
             target[require_solana_address(address, "known address")] = kind
 
     @classmethod
-    def default_classifier(cls, *, pool_addresses: Sequence[str] = ()) -> AddressClassifier:
-        return cls(pool_addresses=pool_addresses)
+    def default_classifier(
+        cls,
+        *,
+        pool_addresses: Sequence[str] = (),
+        exchange_addresses: Sequence[str] = (),
+        bridge_addresses: Sequence[str] = (),
+        shared_service_addresses: Sequence[str] = (),
+    ) -> AddressClassifier:
+        return cls(
+            pool_addresses=pool_addresses,
+            exchange_addresses=exchange_addresses,
+            bridge_addresses=bridge_addresses,
+            shared_service_addresses=shared_service_addresses,
+        )
 
     def classify(
         self, address: str, *, creator_address: str | None = None
@@ -133,6 +155,9 @@ class AddressClassifier:
             AddressKind.PROGRAM: "ADDRESS_PROGRAM",
             AddressKind.SYSTEM: "ADDRESS_SYSTEM",
             AddressKind.HOLDER: "ADDRESS_HOLDER",
+            AddressKind.EXCHANGE: "ADDRESS_EXCHANGE",
+            AddressKind.BRIDGE: "ADDRESS_BRIDGE",
+            AddressKind.SERVICE: "ADDRESS_SHARED_SERVICE",
         }[kind]
         return AddressClassification(normalized_address, kind, reason_code)
 
@@ -572,8 +597,19 @@ class HolderGraphAnalyzer:
         self.classifier = classifier or AddressClassifier()
 
     @staticmethod
-    def default_classifier(*, pool_addresses: Sequence[str] = ()) -> AddressClassifier:
-        return AddressClassifier.default_classifier(pool_addresses=pool_addresses)
+    def default_classifier(
+        *,
+        pool_addresses: Sequence[str] = (),
+        exchange_addresses: Sequence[str] = (),
+        bridge_addresses: Sequence[str] = (),
+        shared_service_addresses: Sequence[str] = (),
+    ) -> AddressClassifier:
+        return AddressClassifier.default_classifier(
+            pool_addresses=pool_addresses,
+            exchange_addresses=exchange_addresses,
+            bridge_addresses=bridge_addresses,
+            shared_service_addresses=shared_service_addresses,
+        )
 
     def _holder_observations(
         self,
@@ -926,11 +962,19 @@ class HolderGraphAnalyzer:
                         if len(depths) >= self.policy.max_nodes:
                             raise ValueError("wallet graph exceeded node bound")
                         depths[other] = depth + 1
-                    relation_type = (
-                        "funded_by"
-                        if to_address in seeds and from_address not in seeds
-                        else "transfer"
-                    )
+                    raw_relation = _field(payload, "relationship_type", "relation_type")
+                    if observation.kind == "wallet.bridge" or str(raw_relation).lower() in {
+                        "bridge",
+                        "bridge_origin",
+                        "bridged",
+                    }:
+                        relation_type = "bridge_origin"
+                    else:
+                        relation_type = (
+                            "funded_by"
+                            if to_address in seeds and from_address not in seeds
+                            else "transfer"
+                        )
                     amount = _optional_amount(
                         _field(payload, "amount", "value", "ui_amount"), "transfer amount"
                     )
@@ -1101,7 +1145,11 @@ class HolderGraphAnalyzer:
                 parent[max(left_root, right_root)] = min(left_root, right_root)
 
         for edge in graph.edges:
-            if edge.from_address in parent and edge.to_address in parent:
+            if (
+                edge.relation_type in {"transfer", "funded_by"}
+                and edge.from_address in parent
+                and edge.to_address in parent
+            ):
                 union(edge.from_address, edge.to_address)
         grouped: dict[str, list[HolderBalance]] = {}
         for holder in snapshot.holders:

@@ -3269,10 +3269,15 @@ class InMemoryReadQueryService:
         if not isinstance(query, WalletGraphQuery):
             raise TypeError("query must be a WalletGraphQuery")
         subgraph = self._creator_graph.get_subgraph(
-            start_node_ids=[f"wallet:{query.address}", query.address],
+            start_node_ids=[
+                f"wallet:{query.address}",
+                f"wallet:solana:{query.address}",
+                query.address,
+            ],
             max_depth=query.max_depth,
             max_nodes=query.max_nodes,
             max_edges=query.max_edges,
+            as_of=self._clock(),
             outcome_filter=query.outcome_filter,
             date_from=query.date_from,
             date_to=query.date_to,
@@ -3303,6 +3308,7 @@ class InMemoryReadQueryService:
             max_depth=query.max_depth,
             max_nodes=query.max_nodes,
             max_edges=query.max_edges,
+            as_of=self._clock(),
             outcome_filter=query.outcome_filter,
             date_from=query.date_from,
             date_to=query.date_to,
@@ -3333,6 +3339,7 @@ class InMemoryReadQueryService:
             max_depth=query.max_depth,
             max_nodes=query.max_nodes,
             max_edges=query.max_edges,
+            as_of=self._clock(),
             date_from=query.date_from,
             date_to=query.date_to,
             venue=query.venue,

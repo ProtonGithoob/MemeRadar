@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from memeradar_application.holder_graph import (
+    AddressClassifier,
     AddressKind,
     HolderGraphAnalyzer,
     HolderGraphPolicy,
@@ -23,6 +24,7 @@ FUNDER = "11111111111111111111111111111115"
 CREATOR = "11111111111111111111111111111116"
 POOL = "11111111111111111111111111111117"
 OUTSIDE = "11111111111111111111111111111118"
+EXCHANGE = "11111111111111111111111111111119"
 
 
 def token() -> TokenIdentity:
@@ -276,6 +278,77 @@ def test_shared_funder_cluster_increases_effective_concentration() -> None:
     assert any(cluster.addresses == (WALLET_A, WALLET_B) for cluster in clusters.clusters)
     assert "SHARED_FUNDER_CLUSTER" in {reason.code for reason in clusters.reason_codes}
     assert clusters.clustered_top >= clusters.raw_top1
+
+
+def test_shared_service_address_is_excluded_from_wallet_graph_and_clusters() -> None:
+    token_value = token()
+    analyzer = HolderGraphAnalyzer(
+        classifier=AddressClassifier(shared_service_addresses=(EXCHANGE,)),
+    )
+    graph = analyzer.build_wallet_graph(
+        token_value,
+        (
+            transfer_observation(token_value, EXCHANGE, WALLET_A, "10", source_id="exchange:a"),
+            transfer_observation(token_value, EXCHANGE, WALLET_B, "10", source_id="exchange:b"),
+        ),
+        seed_addresses=(WALLET_A, WALLET_B),
+        now=NOW,
+        config_hash="holder-graph-test",
+    )
+
+    assert graph.edges == ()
+    assert graph.nodes == (WALLET_A, WALLET_B)
+
+
+def test_bridge_observation_does_not_join_holder_clusters() -> None:
+    token_value = token()
+    holder_snapshot = HolderGraphAnalyzer().snapshot_holders(
+        token_value,
+        (
+            holder_observation(
+                token_value,
+                [
+                    {"owner": WALLET_A, "amount": "20", "percentage": "0.20"},
+                    {"owner": WALLET_B, "amount": "15", "percentage": "0.15"},
+                ],
+                top10=None,
+            ),
+        ),
+        now=NOW,
+        config_hash="holder-graph-test",
+    )
+    graph = HolderGraphAnalyzer().build_wallet_graph(
+        token_value,
+        (
+            observation(
+                token_value,
+                "wallet.bridge",
+                {
+                    "from_address": WALLET_A,
+                    "to_address": WALLET_B,
+                    "bridge_origin": "bridge:fixture",
+                },
+                source_id="bridge:fixture",
+            ),
+        ),
+        seed_addresses=(WALLET_A, WALLET_B),
+        now=NOW,
+        config_hash="holder-graph-test",
+    )
+
+    clusters = HolderGraphAnalyzer().cluster_concentration(
+        holder_snapshot,
+        graph,
+        now=NOW,
+        config_hash="holder-graph-test",
+    )
+
+    assert len(graph.edges) == 1
+    assert graph.edges[0].relation_type == "bridge_origin"
+    assert {cluster.addresses for cluster in clusters.clusters} == {
+        (WALLET_A,),
+        (WALLET_B,),
+    }
 
 
 def test_graph_rejects_noncanonical_seed_addresses() -> None:

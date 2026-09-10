@@ -43,6 +43,7 @@ class EdgeKind(str, Enum):
     CREATOR_RELATED = "CREATOR_RELATED"
     MIGRATED_TO_POOL = "MIGRATED_TO_POOL"
     KOL_CALLED = "KOL_CALLED"
+    RELATIONSHIP_EVIDENCE = "RELATIONSHIP_EVIDENCE"
 
 
 class TokenOutcomeClass(str, Enum):
