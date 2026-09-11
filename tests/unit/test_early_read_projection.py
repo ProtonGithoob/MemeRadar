@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -148,6 +149,25 @@ def test_early_radar_keeps_upside_and_risk_evidence_separate() -> None:
     assert item["evidence_quality_state"] == "STALE"
     assert item["risk_disposition"] == "PASS"
     assert item["execution_eligible"] is False
+
+
+def test_early_radar_mapping_does_not_coerce_missing_alpha_evidence_to_zero() -> None:
+    view = replace(
+        early_view("00000000-0000-4000-8000-000000000005"),
+        asymmetric_alpha={"early_quality_score": "91", "evidence_confidence": "0.4"},
+    )
+    service = InMemoryReadQueryService(early_radar=(view,))
+    client = TestClient(create_app(Settings.from_env({}), read_service=service))
+
+    alpha = client.get("/v1/early-radar", params={"limit": 1}).json()["items"][0][
+        "asymmetric_alpha"
+    ]
+
+    assert alpha["early_quality_score"] == "91"
+    assert alpha["evidence_confidence"] == "0.4"
+    assert alpha["upside_evidence_score"] is None
+    assert alpha["rug_dump_risk"] is None
+    assert alpha["execution_quality"] is None
 
 
 @pytest.mark.parametrize(

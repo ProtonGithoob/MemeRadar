@@ -371,6 +371,19 @@ class SqlAlchemyPaperLedgerStore:
                 if existing.request_fingerprint != result.request_fingerprint:
                     raise PaperIdempotencyConflict("idempotency key has conflicting material input")
                 return
+            if result.order.candidate_id is not None:
+                existing_claim = await session.scalar(
+                    select(OrderRow)
+                    .where(
+                        OrderRow.portfolio_id == result.order.portfolio_id,
+                        OrderRow.candidate_id == result.order.candidate_id,
+                        OrderRow.mode == result.order.mode.value,
+                        OrderRow.side == result.order.side.value,
+                    )
+                    .with_for_update()
+                )
+                if existing_claim is not None:
+                    raise PaperLedgerConflict("opportunity claim already exists")
             expected_sequence = portfolio_row.ledger_sequence + len(result.ledger_entries)
             if result.portfolio.ledger_sequence != expected_sequence:
                 raise PaperLedgerConflict("portfolio ledger sequence does not continue")
@@ -382,6 +395,25 @@ class SqlAlchemyPaperLedgerStore:
             position_row = None
             if result.position is not None:
                 position_row = await session.get(PositionRow, result.position.id)
+                if result.position.state in {
+                    PositionState.PENDING,
+                    PositionState.OPEN,
+                    PositionState.EXIT_SIGNALLED,
+                }:
+                    active_position = await session.scalar(
+                        select(PositionRow)
+                        .where(
+                            PositionRow.portfolio_id == result.position.portfolio_id,
+                            PositionRow.token_id == result.position.token_id,
+                            PositionRow.mode == result.position.mode.value,
+                            PositionRow.state.in_(
+                                ("PENDING", "OPEN", "EXIT_SIGNALLED")
+                            ),
+                        )
+                        .with_for_update()
+                    )
+                    if active_position is not None and active_position.id != result.position.id:
+                        raise PaperLedgerConflict("active position claim already exists")
             portfolio_row.current_balance = result.portfolio.current_balance
             portfolio_row.ledger_sequence = result.portfolio.ledger_sequence
             session.add(

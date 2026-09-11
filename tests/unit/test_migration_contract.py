@@ -19,5 +19,5 @@ def test_migration_check_reports_one_current_head() -> None:
 
     assert result.returncode == 0, result.stderr
     report = json.loads(result.stdout)
-    assert report["heads"] == ["0009_runtime_settings"]
+    assert report["heads"] == ["0010_active_position_claim"]
     assert report["table_count"] == 26

@@ -293,11 +293,11 @@ class CandidateResponse(_StrictModel):
 
 
 class AsymmetricAlphaProjectionResponse(_StrictModel):
-    early_quality_score: Decimal
-    upside_evidence_score: Decimal
-    rug_dump_risk: Decimal
-    execution_quality: Decimal
-    evidence_confidence: Decimal
+    early_quality_score: Decimal | None = None
+    upside_evidence_score: Decimal | None = None
+    rug_dump_risk: Decimal | None = None
+    execution_quality: Decimal | None = None
+    evidence_confidence: Decimal | None = None
     launch_age_ms: int | None = None
     market_cap_at_decision: Decimal | None = None
     reason_codes: list[str] = Field(default_factory=list)
@@ -806,6 +806,17 @@ def _mapping(value: Mapping[str, object]) -> dict[str, object]:
     return materialized
 
 
+def _optional_mapping_decimal(value: Mapping[str, object], field_name: str) -> Decimal | None:
+    raw = value.get(field_name)
+    if raw is None:
+        return None
+    try:
+        parsed = Decimal(str(raw))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.is_finite() else None
+
+
 def _candidate_response(value: CandidateView) -> CandidateResponse:
     return CandidateResponse(
         id=value.id,
@@ -892,18 +903,20 @@ def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
             if isinstance(value.asymmetric_alpha, AsymmetricAlphaProjection)
             else (
                 AsymmetricAlphaProjectionResponse(
-                    early_quality_score=Decimal(
-                        str(value.asymmetric_alpha.get("early_quality_score", 0))
+                    early_quality_score=_optional_mapping_decimal(
+                        value.asymmetric_alpha, "early_quality_score"
                     ),
-                    upside_evidence_score=Decimal(
-                        str(value.asymmetric_alpha.get("upside_evidence_score", 0))
+                    upside_evidence_score=_optional_mapping_decimal(
+                        value.asymmetric_alpha, "upside_evidence_score"
                     ),
-                    rug_dump_risk=Decimal(str(value.asymmetric_alpha.get("rug_dump_risk", 0))),
-                    execution_quality=Decimal(
-                        str(value.asymmetric_alpha.get("execution_quality", 0))
+                    rug_dump_risk=_optional_mapping_decimal(
+                        value.asymmetric_alpha, "rug_dump_risk"
                     ),
-                    evidence_confidence=Decimal(
-                        str(value.asymmetric_alpha.get("evidence_confidence", 0))
+                    execution_quality=_optional_mapping_decimal(
+                        value.asymmetric_alpha, "execution_quality"
+                    ),
+                    evidence_confidence=_optional_mapping_decimal(
+                        value.asymmetric_alpha, "evidence_confidence"
                     ),
                     launch_age_ms=cast(int | None, value.asymmetric_alpha.get("launch_age_ms")),
                     market_cap_at_decision=cast(

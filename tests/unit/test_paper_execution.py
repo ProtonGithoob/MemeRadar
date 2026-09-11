@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from memeradar_application.paper_execution import (
+    ChainFeeReservePolicy,
     InMemoryPaperLedgerStore,
     PaperExecutionEngine,
     PaperExecutionPolicy,
@@ -72,6 +73,7 @@ def request(
     at=NOW,
     token_id=None,
     risk_snapshot=None,
+    candidate_id=None,
 ):
     return PaperOrderRequest(
         portfolio_id=portfolio_id,
@@ -83,6 +85,7 @@ def request(
         quote=quote(side=side, as_of=at),
         decision_ref=uuid4(),
         risk_snapshot=risk_snapshot or {"disposition": "PASS", "confidence": "0.9"},
+        candidate_id=candidate_id,
     )
 
 
@@ -106,6 +109,36 @@ def test_risk_budget_sizing_is_conservative_and_bounded() -> None:
     assert result.eligible is True
     assert Decimal("0") < result.amount <= Decimal("100")
     assert result.policy_version == "paper-sizing-v1"
+
+
+def test_chain_fee_reserve_is_chain_specific_and_fail_closed() -> None:
+    policy = ChainFeeReservePolicy(
+        solana=Decimal("0.01"),
+        bnb=Decimal("0.001"),
+        robinhood=Decimal("0.002"),
+    )
+
+    assert policy.reserve_for("solana") == Decimal("0.01")
+    assert policy.reserve_for("bnb") == Decimal("0.001")
+    assert policy.reserve_for("robinhood") == Decimal("0.002")
+    with pytest.raises(ValueError, match="unsupported chain"):
+        policy.reserve_for("ethereum")
+
+
+def test_engine_rejects_buy_that_would_consume_chain_fee_reserve() -> None:
+    async def scenario() -> None:
+        store = InMemoryPaperLedgerStore()
+        portfolio = await store.create_portfolio(initial_balance=Decimal("10.005"), currency="SOL")
+        engine = PaperExecutionEngine(store)
+
+        rejected = await engine.execute(request(portfolio.id, amount=Decimal("10")))
+
+        assert rejected.order.state is PaperOrderState.REJECTED
+        assert any(reason.code == "CHAIN_FEE_RESERVE" for reason in rejected.order.reason_codes)
+        assert len(await store.list_fills(portfolio.id)) == 0
+        assert (await store.get_portfolio(portfolio.id)).current_balance == Decimal("10.005")
+
+    asyncio.run(scenario())
 
 
 def test_paper_request_fingerprint_retains_reference_quote_context() -> None:
@@ -197,6 +230,45 @@ def test_engine_simulates_fill_and_duplicate_retry_without_duplicate_cash() -> N
                     key=order_request.idempotency_key,
                 )
             )
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_distinct_requests_cannot_create_two_active_positions() -> None:
+    async def scenario() -> None:
+        store = InMemoryPaperLedgerStore()
+        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        engine = PaperExecutionEngine(store)
+        token_id = uuid4()
+        candidate_id = uuid4()
+
+        outcomes = await asyncio.gather(
+            engine.execute(
+                request(
+                    portfolio.id,
+                    token_id=token_id,
+                    key="concurrent-a",
+                    candidate_id=candidate_id,
+                )
+            ),
+            engine.execute(
+                request(
+                    portfolio.id,
+                    token_id=token_id,
+                    key="concurrent-b",
+                    candidate_id=candidate_id,
+                )
+            ),
+            return_exceptions=True,
+        )
+
+        successes = [value for value in outcomes if not isinstance(value, Exception)]
+        failures = [value for value in outcomes if isinstance(value, Exception)]
+        assert len(successes) == 1
+        assert len(failures) == 1
+        assert isinstance(failures[0], Exception)
+        assert len(await store.list_positions(portfolio.id)) == 1
+        assert len(await store.list_orders(portfolio.id)) == 1
 
     asyncio.run(scenario())
 

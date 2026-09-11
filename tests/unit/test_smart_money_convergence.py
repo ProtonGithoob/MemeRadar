@@ -347,6 +347,7 @@ def test_narrative_alone_is_visible_without_fabricating_wallet_evidence() -> Non
     assert snapshot.signal_state is ConvergenceSignalState.NARRATIVE_ONLY
     assert snapshot.narrative_signal is True
     assert snapshot.wallet_signal is None
+    assert snapshot.smart_money_convergence_confidence is None
     assert snapshot.raw_qualified_wallet_count is None
     assert snapshot.cluster_adjusted_independent_wallet_count is None
     assert snapshot.execution_eligible() is False

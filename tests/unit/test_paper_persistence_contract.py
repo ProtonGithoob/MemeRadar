@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import UniqueConstraint
 
-from memeradar_persistence import Base, CashLedgerRow, FillRow, OrderRow
+from memeradar_persistence import Base, CashLedgerRow, FillRow, OrderRow, PositionRow
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -65,3 +65,17 @@ def test_paper_idempotency_and_ledger_sequence_constraints_are_physical() -> Non
         for constraint in ledger_constraints
     )
     assert (ROOT / "infra" / "alembic" / "versions" / "0006_paper_execution.py").exists()
+
+
+def test_paper_claim_constraints_are_physical() -> None:
+    assert any(
+        isinstance(constraint, UniqueConstraint)
+        and {column.name for column in constraint.columns}
+        == {"portfolio_id", "candidate_id", "mode", "side"}
+        for constraint in OrderRow.__table__.constraints
+    )
+    assert any(
+        index.name == "uq_positions_active_portfolio_token_mode" and index.unique
+        for index in PositionRow.__table__.indexes
+    )
+    assert (ROOT / "infra" / "alembic" / "versions" / "0010_active_position_claim.py").exists()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -53,6 +54,8 @@ def quote(
         ),
         price_semantics=PriceSemantics.EXECUTION_QUOTE,
         chain=chain,
+        minimum_output_amount=Decimal("99"),
+        slippage_bps=25,
     )
 
 
@@ -204,6 +207,33 @@ def test_caller_convergence_cannot_override_unknown_risk_or_grant_authority() ->
     assert result.allowed is False
     assert "PAPER_AUTO_RISK_EVIDENCE_UNKNOWN" in result.reason_code_values
     assert result.execution_eligible is False
+
+
+def test_paper_auto_blocks_incomplete_execution_evidence() -> None:
+    incomplete = replace(quote(), minimum_output_amount=None, slippage_bps=None)
+
+    result = PaperAutoExecutionGate().evaluate(
+        decision(),
+        quote=incomplete,
+        at=NOW,
+    )
+
+    assert result.allowed is False
+    assert "PAPER_AUTO_MIN_OUTPUT_UNKNOWN" in result.reason_code_values
+    assert "PAPER_AUTO_SLIPPAGE_UNKNOWN" in result.reason_code_values
+
+
+def test_paper_auto_blocks_missing_route() -> None:
+    incomplete = replace(quote(), route=())
+
+    result = PaperAutoExecutionGate().evaluate(
+        decision(),
+        quote=incomplete,
+        at=NOW,
+    )
+
+    assert result.allowed is False
+    assert "PAPER_AUTO_ROUTE_UNKNOWN" in result.reason_code_values
 
 
 def test_paper_auto_modes_are_immutable_and_serializable() -> None:

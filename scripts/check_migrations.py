@@ -53,9 +53,9 @@ def main() -> int:
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0009_runtime_settings"]:
+    if heads != ["0010_active_position_claim"]:
         print(
-            "migration_error: expected exactly one 0009_runtime_settings head",
+            "migration_error: expected exactly one 0010_active_position_claim head",
             file=sys.stderr,
         )
         return 1

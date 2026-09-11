@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from types import MappingProxyType
 
-from memeradar_domain.common import require_text
+from memeradar_domain.common import normalize_texts, require_text
 
 from .opportunity_research import OpportunityResearchAnalyzer, OpportunityResearchSample
 
@@ -44,6 +44,7 @@ class HistoricalDatasetRecord:
     discovery_source: str = "TOKEN_DISCOVERED"
     matured_call: bool = False
     matured_token_outcome: bool = False
+    providers: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.sample, OpportunityResearchSample):
@@ -59,6 +60,129 @@ class HistoricalDatasetRecord:
         for field_name in ("matured_call", "matured_token_outcome"):
             if not isinstance(getattr(self, field_name), bool):
                 raise TypeError(f"{field_name} must be boolean")
+        object.__setattr__(self, "providers", normalize_texts(self.providers, "providers"))
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalDatasetReadinessReport:
+    """Bounded inventory of real-data readiness without synthetic promotion."""
+
+    status: str
+    reason_codes: tuple[str, ...]
+    sample_count: int
+    real_sample_count: int
+    winner_count: int
+    rug_count: int
+    real_winner_count: int
+    real_rug_count: int
+    caller_observation_count: int
+    smart_wallet_observation_count: int
+    real_caller_observation_count: int
+    real_smart_wallet_observation_count: int
+    provider_counts: Mapping[str, int]
+    real_provider_counts: Mapping[str, int]
+    evidence_class_counts: Mapping[str, int]
+    event_time_bounds: Mapping[str, str | None]
+    no_lookahead_verified: bool
+    survivorship_bias: bool
+    dataset_version: str
+
+    @classmethod
+    def from_records(
+        cls,
+        records: Sequence[HistoricalDatasetRecord],
+        *,
+        config: HistoricalDatasetConfig | None = None,
+    ) -> HistoricalDatasetReadinessReport:
+        normalized = tuple(records)
+        if any(not isinstance(value, HistoricalDatasetRecord) for value in normalized):
+            raise TypeError("records must contain HistoricalDatasetRecord values")
+        effective_config = config or HistoricalDatasetConfig()
+        validation = HistoricalDatasetValidator(config=effective_config).validate(normalized)
+        provider_counts: dict[str, int] = {}
+        evidence_class_counts: dict[str, int] = {}
+        real_provider_counts: dict[str, int] = {}
+        for record in normalized:
+            providers = record.providers or ("UNKNOWN",)
+            for provider in providers:
+                provider_counts[provider] = provider_counts.get(provider, 0) + 1
+                if record.sample.evidence_class == effective_config.required_evidence_class:
+                    real_provider_counts[provider] = real_provider_counts.get(provider, 0) + 1
+            evidence_class = record.sample.evidence_class
+            evidence_class_counts[evidence_class] = evidence_class_counts.get(evidence_class, 0) + 1
+        event_times = sorted(record.sample.event_time for record in normalized)
+        real_records = tuple(
+            record
+            for record in normalized
+            if record.sample.evidence_class == effective_config.required_evidence_class
+        )
+        real_sample_count = sum(
+            record.sample.evidence_class == effective_config.required_evidence_class
+            for record in normalized
+        )
+        survivorship_bias = bool(real_sample_count and validation.negative_control_count == 0)
+        reasons = list(validation.reason_codes)
+        if survivorship_bias:
+            reasons.append("SURVIVORSHIP_BIAS_SUSPECTED")
+        if not validation.no_lookahead_verified:
+            status = "INVALID"
+        elif not real_sample_count:
+            status = "INSUFFICIENT_SAMPLES"
+        else:
+            status = validation.status
+        return cls(
+            status=status,
+            reason_codes=tuple(dict.fromkeys(reasons)),
+            sample_count=len(normalized),
+            real_sample_count=real_sample_count,
+            winner_count=sum(record.sample.is_winner for record in normalized),
+            rug_count=sum(record.sample.is_rug_or_severe_failure for record in normalized),
+            real_winner_count=sum(record.sample.is_winner for record in real_records),
+            real_rug_count=sum(record.sample.is_rug_or_severe_failure for record in real_records),
+            caller_observation_count=sum(record.matured_call for record in normalized),
+            smart_wallet_observation_count=sum(
+                record.sample.smart_money_score is not None for record in normalized
+            ),
+            real_caller_observation_count=sum(record.matured_call for record in real_records),
+            real_smart_wallet_observation_count=sum(
+                record.sample.smart_money_score is not None for record in real_records
+            ),
+            provider_counts=MappingProxyType(dict(sorted(provider_counts.items()))),
+            real_provider_counts=MappingProxyType(dict(sorted(real_provider_counts.items()))),
+            evidence_class_counts=MappingProxyType(dict(sorted(evidence_class_counts.items()))),
+            event_time_bounds=MappingProxyType(
+                {
+                    "first": event_times[0].isoformat() if event_times else None,
+                    "last": event_times[-1].isoformat() if event_times else None,
+                }
+            ),
+            no_lookahead_verified=validation.no_lookahead_verified,
+            survivorship_bias=survivorship_bias,
+            dataset_version=validation.dataset_version,
+        )
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "reason_codes": list(self.reason_codes),
+            "sample_count": self.sample_count,
+            "real_sample_count": self.real_sample_count,
+            "winner_count": self.winner_count,
+            "rug_count": self.rug_count,
+            "real_winner_count": self.real_winner_count,
+            "real_rug_count": self.real_rug_count,
+            "caller_observation_count": self.caller_observation_count,
+            "smart_wallet_observation_count": self.smart_wallet_observation_count,
+            "real_caller_observation_count": self.real_caller_observation_count,
+            "real_smart_wallet_observation_count": self.real_smart_wallet_observation_count,
+            "provider_counts": dict(self.provider_counts),
+            "real_provider_counts": dict(self.real_provider_counts),
+            "evidence_class_counts": dict(self.evidence_class_counts),
+            "event_time_bounds": dict(self.event_time_bounds),
+            "no_lookahead_verified": self.no_lookahead_verified,
+            "survivorship_bias": self.survivorship_bias,
+            "dataset_version": self.dataset_version,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,6 +428,7 @@ __all__ = [
     "HISTORICAL_DATASET_SCHEMA_VERSION",
     "HISTORICAL_DATASET_VERSION",
     "HistoricalDatasetConfig",
+    "HistoricalDatasetReadinessReport",
     "HistoricalDatasetRecord",
     "HistoricalDatasetValidation",
     "HistoricalDatasetValidator",

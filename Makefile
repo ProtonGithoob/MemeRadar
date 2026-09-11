@@ -38,7 +38,7 @@ SBOM_OUTPUT ?=
 	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
 	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-backtest-replay opportunity-research historical-dataset calibrate-score winner-vs-rug-optimizer reliability-benchmark production-soak early-detection-benchmark early-live-doctor reliability-doctor \
+	backtest-replay opportunity-research historical-dataset alpha-readiness calibrate-score winner-vs-rug-optimizer reliability-benchmark production-soak early-detection-benchmark early-live-doctor reliability-doctor \
 	security-review security-review-external sbom release-identity shadow-start shadow-status
 
 
@@ -66,6 +66,9 @@ opportunity-research:
 historical-dataset:
 	$(PYTHON) scripts/historical_dataset.py --input $(HISTORICAL_DATASET_INPUT) \
 		$(if $(HISTORICAL_DATASET_OUTPUT),--output $(HISTORICAL_DATASET_OUTPUT),)
+
+alpha-readiness:
+	$(PYTHON) scripts/alpha_readiness.py --input $(HISTORICAL_DATASET_INPUT)
 
 profile-replay:
 	$(PYTHON) scripts/profile_replay.py --input $(REPLAY_INPUT) --iterations $(PROFILE_ITERATIONS)

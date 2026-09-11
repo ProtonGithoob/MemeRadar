@@ -570,8 +570,8 @@ class SmartMoneyConvergenceProjection:
         return self.cluster_adjusted_independent_wallet_count
 
     @property
-    def smart_money_convergence_confidence(self) -> Decimal:
-        return self.wallet_confidence or Decimal("0")
+    def smart_money_convergence_confidence(self) -> Decimal | None:
+        return self.wallet_confidence
 
     def execution_eligible(self) -> bool:
         return False

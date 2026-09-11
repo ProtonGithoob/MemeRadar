@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
@@ -507,7 +508,18 @@ class PortfolioRow(Base):
 
 class PositionRow(Base):
     __tablename__ = "positions"
-    __table_args__ = (Index("ix_positions_portfolio_state", "portfolio_id", "state"),)
+    __table_args__ = (
+        Index("ix_positions_portfolio_state", "portfolio_id", "state"),
+        Index(
+            "uq_positions_active_portfolio_token_mode",
+            "portfolio_id",
+            "token_id",
+            "mode",
+            unique=True,
+            postgresql_where=text("state IN ('PENDING', 'OPEN', 'EXIT_SIGNALLED')"),
+            sqlite_where=text("state IN ('PENDING', 'OPEN', 'EXIT_SIGNALLED')"),
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     portfolio_id: Mapped[UUID] = mapped_column(
@@ -540,6 +552,13 @@ class OrderRow(Base):
     __tablename__ = "orders"
     __table_args__ = (
         UniqueConstraint("idempotency_key", name="uq_orders_idempotency_key"),
+        UniqueConstraint(
+            "portfolio_id",
+            "candidate_id",
+            "mode",
+            "side",
+            name="uq_orders_opportunity_claim",
+        ),
         Index("ix_orders_portfolio_requested", "portfolio_id", "requested_at"),
     )
 

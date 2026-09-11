@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from collections import defaultdict
@@ -56,6 +57,9 @@ class PaperLedgerConflict(RuntimeError):
 
 
 _CASH_TOLERANCE = Decimal("0.000000001")
+_ACTIVE_POSITION_STATES = frozenset(
+    {PositionState.PENDING, PositionState.OPEN, PositionState.EXIT_SIGNALLED}
+)
 
 
 def _reason(
@@ -71,6 +75,35 @@ def _non_negative(value: object, field_name: str) -> Decimal:
     if normalized < 0:
         raise ValueError(f"{field_name} must not be negative")
     return normalized
+
+
+@dataclass(frozen=True, slots=True)
+class ChainFeeReservePolicy:
+    """Conservative native-balance reserve by chain for paper entries."""
+
+    solana: Decimal = Decimal("0.01")
+    bnb: Decimal = Decimal("0.001")
+    robinhood: Decimal = Decimal("0.001")
+    version: str = "chain-fee-reserve-v1"
+
+    def __post_init__(self) -> None:
+        for field_name in ("solana", "bnb", "robinhood"):
+            value = _non_negative(getattr(self, field_name), field_name)
+            if value <= 0:
+                raise ValueError(f"{field_name} reserve must be positive")
+            object.__setattr__(self, field_name, value)
+        object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
+
+    def reserve_for(self, chain: Chain | str) -> Decimal:
+        try:
+            normalized = normalize_chain(chain)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"unsupported chain for fee reserve: {chain!r}") from exc
+        return {
+            Chain.SOLANA: self.solana,
+            Chain.BNB: self.bnb,
+            Chain.ROBINHOOD: self.robinhood,
+        }[normalized]
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +281,7 @@ class PaperExecutionPolicy:
     """Protected paper fill configuration; unsafe modes cannot be constructed."""
 
     sizing: PaperSizingPolicy = field(default_factory=PaperSizingPolicy)
+    fee_reserve_policy: ChainFeeReservePolicy = field(default_factory=ChainFeeReservePolicy)
     fee_bps: Decimal = Decimal("30")
     slippage_bps: Decimal = Decimal("25")
     partial_fill_ratio: Decimal = Decimal("1")
@@ -261,6 +295,8 @@ class PaperExecutionPolicy:
     def __post_init__(self) -> None:
         if not isinstance(self.sizing, PaperSizingPolicy):
             raise TypeError("sizing must be a PaperSizingPolicy")
+        if not isinstance(self.fee_reserve_policy, ChainFeeReservePolicy):
+            raise TypeError("fee_reserve_policy must be a ChainFeeReservePolicy")
         fee = to_decimal(self.fee_bps, "fee_bps")
         if fee < 0 or fee >= Decimal("10000"):
             raise ValueError("fee_bps must be between 0 and 10000")
@@ -544,6 +580,30 @@ class PaperAutoExecutionGate:
                         refs=(quote_ref or "",),
                     )
                 )
+            if quote.price_semantics is PriceSemantics.EXECUTION_QUOTE:
+                if not quote.route:
+                    reasons.append(_reason("PAPER_AUTO_ROUTE_UNKNOWN", refs=(quote_ref or "",)))
+                minimum_output_raw = quote.minimum_output_amount
+                if minimum_output_raw is None:
+                    reasons.append(
+                        _reason("PAPER_AUTO_MIN_OUTPUT_UNKNOWN", refs=(quote_ref or "",))
+                    )
+                else:
+                    try:
+                        minimum_output = to_decimal(
+                            minimum_output_raw,
+                            "quote.minimum_output_amount",
+                        )
+                    except (TypeError, ValueError):
+                        minimum_output = None
+                    if minimum_output is None or minimum_output <= 0 or (
+                        quote_output is not None and minimum_output > quote_output
+                    ):
+                        reasons.append(
+                            _reason("PAPER_AUTO_MIN_OUTPUT_INVALID", refs=(quote_ref or "",))
+                        )
+                if quote.slippage_bps is None:
+                    reasons.append(_reason("PAPER_AUTO_SLIPPAGE_UNKNOWN", refs=(quote_ref or "",)))
             if quote_impact is None:
                 reasons.append(_reason("PAPER_AUTO_PRICE_IMPACT_UNKNOWN", refs=(quote_ref or "",)))
             elif quote_impact > self.max_price_impact_bps:
@@ -930,6 +990,7 @@ class InMemoryPaperLedgerStore:
     """Deterministic store used by fixtures and restart/replay tests."""
 
     def __init__(self) -> None:
+        self._write_lock = asyncio.Lock()
         self._portfolios: dict[UUID, PaperPortfolio] = {}
         self._orders: dict[UUID, PaperOrder] = {}
         self._orders_by_key: dict[str, PaperExecutionResult] = {}
@@ -967,29 +1028,65 @@ class InMemoryPaperLedgerStore:
         return None if value is None else _clone_result(value, duplicate=False)
 
     async def save_execution(self, result: PaperExecutionResult) -> None:
-        existing = self._orders_by_key.get(result.order.idempotency_key)
-        if existing is not None:
-            if existing.request_fingerprint != result.request_fingerprint:
-                raise PaperIdempotencyConflict("idempotency key has conflicting material input")
-            return
-        portfolio = self._portfolios.get(result.portfolio.id)
-        if portfolio is None:
-            raise PaperLedgerConflict("portfolio does not exist")
-        self._portfolios[result.portfolio.id] = copy(result.portfolio)
-        self._orders[result.order.id] = copy(result.order)
-        for fill in result.fills:
-            if fill.id in self._fills:
-                raise PaperLedgerConflict("fill identity already exists")
-            self._fills[fill.id] = fill
-        for entry in result.ledger_entries:
-            if entry.id in self._ledger_entries:
-                raise PaperLedgerConflict("cash ledger identity already exists")
-            self._ledger_entries[entry.id] = entry
-        if result.position is not None and result.fills:
-            self._positions[(result.position.portfolio_id, result.position.token_id)] = copy(
-                result.position
+        async with self._write_lock:
+            existing = self._orders_by_key.get(result.order.idempotency_key)
+            if existing is not None:
+                if existing.request_fingerprint != result.request_fingerprint:
+                    raise PaperIdempotencyConflict("idempotency key has conflicting material input")
+                return
+            portfolio = self._portfolios.get(result.portfolio.id)
+            if portfolio is None:
+                raise PaperLedgerConflict("portfolio does not exist")
+            if result.order.candidate_id is not None:
+                existing_claim = next(
+                    (
+                        order
+                        for order in self._orders.values()
+                        if order.portfolio_id == result.order.portfolio_id
+                        and order.candidate_id == result.order.candidate_id
+                        and order.mode is result.order.mode
+                        and order.side is result.order.side
+                    ),
+                    None,
+                )
+                if existing_claim is not None:
+                    raise PaperLedgerConflict("opportunity claim already exists")
+            expected_sequence = portfolio.ledger_sequence + len(result.ledger_entries)
+            if result.portfolio.ledger_sequence != expected_sequence:
+                raise PaperLedgerConflict("portfolio ledger sequence does not continue")
+            assert portfolio.current_balance is not None
+            expected_balance = portfolio.current_balance + sum(
+                (entry.cash_delta for entry in result.ledger_entries), Decimal("0")
             )
-        self._orders_by_key[result.order.idempotency_key] = _clone_result(result, duplicate=False)
+            assert result.portfolio.current_balance is not None
+            if abs(result.portfolio.current_balance - expected_balance) > _CASH_TOLERANCE:
+                raise PaperLedgerConflict("portfolio cash projection does not continue")
+            if result.position is not None and result.fills:
+                position_key = (result.position.portfolio_id, result.position.token_id)
+                existing_position = self._positions.get(position_key)
+                if (
+                    existing_position is not None
+                    and existing_position.state in _ACTIVE_POSITION_STATES
+                    and existing_position.id != result.position.id
+                ):
+                    raise PaperLedgerConflict("active position claim already exists")
+            self._portfolios[result.portfolio.id] = copy(result.portfolio)
+            self._orders[result.order.id] = copy(result.order)
+            for fill in result.fills:
+                if fill.id in self._fills:
+                    raise PaperLedgerConflict("fill identity already exists")
+                self._fills[fill.id] = fill
+            for entry in result.ledger_entries:
+                if entry.id in self._ledger_entries:
+                    raise PaperLedgerConflict("cash ledger identity already exists")
+                self._ledger_entries[entry.id] = entry
+            if result.position is not None and result.fills:
+                self._positions[(result.position.portfolio_id, result.position.token_id)] = copy(
+                    result.position
+                )
+            self._orders_by_key[result.order.idempotency_key] = _clone_result(
+                result, duplicate=False
+            )
 
     async def list_orders(self, portfolio_id: UUID) -> Sequence[PaperOrder]:
         return tuple(
@@ -1027,6 +1124,10 @@ def _quote_payload(quote: QuoteSnapshot) -> Mapping[str, object]:
         "execution_quote_price": str(quote.execution_quote_price),
         "price_semantics": quote.price_semantics.value,
         "price_impact_bps": str(quote.price_impact_bps),
+        "minimum_output_amount": (
+            None if quote.minimum_output_amount is None else str(quote.minimum_output_amount)
+        ),
+        "slippage_bps": None if quote.slippage_bps is None else str(quote.slippage_bps),
         "route": tuple(quote.route),
         "market_context": (
             None
@@ -1402,8 +1503,8 @@ class PaperExecutionEngine:
         assert portfolio.current_balance is not None
         return portfolio.current_balance + cash_delta
 
-    @staticmethod
     def _validate_request(
+        self,
         request: PaperOrderRequest,
         portfolio: PaperPortfolio,
     ) -> ReasonCode | None:
@@ -1424,6 +1525,16 @@ class PaperExecutionEngine:
             and portfolio.current_balance < request.amount
         ):
             return _reason("INSUFFICIENT_CASH")
+        if request.side is PaperOrderSide.BUY:
+            try:
+                fee_reserve = self.policy.fee_reserve_policy.reserve_for(request.quote.chain)
+            except ValueError:
+                return _reason("CHAIN_FEE_RESERVE_UNKNOWN")
+            if (
+                portfolio.current_balance is not None
+                and portfolio.current_balance < request.amount + fee_reserve
+            ):
+                return _reason("CHAIN_FEE_RESERVE")
         return None
 
     async def _reject_existing(
@@ -1532,6 +1643,7 @@ class PaperReconciler:
 
 
 __all__ = [
+    "ChainFeeReservePolicy",
     "InMemoryPaperLedgerStore",
     "PAPER_AUTO_GATE_VERSION",
     "PaperAutoExecutionDecision",

@@ -85,6 +85,8 @@ class FakeQuotePort:
             price_semantics=(
                 "MARKET_REFERENCE" if self.market_reference else "EXECUTION_QUOTE"
             ),
+            minimum_output_amount=Decimal("99"),
+            slippage_bps=25,
             market_context=(
                 QuoteMarketContext(
                     chain="solana",

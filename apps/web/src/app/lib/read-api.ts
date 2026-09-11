@@ -68,11 +68,11 @@ export type EarlyRadarState =
   | "ENTRY_READY";
 
 export interface AsymmetricAlphaProjectionRecord {
-  earlyQualityScore: number;
-  upsideEvidenceScore: number;
-  rugDumpRisk: number;
-  executionQuality: number;
-  evidenceConfidence: number;
+  earlyQualityScore: number | null;
+  upsideEvidenceScore: number | null;
+  rugDumpRisk: number | null;
+  executionQuality: number | null;
+  evidenceConfidence: number | null;
   launchAgeMs: number | null;
   marketCapAtDecision: number | null;
   reasonCodes: string[];
@@ -1056,7 +1056,7 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
     const rd = optionalFiniteNumber(rawAlpha.rug_dump_risk, 0, 100);
     const ex = optionalFiniteNumber(rawAlpha.execution_quality, 0, 100);
     const ec = optionalFiniteNumber(rawAlpha.evidence_confidence, 0, 1);
-    if (eq != null && ue != null && rd != null && ex != null && ec != null) {
+    if (eq !== undefined && ue !== undefined && rd !== undefined && ex !== undefined && ec !== undefined) {
       asymmetricAlpha = {
         earlyQualityScore: eq,
         upsideEvidenceScore: ue,

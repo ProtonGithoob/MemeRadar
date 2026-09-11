@@ -488,9 +488,9 @@ class AsymmetricAlphaProjection:
     """
 
     early_quality_score: Decimal
-    upside_evidence_score: Decimal
-    rug_dump_risk: Decimal
-    execution_quality: Decimal
+    upside_evidence_score: Decimal | None
+    rug_dump_risk: Decimal | None
+    execution_quality: Decimal | None
     evidence_confidence: Decimal
     launch_age_ms: int | None = None
     market_cap_at_decision: Decimal | None = None
@@ -504,18 +504,28 @@ class AsymmetricAlphaProjection:
         )
         object.__setattr__(self, "early_quality_score", eq_bounded)
 
-        ue_bounded = bounded_decimal(
-            self.upside_evidence_score, "upside_evidence_score", Decimal("0"), Decimal("100")
+        ue_bounded = (
+            None
+            if self.upside_evidence_score is None
+            else bounded_decimal(
+                self.upside_evidence_score, "upside_evidence_score", Decimal("0"), Decimal("100")
+            )
         )
         object.__setattr__(self, "upside_evidence_score", ue_bounded)
 
-        rd_bounded = bounded_decimal(
-            self.rug_dump_risk, "rug_dump_risk", Decimal("0"), Decimal("100")
+        rd_bounded = (
+            None
+            if self.rug_dump_risk is None
+            else bounded_decimal(self.rug_dump_risk, "rug_dump_risk", Decimal("0"), Decimal("100"))
         )
         object.__setattr__(self, "rug_dump_risk", rd_bounded)
 
-        ex_bounded = bounded_decimal(
-            self.execution_quality, "execution_quality", Decimal("0"), Decimal("100")
+        ex_bounded = (
+            None
+            if self.execution_quality is None
+            else bounded_decimal(
+                self.execution_quality, "execution_quality", Decimal("0"), Decimal("100")
+            )
         )
         object.__setattr__(self, "execution_quality", ex_bounded)
 
@@ -531,28 +541,38 @@ def build_asymmetric_alpha_projection(
     launch_age_ms: int | None = None,
 ) -> AsymmetricAlphaProjection:
     components = snapshot.components
-    flow = components.get("OrganicFlowAcceleration") or Decimal("50")
-    wallet = components.get("WalletQuality") or Decimal("50")
-    momentum = components.get("LaunchMomentum") or Decimal("50")
+    flow = components.get("OrganicFlowAcceleration")
+    wallet = components.get("WalletQuality")
+    momentum = components.get("LaunchMomentum")
     upside_score = (
-        (flow * Decimal("0.40")) + (wallet * Decimal("0.35")) + (momentum * Decimal("0.25"))
+        None
+        if flow is None or wallet is None or momentum is None
+        else (flow * Decimal("0.40"))
+        + (wallet * Decimal("0.35"))
+        + (momentum * Decimal("0.25"))
     )
 
-    safety = components.get("OnChainSafety") or Decimal("50")
-    rug_risk = max(Decimal("0"), Decimal("100") - safety)
+    safety = components.get("OnChainSafety")
+    rug_risk = None if safety is None else max(Decimal("0"), Decimal("100") - safety)
     if snapshot.hard_risk_blocked or snapshot.risk_disposition == RiskDisposition.BLOCK:
         rug_risk = Decimal("100")
 
-    exec_quality = components.get("LiquidityAndSellability") or Decimal("50")
+    exec_quality = components.get("LiquidityAndSellability")
 
     reasons = list(snapshot.reason_codes) + [ReasonCode("ASYMMETRIC_ALPHA_PROJECTED")]
 
     return AsymmetricAlphaProjection(
         early_quality_score=snapshot.score,
-        upside_evidence_score=bounded_decimal(
-            upside_score, "upside_score", Decimal("0"), Decimal("100")
+        upside_evidence_score=(
+            None
+            if upside_score is None
+            else bounded_decimal(upside_score, "upside_score", Decimal("0"), Decimal("100"))
         ),
-        rug_dump_risk=bounded_decimal(rug_risk, "rug_risk", Decimal("0"), Decimal("100")),
+        rug_dump_risk=(
+            None
+            if rug_risk is None
+            else bounded_decimal(rug_risk, "rug_risk", Decimal("0"), Decimal("100"))
+        ),
         execution_quality=exec_quality,
         evidence_confidence=snapshot.confidence,
         launch_age_ms=launch_age_ms,

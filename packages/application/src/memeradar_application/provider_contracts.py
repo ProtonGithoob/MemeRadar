@@ -866,6 +866,8 @@ class QuoteSnapshot:
     price_semantics: PriceSemantics = PriceSemantics.EXECUTION_QUOTE
     market_context: QuoteMarketContext | None = None
     chain: Chain | str = Chain.SOLANA
+    minimum_output_amount: Decimal | int | float | str | None = None
+    slippage_bps: Decimal | int | float | str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.provenance, Provenance):
@@ -880,6 +882,16 @@ class QuoteSnapshot:
             if value < 0:
                 raise ValueError(f"{field_name} must not be negative")
             object.__setattr__(self, field_name, value)
+        if self.minimum_output_amount is not None:
+            minimum_output = to_decimal(self.minimum_output_amount, "minimum_output_amount")
+            if minimum_output < 0:
+                raise ValueError("minimum_output_amount must not be negative")
+            object.__setattr__(self, "minimum_output_amount", minimum_output)
+        if self.slippage_bps is not None:
+            slippage = to_decimal(self.slippage_bps, "slippage_bps")
+            if slippage < 0 or slippage > Decimal("10000"):
+                raise ValueError("slippage_bps must be between 0 and 10000")
+            object.__setattr__(self, "slippage_bps", slippage)
         if not isinstance(self.freshness, Freshness):
             raise TypeError("freshness must be a Freshness")
         object.__setattr__(self, "price_semantics", PriceSemantics(self.price_semantics))
