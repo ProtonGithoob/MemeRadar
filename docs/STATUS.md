@@ -10,7 +10,7 @@ documents below.
 
 | Dimension | Current state | Evidence / constraint |
 |---|---|---|
-| System stage | `FREE_FIRST_PROVIDER_ARCHITECTURE_IMPLEMENTED` | Local engineering gates pass; external acceptance is separate. |
+| System stage | `ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION` | Local engineering gates pass; external acceptance and statistical alpha validation are separate. |
 | Stack readiness | `STACK_READY` when the local Compose stack is running | API, web, Postgres and Redis contracts are verified locally. |
 | Core provider readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` | Core reads do not require Helius or Birdeye; optional enrichment is separate. |
 | Shadow collection | `NOT_ACTIVE` | No live shadow evidence is claimed from fixtures or an unavailable stack. |
@@ -38,27 +38,21 @@ zero or safe evidence.
   data, Chainlink feed identities, and matured live-shadow observations are
   unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
   is `INSUFFICIENT_SAMPLES`.
-- Hosted CI run `34522180767` triggered for `868c709`, but Backend quality,
-  Frontend quality, Compose contract, and Secret scan were not started because
-  GitHub reported failed recent account payments/spending-limit exhaustion;
-  hosted CI is therefore `BLOCKED_EXTERNAL`, not PASS. The workflow contains
-  real lint, typecheck, test, migration, security, SBOM, Compose, browser,
-  build, and release-identity gates. Managed backup/restore and
-  production-like dependency restart/soak remain externally unverified.
+- Latest hosted CI run `34599136852` ran for HEAD
+  `ea2c1dc21c28be1214e6040ff235a07cf4e23130`. Backend quality, Frontend
+  quality, Compose contract, and Secret scan each terminated with `failure`
+  before any workflow step executed; Release candidate identity was `skipped`
+  with zero steps. GitHub reported failed recent account payments/spending
+  limit exhaustion, so hosted CI is `BLOCKED_EXTERNAL`, not code failure or
+  PASS. Managed backup/restore and production-like dependency restart/soak
+  remain externally unverified.
 - PR #3 (`feat: add B+C early-alpha Telegram alerts`) is still `OPEN` with
-  `merged=false` at head `82f14b3` against base `1fd899b`; its generated merge
-  commit is not an integration fact. The locally integrated implementation in
-  this sprint corrects the PR with the canonical state machine, persisted
-  snapshots, dedupe/retry/restart behavior, and shared delivery path.
-- Latest PR #3 Actions run `34574037062` and latest main Actions run
-  `34522929362` both have zero executed steps in the required jobs. GitHub's
-  annotation is `recent account payments have failed or your spending limit
-  needs to be increased`; this is `BLOCKED_EXTERNAL`, not a code failure.
-- Final implementation push SHA `bed8726ae0362d530f9e4a4350f5dbb709cafda3`
-  produced hosted CI run `34583193752`: Backend quality, Frontend quality,
-  Compose contract, and Secret scan all failed before any step executed;
-  Release candidate identity was skipped. The same GitHub billing annotation
-  applies, so this run is `BLOCKED_EXTERNAL`, not a code failure.
+  `merged=false`, `mergeable=false`, and `mergeable_state=dirty`; its head is
+  `82f14b33152bb9c1cc2c91037e19eebe2d315b4d` against base
+  `1fd899b35676e9e3cfbf2a973941f34d51d107f6`. Its branch was inspected and
+  was not merged or cherry-picked. The current main implementation corrects
+  the architecture with the canonical state machine, persisted snapshots,
+  dedupe/retry/restart behavior, and shared delivery path.
 - `MAIN_BRANCH_PROTECTION_NOT_ENFORCED`: the GitHub branch-protection API
   returned HTTP 403 because the private repository requires GitHub Pro or
   public visibility for that feature. No repository protection is claimed.
@@ -73,17 +67,24 @@ No blocker changes the readiness classification or authorizes a mode change.
 
 ## Latest engineering evidence
 
-The latest local full gate recorded after this frontend/Telegram parity sprint:
+The latest local full gate recorded after the alpha-readiness and paper-integrity
+follow-up:
 
-- `make verify`: 1220 Python tests passed, 11 skipped, 1 warning; 21 frontend
+- `make verify`: 1230 Python tests passed, 11 skipped, 1 warning; 21 frontend
   test files and 74 Vitest tests passed. Skips remain environment/optional
   provider cases and are not counted as passes.
 - Telegram-focused tests: 31 passed (`test_early_alpha_alert.py` and
   `test_early_alpha_pipeline.py`); ordinary `AlertRenderer` regression passed.
+- Ordinary `AlertRenderer` focused regression: 13 passed
+  (`tests/unit/test_alert_pipeline.py`).
 - Ruff, strict mypy across 131 source files, frontend lint/typecheck,
   production build, Compose validation, tracked-file secret scan, migrations,
   security review, SBOM, CSS contract, and `git diff --check`: passed.
-- Migration head: `0009_runtime_settings`; metadata tables: 26.
+- Migration head: `0010_active_position_claim`; metadata tables: 26. Runtime
+  migration was skipped because `MEMERADAR_DATABASE_URL`/`DATABASE_URL` was
+  absent; offline PostgreSQL SQL generation verified both new unique indexes.
+  Database integration was skipped because `MEMERADAR_TEST_DATABASE_URL` was
+  absent.
 - SBOM: 581 components, digest
   `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
 - Security review returned `PASS` with protected modes verified, while its
@@ -124,6 +125,127 @@ The latest local full gate recorded after this frontend/Telegram parity sprint:
   correlation metadata. No raw provider payload or secret is rendered.
 - Release identity and synthetic soak evidence remain local/measurement-only;
   external acceptance remains `BLOCKED_EXTERNAL`.
+
+The bounded `make alpha-readiness` report over the existing redacted case-study
+fixture is truthful: `sample_count=7`, `real_sample_count=0`,
+`real_winner_count=0`, `real_rug_count=0`, `caller_observation_count=0`,
+`smart_wallet_observation_count=0`, evidence class `SYNTHETIC_REDACTED=7`,
+provider `UNKNOWN=7`, `no_lookahead_verified=true`, and status
+`INSUFFICIENT_SAMPLES`. The report is an inventory seam, not calibration.
+
+## 2026-09-11 alpha-readiness and execution-integrity follow-up
+
+PR #3 actual state is `OPEN`, unmerged, and dirty against current main. It is
+`CORRECTED/INTEGRATED` on current main by preserving the existing architecture:
+
+```text
+canonical observations
+→ existing scoring/risk engines
+→ canonical Early Alpha projection
+→ EarlyAlphaAlertRenderer
+→ existing AlertDeliveryService
+→ Telegram
+```
+
+Ordinary alerts remain on `AlertRenderer`; both alert families use the same
+`AlertDeliveryService`. No second scorer, risk engine, execution engine,
+Telegram alpha calculation, or prediction path was added.
+
+The exact Early Alpha transition model is:
+
+```text
+NOT_CONFIRMED → CONFIRMED | DEGRADED | INVALIDATED | CONFLICT
+CONFIRMED     → DEGRADED | INVALIDATED | CONFLICT
+DEGRADED      → CONFIRMED | INVALIDATED | CONFLICT
+CONFLICT      → DEGRADED | INVALIDATED | CONFIRMED (risk conflict resolved)
+INVALIDATED   → terminal
+```
+
+Repeated transitions are deduped by stable logical identity; same-state
+updates require a material evidence change. Confirmation with risk `UNKNOWN`,
+`BLOCK`, stale/invalid/unavailable/conflicted critical evidence renders
+`ALPHA CONFIRMATION CONFLICT`, never normal `CONFIRMED`. Before→now fields use
+persisted snapshots and render `UNKNOWN → current` when no prior snapshot is
+known. Cohorts are labeled `COHORT SIMILARITY` only.
+
+Web↔Telegram parity is documented in the parity manifest for
+`/tokens/[tokenId]`, `/ultra-early`, and `Telegram/EarlyAlpha`; token identity,
+chain, early state, AlphaScore, confidence, risk disposition/quality,
+smart-wallet, holder, lifecycle/graduation, volume, liquidity, sellability,
+hard blocks, reason codes, freshness, event-time quality, and cohort
+similarity are canonical-field mappings or explicit omissions. Neither
+surface calculates AlphaScore or risk independently.
+
+Implemented P0 seams in this follow-up:
+
+- missing asymmetric-alpha and smart-money confidence evidence remains `null`
+  / `UNKNOWN`, not neutral zero or fifty;
+- PAPER_AUTO execution quotes require route, minimum output, slippage, fresh
+  quote semantics, and existing price-impact/liquidity/sellability evidence;
+- chain-specific native fee reserves fail closed for Solana, BNB, and
+  Robinhood paper buys;
+- in-memory and SQL paper ledgers enforce durable opportunity and active
+  position claims, with a migration-backed uniqueness boundary and concurrent
+  worker tests;
+- `alpha-readiness-report` counts real samples, winners/rugs, caller and
+  smart-wallet observations, providers, event-time bounds, no-lookahead, and
+  survivorship signals without promoting fixtures.
+
+The frontend/API, Telegram, provider, graph, settings, CSS, lifecycle,
+caller-scope, search-error, opportunities, and existing parity fixes from the
+previous sprint were deliberately reused rather than duplicated. No new
+provider adapter, environment variable, credential, or production scoring/risk
+weight was introduced.
+
+Verification evidence for this follow-up:
+
+- Python: `make verify` fresh `1230 passed, 11 skipped, 1 warning`.
+- Frontend: `74 passed` across `21` Vitest files; lint, typecheck, and
+  production build passed.
+- Telegram: `31 passed`; ordinary renderer: `13 passed`.
+- Browser: production `next start` acceptance, `36 passed, 4 skipped` out of
+  40 across 1440x900, 1024x768, 768x1024, and 390x844; all 15 routes in dark
+  and light themes. Four skips are authenticated/stateful journeys without
+  test-only credentials.
+- UNKNOWN handling, before→now snapshots, concurrent claiming, paper quote
+  completeness, fee reserves, dedupe/restart/correlation, ordinary renderer
+  fallback, protected modes, migration head, security, SBOM, and CSS contract
+  all have fresh local evidence.
+
+Implementation SHA: `ea2c1dc21c28be1214e6040ff235a07cf4e23130`.
+The final HEAD after the docs-only reconciliation is reported in the final
+handoff; this code checkpoint is already synchronized with `origin/main`.
+
+Remaining P0/P1 issues and exact next unfinished task:
+
+- `BLOCKED_EXTERNAL`: hosted CI billing/spending restriction, disabled main
+  branch protection (GitHub API HTTP 403), absent authenticated browser/test
+  database credentials, and unavailable compliant real provider data.
+- `INSUFFICIENT_SAMPLES`: real external sample count is `0`; caller, smart
+  wallet, winner/rug, calibration, precision/recall/FPR, and extreme-winner
+  capture validation remain unproven.
+- The control-plane kill switch is fail-closed and protected by default, but
+  there is no live execution path and the current immutable shadow policy is
+  the only paper-entry authority; direct runtime control-plane injection into
+  a future automatic paper worker remains a P0 follow-up before any mode can
+  change.
+- Exact next task: obtain compliant, independently verified real
+  Robinhood/Solana market, social, caller, and smart-wallet evidence; populate
+  the required historical cohorts; wire the existing control-plane state into
+  any future paper worker; then rerun no-lookahead calibration/promotion gates
+  without changing protected modes or production weights.
+
+Protected modes remain exactly:
+
+```env
+ANALYSIS_ONLY=true
+PAPER_TRADING=true
+MANUAL_EXECUTION=false
+AUTO_EXECUTION=false
+```
+
+Production classification remains `NOT_PRODUCTION_READY`, with the nearer
+engineering label `ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION`.
 
 The current checkpoint hardens the reused canonical seams: KOL evidence now
 requires independent strong dimensions for above-weak confidence and exposes
@@ -201,7 +323,11 @@ relationship, graph, optimizer, or Solana fallback engine was added.
 - [Current alpha-caller design](superpowers/specs/2026-09-07-alpha-caller-multichain-design.md)
 - [Current real-alpha readiness plan](superpowers/plans/2026-09-07-real-alpha-production-readiness.md)
 
-## 2026-09-11 frontend and Early Alpha parity sprint
+## 2026-09-11 frontend and Early Alpha parity sprint (historical checkpoint)
+
+This checkpoint is superseded by the alpha-readiness and execution-integrity
+follow-up above; its implementation and verification SHAs are retained for
+history only.
 
 PR #3 was inspected rather than assumed merged. It remains open/unmerged;
 the locally corrected integration follows:
