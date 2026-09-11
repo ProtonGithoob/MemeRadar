@@ -160,7 +160,7 @@ export function SearchForm() {
       />
       <button disabled={loading} onClick={() => void submit()} type="button">{loading ? "…" : "GO"}</button>
       {error ? (
-        <span className="sr-only" role="alert">{error}</span>
+        <p className="ws-search__error" role="alert">{error}</p>
       ) : null}
     </div>
   );

@@ -610,6 +610,8 @@ class ShortestPathQuery:
 class WalletGraphView:
     nodes: tuple[Mapping[str, object], ...] = ()
     edges: tuple[Mapping[str, object], ...] = ()
+    root_id: str | None = None
+    facets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     max_depth: int = 2
     max_nodes: int = 50
     max_edges: int = 100
@@ -3329,6 +3331,12 @@ class InMemoryReadQueryService:
         return WalletGraphView(
             nodes=tuple(subgraph.get("nodes", [])),
             edges=tuple(subgraph.get("edges", [])),
+            root_id=(subgraph.get("root_id") if isinstance(subgraph.get("root_id"), str) else None),
+            facets={
+                str(key): tuple(str(item) for item in values)
+                for key, values in (subgraph.get("facets", {}) or {}).items()
+                if isinstance(values, list | tuple)
+            },
             max_depth=subgraph.get("max_depth", query.max_depth),
             max_nodes=subgraph.get("max_nodes", query.max_nodes),
             max_edges=subgraph.get("max_edges", query.max_edges),
@@ -3360,6 +3368,12 @@ class InMemoryReadQueryService:
         return WalletGraphView(
             nodes=tuple(subgraph.get("nodes", [])),
             edges=tuple(subgraph.get("edges", [])),
+            root_id=(subgraph.get("root_id") if isinstance(subgraph.get("root_id"), str) else None),
+            facets={
+                str(key): tuple(str(item) for item in values)
+                for key, values in (subgraph.get("facets", {}) or {}).items()
+                if isinstance(values, list | tuple)
+            },
             max_depth=subgraph.get("max_depth", query.max_depth),
             max_nodes=subgraph.get("max_nodes", query.max_nodes),
             max_edges=subgraph.get("max_edges", query.max_edges),
@@ -3390,6 +3404,12 @@ class InMemoryReadQueryService:
         return WalletGraphView(
             nodes=tuple(subgraph.get("nodes", [])),
             edges=tuple(subgraph.get("edges", [])),
+            root_id=(subgraph.get("root_id") if isinstance(subgraph.get("root_id"), str) else None),
+            facets={
+                str(key): tuple(str(item) for item in values)
+                for key, values in (subgraph.get("facets", {}) or {}).items()
+                if isinstance(values, list | tuple)
+            },
             max_depth=subgraph.get("max_depth", query.max_depth),
             max_nodes=subgraph.get("max_nodes", query.max_nodes),
             max_edges=subgraph.get("max_edges", query.max_edges),

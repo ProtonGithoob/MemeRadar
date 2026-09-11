@@ -222,7 +222,11 @@ function CallerFilters({
   kolTier,
   setKolTier,
   sort,
-  setSort
+  setSort,
+  platformOptions,
+  chainOptions,
+  evidenceOptions,
+  kolOptions
 }: {
   platform: string;
   setPlatform: (value: string) => void;
@@ -238,15 +242,19 @@ function CallerFilters({
   setKolTier: (value: string) => void;
   sort: string;
   setSort: (value: string) => void;
+  platformOptions: string[];
+  chainOptions: string[];
+  evidenceOptions: string[];
+  kolOptions: string[];
 }) {
   return (
     <div className="caller-filters" aria-label="Caller filters and sort">
-      <label>PLATFORM<select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="">ALL</option><option value="x">X</option><option value="telegram">TELEGRAM</option></select></label>
-      <label>CHAIN<select value={chain} onChange={(event) => setChain(event.target.value)}><option value="">ALL</option><option value="solana">SOLANA</option><option value="bnb">BNB</option><option value="robinhood">ROBINHOOD</option></select></label>
-      <label>EVIDENCE<select value={evidenceClass} onChange={(event) => setEvidenceClass(event.target.value)}><option value="">ALL</option><option value="EARLY">EARLY</option><option value="LATE">LATE</option></select></label>
+      <label>PLATFORM<select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="">ALL</option>{platformOptions.map((value) => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select></label>
+      <label>CHAIN<select value={chain} onChange={(event) => setChain(event.target.value)}><option value="">ALL</option>{chainOptions.map((value) => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select></label>
+      <label>EVIDENCE<select value={evidenceClass} onChange={(event) => setEvidenceClass(event.target.value)}><option value="">ALL</option>{evidenceOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <label>MIN SAMPLES<input min="0" onChange={(event) => setMinSamples(event.target.value)} type="number" value={minSamples} /></label>
       <label>MIN CONFIDENCE<input max="1" min="0" onChange={(event) => setMinConfidence(event.target.value)} step="0.05" type="number" value={minConfidence} /></label>
-      <label>KOL BUNDLE<select value={kolTier} onChange={(event) => setKolTier(event.target.value)}><option value="">ALL</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option><option value="UNKNOWN">UNKNOWN</option></select></label>
+      <label>KOL BUNDLE<select value={kolTier} onChange={(event) => setKolTier(event.target.value)}><option value="">ALL</option>{kolOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       <label>SORT<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="confidence">CONFIDENCE</option><option value="samples">SAMPLE COUNT</option><option value="mfe">EXECUTABLE MFE</option><option value="early">EARLIEST-ENTRY QUALITY</option></select></label>
     </div>
   );
@@ -268,6 +276,20 @@ export function CallersDashboard({
   const [minConfidence, setMinConfidence] = useState("");
   const [kolTier, setKolTier] = useState("");
   const [sort, setSort] = useState("confidence");
+  const platformOptions = useMemo(() => Array.from(new Set([
+    ...(profiles.ok ? profiles.data.items.map((item) => item.platform) : []),
+    ...(calls.ok ? calls.data.items.map((item) => item.source) : [])
+  ])).sort(), [calls, profiles]);
+  const chainOptions = useMemo(() => Array.from(new Set([
+    ...(calls.ok ? calls.data.items.map((item) => item.chain) : []),
+    ...(convergence.ok ? convergence.data.items.map((item) => item.chain) : [])
+  ])).filter((value): value is string => value !== null).sort(), [calls, convergence]);
+  const evidenceOptions = useMemo(() => Array.from(new Set(
+    profiles.ok ? profiles.data.items.map((item) => item.evidenceClass) : []
+  )).sort(), [profiles]);
+  const kolOptions = useMemo(() => Array.from(new Set(
+    convergence.ok ? convergence.data.items.map((item) => item.kolBundleConfidenceTier ?? "UNKNOWN") : []
+  )).sort(), [convergence]);
   const filteredProfiles = useMemo(() => {
     if (!profiles.ok) return profiles;
     const sampleMinimum = minSamples === "" ? 0 : Number(minSamples);
@@ -310,7 +332,10 @@ export function CallersDashboard({
           minSamples={minSamples} platform={platform} setChain={setChain} setEvidenceClass={setEvidenceClass}
           setKolTier={setKolTier} setMinConfidence={setMinConfidence} setMinSamples={setMinSamples}
           setPlatform={setPlatform} setSort={setSort} sort={sort}
+          platformOptions={platformOptions} chainOptions={chainOptions}
+          evidenceOptions={evidenceOptions} kolOptions={kolOptions}
         />
+        <p className="section-note">CURRENT PAGE FILTER · profiles: platform/evidence/samples/confidence · calls: platform/chain · convergence: chain/KOL bundle</p>
       </section>
       <section className="section-block intelligence-section" aria-labelledby="caller-profiles-title">
         <div className="section-heading">

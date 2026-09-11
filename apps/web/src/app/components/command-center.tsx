@@ -46,7 +46,17 @@ function StatusStrip({ operations }: { operations: ReadResult<OperationsRecord> 
   const data = operations.data;
   const down = data.providers.filter((provider) => provider.state === "DOWN").length;
   const degraded = data.providers.filter((provider) => provider.state === "DEGRADED").length;
+  const unknown = data.providers.filter((provider) => provider.state === "UNKNOWN").length;
   const criticalAlerts = data.alerts.filter((alert) => alert.severity === "CRITICAL").length;
+  const providerValue = data.providers.length === 0
+    ? "UNKNOWN"
+    : down > 0
+      ? `${down} DOWN`
+      : degraded > 0
+        ? `${degraded} DEGRADED`
+        : unknown > 0
+          ? "UNKNOWN"
+          : "READY";
   return (
     <div className="metric-strip" aria-label="System status">
       <MetricCard
@@ -57,8 +67,8 @@ function StatusStrip({ operations }: { operations: ReadResult<OperationsRecord> 
       />
       <MetricCard
         label="PROVIDERS"
-        tone={down > 0 ? "danger" : degraded > 0 ? "warn" : "ok"}
-        value={down > 0 ? `${down} DOWN` : degraded > 0 ? `${degraded} DEGRADED` : "READY"}
+        tone={down > 0 ? "danger" : degraded > 0 || unknown > 0 || data.providers.length === 0 ? "warn" : "ok"}
+        value={providerValue}
         detail={`${data.providers.length} tracked`}
       />
       <MetricCard

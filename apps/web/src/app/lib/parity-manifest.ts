@@ -1,6 +1,7 @@
 export type ParityManifestEntry = {
   apiFields: readonly string[];
   frontendFields: readonly string[];
+  telegramFields?: readonly string[];
   omissions: readonly { field: string; reason: string }[];
 };
 
@@ -65,8 +66,8 @@ export const PARITY_MANIFEST: Record<string, ParityManifestEntry> = {
     omissions: [{ field: "failure_rate", reason: "no normalized failure-rate field exists; failure count remains displayed" }]
   },
   "/tokens/[tokenId]": {
-    apiFields: ["chain", "mint", "pools", "candidate", "launch_lifecycle.lifecycle_state", "launch_lifecycle.route_state", "launch_lifecycle.route_available", "launch_lifecycle.launchpad", "launch_lifecycle.creator_address", "launch_lifecycle.bonding_curve_progress_bps", "launch_lifecycle.quote_asset", "launch_lifecycle.graduation_threshold_bps", "launch_lifecycle.graduated_at", "launch_lifecycle.first_verified_dex_liquidity_at", "launch_lifecycle.first_verified_swap_at", "launch_lifecycle.liquidity_lock_state", "launch_lifecycle.pool_address", "launch_lifecycle.venue", "launch_lifecycle.as_of", "launch_lifecycle.expires_at", "launch_lifecycle.quality_state", "launch_lifecycle.time_quality", "launch_lifecycle.confidence", "launch_lifecycle.reason_codes", "launch_lifecycle.evidence_refs", "launch_lifecycle.provenance", "launch_lifecycle.config_hash", "launch_lifecycle.version", "timeline", "quality", "provenance"],
-    frontendFields: ["chain", "identity", "pools", "candidate", "launchLifecycle.lifecycleState", "launchLifecycle.routeState", "launchLifecycle.routeAvailable", "launchLifecycle.launchpad", "launchLifecycle.creatorAddress", "launchLifecycle.bondingCurveProgressBps", "launchLifecycle.quoteAsset", "launchLifecycle.graduationThresholdBps", "launchLifecycle.graduatedAt", "launchLifecycle.firstVerifiedDexLiquidityAt", "launchLifecycle.firstVerifiedSwapAt", "launchLifecycle.liquidityLockState", "launchLifecycle.poolAddress", "launchLifecycle.venue", "launchLifecycle.asOf", "launchLifecycle.expiresAt", "launchLifecycle.qualityState", "launchLifecycle.timeQuality", "launchLifecycle.confidence", "launchLifecycle.reasonCodes", "launchLifecycle.evidenceRefs", "launchLifecycle.provenance", "launchLifecycle.configHash", "launchLifecycle.version", "timeline", "quality", "provenance"],
+    apiFields: ["chain", "mint", "pools", "candidate", "launch_lifecycle.lifecycle_state", "launch_lifecycle.route_state", "launch_lifecycle.route_available", "launch_lifecycle.launchpad", "launch_lifecycle.creator_address", "launch_lifecycle.bonding_curve_progress_bps", "launch_lifecycle.quote_asset", "launch_lifecycle.graduation_threshold_bps", "launch_lifecycle.graduated_at", "launch_lifecycle.first_verified_dex_liquidity_at", "launch_lifecycle.first_verified_swap_at", "launch_lifecycle.liquidity_lock_state", "launch_lifecycle.pool_address", "launch_lifecycle.venue", "launch_lifecycle.as_of", "launch_lifecycle.expires_at", "launch_lifecycle.quality_state", "launch_lifecycle.time_quality", "launch_lifecycle.confidence", "launch_lifecycle.reason_codes", "launch_lifecycle.evidence_refs", "launch_lifecycle.provenance", "launch_lifecycle.config_hash", "launch_lifecycle.version", "timeline.alert.early_alpha.payload.early_alpha_state", "timeline.alert.early_alpha.payload.early_alpha_snapshot", "timeline.alert.early_alpha.payload.early_alpha_transition", "timeline.alert.early_alpha.payload.risk_gates", "timeline.alert.early_alpha.payload.changes", "timeline.alert.early_alpha.payload.early_alpha_correlation_id", "timeline", "quality", "provenance"],
+    frontendFields: ["chain", "identity", "pools", "candidate", "launchLifecycle.lifecycleState", "launchLifecycle.routeState", "launchLifecycle.routeAvailable", "launchLifecycle.launchpad", "launchLifecycle.creatorAddress", "launchLifecycle.bondingCurveProgressBps", "launchLifecycle.quoteAsset", "launchLifecycle.graduatedAt", "launchLifecycle.firstVerifiedDexLiquidityAt", "launchLifecycle.firstVerifiedSwapAt", "launchLifecycle.liquidityLockState", "launchLifecycle.poolAddress", "launchLifecycle.venue", "launchLifecycle.asOf", "launchLifecycle.expiresAt", "launchLifecycle.qualityState", "launchLifecycle.timeQuality", "launchLifecycle.confidence", "launchLifecycle.reasonCodes", "launchLifecycle.evidenceRefs", "launchLifecycle.provenance", "launchLifecycle.configHash", "launchLifecycle.version", "earlyAlpha.state", "earlyAlpha.riskGates", "earlyAlpha.beforeNow", "earlyAlpha.transition", "earlyAlpha.correlation", "timeline", "quality", "provenance"],
     omissions: [{ field: "provider raw payload", reason: "normalized timeline payload is the operator boundary" }]
   },
   "/providers": {
@@ -97,5 +98,15 @@ export const PARITY_MANIFEST: Record<string, ParityManifestEntry> = {
     apiFields: ["PR-1..PR-7", "evidence_counts", "blockers", "hosted_ci", "protected_modes", "live_money"],
     frontendFields: ["gate_status", "evidence_counts", "blockers", "next_action", "hosted_ci", "protected_modes", "live_money"],
     omissions: [{ field: "live-money enablement", reason: "explicitly out of scope and backend protected" }]
+  },
+  "Telegram/EarlyAlpha": {
+    apiFields: ["token identity", "chain", "early state", "AlphaScore", "confidence", "risk disposition", "risk quality", "smart-wallet evidence", "holder evidence", "launch lifecycle", "graduation", "volume acceleration", "liquidity", "sellability", "hard blocks", "reason codes", "evidence freshness", "event-time quality", "cohort similarity"],
+    frontendFields: ["token identity", "chain", "early state", "AlphaScore", "confidence", "risk disposition", "risk quality", "evidence freshness", "reason codes"],
+    telegramFields: ["token identity", "chain", "state", "AlphaScore", "confidence", "risk disposition", "risk quality", "evidence before now", "cohort similarity", "reason codes", "correlation"],
+    omissions: [
+      { field: "raw provider payload", reason: "bounded normalized evidence only" },
+      { field: "public web URL", reason: "deployment routing is not configured; no URL is fabricated" },
+      { field: "fields unavailable in the persisted early-alpha projection", reason: "rendered as UNKNOWN or omitted until canonical read-model support exists" }
+    ]
   }
 };

@@ -32,11 +32,11 @@ function costSummary(provider: OperationalProviderRecord): string {
   return "COST UNKNOWN";
 }
 
-function counterValue(metrics: Record<string, unknown>, name: string): number {
+function counterValue(metrics: Record<string, unknown>, name: string): number | "UNKNOWN" {
   const counters = metrics.counters;
-  if (typeof counters !== "object" || counters === null || Array.isArray(counters)) return 0;
+  if (typeof counters !== "object" || counters === null || Array.isArray(counters)) return "UNKNOWN";
   const value = (counters as Record<string, unknown>)[name];
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : "UNKNOWN";
 }
 
 function nestedRecord(value: unknown): Record<string, unknown> | null {
@@ -45,10 +45,10 @@ function nestedRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function earlyCounterValue(metrics: Record<string, unknown>, name: string): number {
+function earlyCounterValue(metrics: Record<string, unknown>, name: string): number | "UNKNOWN" {
   const counters = nestedRecord(metrics.counters);
   const value = counters?.[name];
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : "UNKNOWN";
 }
 
 function earlyLatencySummary(metrics: Record<string, unknown>): string {

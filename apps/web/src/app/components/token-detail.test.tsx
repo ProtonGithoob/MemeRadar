@@ -247,4 +247,37 @@ describe("TokenDetailView", () => {
     expect(screen.queryByText("0%")).not.toBeInTheDocument();
     expect(screen.getAllByText("UNKNOWN").length).toBeGreaterThan(0);
   });
+
+  it("surfaces the persisted Early Alpha state and evidence transition", () => {
+    const earlyAlphaEntry: TimelineRecord = {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      tokenId: TOKEN_ID,
+      kind: "alert.early_alpha",
+      sourceId: "alert:early-alpha",
+      occurredAt: "2026-08-31T12:07:00.000Z",
+      observedAt: "2026-08-31T12:07:00.000Z",
+      ingestedAt: "2026-08-31T12:07:01.000Z",
+      qualityState: "FRESH",
+      timeQuality: "EXACT",
+      reasonCodes: ["RISK_EVIDENCE_UNKNOWN"],
+      evidenceRefs: ["alert:event"],
+      payload: {
+        early_alpha: {
+          early_alpha_state: "CONFLICT",
+          risk_gates: "UNKNOWN",
+          early_alpha_transition: { previous: "NOT_CONFIRMED", current: "CONFLICT" },
+          changes: { smart_wallets: { previous: 2, current: 5 } },
+          early_alpha_correlation_id: "corr:early-alpha"
+        }
+      },
+      provenance: []
+    };
+
+    render(<TokenDetailView tokenResult={{ ok: true, data: token }} timelineResult={page([earlyAlphaEntry])} />);
+
+    expect(screen.getByLabelText("Early Alpha canonical evidence")).toHaveTextContent("CONFLICT");
+    expect(screen.getByLabelText("Early Alpha canonical evidence")).toHaveTextContent("RISK GATESUNKNOWN");
+    expect(screen.getByLabelText("Early Alpha canonical evidence")).toHaveTextContent("Smart Wallets: 2 → 5");
+    expect(screen.getByLabelText("Early Alpha canonical evidence")).toHaveTextContent("corr:early-alpha");
+  });
 });

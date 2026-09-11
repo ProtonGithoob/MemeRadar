@@ -364,9 +364,38 @@ class CreatorOutcomeGraph:
             if eid in self.edges
         ]
 
+        venues = {
+            str(edge.properties["venue"])
+            for edge in (self.edges[eid] for eid in visited_edges if eid in self.edges)
+            if edge.properties.get("venue")
+        }
+        wallet_roles = {
+            str(
+                node.properties.get("role")
+                or node.properties.get("wallet_role")
+                or node.kind.value
+            )
+            for node in (self.nodes[nid] for nid in visited_nodes if nid in self.nodes)
+        }
+        outcomes = {
+            str(node.properties.get("outcome") or node.properties.get("risk_outcome_class"))
+            for node in (self.nodes[nid] for nid in visited_nodes if nid in self.nodes)
+            if node.properties.get("outcome") or node.properties.get("risk_outcome_class")
+        }
+
         return {
             "nodes": nodes_out,
             "edges": edges_out,
+            "root_id": next(
+                (start_id for start_id in start_node_ids if start_id in self.nodes),
+                None,
+            ),
+            "facets": {
+                "venues": sorted(venues),
+                "wallet_roles": sorted(wallet_roles),
+                "outcomes": sorted(outcomes),
+                "quality_states": [state.value for state in QualityState],
+            },
             "max_depth": max_depth,
             "max_nodes": max_nodes,
             "max_edges": max_edges,

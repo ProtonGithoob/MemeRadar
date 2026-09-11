@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 from memeradar_application.alert_pipeline import AlertDeliveryService, AlertPolicy
 from memeradar_application.config import Settings
+from memeradar_application.early_alpha_alert import EarlyAlphaAlertRenderer
 from memeradar_application.event_processing import EventDispatcher, OutboxProcessor, OutboxWorker
 from memeradar_domain import EventEnvelope
 from memeradar_persistence import (
@@ -78,6 +79,7 @@ async def _run_alert_outbox(
             window=timedelta(seconds=settings.alert_rate_limit_window_seconds),
         ),
         destination=settings.telegram_chat_id,
+        early_alpha_renderer=EarlyAlphaAlertRenderer(),
     )
 
     async def handle_alert_event(event: EventEnvelope) -> None:
@@ -86,6 +88,9 @@ async def _run_alert_outbox(
     dispatcher = EventDispatcher(
         {
             "AlertRequested": handle_alert_event,
+            "EarlyAlphaStateChanged": handle_alert_event,
+            "EarlyAlphaProjection": handle_alert_event,
+            "EarlyAlphaAlertRequested": handle_alert_event,
             "AlphaScoreDelta": handle_alert_event,
             "CandidateStateChanged": handle_alert_event,
             "ProviderHealthChanged": handle_alert_event,

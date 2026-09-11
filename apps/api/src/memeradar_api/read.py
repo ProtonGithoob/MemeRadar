@@ -18,6 +18,7 @@ from memeradar_application.control import ControlAction, ControlPlanePort
 from memeradar_application.early_scoring import AsymmetricAlphaProjection
 from memeradar_application.event_time import EventTimeQuality
 from memeradar_application.provider_contracts import ProviderCapabilityStatus
+from memeradar_application.provider_metadata import provider_metadata
 from memeradar_application.read_api import (
     DEFAULT_PAGE_LIMIT,
     MAX_CURSOR_LENGTH,
@@ -597,6 +598,17 @@ class CreatorReputationResponse(_StrictModel):
 
 class ProviderHealthResponse(_StrictModel):
     provider: str
+    provider_id: str
+    display_name: str
+    chains: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    required: bool
+    enabled: bool
+    setting_keys: list[str] = Field(default_factory=list)
+    credential_state: str
+    endpoint_state: str
+    fallback_position: int | None = None
+    runtime_health: str
     capability: str
     state: str
     checked_at: datetime
@@ -765,6 +777,8 @@ class GraphEdgeResponse(_StrictModel):
 class WalletGraphResponse(_StrictModel):
     nodes: list[GraphNodeResponse]
     edges: list[GraphEdgeResponse]
+    root_id: str | None = None
+    facets: dict[str, list[str]] = Field(default_factory=dict)
     max_depth: int
     max_nodes: int
     max_edges: int
@@ -1206,6 +1220,7 @@ def _creator_reputation_response(value: CreatorReputationView) -> CreatorReputat
 
 def _provider_health_response(value: ProviderHealthView) -> ProviderHealthResponse:
     assert value.capability_status is not None
+    metadata = provider_metadata(value.provider, value.capability)
     capability_status = (
         value.capability_status.value
         if isinstance(value.capability_status, ProviderCapabilityStatus)
@@ -1213,6 +1228,17 @@ def _provider_health_response(value: ProviderHealthView) -> ProviderHealthRespon
     )
     return ProviderHealthResponse(
         provider=value.provider,
+        provider_id=metadata.provider_id,
+        display_name=metadata.display_name,
+        chains=list(metadata.chains),
+        capabilities=list(metadata.capabilities),
+        required=metadata.required,
+        enabled=metadata.enabled,
+        setting_keys=list(metadata.setting_keys),
+        credential_state=metadata.credential_state,
+        endpoint_state=metadata.endpoint_state,
+        fallback_position=metadata.fallback_position,
+        runtime_health=ReadProviderHealthState(value.state).value,
         capability=value.capability,
         state=ReadProviderHealthState(value.state).value,
         checked_at=value.checked_at,
@@ -1403,6 +1429,8 @@ def _wallet_graph_response(value: WalletGraphView) -> WalletGraphResponse:
     return WalletGraphResponse(
         nodes=nodes,
         edges=edges,
+        root_id=value.root_id,
+        facets={key: list(values) for key, values in value.facets.items()},
         max_depth=value.max_depth,
         max_nodes=value.max_nodes,
         max_edges=value.max_edges,

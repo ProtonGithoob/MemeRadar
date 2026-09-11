@@ -91,7 +91,8 @@ function displayDate(value: string | null): string {
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : "UNKNOWN TIME";
 }
 
-function displayNumber(value: number): string {
+function displayNumber(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "UNKNOWN";
   if (Math.abs(value) >= 1_000_000) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
   return value.toLocaleString("en-US", { maximumFractionDigits: 6 });
 }
@@ -100,6 +101,67 @@ function displayPercent(value: number | null): string {
   if (value === null || !Number.isFinite(value) || value < 0 || value > 100) return "UNKNOWN";
   const normalized = value <= 1 ? value * 100 : value;
   return normalized > 100 ? "UNKNOWN" : `${normalized.toFixed(1)}%`;
+}
+
+const EARLY_ALPHA_CHANGE_FIELDS = [
+  ["smart_wallets", "Smart Wallets"],
+  ["holders", "Holders"],
+  ["graduation", "Graduation"],
+  ["volume_acceleration", "Volume Accel"],
+  ["alpha_score", "AlphaScore"],
+  ["confidence", "Confidence"]
+] as const;
+
+function boundedEvidenceValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "UNKNOWN";
+  if (typeof value === "string") return value.slice(0, 128);
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "boolean") return value ? "YES" : "NO";
+  return "UNKNOWN";
+}
+
+function earlyAlphaPayload(entry: TimelineRecord): Record<string, unknown> | null {
+  if (entry.kind !== "alert.early_alpha") return null;
+  const payload = entry.payload.early_alpha;
+  return isRecord(payload) ? payload : null;
+}
+
+function EarlyAlphaEvidence({ entry }: { entry: TimelineRecord }) {
+  const alpha = earlyAlphaPayload(entry);
+  if (alpha === null) return null;
+  const transition = isRecord(alpha.early_alpha_transition) ? alpha.early_alpha_transition : null;
+  const changes = isRecord(alpha.changes) ? alpha.changes : null;
+  const changeRows = changes === null ? [] : EARLY_ALPHA_CHANGE_FIELDS.flatMap(([key, label]) => {
+    const change = changes[key];
+    if (!isRecord(change)) return [];
+    return [[label, `${boundedEvidenceValue(change.previous)} → ${boundedEvidenceValue(change.current)}`] as const];
+  });
+  const cohorts = isRecord(alpha.cohort_similarity) ? alpha.cohort_similarity : null;
+  return (
+    <div className="detail-list" aria-label="Early Alpha canonical evidence">
+      <div><dt>EARLY ALPHA STATE</dt><dd>{boundedEvidenceValue(alpha.early_alpha_state ?? alpha.state)}</dd></div>
+      <div><dt>RISK GATES</dt><dd>{boundedEvidenceValue(alpha.risk_gates)}</dd></div>
+      {transition ? (
+        <div>
+          <dt>TRANSITION</dt>
+          <dd>{boundedEvidenceValue(transition.previous)} → {boundedEvidenceValue(transition.current)}</dd>
+        </div>
+      ) : null}
+      {changeRows.length > 0 ? (
+        <div>
+          <dt>EVIDENCE BEFORE → NOW</dt>
+          <dd>{changeRows.map(([label, value]) => <span key={label}>{label}: {value}; </span>)}</dd>
+        </div>
+      ) : null}
+      {cohorts ? (
+        <div>
+          <dt>COHORT SIMILARITY</dt>
+          <dd>{["10x", "50x", "100x"].map((key) => `${key}: ${boundedEvidenceValue(cohorts[key])}`).join("; ")}</dd>
+        </div>
+      ) : null}
+      <div><dt>CORRELATION</dt><dd>{boundedEvidenceValue(alpha.early_alpha_correlation_id)}</dd></div>
+    </div>
+  );
 }
 
 function holderMetric(entries: TimelineRecord[], keys: readonly string[]): number | null {
@@ -155,7 +217,7 @@ export function MetricChart({ label, points }: { label: string; points: MetricPo
     <div className="metric-chart">
       <div className="metric-chart__heading">
         <span>{label.toUpperCase()}</span>
-        <strong>{displayNumber(points[points.length - 1]?.value ?? 0)}</strong>
+        <strong>{displayNumber(points[points.length - 1]?.value ?? null)}</strong>
       </div>
       <svg
         aria-label={`${label} evidence chart`}
@@ -430,7 +492,6 @@ function MetadataPanels({ token }: { token: TokenRecord }) {
           <small>{lifecycle?.qualityState ?? "UNKNOWN"}</small>
         </div>
         <dl className="detail-list">
-          <div><dt>CURRENT LIFECYCLE</dt><dd>{lifecycleState}</dd></div>
           <div><dt>ROUTE STATE</dt><dd>{routeState} / {routeAvailable}</dd></div>
           <div><dt>LAUNCHPAD</dt><dd>{lifecycleText(lifecycle?.launchpad ?? null)}</dd></div>
           <div><dt>CREATOR ADDRESS</dt><dd>{lifecycleAddress(lifecycle?.creatorAddress ?? null)}</dd></div>
@@ -514,6 +575,7 @@ function TokenTimeline({ entries }: { entries: TimelineRecord[] }) {
                 ))}
               </div>
             ) : <small>PROVENANCE UNKNOWN</small>}
+            <EarlyAlphaEvidence entry={entry} />
           </div>
         </article>
       ))}

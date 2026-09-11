@@ -105,4 +105,18 @@ describe("OperationsDashboard", () => {
     rerender(<OperationsDashboard result={{ ok: false, reason: "UNAVAILABLE" }} />);
     expect(screen.getByText("OPERATIONS OBSERVABILITY UNAVAILABLE")).toBeInTheDocument();
   });
+
+  it("keeps missing counters UNKNOWN while preserving explicit zero", () => {
+    render(
+      <OperationsDashboard result={result({
+        ...overview,
+        metrics: { counters: { queue_saturations: 0 } },
+        earlyDetection: {}
+      })} />
+    );
+
+    expect(screen.getByText("QUEUE SATURATION").parentElement).toHaveTextContent("0");
+    expect(screen.getByText("OUTBOX DEAD LETTERS").parentElement).toHaveTextContent("UNKNOWN");
+    expect(screen.getByText("CANDIDATES / ENTRY READY").parentElement).toHaveTextContent("UNKNOWN / UNKNOWN");
+  });
 });

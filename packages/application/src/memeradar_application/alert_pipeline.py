@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from time import perf_counter
@@ -29,7 +29,7 @@ from .provider_contracts import (
     NotificationRequest,
     ProviderRequestContext,
 )
-from .reliability import LatencyMetric, emit_latency
+from .reliability import LatencyMetric, emit_counter, emit_latency
 
 ALERT_PIPELINE_VERSION = "alert-pipeline-v1"
 MAX_TELEGRAM_TEXT_LENGTH = 4096
@@ -48,6 +48,12 @@ class AlertStore(Protocol):
     async def get_by_dedupe_key(self, dedupe_key: str) -> Alert | None: ...
 
     async def save(self, alert: Alert) -> Alert: ...
+
+
+class EarlyAlphaStateStore(Protocol):
+    """Optional lookup over the existing durable alert ledger."""
+
+    async def get_latest_early_alpha(self, identity: str) -> Alert | None: ...
 
 
 class AlertDeliveryStatus(str, Enum):
@@ -977,7 +983,37 @@ class AlertEventProjector:
         severity = AlertSeverity.INFO
         alert_payload: Mapping[str, object] = payload
 
-        if event.kind == "AlertRequested":
+        if event.kind in {
+            "EarlyAlphaStateChanged",
+            "EarlyAlphaProjection",
+            "EarlyAlphaAlertRequested",
+        }:
+            nested = payload.get("early_alpha")
+            if not isinstance(nested, Mapping):
+                return None
+            alert_type = AlertType.EARLY_ALPHA
+            alert_payload = {"early_alpha": dict(nested)}
+            for key in (
+                "symbol",
+                "name",
+                "mint",
+                "evidence_refs",
+                "dashboard_url",
+                "top_positive_evidence",
+                "top_risk_evidence",
+            ):
+                if key in payload:
+                    alert_payload[key] = payload[key]
+            raw_state = nested.get("state") or nested.get("confirmation_state")
+            state = _safe_display(raw_state).upper()
+            severity = (
+                AlertSeverity.CRITICAL
+                if state in {"INVALIDATED", "CONFLICT"}
+                else AlertSeverity.WARNING
+                if state == "DEGRADED"
+                else AlertSeverity.INFO
+            )
+        elif event.kind == "AlertRequested":
             try:
                 alert_type = AlertType(payload["type"])
                 severity = AlertSeverity(payload.get("severity", AlertSeverity.INFO))
@@ -987,6 +1023,8 @@ class AlertEventProjector:
             if not isinstance(nested, Mapping):
                 raise ValueError("AlertRequested payload must be a mapping")
             alert_payload = nested
+            if alert_type is AlertType.EARLY_ALPHA and "early_alpha" not in nested:
+                alert_payload = {"early_alpha": dict(nested)}
         elif event.kind in {"CandidateStateChanged", "AlphaScoreDelta"}:
             from_state = _safe_display(payload.get("from_state"))
             to_state = _safe_display(payload.get("to_state"))
@@ -1083,6 +1121,7 @@ class AlertDeliveryService:
         policy: AlertPolicy | None = None,
         destination: str,
         renderer: AlertRenderer | None = None,
+        early_alpha_renderer: AlertRenderer | None = None,
         limiter: AlertRateLimiter | None = None,
         clock: Callable[[], datetime] | None = None,
         telemetry: object | None = None,
@@ -1094,6 +1133,7 @@ class AlertDeliveryService:
         self.policy = policy or AlertPolicy()
         self.destination = require_text(destination, "destination", max_length=256)
         self.renderer = renderer or AlertRenderer(max_length=self.policy.max_text_length)
+        self.early_alpha_renderer = early_alpha_renderer
         self.limiter = limiter or AlertRateLimiter(policy=self.policy)
         self._clock = clock or (lambda: datetime.now(UTC))
         self._telemetry = telemetry
@@ -1102,11 +1142,153 @@ class AlertDeliveryService:
         alert = AlertEventProjector().project(event)
         if alert is None:
             return AlertDeliveryResult(alert=None, status=AlertDeliveryStatus.IGNORED)
+        if alert.type is AlertType.EARLY_ALPHA:
+            return await self._handle_early_alpha_event(alert, event)
         context = ProviderRequestContext(
             correlation_id=event.correlation_id,
             requested_at=event.ingested_at,
         )
         return await self.deliver(alert, context=context)
+
+    async def _handle_early_alpha_event(
+        self,
+        alert: Alert,
+        event: EventEnvelope,
+    ) -> AlertDeliveryResult:
+        from .early_alpha_alert import (
+            EarlyAlphaState,
+            build_early_alpha_projection,
+            evidence_fingerprint,
+            snapshot_changes,
+            transition_early_alpha,
+        )
+
+        raw_early_alpha = alert.payload.get("early_alpha")
+        if not isinstance(raw_early_alpha, Mapping):
+            return AlertDeliveryResult(alert=None, status=AlertDeliveryStatus.IGNORED)
+        identity = _safe_display(
+            raw_early_alpha.get("identity")
+            or raw_early_alpha.get("early_alpha_identity")
+            or raw_early_alpha.get("candidate_id")
+            or raw_early_alpha.get("token_id")
+            or raw_early_alpha.get("mint")
+            or (f"candidate:{event.aggregate_id}" if event.aggregate_id else None),
+            max_length=128,
+        ) or "unknown"
+        projection = build_early_alpha_projection(
+            raw_early_alpha,
+            identity=identity,
+            correlation_id=event.correlation_id,
+        )
+        if projection.state is None:
+            return AlertDeliveryResult(alert=None, status=AlertDeliveryStatus.IGNORED)
+
+        latest: Alert | None = None
+        lookup = getattr(self._store, "get_latest_early_alpha", None)
+        if callable(lookup):
+            latest = await lookup(projection.identity)
+        previous_state: EarlyAlphaState | None = None
+        previous_snapshot: Mapping[str, object] | None = None
+        correlation_id = projection.correlation_id
+        if latest is not None:
+            stored_alpha = latest.payload.get("early_alpha")
+            stored = stored_alpha if isinstance(stored_alpha, Mapping) else latest.payload
+            raw_state = stored.get("early_alpha_state")
+            if isinstance(raw_state, str):
+                previous_state = EarlyAlphaState(raw_state)
+            stored_snapshot = stored.get("early_alpha_snapshot")
+            if isinstance(stored_snapshot, Mapping):
+                previous_snapshot = stored_snapshot
+            stored_correlation = stored.get("early_alpha_correlation_id")
+            if isinstance(stored_correlation, str) and stored_correlation:
+                correlation_id = stored_correlation
+
+        risk_resolved = projection.risk_gates == "PASS"
+        try:
+            transition = transition_early_alpha(
+                previous_state,
+                projection.state,
+                material_change=projection.material_change,
+                risk_conflict_resolved=risk_resolved,
+            )
+        except ValueError:
+            emit_counter(self._telemetry, "early_alpha_alert_deduped")
+            return AlertDeliveryResult(alert=None, status=AlertDeliveryStatus.IGNORED)
+
+        if transition is None:
+            if latest is not None and latest.state is AlertState.FAILED:
+                context = ProviderRequestContext(
+                    correlation_id=correlation_id,
+                    requested_at=event.ingested_at,
+                )
+                try:
+                    return await self.deliver(latest, context=context)
+                except Exception:
+                    emit_counter(self._telemetry, "early_alpha_alert_delivery_failure")
+                    raise
+            emit_counter(self._telemetry, "early_alpha_alert_deduped")
+            return AlertDeliveryResult(
+                alert=latest,
+                status=(
+                    AlertDeliveryStatus.DEDUPLICATED
+                    if latest is not None
+                    else AlertDeliveryStatus.IGNORED
+                ),
+            )
+
+        current_snapshot = dict(projection.snapshot)
+        changes = snapshot_changes(previous_snapshot, current_snapshot)
+        payload = dict(projection.payload)
+        payload["changes"] = changes
+        payload["early_alpha_snapshot"] = current_snapshot
+        payload["early_alpha_state"] = projection.state.value
+        payload["early_alpha_identity"] = projection.identity
+        payload["early_alpha_correlation_id"] = correlation_id
+        payload["early_alpha_transition"] = {
+            "previous": None if previous_state is None else previous_state.value,
+            "current": projection.state.value,
+        }
+        payload["early_alpha_fingerprint"] = evidence_fingerprint(
+            current_snapshot,
+            version=projection.evidence_version,
+            config_hash=projection.config_hash,
+        )
+        alert = replace(
+            alert,
+            payload={"early_alpha": payload},
+            dedupe_key=(
+                f"early-alpha:{projection.identity}:"
+                f"{previous_state.value if previous_state else 'INITIAL'}-to-"
+                f"{projection.state.value}:"
+                f"{projection.evidence_version}:{payload['early_alpha_fingerprint']}"
+            ),
+            severity=(
+                AlertSeverity.CRITICAL
+                if projection.state in {EarlyAlphaState.INVALIDATED, EarlyAlphaState.CONFLICT}
+                else AlertSeverity.WARNING
+                if projection.state is EarlyAlphaState.DEGRADED
+                else AlertSeverity.INFO
+            ),
+        )
+        emit_counter(
+            self._telemetry,
+            "early_alpha_alert_created"
+            if previous_state is None
+            else "early_alpha_alert_followup",
+        )
+        emit_counter(
+            self._telemetry,
+            f"early_alpha_alert_{projection.state.value.lower()}",
+        )
+        context = ProviderRequestContext(
+            correlation_id=correlation_id,
+            requested_at=event.ingested_at,
+        )
+        try:
+            return await self.deliver(alert, context=context)
+        except Exception:
+            emit_counter(self._telemetry, "early_alpha_alert_delivery_failure")
+            raise
 
     async def deliver(
         self,
@@ -1145,9 +1327,17 @@ class AlertDeliveryService:
             assert reservation.retry_at is not None
             raise AlertDeliveryDeferred(reservation.retry_at)
 
+        renderer = self.renderer
+        if alert.type is AlertType.EARLY_ALPHA:
+            if self.early_alpha_renderer is not None:
+                renderer = self.early_alpha_renderer
+            elif type(renderer) is AlertRenderer:
+                from .early_alpha_alert import EarlyAlphaAlertRenderer
+
+                renderer = EarlyAlphaAlertRenderer(max_length=self.policy.max_text_length)
         rendering_started = perf_counter()
         try:
-            request = self.renderer.to_request(
+            request = renderer.to_request(
                 alert,
                 context=context,
                 destination=self.destination,

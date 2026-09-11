@@ -187,7 +187,7 @@ describe("CallersDashboard", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Caller leaderboard" })).toBeInTheDocument();
-    expect(screen.getByText("HISTORICAL_REAL")).toBeInTheDocument();
+    expect(screen.getAllByText("HISTORICAL_REAL").length).toBeGreaterThan(0);
     expect(screen.getByText("1h:2x 75%")).toBeInTheDocument();
     expect(screen.getByText("INSUFFICIENT_SAMPLES")).toBeInTheDocument();
     expect(screen.queryByText(/guaranteed alpha|buy now|copy trade/i)).not.toBeInTheDocument();

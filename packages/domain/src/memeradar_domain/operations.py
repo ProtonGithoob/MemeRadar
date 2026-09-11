@@ -32,6 +32,7 @@ class AlertType(str, Enum):
     PAPER_EXIT = "PAPER_EXIT"
     PROVIDER_DEGRADED = "PROVIDER_DEGRADED"
     SYSTEM_KILL_SWITCH = "SYSTEM_KILL_SWITCH"
+    EARLY_ALPHA = "EARLY_ALPHA"
 
 
 class AlertSeverity(str, Enum):

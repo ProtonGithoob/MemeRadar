@@ -13,15 +13,6 @@ import type {
   RuntimeSettingsRecord
 } from "../lib/read-api";
 
-const configFields = [
-  ["alert_max_messages_per_window", "Alert messages / window"],
-  ["alert_rate_limit_window_seconds", "Alert window seconds"],
-  ["decision_watch_threshold", "Watch threshold"],
-  ["decision_strong_setup_threshold", "Strong setup threshold"],
-  ["decision_entry_ready_threshold", "Entry-ready threshold"],
-  ["decision_minimum_confidence", "Minimum confidence"]
-] as const;
-
 const permissions = [
   ["VIEWER", "Read state and validated configuration"],
   ["OPERATOR", "Viewer access plus pause/resume analysis and activate the restrictive execution stop"],
@@ -41,11 +32,6 @@ function failureMessage(reason: ReadFailureReason, subject: string): string {
     case "INVALID_RESPONSE": return "INVALID READ RESPONSE";
     case "UNAVAILABLE": return `${subject} UNAVAILABLE`;
   }
-}
-
-function configDisplayValue(value: unknown): string {
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return "UNKNOWN";
 }
 
 function runtimeLabel(value: string): string {
@@ -79,41 +65,29 @@ function effectiveItems(data: RuntimeSettingsRecord): Array<RuntimeSettingRecord
   );
 }
 
-function LegacyRuntimeSettingsPanel({ result }: { result: ReadResult<RuntimeSettingsRecord> }) {
-  if (!result.ok) {
-    return (
-      <div className="read-state read-state--error" role="status">
-        <strong>{failureMessage(result.reason, "RUNTIME SETTINGS")}</strong>
-        <p>No runtime provider or credential values were substituted.</p>
-      </div>
-    );
+export type RuntimeSettingDraftResult =
+  | { ok: true; value: string | number | boolean | null }
+  | { ok: false; reason: "REQUIRED" | "INVALID_NUMBER" | "INTEGER_REQUIRED" | "BELOW_MINIMUM" | "ABOVE_MAXIMUM" };
+
+export function validateRuntimeSettingDraft(
+  item: RuntimeSettingRecord,
+  raw: string | number | boolean
+): RuntimeSettingDraftResult {
+  if (typeof raw === "boolean" || (item.type !== "integer" && item.type !== "number")) {
+    return { ok: true, value: raw };
   }
-  return (
-    <div className="settings-runtime">
-      <div className="settings-config__meta">
-        <span><b>API</b> {result.data.apiVersion}</span>
-        <span><b>AS OF</b> {readableDate(result.data.asOf)}</span>
-        <span><b>BOUNDARY</b> LOCKED</span>
-      </div>
-      <div className="settings-runtime-grid">
-        {Object.entries(result.data.groups).map(([group, items]) => (
-          <section className="settings-runtime-group" key={group} aria-labelledby={`runtime-${group}`}>
-            <h4 id={`runtime-${group}`}>{runtimeLabel(group)}</h4>
-            {items.length === 0 ? <p className="muted-copy">UNAVAILABLE</p> : (
-              <dl className="settings-runtime-list">
-                {items.map((item) => (
-                  <div key={item.key}>
-                    <dt>{runtimeLabel(item.key)}</dt>
-                    <dd>{runtimeValue(item)}<small>{item.state}</small></dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-          </section>
-        ))}
-      </div>
-    </div>
-  );
+  const text = typeof raw === "number" ? String(raw) : raw.trim();
+  if (text === "") return item.nullable === true ? { ok: true, value: null } : { ok: false, reason: "REQUIRED" };
+  const value = Number(text);
+  if (!Number.isFinite(value)) return { ok: false, reason: "INVALID_NUMBER" };
+  if (item.type === "integer" && !Number.isInteger(value)) return { ok: false, reason: "INTEGER_REQUIRED" };
+  if (item.minimum !== null && item.minimum !== undefined && value < item.minimum) {
+    return { ok: false, reason: "BELOW_MINIMUM" };
+  }
+  if (item.maximum !== null && item.maximum !== undefined && value > item.maximum) {
+    return { ok: false, reason: "ABOVE_MAXIMUM" };
+  }
+  return { ok: true, value };
 }
 
 function RuntimeSettingEditor({ data }: { data: RuntimeSettingsRecord }) {
@@ -144,11 +118,14 @@ function RuntimeSettingEditor({ data }: { data: RuntimeSettingsRecord }) {
   const visibleItems = items.filter((item) => item.category === selectedCategory);
   const canMutate = data.canMutate === true;
   const dirty = Object.keys(drafts).length > 0 || clearKeys.length > 0;
+  const draftItems = new Map(items.map((item) => [item.key, item]));
+  const invalidDraft = Object.entries(drafts).some(([key, raw]) => {
+    const item = draftItems.get(key);
+    return item !== undefined && !validateRuntimeSettingDraft(item, raw).ok;
+  });
 
   function updateDraft(item: RuntimeSettingRecord, raw: string | boolean): void {
-    let value: string | number | boolean = raw;
-    if (item.type === "integer" || item.type === "number") value = Number(raw);
-    setDrafts((current) => ({ ...current, [item.key]: value }));
+    setDrafts((current) => ({ ...current, [item.key]: raw }));
     setClearKeys((current) => current.filter((key) => key !== item.key));
     setMessage(null);
   }
@@ -166,9 +143,20 @@ function RuntimeSettingEditor({ data }: { data: RuntimeSettingsRecord }) {
   }
 
   async function save(): Promise<void> {
-    if (!canMutate || !dirty || reason.trim().length === 0) {
+    if (!canMutate || !dirty || invalidDraft || reason.trim().length === 0) {
       setMessage("Enter an audit reason and change at least one setting.");
       return;
+    }
+    const changes: Record<string, string | number | boolean | null> = {};
+    for (const [key, raw] of Object.entries(drafts)) {
+      const item = draftItems.get(key);
+      if (item === undefined) continue;
+      const validation = validateRuntimeSettingDraft(item, raw);
+      if (!validation.ok) {
+        setMessage(`INVALID ${runtimeLabel(key)} — ${validation.reason}`);
+        return;
+      }
+      changes[key] = validation.value;
     }
     setSaving(true);
     setMessage(null);
@@ -177,7 +165,7 @@ function RuntimeSettingEditor({ data }: { data: RuntimeSettingsRecord }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          changes: drafts,
+          changes,
           clear: clearKeys,
           reason: reason.trim(),
           version: data.version ?? null
@@ -315,7 +303,7 @@ function RuntimeSettingEditor({ data }: { data: RuntimeSettingsRecord }) {
             />
           </label>
           <div>
-            <button disabled={!dirty || saving} onClick={() => void save()} type="button">
+            <button disabled={!dirty || invalidDraft || saving} onClick={() => void save()} type="button">
               {saving ? "SAVING…" : "SAVE CHANGED SETTINGS"}
             </button>
             <button onClick={() => window.location.reload()} type="button">RELOAD EFFECTIVE STATE</button>
@@ -394,7 +382,13 @@ function StatePanel({ result }: { result: ReadResult<ControlStateRecord> }) {
   );
 }
 
-function ConfigPanel({ result }: { result: ReadResult<ControlConfigRecord> }) {
+function ConfigPanel({
+  result,
+  runtimeSettings
+}: {
+  result: ReadResult<ControlConfigRecord>;
+  runtimeSettings: ReadResult<RuntimeSettingsRecord>;
+}) {
   if (!result.ok) {
     return (
       <div className="read-state read-state--error" role="status">
@@ -403,7 +397,9 @@ function ConfigPanel({ result }: { result: ReadResult<ControlConfigRecord> }) {
       </div>
     );
   }
-  const config = result.data.config;
+  const canonicalItems = runtimeSettings.ok
+    ? effectiveItems(runtimeSettings.data).filter((item) => item.decisionAffecting === true)
+    : [];
   return (
     <div className="settings-config">
       <div className="settings-config__meta">
@@ -417,10 +413,10 @@ function ConfigPanel({ result }: { result: ReadResult<ControlConfigRecord> }) {
         <span>{result.data.decisionAffecting ? "DECISION-AFFECTING" : "NON-DECISION"}</span>
       </div>
       <dl className="settings-field-list">
-        {configFields.map(([key, label]) => (
-          <div key={key}>
-            <dt title={label}>{key}</dt>
-            <dd>{configDisplayValue(config[key])}</dd>
+        {canonicalItems.length === 0 ? <p className="muted-copy">DECISION SETTINGS UNKNOWN — OPEN RUNTIME CONFIGURATION</p> : canonicalItems.map((item) => (
+          <div key={item.key}>
+            <dt>{item.key}</dt>
+            <dd>{runtimeValue(item)}</dd>
           </div>
         ))}
       </dl>
@@ -475,7 +471,7 @@ export function SettingsDashboard({
         </div>
         <div className="settings-block">
           <div className="panel-heading"><div><p className="eyebrow">REPLAY IDENTITY</p><h3>Validated configuration</h3></div></div>
-          <ConfigPanel result={configResult} />
+          <ConfigPanel result={configResult} runtimeSettings={runtimeSettingsResult} />
         </div>
         <div className="settings-block">
           <div className="panel-heading"><div><p className="eyebrow">RUNTIME / SECRET-SAFE CONTROL</p><h3>Runtime configuration</h3></div><small>VALUES ARE ALLOW-LISTED</small></div>

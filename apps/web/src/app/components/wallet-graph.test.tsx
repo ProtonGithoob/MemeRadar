@@ -30,6 +30,7 @@ describe("WalletGraphExplorer", () => {
           { id: "cluster:fixture", kind: "ACTOR_CLUSTER", label: "fixture", properties: {}, quality_state: "FRESH", created_at: "2026-09-10T08:00:00.000Z" },
           { id: "wallet:solana:11111111111111111111111111111112", kind: "WALLET", label: "wallet", properties: {}, quality_state: "FRESH", created_at: "2026-09-10T08:00:00.000Z" }
         ],
+        root_id: "wallet:solana:11111111111111111111111111111112",
         edges: [{
           id: "wallet-relationship:fixture",
           from_id: "cluster:fixture",
@@ -71,6 +72,14 @@ describe("WalletGraphExplorer", () => {
     expect(screen.getByText("CANDIDATE ONLY")).toBeInTheDocument();
     expect(screen.getByText("OWNERSHIP ASSERTED: FALSE")).toBeInTheDocument();
     expect(screen.getByText("RELATIONSHIP_CORROBORATION")).toBeInTheDocument();
+    expect(screen.getByText("wallet:solana:11111111111111111111111111111112")).toBeInTheDocument();
+  });
+
+  it("exposes the complete canonical quality filter set", () => {
+    render(<WalletGraphExplorer />);
+    const quality = screen.getByRole("combobox", { name: "Evidence Quality" });
+    expect(quality).toHaveTextContent("INVALID");
+    expect(quality).toHaveTextContent("CONFLICTED");
   });
 });
 

@@ -42,14 +42,11 @@ function failureMessage(result: ReadResult<ReadPage<ProviderHealthRecord>>): str
   }
 }
 
-function runtimeItems(settings: ReadResult<RuntimeSettingsRecord> | undefined, provider: string): RuntimeSettingRecord[] {
+function runtimeItems(settings: ReadResult<RuntimeSettingsRecord> | undefined, provider: ProviderHealthRecord): RuntimeSettingRecord[] {
   if (!settings || !settings.ok) return [];
   const items = settings.data.settings ?? Object.values(settings.data.groups).flat();
-  const normalized = provider.toLowerCase();
-  return items.filter((item) => {
-    const key = item.key.toLowerCase();
-    return key.includes(normalized) || (normalized === "market" && item.category?.includes("market"));
-  }).slice(0, 8);
+  const settingKeys = new Set(provider.settingKeys ?? []);
+  return items.filter((item) => settingKeys.has(item.key));
 }
 
 function configValue(item: RuntimeSettingRecord): string {
@@ -60,7 +57,7 @@ function configValue(item: RuntimeSettingRecord): string {
   return String(value);
 }
 
-function ProviderConfiguration({ settings, provider }: { settings: ReadResult<RuntimeSettingsRecord>; provider: string }) {
+function ProviderConfiguration({ settings, provider }: { settings: ReadResult<RuntimeSettingsRecord>; provider: ProviderHealthRecord }) {
   const items = runtimeItems(settings, provider);
   return (
     <div className="provider-card__configuration">
@@ -85,7 +82,7 @@ function ProviderRow({ record, settings }: { record: ProviderHealthRecord; setti
         <strong>{record.state}</strong>
         <small>{record.consecutiveFailures} consecutive failure{record.consecutiveFailures === 1 ? "" : "s"}</small>
       </div>
-      <ProviderConfiguration provider={record.provider} settings={settings} />
+      <ProviderConfiguration provider={record} settings={settings} />
       <div className="provider-card__metrics">
         <span className="card-label">LATENCY</span>
         <strong>{record.latencyMs === null ? "UNKNOWN" : `${record.latencyMs.toFixed(0)} ms`}</strong>

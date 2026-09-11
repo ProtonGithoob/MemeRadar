@@ -72,6 +72,33 @@ describe("WorkstationShell", () => {
     expect(screen.getByRole("status", { name: "PROVIDERS: UNKNOWN" })).toBeInTheDocument();
   });
 
+  it("does not classify an unconfigured chain as ready and uses stable chain metadata", () => {
+    const degraded = {
+      ...operations.providers[0],
+      provider: "helius",
+      providerId: "helius",
+      displayName: "Helius",
+      chains: ["solana"],
+      capabilities: ["market_data"],
+      required: true,
+      enabled: true
+    };
+    const { rerender } = render(<WorkstationShell operations={{ ok: true, data: {
+      ...operations,
+      providers: [degraded]
+    } }}><div /></WorkstationShell>);
+
+    expect(screen.getByRole("status", { name: "SOLANA: DEGRADED" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "BNB: UNKNOWN" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "ROBINHOOD: UNKNOWN" })).toBeInTheDocument();
+
+    rerender(<WorkstationShell operations={{ ok: true, data: {
+      ...operations,
+      providers: [{ ...degraded, state: "HEALTHY" }]
+    } }}><div /></WorkstationShell>);
+    expect(screen.getByRole("status", { name: "SOLANA: HEALTHY" })).toBeInTheDocument();
+  });
+
   it("routes search through the backend resolver and rejects unknown shapes", async () => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("22222222")) {

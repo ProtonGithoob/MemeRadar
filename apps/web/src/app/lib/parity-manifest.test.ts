@@ -29,5 +29,6 @@ describe("route parity manifest", () => {
         expect.objectContaining({ field: "robinhood_sequencer_rpc_launchpad_state" })
       ])
     );
+    expect(PARITY_MANIFEST["Telegram/EarlyAlpha"]?.telegramFields).toContain("state");
   });
 });

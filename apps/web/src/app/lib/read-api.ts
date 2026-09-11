@@ -376,6 +376,17 @@ export type ProviderHealthState = "HEALTHY" | "DEGRADED" | "DOWN" | "UNKNOWN";
 
 export interface ProviderHealthRecord {
   provider: string;
+  providerId?: string;
+  displayName?: string;
+  chains?: string[];
+  capabilities?: string[];
+  required?: boolean;
+  enabled?: boolean;
+  settingKeys?: string[];
+  credentialState?: string;
+  endpointState?: string;
+  fallbackPosition?: number | null;
+  runtimeHealth?: ProviderHealthState;
   capability: string;
   state: ProviderHealthState;
   checkedAt: string;
@@ -392,6 +403,17 @@ export type OperationalAlertSeverity = "INFO" | "WARNING" | "CRITICAL";
 
 export interface OperationalProviderRecord {
   provider: string;
+  providerId?: string;
+  displayName?: string;
+  chains?: string[];
+  capabilities?: string[];
+  required?: boolean;
+  enabled?: boolean;
+  settingKeys?: string[];
+  credentialState?: string;
+  endpointState?: string;
+  fallbackPosition?: number | null;
+  runtimeHealth?: OperationalState;
   capability: string;
   state: OperationalState;
   sloState: OperationalSloState;
@@ -542,6 +564,7 @@ export interface RuntimeSettingRecord {
   allowedValues?: string[] | null;
   minimum?: number | null;
   maximum?: number | null;
+  nullable?: boolean;
   description?: string;
 }
 
@@ -554,6 +577,7 @@ export interface RuntimeSettingsRecord {
   canMutate?: boolean;
   groups: Record<string, RuntimeSettingRecord[]>;
   settings?: RuntimeSettingRecord[];
+  providerMetadata?: Array<{ providerId: string; settingKeys: string[] }>;
   protectedModes: ProtectedModesRecord;
   executionEligible: false;
 }
@@ -1782,6 +1806,14 @@ function parseProviderHealth(value: unknown): ProviderHealthRecord | null {
   const freshnessState = optionalQuality(value.freshness_state);
   const errorClass = optionalBoundedString(value.error_class, 128);
   const consecutiveFailures = integer(value.consecutive_failures, 0, 1_000_000);
+  const providerId = boundedString(value.provider_id, 128) ?? provider;
+  const displayName = boundedString(value.display_name, 128) ?? provider;
+  const chains = stringArray(value.chains, 64) ?? [];
+  const capabilities = stringArray(value.capabilities, 64) ?? [capability ?? "unknown"];
+  const settingKeys = stringArray(value.setting_keys, 128) ?? [];
+  const credentialState = boundedString(value.credential_state, 32) ?? "UNKNOWN";
+  const endpointState = boundedString(value.endpoint_state, 32) ?? "UNKNOWN";
+  const fallbackPosition = optionalInteger(value.fallback_position, 0, 1_000_000);
   if (
     provider === null || capability === null || state === null ||
     !PROVIDER_HEALTH_STATES.has(state as ProviderHealthState) || checkedAt === null ||
@@ -1792,6 +1824,17 @@ function parseProviderHealth(value: unknown): ProviderHealthRecord | null {
   }
   return {
     provider,
+    providerId: providerId ?? "UNKNOWN",
+    displayName: displayName ?? "UNKNOWN",
+    chains,
+    capabilities,
+    required: typeof value.required === "boolean" ? value.required : false,
+    enabled: typeof value.enabled === "boolean" ? value.enabled : false,
+    settingKeys,
+    credentialState,
+    endpointState,
+    fallbackPosition: fallbackPosition === undefined ? null : fallbackPosition,
+    runtimeHealth: state as ProviderHealthState,
     capability,
     state: state as ProviderHealthState,
     checkedAt,
@@ -1820,6 +1863,14 @@ function parseOperationalProvider(value: unknown): OperationalProviderRecord | n
   const errorClass = optionalBoundedString(value.error_class, 128);
   const consecutiveFailures = integer(value.consecutive_failures, 0, 1_000_000);
   const reasonCodes = stringArray(value.reason_codes, 128);
+  const providerId = boundedString(value.provider_id, 128) ?? provider;
+  const displayName = boundedString(value.display_name, 128) ?? provider;
+  const chains = stringArray(value.chains, 64) ?? [];
+  const capabilities = stringArray(value.capabilities, 64) ?? [capability ?? "unknown"];
+  const settingKeys = stringArray(value.setting_keys, 128) ?? [];
+  const credentialState = boundedString(value.credential_state, 32) ?? "UNKNOWN";
+  const endpointState = boundedString(value.endpoint_state, 32) ?? "UNKNOWN";
+  const fallbackPosition = optionalInteger(value.fallback_position, 0, 1_000_000);
   if (
     provider === null || capability === null || state === null ||
     !OPERATIONAL_STATES.has(state as OperationalState) || sloState === null ||
@@ -1838,6 +1889,17 @@ function parseOperationalProvider(value: unknown): OperationalProviderRecord | n
   }
   return {
     provider,
+    providerId: providerId ?? "UNKNOWN",
+    displayName: displayName ?? "UNKNOWN",
+    chains,
+    capabilities,
+    required: typeof value.required === "boolean" ? value.required : false,
+    enabled: typeof value.enabled === "boolean" ? value.enabled : false,
+    settingKeys,
+    credentialState,
+    endpointState,
+    fallbackPosition: fallbackPosition === undefined ? null : fallbackPosition,
+    runtimeHealth: state as OperationalState,
     capability,
     state: state as OperationalState,
     sloState: sloState as OperationalSloState,
@@ -2978,32 +3040,55 @@ export async function fetchCreatorReputation(
     : request(url, (val) => {
         if (typeof val !== "object" || val === null) throw new Error("invalid payload");
         const obj = val as Record<string, unknown>;
+        const launchesTotal = finiteNumber(obj.launches_total, 0, 1_000_000);
+        const winnerRate = finiteNumber(obj.winner_rate, 0, 1);
+        const severeFailureRate = finiteNumber(obj.severe_failure_rate, 0, 1);
+        const rugRate = finiteNumber(obj.rug_rate, 0, 1);
+        const score = finiteNumber(obj.score, 0, 100);
+        const confidence = finiteNumber(obj.confidence, 0, 1);
+        const reputationClass = boundedString(obj.reputation_class, 64);
+        const reasonCodes = stringArray(obj.reason_codes, 128);
+        if (
+          launchesTotal === null || winnerRate === null || severeFailureRate === null ||
+          rugRate === null || score === null || confidence === null ||
+          reputationClass === null || reasonCodes === null
+        ) {
+          throw new Error("invalid creator reputation evidence");
+        }
         return {
           address: String(obj.address ?? address),
-          asOf: obj.as_of ? String(obj.as_of) : undefined,
-          launchesTotal: Number(obj.launches_total ?? 0),
-          winnerRate: Number(obj.winner_rate ?? 0),
-          severeFailureRate: Number(obj.severe_failure_rate ?? 0),
-          rugRate: Number(obj.rug_rate ?? 0),
-          score: Number(obj.score ?? 50),
-          confidence: Number(obj.confidence ?? 0),
-          reputationClass: String(obj.reputation_class ?? "UNPROVEN"),
-          reasonCodes: Array.isArray(obj.reason_codes) ? obj.reason_codes.map(String) : [],
-          sufficientOutcomeSamples: Boolean(obj.sufficient_outcome_samples ?? false),
-          strongWinnerRate: Number(obj.strong_winner_rate ?? 0),
-          medianMfe: obj.median_mfe != null ? Number(obj.median_mfe) : null,
-          medianMae: obj.median_mae != null ? Number(obj.median_mae) : null,
-          creatorRealizedPnl: obj.creator_realized_pnl != null ? Number(obj.creator_realized_pnl) : null,
-          creatorDumpRate: obj.creator_dump_rate != null ? Number(obj.creator_dump_rate) : null,
-          creatorExitBeforeMajorDrawdownRate: obj.creator_exit_before_major_drawdown_rate != null ? Number(obj.creator_exit_before_major_drawdown_rate) : null,
-          bundleSniperAssociation: obj.bundle_sniper_association != null ? Boolean(obj.bundle_sniper_association) : null,
-          sharedFunderRecurrence: obj.shared_funder_recurrence != null ? Boolean(obj.shared_funder_recurrence) : null,
-          sideWalletRecurrence: obj.side_wallet_recurrence != null ? Boolean(obj.side_wallet_recurrence) : null,
-          liquiditySurvivalRate: obj.liquidity_survival_rate != null ? Number(obj.liquidity_survival_rate) : null,
-          creatorProfitPublicLossRate: obj.creator_profit_public_loss_rate != null ? Number(obj.creator_profit_public_loss_rate) : null,
-          creatorProfitRugRate: obj.creator_profit_rug_rate != null ? Number(obj.creator_profit_rug_rate) : null,
-          clusterReputationScore: obj.cluster_reputation_score != null ? Number(obj.cluster_reputation_score) : null,
-          configHash: obj.config_hash ? String(obj.config_hash) : "creator-rep-v1-hash",
+          asOf: optionalTimestamp(obj.as_of) ?? undefined,
+          launchesTotal,
+          winnerRate,
+          severeFailureRate,
+          rugRate,
+          score,
+          confidence,
+          reputationClass,
+          reasonCodes,
+          sufficientOutcomeSamples: typeof obj.sufficient_outcome_samples === "boolean"
+            ? obj.sufficient_outcome_samples
+            : undefined,
+          strongWinnerRate: optionalFiniteNumber(obj.strong_winner_rate, 0, 1) ?? undefined,
+          medianMfe: optionalFiniteNumber(obj.median_mfe, -1_000_000, 1_000_000),
+          medianMae: optionalFiniteNumber(obj.median_mae, -1_000_000, 1_000_000),
+          creatorRealizedPnl: optionalFiniteNumber(obj.creator_realized_pnl, -1_000_000_000, 1_000_000_000),
+          creatorDumpRate: optionalFiniteNumber(obj.creator_dump_rate, 0, 1),
+          creatorExitBeforeMajorDrawdownRate: optionalFiniteNumber(obj.creator_exit_before_major_drawdown_rate, 0, 1),
+          bundleSniperAssociation: obj.bundle_sniper_association === null
+            ? null
+            : typeof obj.bundle_sniper_association === "boolean" ? obj.bundle_sniper_association : undefined,
+          sharedFunderRecurrence: obj.shared_funder_recurrence === null
+            ? null
+            : typeof obj.shared_funder_recurrence === "boolean" ? obj.shared_funder_recurrence : undefined,
+          sideWalletRecurrence: obj.side_wallet_recurrence === null
+            ? null
+            : typeof obj.side_wallet_recurrence === "boolean" ? obj.side_wallet_recurrence : undefined,
+          liquiditySurvivalRate: optionalFiniteNumber(obj.liquidity_survival_rate, 0, 1),
+          creatorProfitPublicLossRate: optionalFiniteNumber(obj.creator_profit_public_loss_rate, 0, 1),
+          creatorProfitRugRate: optionalFiniteNumber(obj.creator_profit_rug_rate, 0, 1),
+          clusterReputationScore: optionalFiniteNumber(obj.cluster_reputation_score, 0, 100),
+          configHash: optionalBoundedString(obj.config_hash, 128) ?? undefined,
         };
       });
 }
@@ -3034,6 +3119,13 @@ export interface GraphEdgeRecord {
 export interface WalletGraphRecord {
   nodes: GraphNodeRecord[];
   edges: GraphEdgeRecord[];
+  rootId: string | null;
+  facets: {
+    venues: string[];
+    walletRoles: string[];
+    outcomes: string[];
+    qualityStates: string[];
+  };
   maxDepth: number;
   maxNodes: number;
   maxEdges: number;
@@ -3084,9 +3176,19 @@ function parseWalletGraph(val: unknown): WalletGraphRecord {
   const obj = val as Record<string, unknown>;
   const nodes = Array.isArray(obj.nodes) ? obj.nodes.map(parseGraphNode).filter((n): n is GraphNodeRecord => n !== null) : [];
   const edges = Array.isArray(obj.edges) ? obj.edges.map(parseGraphEdge).filter((e): e is GraphEdgeRecord => e !== null) : [];
+  const rawFacets = isRecord(obj.facets) ? obj.facets : {};
+  const facetValues = (value: unknown): string[] => stringArray(value, 128) ?? [];
+  const rootId = typeof obj.root_id === "string" && obj.root_id.length <= 256 ? obj.root_id : null;
   return {
     nodes,
     edges,
+    rootId,
+    facets: {
+      venues: facetValues(rawFacets.venues),
+      walletRoles: facetValues(rawFacets.wallet_roles),
+      outcomes: facetValues(rawFacets.outcomes),
+      qualityStates: facetValues(rawFacets.quality_states)
+    },
     maxDepth: Number(obj.max_depth ?? 2),
     maxNodes: Number(obj.max_nodes ?? 50),
     maxEdges: Number(obj.max_edges ?? 100),

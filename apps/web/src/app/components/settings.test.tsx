@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SettingsDashboard } from "./settings";
+import { SettingsDashboard, validateRuntimeSettingDraft } from "./settings";
 import type {
   ControlConfigRecord,
   ControlStateRecord,
@@ -48,7 +48,10 @@ const runtimeSettings: RuntimeSettingsRecord = {
   apiVersion: "runtime-settings-v1",
   asOf: "2026-09-07T12:00:00.000Z",
   groups: {
-    providers: [{ key: "market_data_provider", value: "dexscreener", state: "CONFIGURED", secret: false }],
+    providers: [
+      { key: "market_data_provider", value: "dexscreener", state: "CONFIGURED", secret: false },
+      { key: "decision_entry_ready_threshold", value: 85, state: "CONFIGURED", secret: false, decisionAffecting: true }
+    ],
     chains: [{ key: "enabled_chains", value: "solana,bnb,robinhood", state: "CONFIGURED", secret: false }],
     telegram: [{ key: "bot_token", value: null, state: "UNCONFIGURED_OPTIONAL", secret: true }],
     x: [{ key: "enabled", value: false, state: "DEFAULTED", secret: false }],
@@ -121,5 +124,21 @@ describe("SettingsDashboard", () => {
     expect(screen.getByText("CONTROL STATE AUTHORIZATION UNAVAILABLE")).toBeInTheDocument();
     expect(screen.getByText("CONTROL CONFIG NOT CONFIGURED")).toBeInTheDocument();
     expect(screen.getByText("RUNTIME SETTINGS UNAVAILABLE")).toBeInTheDocument();
+  });
+
+  it("validates numeric drafts before parsing and preserves explicit zero", () => {
+    const item = {
+      key: "decision_threshold",
+      type: "integer",
+      value: 5,
+      state: "CONFIGURED" as const,
+      secret: false,
+      minimum: 0,
+      maximum: 10
+    };
+    expect(validateRuntimeSettingDraft(item, "")).toEqual({ ok: false, reason: "REQUIRED" });
+    expect(validateRuntimeSettingDraft(item, "nope")).toEqual({ ok: false, reason: "INVALID_NUMBER" });
+    expect(validateRuntimeSettingDraft(item, "11")).toEqual({ ok: false, reason: "ABOVE_MAXIMUM" });
+    expect(validateRuntimeSettingDraft(item, "0")).toEqual({ ok: true, value: 0 });
   });
 });

@@ -216,3 +216,7 @@ class SqlAlchemyAlertStore:
             saved = await unit_of_work.alerts.save(alert)
             await unit_of_work.commit()
             return saved
+
+    async def get_latest_early_alpha(self, identity: str) -> Alert | None:
+        async with SqlAlchemyUnitOfWork(self._engine) as unit_of_work:
+            return await unit_of_work.alerts.get_latest_early_alpha(identity)

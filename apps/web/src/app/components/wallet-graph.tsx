@@ -65,17 +65,19 @@ function RelationshipEvidenceDetails({ edge }: { edge: GraphEdgeRecord }) {
       ? `${Number(delta).toFixed(1)}s`
       : "UNKNOWN";
   return (
-    <div aria-label="Relationship evidence details" className="w-full grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 pt-2 mt-1 border-t border-slate-800/60 text-[10px]">
-      <span>TYPE <strong className="text-slate-200">{relationshipValue(properties, "relationship_type")}</strong></span>
-      <span>DIMENSIONS <strong className="text-slate-200">{relationshipDimensions(properties)}</strong></span>
-      <span>CONFIDENCE <strong className={properties.confidence === "UNKNOWN" || edge.qualityState !== "FRESH" ? "text-amber-400" : "text-slate-200"}>{relationshipValue(properties, "confidence")}</strong></span>
-      <span>QUALITY <strong className="text-slate-200">{edge.qualityState}</strong></span>
-      <span>EVENT COUNT <strong className="text-slate-200">{relationshipValue(properties, "event_count")}</strong></span>
-      <span>FUNDING DELTA <strong className="text-slate-200">{deltaLabel}</strong></span>
-      <span className="text-amber-400">{candidateOnly ? "CANDIDATE ONLY" : "CANDIDATE STATUS UNKNOWN"}</span>
-      <span className="text-amber-400">OWNERSHIP ASSERTED: {ownershipAsserted ? "TRUE" : "FALSE"}</span>
-      <span className="sm:col-span-2">REASONS <strong className="text-slate-200">{Array.isArray(properties.reason_codes) && properties.reason_codes.length > 0 ? properties.reason_codes.join(", ") : "UNKNOWN"}</strong></span>
-      <span className="sm:col-span-2">EVIDENCE <strong className="text-slate-200 break-all">{relationshipRefs(properties)}</strong></span>
+    <div aria-label="Relationship evidence details" className="relationship-evidence">
+      <div className="relationship-evidence__grid">
+        <span className="relationship-evidence__item">TYPE <strong>{relationshipValue(properties, "relationship_type")}</strong></span>
+        <span className="relationship-evidence__item">DIMENSIONS <strong>{relationshipDimensions(properties)}</strong></span>
+        <span className="relationship-evidence__item">CONFIDENCE <strong className={properties.confidence === "UNKNOWN" || edge.qualityState !== "FRESH" ? "relationship-evidence__warning" : ""}>{relationshipValue(properties, "confidence")}</strong></span>
+        <span className="relationship-evidence__item">QUALITY <strong>{edge.qualityState}</strong></span>
+        <span className="relationship-evidence__item">EVENT COUNT <strong>{relationshipValue(properties, "event_count")}</strong></span>
+        <span className="relationship-evidence__item">FUNDING DELTA <strong>{deltaLabel}</strong></span>
+        <span className="relationship-evidence__item relationship-evidence__warning">{candidateOnly ? "CANDIDATE ONLY" : "CANDIDATE STATUS UNKNOWN"}</span>
+        <span className="relationship-evidence__item relationship-evidence__warning">OWNERSHIP ASSERTED: {ownershipAsserted ? "TRUE" : "FALSE"}</span>
+        <span className="relationship-evidence__item relationship-evidence__wide">REASONS <strong>{Array.isArray(properties.reason_codes) && properties.reason_codes.length > 0 ? properties.reason_codes.join(", ") : "UNKNOWN"}</strong></span>
+        <span className="relationship-evidence__item relationship-evidence__wide relationship-evidence__refs">EVIDENCE <strong>{relationshipRefs(properties)}</strong></span>
+      </div>
     </div>
   );
 }
@@ -149,8 +151,11 @@ export function WalletGraphExplorer() {
     setLoading(false);
     if (res.ok) {
       setGraphData(res.data);
-      if (res.data.nodes.length > 0) {
-        handleSelectNode(res.data.nodes[0]);
+      const root = res.data.rootId === null
+        ? null
+        : res.data.nodes.find((node) => node.id === res.data.rootId) ?? null;
+      if (root !== null) {
+        handleSelectNode(root);
       }
     } else {
       setErrorMsg(`Graph query failed (${res.reason})`);
@@ -193,10 +198,14 @@ export function WalletGraphExplorer() {
     const centerX = width / 2;
     const centerY = height / 2;
 
-    const rootId = graphData.nodes[0].id;
-    posMap.set(rootId, { x: centerX, y: centerY });
+    const rootNode = graphData.rootId === null
+      ? null
+      : graphData.nodes.find((node) => node.id === graphData.rootId) ?? null;
+    if (rootNode !== null) posMap.set(rootNode.id, { x: centerX, y: centerY });
 
-    const remaining = graphData.nodes.slice(1);
+    const remaining = rootNode === null
+      ? graphData.nodes
+      : graphData.nodes.filter((node) => node.id !== rootNode.id);
     const n = remaining.length;
     if (n === 0) return posMap;
 
@@ -293,12 +302,9 @@ export function WalletGraphExplorer() {
             className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded px-3 py-2"
           >
             <option value="">All Outcomes</option>
-            <option value="STRONG_WINNER">STRONG_WINNER</option>
-            <option value="WINNER">WINNER</option>
-            <option value="MIXED">MIXED</option>
-            <option value="FAILED">FAILED</option>
-            <option value="SEVERE_DUMP">SEVERE_DUMP</option>
-            <option value="RUG_OR_LIQUIDITY_COLLAPSE">RUG_OR_LIQUIDITY_COLLAPSE</option>
+            {(graphData?.facets.outcomes ?? ["STRONG_WINNER", "WINNER", "MIXED", "FAILED", "SEVERE_DUMP", "RUG_OR_LIQUIDITY_COLLAPSE"]).map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
           </select>
 
           <select
@@ -308,10 +314,9 @@ export function WalletGraphExplorer() {
             className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded px-3 py-2"
           >
             <option value="">All Venues</option>
-            <option value="raydium">Raydium</option>
-            <option value="pumpfun">Pump.fun</option>
-            <option value="orca">Orca</option>
-            <option value="meteora">Meteora</option>
+            {(graphData?.facets.venues ?? []).map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
           </select>
 
           <select
@@ -321,11 +326,9 @@ export function WalletGraphExplorer() {
             className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded px-3 py-2"
           >
             <option value="">All Roles</option>
-            <option value="WALLET">Wallet</option>
-            <option value="CREATOR">Creator / Deployer</option>
-            <option value="FUNDER">Funder</option>
-            <option value="SNIPER">Sniper</option>
-            <option value="SIDE_WALLET">Side Wallet</option>
+            {(graphData?.facets.walletRoles ?? []).map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
           </select>
 
           <select
@@ -335,9 +338,9 @@ export function WalletGraphExplorer() {
             className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded px-3 py-2"
           >
             <option value="">All Quality</option>
-            <option value="FRESH">FRESH</option>
-            <option value="STALE">STALE</option>
-            <option value="UNKNOWN">UNKNOWN</option>
+            {(graphData?.facets.qualityStates.length ? graphData.facets.qualityStates : ["FRESH", "STALE", "UNKNOWN", "INVALID", "CONFLICTED"]).map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
           </select>
 
           <button

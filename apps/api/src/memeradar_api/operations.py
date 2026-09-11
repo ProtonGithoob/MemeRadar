@@ -15,6 +15,7 @@ from memeradar_application.observability import (
     OperationsReadPort,
     ProviderOperationalStatus,
 )
+from memeradar_application.provider_metadata import provider_metadata
 from memeradar_domain import AlertSeverity, QualityState
 
 from .auth import RoleTokenAuthenticator
@@ -26,6 +27,17 @@ class _StrictModel(BaseModel):
 
 class ProviderOperationalResponse(_StrictModel):
     provider: str
+    provider_id: str
+    display_name: str
+    chains: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    required: bool
+    enabled: bool
+    setting_keys: list[str] = Field(default_factory=list)
+    credential_state: str
+    endpoint_state: str
+    fallback_position: int | None = None
+    runtime_health: str
     capability: str
     state: str
     slo_state: str
@@ -69,8 +81,20 @@ class OperationsOverviewResponse(_StrictModel):
 
 
 def _provider_response(value: ProviderOperationalStatus) -> ProviderOperationalResponse:
+    metadata = provider_metadata(value.provider, value.capability)
     return ProviderOperationalResponse(
         provider=value.provider,
+        provider_id=metadata.provider_id,
+        display_name=metadata.display_name,
+        chains=list(metadata.chains),
+        capabilities=list(metadata.capabilities),
+        required=metadata.required,
+        enabled=metadata.enabled,
+        setting_keys=list(metadata.setting_keys),
+        credential_state=metadata.credential_state,
+        endpoint_state=metadata.endpoint_state,
+        fallback_position=metadata.fallback_position,
+        runtime_health=value.state.value,
         capability=value.capability,
         state=value.state.value,
         slo_state=value.slo_state.value,

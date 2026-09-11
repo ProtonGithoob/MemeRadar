@@ -32,7 +32,7 @@ EARLY_DETECTION_ITERATIONS ?= 100
 EARLY_DETECTION_OUTPUT ?=
 SBOM_OUTPUT ?=
 
-.PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-lint frontend-typecheck frontend-test frontend-e2e \
+.PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-css-contract frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	start stop status \
 	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
@@ -103,6 +103,9 @@ early-detection-benchmark:
 frontend-lint:
 	cd $(WEB_DIR) && npm run lint
 
+frontend-css-contract:
+	$(PYTHON) scripts/check_frontend_css.py
+
 frontend-typecheck:
 	cd $(WEB_DIR) && npm run typecheck
 
@@ -143,7 +146,7 @@ integration-test:
 		echo "MEMERADAR_TEST_DATABASE_URL not configured; integration tests skipped."; \
 	fi
 
-verify: lint typecheck test frontend-lint frontend-typecheck frontend-test compose-config secret-scan migration-check security-review sbom
+verify: lint typecheck test frontend-css-contract frontend-lint frontend-typecheck frontend-test compose-config secret-scan migration-check security-review sbom
 
 up:
 	$(COMPOSE) up -d

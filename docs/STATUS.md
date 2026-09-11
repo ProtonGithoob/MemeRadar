@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -45,6 +45,15 @@ zero or safe evidence.
   real lint, typecheck, test, migration, security, SBOM, Compose, browser,
   build, and release-identity gates. Managed backup/restore and
   production-like dependency restart/soak remain externally unverified.
+- PR #3 (`feat: add B+C early-alpha Telegram alerts`) is still `OPEN` with
+  `merged=false` at head `82f14b3` against base `1fd899b`; its generated merge
+  commit is not an integration fact. The locally integrated implementation in
+  this sprint corrects the PR with the canonical state machine, persisted
+  snapshots, dedupe/retry/restart behavior, and shared delivery path.
+- Latest PR #3 Actions run `34574037062` and latest main Actions run
+  `34522929362` both have zero executed steps in the required jobs. GitHub's
+  annotation is `recent account payments have failed or your spending limit
+  needs to be increased`; this is `BLOCKED_EXTERNAL`, not a code failure.
 - `MAIN_BRANCH_PROTECTION_NOT_ENFORCED`: the GitHub branch-protection API
   returned HTTP 403 because the private repository requires GitHub Pro or
   public visibility for that feature. No repository protection is claimed.
@@ -59,15 +68,16 @@ No blocker changes the readiness classification or authorizes a mode change.
 
 ## Latest engineering evidence
 
-The latest local full gate recorded after the evidence hardening, parity
-completion, and alpha-gap delta:
+The latest local full gate recorded after this frontend/Telegram parity sprint:
 
-- `make verify`: 1188 Python tests passed, 11 skipped, 1 warning; 21 frontend
-  test files and 67 Vitest tests passed. Skips remain environment/optional
+- `make verify`: 1220 Python tests passed, 11 skipped, 1 warning; 21 frontend
+  test files and 74 Vitest tests passed. Skips remain environment/optional
   provider cases and are not counted as passes.
-- Ruff, strict mypy across 128 source files, frontend lint/typecheck,
+- Telegram-focused tests: 31 passed (`test_early_alpha_alert.py` and
+  `test_early_alpha_pipeline.py`); ordinary `AlertRenderer` regression passed.
+- Ruff, strict mypy across 131 source files, frontend lint/typecheck,
   production build, Compose validation, tracked-file secret scan, migrations,
-  security review, SBOM, and `git diff --check`: passed.
+  security review, SBOM, CSS contract, and `git diff --check`: passed.
 - Migration head: `0009_runtime_settings`; metadata tables: 26.
 - SBOM: 581 components, digest
   `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
@@ -80,14 +90,33 @@ completion, and alpha-gap delta:
   multichain search, multichain shell state, readiness projection, provider
   configuration/runtime-health views, caller/opportunity evidence, and a
   generated route parity manifest are covered by focused tests.
-- Browser acceptance across 1440x900, 1024x768, 768x1024, and 390x844: the
-  unconfigured run was `32 passed, 4 skipped`; the authenticated run was
-  `29 passed, 7 skipped`, including the desktop ADMIN settings mutation.
-  Skips are credential/stateful-duplicate cases, not passes for blocked
-  journeys; the explicit missing-credentials failure-state test passed.
-- A fresh isolated production frontend server with empty server credentials
-  passed browser acceptance: `32 passed, 4 skipped`. The browser suite did not
-  exercise live-money execution.
+- Fresh production browser acceptance across 1440x900, 1024x768, 768x1024,
+  and 390x844 was `36 passed, 4 skipped` out of 40. The visual matrix covered
+  all 15 requested routes in dark and light themes, including global overflow,
+  topbar overlap, mobile navigation, local table behavior, and fail-closed
+  route states. The four skips are authenticated credential/stateful journeys;
+  no test-only credentials were available, so authenticated Settings mutation
+  was not claimed. The browser suite did not exercise live-money execution.
+- Missing frontend evidence checks cover explicit `0` versus `UNKNOWN`, all
+  operational counters, provider aggregation, settings numeric drafts, graph
+  root selection, and persisted Early Alpha before→now snapshots. No
+  `0 → current` fallback remains for absent tracked evidence.
+- Web↔Telegram parity manifest now covers `/tokens/[tokenId]`, `/ultra-early`,
+  and `Telegram/EarlyAlpha`; the Early Alpha renderer consumes only the
+  canonical projection, uses `COHORT SIMILARITY`, and renders confirmation
+  conflict when authoritative risk is unknown, blocked, stale, invalid,
+  unavailable, or incompatible.
+- Early Alpha transitions are explicit:
+  `NOT_CONFIRMED → CONFIRMED|DEGRADED|INVALIDATED|CONFLICT`,
+  `CONFIRMED → DEGRADED|INVALIDATED|CONFLICT`,
+  `DEGRADED → CONFIRMED|INVALIDATED|CONFLICT`,
+  `CONFLICT → DEGRADED|INVALIDATED|CONFIRMED` only after risk conflict
+  resolution; `INVALIDATED` is terminal. Same-state repeats require explicit
+  material evidence change and stable logical dedupe identity.
+- Early Alpha dedupe/retry/restart/correlation tests pass: persisted alert
+  state and snapshots prevent duplicate initial/follow-up events, failed
+  transport retries the same dedupe key, and follow-ups retain bounded
+  correlation metadata. No raw provider payload or secret is rendered.
 - Release identity and synthetic soak evidence remain local/measurement-only;
   external acceptance remains `BLOCKED_EXTERNAL`.
 
@@ -166,6 +195,39 @@ relationship, graph, optimizer, or Solana fallback engine was added.
 - [Current opportunity-discovery plan](superpowers/plans/2026-09-05-opportunity-discovery.md)
 - [Current alpha-caller design](superpowers/specs/2026-09-07-alpha-caller-multichain-design.md)
 - [Current real-alpha readiness plan](superpowers/plans/2026-09-07-real-alpha-production-readiness.md)
+
+## 2026-09-11 frontend and Early Alpha parity sprint
+
+PR #3 was inspected rather than assumed merged. It remains open/unmerged;
+the locally corrected integration follows:
+
+```text
+canonical observations → existing scoring/risk engines
+→ canonical Early Alpha projection → EarlyAlphaAlertRenderer
+→ existing AlertDeliveryService → Telegram
+```
+
+There is no Telegram scorer, risk engine, prediction engine, or execution
+path. Ordinary alerts still use `AlertRenderer`; only Early Alpha alerts use
+`EarlyAlphaAlertRenderer`, and both use the existing delivery service.
+
+The web fixes preserve `UNKNOWN`/`BLOCKED_EXTERNAL`/`INVALID` semantics,
+remove provider-name and chain-regex heuristics, use explicit graph `root_id`,
+expose all canonical graph quality states, validate raw numeric settings
+drafts, remove duplicate runtime-settings sources, show search failures,
+label caller filter scope, clean duplicate lifecycle UI, and add the
+semantic graph CSS contract (`116` static classes checked). Opportunities and
+token detail remain bounded read-model projections; unavailable mappings are
+listed in the parity manifest rather than recomputed in TypeScript.
+
+Implementation SHA: pending final local commit; final handoff SHA is reported
+with the pushed `HEAD`. Protected modes and `NOT_PRODUCTION_READY` are
+unchanged. Remaining P0/external blockers are authenticated browser
+acceptance without test credentials, GitHub billing for hosted CI, main branch
+protection, and zero real external samples. Exact next task: obtain compliant,
+independently verified real provider/market/social/wallet evidence, populate
+the required winner/ordinary/flat/severe-loser/rug/fake-hype/late/failed
+cohorts, and rerun the existing no-lookahead calibration/promotion gates.
 
 ## Historical summary
 

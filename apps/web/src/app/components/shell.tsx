@@ -24,13 +24,14 @@ function toneForState(state: string): ChipTone {
 
 function chainState(
   providers: OperationsRecord["providers"],
-  matcher: RegExp
+  chain: string
 ): OperationalState {
-  const matches = providers.filter((provider) => matcher.test(`${provider.provider} ${provider.capability}`));
+  const matches = providers.filter((provider) => provider.chains?.includes(chain) === true);
+  if (matches.length === 0) return "UNKNOWN";
   if (matches.some((provider) => provider.state === "DOWN")) return "DOWN";
   if (matches.some((provider) => provider.state === "DEGRADED")) return "DEGRADED";
-  if (matches.some((provider) => provider.state === "HEALTHY")) return "HEALTHY";
-  return "UNKNOWN";
+  if (matches.some((provider) => provider.state === "UNKNOWN")) return "UNKNOWN";
+  return matches.every((provider) => provider.state === "HEALTHY") ? "HEALTHY" : "UNKNOWN";
 }
 
 type OperationalState = OperationsRecord["overallState"];
@@ -38,13 +39,13 @@ type OperationalState = OperationsRecord["overallState"];
 function ChainStatus({
   label,
   providers,
-  matcher
+  chain
 }: {
   label: string;
   providers: OperationsRecord["providers"];
-  matcher: RegExp;
+  chain: string;
 }) {
-  const state = chainState(providers, matcher);
+  const state = chainState(providers, chain);
   return <StatusChip label={label} value={state} tone={toneForState(state)} />;
 }
 
@@ -54,9 +55,9 @@ function TopBarStatus({ operations }: { operations: ReadResult<OperationsRecord>
       <div className="ws-topbar__status" aria-label="System status">
         <StatusChip label="STACK" value="UNKNOWN" tone="unknown" />
         <StatusChip label="PROVIDERS" value="UNKNOWN" tone="unknown" />
-        <ChainStatus label="SOLANA" providers={[]} matcher={/solana|helius/i} />
-        <ChainStatus label="BNB" providers={[]} matcher={/bnb|binance/i} />
-        <ChainStatus label="ROBINHOOD" providers={[]} matcher={/robinhood/i} />
+        <ChainStatus label="SOLANA" providers={[]} chain="solana" />
+        <ChainStatus label="BNB" providers={[]} chain="bnb" />
+        <ChainStatus label="ROBINHOOD" providers={[]} chain="robinhood" />
       </div>
     );
   }
@@ -64,27 +65,32 @@ function TopBarStatus({ operations }: { operations: ReadResult<OperationsRecord>
   const providers = overview.providers;
   const down = providers.filter((provider) => provider.state === "DOWN").length;
   const degraded = providers.filter((provider) => provider.state === "DEGRADED").length;
+  const unknown = providers.filter((provider) => provider.state === "UNKNOWN").length;
   const providerSummary = providers.length === 0
     ? "UNKNOWN"
     : down > 0
       ? `${down} DOWN`
       : degraded > 0
         ? `${degraded} DEGRADED`
-        : "READY";
+        : unknown > 0
+          ? `${unknown} UNKNOWN`
+          : "READY";
   const providerTone: ChipTone = providers.length === 0
     ? "unknown"
     : down > 0
       ? "danger"
       : degraded > 0
         ? "warn"
+        : unknown > 0
+          ? "unknown"
         : "ok";
   return (
     <div className="ws-topbar__status" aria-label="System status">
       <StatusChip label="STACK" value={overview.overallState} tone={toneForState(overview.overallState)} />
       <StatusChip label="PROVIDERS" value={providerSummary} tone={providerTone} />
-      <ChainStatus label="SOLANA" providers={providers} matcher={/solana|helius/i} />
-      <ChainStatus label="BNB" providers={providers} matcher={/bnb|binance/i} />
-      <ChainStatus label="ROBINHOOD" providers={providers} matcher={/robinhood/i} />
+      <ChainStatus label="SOLANA" providers={providers} chain="solana" />
+      <ChainStatus label="BNB" providers={providers} chain="bnb" />
+      <ChainStatus label="ROBINHOOD" providers={providers} chain="robinhood" />
     </div>
   );
 }

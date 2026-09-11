@@ -13,7 +13,7 @@ from memeradar_application.creator_graph import (
     NodeKind,
     TokenOutcomeClass,
 )
-from memeradar_domain import ReasonCode
+from memeradar_domain import QualityState, ReasonCode
 
 
 def test_graph_node_and_edge_creation():
@@ -215,3 +215,34 @@ def test_shortest_path_explanation():
     assert path is not None
     assert len(path["nodes"]) == 4
     assert len(path["edges"]) == 3
+
+
+def test_subgraph_preserves_explicit_root_and_full_quality_facets():
+    graph = CreatorOutcomeGraph()
+    graph.add_node(
+        GraphNode(
+            id="wallet:root",
+            kind=NodeKind.WALLET,
+            properties={"role": "creator"},
+        )
+    )
+    graph.add_node(
+        GraphNode(
+            id="aaa:unrelated",
+            kind=NodeKind.WALLET,
+            quality_state=QualityState.CONFLICTED,
+        )
+    )
+    graph.add_edge(
+        GraphEdge(
+            id="root-edge",
+            from_id="wallet:root",
+            to_id="aaa:unrelated",
+            kind=EdgeKind.FUNDED,
+        )
+    )
+
+    projection = graph.get_subgraph(["wallet:root"], max_depth=1)
+
+    assert projection["root_id"] == "wallet:root"
+    assert projection["facets"]["quality_states"] == [state.value for state in QualityState]

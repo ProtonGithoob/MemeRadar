@@ -994,6 +994,24 @@ class AlertRepository:
         )
         return None if row is None else alert_from_row(row)
 
+    async def get_latest_early_alpha(self, identity: str) -> Alert | None:
+        normalized_identity = require_text(identity, "identity", max_length=128)
+        escaped = (
+            normalized_identity.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        row = await self._session.scalar(
+            select(AlertRow)
+            .where(
+                AlertRow.type == AlertType.EARLY_ALPHA.value,
+                AlertRow.dedupe_key.like(f"early-alpha:{escaped}:%", escape="\\"),
+            )
+            .order_by(AlertRow.requested_at.desc())
+            .limit(1)
+        )
+        return None if row is None else alert_from_row(row)
+
 
 class CandidateRepository:
     """Persist and rehydrate the candidate aggregate without committing."""

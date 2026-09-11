@@ -6,6 +6,13 @@ import type { ProviderHealthRecord, ReadPage, ReadResult } from "../lib/read-api
 
 const healthy: ProviderHealthRecord = {
   provider: "fixture-market",
+  providerId: "fixture-market",
+  displayName: "Fixture Market",
+  chains: ["solana"],
+  capabilities: ["market_data"],
+  required: true,
+  enabled: true,
+  settingKeys: ["fixture_market_url"],
   capability: "market_data",
   state: "HEALTHY",
   checkedAt: "2026-08-31T12:00:00.000Z",
@@ -53,5 +60,26 @@ describe("ProvidersDashboard", () => {
     expect(screen.getByText("NO PROVIDER HEALTH EVIDENCE")).toBeInTheDocument();
     rerender(<ProvidersDashboard result={{ ok: false, reason: "NOT_CONFIGURED" }} />);
     expect(screen.getByText("PROVIDER HEALTH NOT CONFIGURED")).toBeInTheDocument();
+  });
+
+  it("uses canonical setting keys without substring matching or truncation", () => {
+    render(<ProvidersDashboard
+      result={result([{ ...healthy, settingKeys: ["fixture_market_url", "fixture_market_key"] }])}
+      settings={{ ok: true, data: {
+        apiVersion: "runtime-settings-v1",
+        asOf: "2026-08-31T12:00:00.000Z",
+        groups: { providers: [
+          { key: "fixture_market_url", value: "https://fixture", state: "CONFIGURED", secret: false },
+          { key: "fixture_market_key", value: null, state: "NOT_CONFIGURED", secret: true },
+          { key: "fixture_market_url_backup", value: "wrong", state: "CONFIGURED", secret: false }
+        ] },
+        protectedModes: { analysisOnly: true, paperTrading: true, manualExecution: false, autoExecution: false },
+        executionEligible: false
+      } }}
+    />);
+
+    expect(screen.getByText(/fixture_market_url=https:\/\/fixture/)).toBeInTheDocument();
+    expect(screen.getByText(/fixture_market_key=NOT CONFIGURED/)).toBeInTheDocument();
+    expect(screen.queryByText(/fixture_market_url_backup/)).not.toBeInTheDocument();
   });
 });

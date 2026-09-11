@@ -1118,6 +1118,8 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         return WalletGraphView(
             nodes=node_values,
             edges=edge_values,
+            root_id=base.root_id,
+            facets=base.facets,
             max_depth=query.max_depth,
             max_nodes=query.max_nodes,
             max_edges=query.max_edges,

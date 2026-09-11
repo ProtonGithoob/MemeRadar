@@ -88,6 +88,14 @@ class ReliabilityCounter(str, Enum):
     API_ERRORS = "api_errors"
     WORKER_RESTARTS = "worker_restarts"
     MIGRATION_MISMATCHES = "migration_mismatches"
+    EARLY_ALPHA_ALERT_CREATED = "early_alpha_alert_created"
+    EARLY_ALPHA_ALERT_FOLLOWUP = "early_alpha_alert_followup"
+    EARLY_ALPHA_ALERT_CONFIRMED = "early_alpha_alert_confirmed"
+    EARLY_ALPHA_ALERT_DEGRADED = "early_alpha_alert_degraded"
+    EARLY_ALPHA_ALERT_INVALIDATED = "early_alpha_alert_invalidated"
+    EARLY_ALPHA_ALERT_CONFLICT = "early_alpha_alert_conflict"
+    EARLY_ALPHA_ALERT_DEDUPED = "early_alpha_alert_deduped"
+    EARLY_ALPHA_ALERT_DELIVERY_FAILURE = "early_alpha_alert_delivery_failure"
 
 
 class ReliabilityTelemetry(Protocol):
