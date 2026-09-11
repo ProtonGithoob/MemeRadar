@@ -54,6 +54,11 @@ zero or safe evidence.
   `34522929362` both have zero executed steps in the required jobs. GitHub's
   annotation is `recent account payments have failed or your spending limit
   needs to be increased`; this is `BLOCKED_EXTERNAL`, not a code failure.
+- Final implementation push SHA `bed8726ae0362d530f9e4a4350f5dbb709cafda3`
+  produced hosted CI run `34583193752`: Backend quality, Frontend quality,
+  Compose contract, and Secret scan all failed before any step executed;
+  Release candidate identity was skipped. The same GitHub billing annotation
+  applies, so this run is `BLOCKED_EXTERNAL`, not a code failure.
 - `MAIN_BRANCH_PROTECTION_NOT_ENFORCED`: the GitHub branch-protection API
   returned HTTP 403 because the private repository requires GitHub Pro or
   public visibility for that feature. No repository protection is claimed.
@@ -220,8 +225,9 @@ semantic graph CSS contract (`116` static classes checked). Opportunities and
 token detail remain bounded read-model projections; unavailable mappings are
 listed in the parity manifest rather than recomputed in TypeScript.
 
-Implementation SHA: `8b9d73a`; final pushed `HEAD` is verified and reported
-with the final handoff. Protected modes and `NOT_PRODUCTION_READY` are
+Implementation SHA: `8b9d73a`; final pushed verification SHA:
+`bed8726ae0362d530f9e4a4350f5dbb709cafda3`. Protected modes and
+`NOT_PRODUCTION_READY` are
 unchanged. Remaining P0/external blockers are authenticated browser
 acceptance without test credentials, GitHub billing for hosted CI, main branch
 protection, and zero real external samples. Exact next task: obtain compliant,
