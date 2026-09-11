@@ -220,8 +220,8 @@ semantic graph CSS contract (`116` static classes checked). Opportunities and
 token detail remain bounded read-model projections; unavailable mappings are
 listed in the parity manifest rather than recomputed in TypeScript.
 
-Implementation SHA: pending final local commit; final handoff SHA is reported
-with the pushed `HEAD`. Protected modes and `NOT_PRODUCTION_READY` are
+Implementation SHA: `8b9d73a`; final pushed `HEAD` is verified and reported
+with the final handoff. Protected modes and `NOT_PRODUCTION_READY` are
 unchanged. Remaining P0/external blockers are authenticated browser
 acceptance without test credentials, GitHub billing for hosted CI, main branch
 protection, and zero real external samples. Exact next task: obtain compliant,
@@ -262,10 +262,10 @@ contract/event identities and compliant real X/Telegram plus optional
 wallet/KOL provider data; then populate all winner/ordinary/flat/severe-loser/
 rug/fake-hype/late/failed cohorts and run the existing no-lookahead
 ablation/promotion gates without changing protected modes or production
-weights. Implementation commits: `db7cebc`, `38dd9e2`, and `868c709`; final
-implementation HEAD SHA: `868c709`. The final status reconciliation commit
-must preserve `HEAD == origin/main`. Hosted CI billing and main-branch
-protection remain separate operational blockers.
+weights. Historical implementation commits: `db7cebc`, `38dd9e2`, and
+`868c709`; current implementation commit: `8b9d73a`. The final status
+reconciliation commit must preserve `HEAD == origin/main`. Hosted CI billing
+and main-branch protection remain separate operational blockers.
 
 Historical plans and checkpoint logs are intentionally archived from this
 status file. The canonical documents and the current plans above are the
