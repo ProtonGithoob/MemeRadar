@@ -40,8 +40,8 @@ zero or safe evidence.
   is `INSUFFICIENT_SAMPLES`.
 - Latest hosted CI run `34709174166` ran for the synchronized status
   checkpoint `a8a3a2078c04a8e85d06c52ce08e4b463990a6be`. Backend quality,
-  Frontend
-  quality, Compose contract, and Secret scan each terminated with `failure`
+  Frontend quality, Compose contract, and Secret scan each terminated with
+  `failure`
   before any workflow step executed; Release candidate identity was `skipped`
   with zero steps. GitHub's annotation states: "The job was not started
   because recent account payments have failed or your spending limit needs to
@@ -79,7 +79,7 @@ follow-up:
   `test_early_alpha_pipeline.py`); ordinary `AlertRenderer` regression passed.
 - Ordinary `AlertRenderer` focused regression: 13 passed
   (`tests/unit/test_alert_pipeline.py`).
-- Ruff, strict mypy across 131 source files, frontend lint/typecheck,
+- Ruff, strict mypy across 133 source files, frontend lint/typecheck,
   production build, Compose validation, tracked-file secret scan, migrations,
   security review, SBOM, CSS contract, and `git diff --check`: passed.
 - Migration head: `0011_collection_checkpoints`; metadata tables: 27. Runtime
