@@ -38,15 +38,13 @@ zero or safe evidence.
   data, Chainlink feed identities, and matured live-shadow observations are
   unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
   is `INSUFFICIENT_SAMPLES`.
-- Latest hosted CI run `34709174166` ran for the synchronized status
-  checkpoint `a8a3a2078c04a8e85d06c52ce08e4b463990a6be`. Backend quality,
-  Frontend quality, Compose contract, and Secret scan each terminated with
-  `failure`
-  before any workflow step executed; Release candidate identity was `skipped`
-  with zero steps. GitHub's annotation states: "The job was not started
-  because recent account payments have failed or your spending limit needs to
-  be increased." Hosted CI is therefore `BLOCKED_EXTERNAL`, not code failure
-  or PASS. Managed backup/restore and production-like dependency restart/soak
+- Latest hosted CI run `34717510371` ran for final pushed SHA
+  `732d3234c24c6223129f34d97f017e75de2e8a3d`. Backend quality, Frontend
+  quality, Compose contract, and Secret scan each terminated with `failure`
+  and zero executed steps; Release candidate identity was `skipped` with zero
+  steps. This repeats the previously documented account billing/spending
+  restriction pattern, so hosted CI is `BLOCKED_EXTERNAL`, not code failure or
+  PASS. Managed backup/restore and production-like dependency restart/soak
   remain externally unverified.
 - PR #3 (`feat: add B+C early-alpha Telegram alerts`) is still `OPEN` with
   `merged=false`; the current API reports `mergeable_state=unknown`, and its
@@ -164,6 +162,12 @@ change was required; migration verification remains at head
 - `make verify` passed with the same local gates; its security report keeps
   container/npm/pip external scans `NOT_RUN` and external acceptance
   `BLOCKED_EXTERNAL`.
+- Latest hosted Actions state: run `34717510371`, HEAD
+  `732d3234c24c6223129f34d97f017e75de2e8a3d`; Backend quality, Frontend
+  quality, Secret scan, and Compose contract were `failure` with `0` executed
+  steps, and Release candidate identity was `skipped` with `0` steps.
+- Main branch protection remains unverified; the GitHub protection endpoint
+  returned HTTP `403`.
 
 Implementation commit: `09e0caa981b5e333ce2baaf6d80d06c76fc950ef`.
 
