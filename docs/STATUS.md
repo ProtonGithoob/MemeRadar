@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-12
+Last updated: 2026-09-13
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -67,7 +67,126 @@ zero or safe evidence.
 
 No blocker changes the readiness classification or authorizes a mode change.
 
-## Latest engineering evidence
+## 2026-09-13 root-cause data-integrity hardening sprint
+
+Baseline source of truth was `origin/main` at
+`b0ff4192d220b3511043ace3653164c8c3f505f7`; `main` was clean and
+synchronized before implementation. PR #3 remains open and untouched; it was
+not merged, cherry-picked, or used as the source of truth.
+
+### Before → after matrix
+
+| Area | Before | After | Result |
+|---|---|---|---|
+| Real evidence classification | `LIVE_SHADOW` was used as the evidence class, so readiness excluded real shadow observations | `evidence_origin=REAL_EXTERNAL` is independent from `collection_mode=LIVE_SHADOW`; fixtures remain non-real | `RESOLVED` |
+| Collection mode | Mode and evidence origin were conflated | Origin is `REAL_EXTERNAL`/`SYNTHETIC`/`FIXTURE`/`REPLAY`/`REDACTED`; mode is `LIVE_SHADOW`/`RESEARCH`/`PRODUCTION` | `RESOLVED` |
+| Candidate rediscovery | `CandidateRepository.add` could overwrite the lifecycle aggregate | Discovery-only refresh preserves state, score, risk, rejection, and transition history | `RESOLVED` |
+| Candidate first-seen semantics | Rediscovery could overwrite the canonical discovery boundary | Earlier verified discovery updates candidate/token first-seen only; transition timestamps are not rewritten | `RESOLVED` |
+| Observation replay | Same immutable event with later transport timestamps raised a conflict | Immutable replay is benign; changed immutable payload remains `IdempotencyConflict` | `RESOLVED` |
+| Checkpoint atomicity | Same-transaction behavior lacked adversarial proof | Observation/candidate/checkpoint writes roll back together | `RESOLVED` |
+| Checkpoint concurrency | First-run insert and stale cursor overwrite were not proven | PostgreSQL upsert/row lock plus compare-and-set prevents stale cursor regression | `RESOLVED` |
+| Provider telemetry | Runtime collection attempts were not persisted for readiness | Generic `provider.collection_health` observations persist success, error class, rate-limit state, and item counts | `RESOLVED` |
+| Rate-limit count | Missing telemetry could look like measured zero | Persisted attempts are counted; no attempt is `null`/`UNKNOWN` | `RESOLVED` semantics; current data `INSUFFICIENT_SAMPLES` |
+| Provider error count | Missing telemetry could look like measured zero | Persisted failed attempts are counted; no attempt is `null`/`UNKNOWN` | `RESOLVED` semantics; current data `INSUFFICIENT_SAMPLES` |
+| Winner labels | No runtime canonical matured outcome source was found | Readiness returns `null` with `MADEONSOL_LABELED_OUTCOMES_UNAVAILABLE`, never fabricated zero | `INSUFFICIENT_SAMPLES` |
+| Rug labels | No runtime canonical matured outcome source was found | Readiness returns `null` with the same explicit unavailable reason | `INSUFFICIENT_SAMPLES` |
+| Provider health runtime composition | Catalog health could have no MadeOnSol rows to overlay | Canonical registry capabilities seed `UNKNOWN`; durable collection-health observations overlay actual state | `RESOLVED` |
+| Readiness over 5,000 rows | DB projection truncated the aggregate input at `MAX_STORAGE_ROWS=5000` | SQL aggregates compute totals; bounded detail retrieval remains separate | `RESOLVED` |
+| PostgreSQL acceptance | SQLite/fake-UoW coverage did not prove transaction semantics | Real PostgreSQL covered migration round-trip, rollback, replay, rediscovery, worker restart, checkpoint writers, and runtime readiness | `RESOLVED` |
+| Caller/wallet/creator research consumption | MadeOnSol labels were raw canonical research observations | They remain raw-only by deliberate design; no provider-specific projection or confidence inflation was added | `NOT_NEEDED` for this integrity sprint |
+
+### Proven runtime path
+
+The real worker path is now covered end-to-end by a PostgreSQL integration
+test:
+
+```text
+MADEONSOL_ENABLED
+→ ProviderBundle
+→ MadeOnSolRobinhoodAdapter
+→ CandidateDiscoveryCollector
+→ CandidateRepository + candidate.discovery Observation
+→ enrichment Observations
+→ ObservationRepository + collection checkpoint
+→ MadeOnSolReadinessReport
+→ /v1/readiness.alpha_validation
+→ Web readiness projection
+```
+
+The worker supplies `evidence_origin=REAL_EXTERNAL` and
+`collection_mode=LIVE_SHADOW`. A fake external transport produced one
+candidate and one enrichment observation exactly once, preserved provider
+event time through delayed observation, and appeared in readiness only while
+explicitly marked real. Fixture/synthetic origin never contributes to the
+real count. Retry/restart identity, valid-empty discovery, dynamic snapshot
+identity, LP-event identity, and malformed/timeout/429 handling remain on the
+existing provider/collector seams.
+
+### Runtime counts and classification
+
+The actual local database contains no compliant MadeOnSol sample:
+
+```text
+real observations: 0
+unique Robinhood tokens: 0
+caller/KOL observations: 0
+smart-wallet observations: 0
+deployer observations: 0
+holder/distribution observations: 0
+bundle/LP/security observations: 0
+mature winner labels: null / UNKNOWN
+mature rug labels: null / UNKNOWN
+rate-limit events: null / UNKNOWN (no persisted collection attempt)
+provider errors: null / UNKNOWN (no persisted collection attempt)
+status: INSUFFICIENT_SAMPLES
+```
+
+No production alpha/risk/execution weight changed. No migration or schema
+change was required; migration verification remains at head
+`0011_collection_checkpoints` with 27 tables.
+
+### Verification
+
+- Full Python: `1263 passed, 18 skipped, 1 warning`.
+- PostgreSQL integration: `18 passed, 1 warning` with local
+  `MEMERADAR_TEST_DATABASE_URL`, including the end-to-end worker round trip,
+  >5,000-row readiness aggregation, replay/conflict, candidate lifecycle,
+  rollback, and concurrent checkpoint tests.
+- Telegram Early Alpha: `31 passed`; ordinary `AlertRenderer`: `13 passed`.
+- Vitest: `78 passed` across `22` files; frontend lint, typecheck and
+  production build passed.
+- Browser: `36 passed, 4 skipped` of 40; the isolated authenticated-free
+  serial run covered all requested routes, themes, and four viewports. The
+  four skips require unavailable test-only authenticated/stateful credentials.
+- CSS contract, migrations, security review, SBOM, and `git diff --check`
+  passed. SBOM remains 581 components with digest
+  `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
+- `make verify` passed with the same local gates; its security report keeps
+  container/npm/pip external scans `NOT_RUN` and external acceptance
+  `BLOCKED_EXTERNAL`.
+
+Implementation commit: `09e0caa981b5e333ce2baaf6d80d06c76fc950ef`.
+
+### Remaining blockers and next task
+
+- `BLOCKED_EXTERNAL`: compliant read-only MadeOnSol credentials/real data,
+  hosted Actions billing/spending restriction, and GitHub branch-protection
+  API HTTP 403. No external success is fabricated.
+- `INSUFFICIENT_SAMPLES`: real observations, matured winner/rug labels,
+  caller/wallet samples, calibration, precision/recall, false-positive rate,
+  lead time, and extreme-winner capture remain unmeasured.
+- Protected modes remain exactly
+  `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
+  `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`.
+- Production classification remains `NOT_PRODUCTION_READY`; engineering is
+  `ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION` because the runtime can
+  now ingest and report real external evidence without manual rewriting.
+- Exact next unfinished task: obtain compliant read-only MadeOnSol access,
+  collect real Robinhood observations and matured outcomes, then run the
+  existing no-lookahead/out-of-sample calibration gate without changing
+  production weights or protected modes.
+
+## Prior engineering evidence
 
 The latest local full gate recorded after the alpha-readiness and paper-integrity
 follow-up:
