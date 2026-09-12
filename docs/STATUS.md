@@ -247,8 +247,8 @@ calibration value.
 - `make verify` reports the protected modes as analysis-only, paper trading,
   manual execution false and auto execution false.
 
-Implementation SHA: recorded after the implementation commit; final HEAD is
-recorded after the status reconciliation commit.
+Implementation SHA: `b2c6b02b5a870f76a97bace88f7a878682661fea`. The final HEAD
+is the pushed status-reconciliation commit reported at handoff.
 
 Remaining P0/P1 issues and exact next unfinished task are unchanged in kind:
 real MadeOnSol credentials/data and labeled historical cohorts are required
