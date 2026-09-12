@@ -12,6 +12,22 @@ This file captures externally researched open-source patterns that are useful to
 6. New low-latency paths must not bypass risk, position sizing or execution policy.
 7. New execution code remains disabled while `MANUAL_EXECUTION=false` and `AUTO_EXECUTION=false`.
 
+## Current A+C references
+
+`MadeOnSol/robinhood-chain-sdk` was audited on 2026-09-12 at upstream commit
+`241d63978f35458ecac85507098278cdb2f1440d`; the repository advertises MIT
+licensing. MemeRadar uses only its documented Robinhood API surface and
+independently implements a bounded, read-only adapter. No upstream source was
+copied into the repository.
+
+`ultranumblol/solana-meme-analyzer` was reviewed only for the general insider-
+pattern problem. Its repository metadata did not identify a license, so no
+source, names, tests, or comments were reused; the supporting evidence remains
+an independent extension of MemeRadar's existing holder graph.
+
+`nirholas/solana-sniper-mcp` was not used. Its proprietary source was not
+copied, adapted, translated, or derived from.
+
 ## High-value references and patterns
 
 ### moonbags

@@ -136,7 +136,29 @@ def test_keyless_provider_bundle_builds_without_network_or_optional_credentials(
         assert bundle.external_wallet is None
         assert bundle.optional["helius"] == "UNCONFIGURED_OPTIONAL"
         assert bundle.optional["birdeye"] == "UNCONFIGURED_OPTIONAL"
+        assert bundle.madeonsol is None
+        assert bundle.optional["madeonsol"] == "DISABLED"
         assert bundle.market is bundle.market_data
+    finally:
+        asyncio.run(bundle.aclose())
+
+
+def test_madeonsol_is_optional_and_not_part_of_core_chain_fallback() -> None:
+    settings = Settings.from_env(
+        {
+            "MADEONSOL_ENABLED": "true",
+            "MADEONSOL_API_KEY": "msk-test",
+            "MADEONSOL_BASE_URL": "https://fixture.madeonsol.example/api/v1",
+        }
+    )
+    bundle = build_provider_bundle(settings)
+
+    try:
+        assert bundle.madeonsol is not None
+        assert bundle.madeonsol.provider_name == "madeonsol-robinhood"
+        assert bundle.optional["madeonsol"] == "CONFIGURED"
+        assert bundle.route_plan.chain.providers == ("solana-public-rpc",)
+        assert bundle.chain_routes["robinhood"].provider_name == "evm-public-rpc:robinhood"
     finally:
         asyncio.run(bundle.aclose())
 

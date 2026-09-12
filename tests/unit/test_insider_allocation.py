@@ -135,3 +135,95 @@ def test_fresh_wallet_large_transfer_is_high_suspicion() -> None:
     assert "FRESH_WALLET_LARGE_ALLOCATION" in codes
     assert "TRANSFER_DOMINATED_ALLOCATION" in codes
     assert res.execution_eligible() is False
+
+
+def test_low_native_sol_and_large_share_alone_is_supporting_evidence_only() -> None:
+    tok = token()
+    snapshot = HolderConcentrationSnapshot(
+        token=tok,
+        as_of=NOW,
+        expires_at=NOW + timedelta(minutes=5),
+        total_holder_count=10,
+        top1=Decimal("0.05"),
+        top5=None,
+        top10=None,
+        clustered_top=None,
+        holders=(
+            HolderBalance(
+                address="11111111111111111111111111111118",
+                amount=Decimal("50000"),
+                percentage=Decimal("0.05"),
+                rank=1,
+            ),
+        ),
+        excluded_addresses=(),
+        provenance=(provenance("snap-supporting"),),
+        evidence_refs=("ref-supporting",),
+        reason_codes=(ReasonCode("TEST_CONCENTRATION"),),
+        confidence=Decimal("0.50"),
+        config_hash="sha256:test",
+    )
+    obs = [
+        Observation(
+            kind="wallet.activity",
+            provenance=provenance("obs-supporting"),
+            occurred_at=NOW,
+            observed_at=NOW,
+            ingested_at=NOW,
+            quality_state=QualityState.FRESH,
+            normalized_payload={
+                "wallet_address": "11111111111111111111111111111118",
+                "native_sol": "0.01",
+            },
+            token_id=tok.id,
+        )
+    ]
+
+    result = InsiderAllocationAnalyzer().evaluate(tok, snapshot, observations=obs, as_of=NOW)
+
+    assert result.state is InsiderAllocationSuspicionState.LOW_EVIDENCE
+    assert result.suspicious_holder_count == 0
+    assert result.suspicious_supply_pct == Decimal("0")
+    assert "LARGE_ALLOCATION_LOW_NATIVE_SOL" in {item.code for item in result.reason_codes}
+
+    unknown = InsiderAllocationAnalyzer().evaluate(tok, snapshot, observations=(), as_of=NOW)
+    assert unknown.state is InsiderAllocationSuspicionState.UNKNOWN
+    assert unknown.suspicious_holder_count == 0
+
+
+def test_holder_flags_exclude_lp_burn_program_and_system_accounts() -> None:
+    from memeradar_application.holder_graph import HolderGraphAnalyzer
+
+    tok = token()
+    observation = Observation(
+        kind="market.holder_data",
+        provenance=provenance("holders-flags"),
+        occurred_at=NOW,
+        observed_at=NOW,
+        ingested_at=NOW,
+        quality_state=QualityState.FRESH,
+        normalized_payload={
+            "holder_count": 4,
+            "holders": [
+                {"address": "11111111111111111111111111111113", "share": "0.40", "is_pool": True},
+                {"address": "11111111111111111111111111111114", "share": "0.30", "is_burn": True},
+                {
+                    "address": "11111111111111111111111111111115",
+                    "share": "0.20",
+                    "is_program": True,
+                },
+                {"address": "11111111111111111111111111111116", "share": "0.10", "is_system": True},
+            ],
+        },
+        token_id=tok.id,
+    )
+
+    result = HolderGraphAnalyzer().snapshot_holders(
+        tok,
+        (observation,),
+        now=NOW,
+        config_hash="holder-flags-v1",
+    )
+
+    assert result.holders == ()
+    assert len(result.excluded_addresses) == 4

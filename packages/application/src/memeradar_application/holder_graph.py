@@ -43,7 +43,7 @@ _GRAPH_KINDS = frozenset(
         "wallet.bridge",
     }
 )
-_EXCLUDED_KINDS = frozenset({"POOL", "PROGRAM", "SYSTEM", "EXCHANGE", "BRIDGE", "SERVICE"})
+_EXCLUDED_KINDS = frozenset({"POOL", "PROGRAM", "SYSTEM", "EXCHANGE", "BRIDGE", "SERVICE", "BURN"})
 _DEFAULT_SYSTEM_ADDRESSES = frozenset({"11111111111111111111111111111111"})
 _DEFAULT_PROGRAM_ADDRESSES = frozenset(
     {
@@ -63,6 +63,7 @@ class AddressKind(str, Enum):
     EXCHANGE = "EXCHANGE"
     BRIDGE = "BRIDGE"
     SERVICE = "SERVICE"
+    BURN = "BURN"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +95,7 @@ class AddressClassifier:
         exchange_addresses: Sequence[str] = (),
         bridge_addresses: Sequence[str] = (),
         shared_service_addresses: Sequence[str] = (),
+        burn_addresses: Sequence[str] = (),
     ) -> None:
         known: dict[str, AddressKind] = {
             address: AddressKind.SYSTEM for address in _DEFAULT_SYSTEM_ADDRESSES
@@ -105,6 +107,7 @@ class AddressClassifier:
         self._add_addresses(known, exchange_addresses, AddressKind.EXCHANGE)
         self._add_addresses(known, bridge_addresses, AddressKind.BRIDGE)
         self._add_addresses(known, shared_service_addresses, AddressKind.SERVICE)
+        self._add_addresses(known, burn_addresses, AddressKind.BURN)
         if known_addresses is not None:
             for address, kind in known_addresses.items():
                 normalized_address = require_solana_address(address, "known address")
@@ -131,12 +134,14 @@ class AddressClassifier:
         exchange_addresses: Sequence[str] = (),
         bridge_addresses: Sequence[str] = (),
         shared_service_addresses: Sequence[str] = (),
+        burn_addresses: Sequence[str] = (),
     ) -> AddressClassifier:
         return cls(
             pool_addresses=pool_addresses,
             exchange_addresses=exchange_addresses,
             bridge_addresses=bridge_addresses,
             shared_service_addresses=shared_service_addresses,
+            burn_addresses=burn_addresses,
         )
 
     def classify(
@@ -159,6 +164,7 @@ class AddressClassifier:
             AddressKind.EXCHANGE: "ADDRESS_EXCHANGE",
             AddressKind.BRIDGE: "ADDRESS_BRIDGE",
             AddressKind.SERVICE: "ADDRESS_SHARED_SERVICE",
+            AddressKind.BURN: "ADDRESS_BURN",
         }[kind]
         return AddressClassification(normalized_address, kind, reason_code)
 
@@ -604,13 +610,60 @@ class HolderGraphAnalyzer:
         exchange_addresses: Sequence[str] = (),
         bridge_addresses: Sequence[str] = (),
         shared_service_addresses: Sequence[str] = (),
+        burn_addresses: Sequence[str] = (),
     ) -> AddressClassifier:
         return AddressClassifier.default_classifier(
             pool_addresses=pool_addresses,
             exchange_addresses=exchange_addresses,
             bridge_addresses=bridge_addresses,
             shared_service_addresses=shared_service_addresses,
+            burn_addresses=burn_addresses,
         )
+
+    def _classify_holder(
+        self,
+        raw_holder: Mapping[str, object],
+        address: str,
+        *,
+        creator_address: str | None,
+    ) -> AddressClassification:
+        """Honor explicit provider classes without guessing unknown wallets."""
+
+        explicit_flags = (
+            ("is_pool", AddressKind.POOL),
+            ("is_burn", AddressKind.BURN),
+            ("is_program", AddressKind.PROGRAM),
+            ("is_system", AddressKind.SYSTEM),
+            ("is_custody", AddressKind.SERVICE),
+            ("is_infrastructure", AddressKind.SERVICE),
+        )
+        for field_name, kind in explicit_flags:
+            if raw_holder.get(field_name) is True:
+                return AddressClassification(address, kind, f"ADDRESS_{kind.value}")
+        raw_kind = raw_holder.get("classification", raw_holder.get("address_kind"))
+        if isinstance(raw_kind, str):
+            aliases = {
+                "BURN_ACCOUNT": AddressKind.BURN,
+                "CUSTODY": AddressKind.SERVICE,
+                "INFRASTRUCTURE": AddressKind.SERVICE,
+            }
+            normalized_kind: AddressKind | None = aliases.get(raw_kind.strip().upper())
+            if normalized_kind is None:
+                try:
+                    normalized_kind = AddressKind(raw_kind.strip().upper())
+                except ValueError:
+                    normalized_kind = None
+            if normalized_kind in {
+                AddressKind.POOL,
+                AddressKind.BURN,
+                AddressKind.PROGRAM,
+                AddressKind.SYSTEM,
+                AddressKind.SERVICE,
+            }:
+                return AddressClassification(
+                    address, normalized_kind, f"ADDRESS_{normalized_kind.value}"
+                )
+        return self.classifier.classify(address, creator_address=creator_address)
 
     def _holder_observations(
         self,
@@ -757,7 +810,8 @@ class HolderGraphAnalyzer:
                 raw_address = _field(raw_holder, "owner", "address", "wallet")
                 if not isinstance(raw_address, str):
                     raise ValueError("holder address was invalid")
-                classification = self.classifier.classify(
+                classification = self._classify_holder(
+                    raw_holder,
                     raw_address,
                     creator_address=normalized_creator,
                 )
@@ -802,7 +856,7 @@ class HolderGraphAnalyzer:
                 parsed.values(),
                 key=lambda item: (
                     item.percentage is None,
-                    -(item.percentage or Decimal("0")),
+                    -(item.percentage if item.percentage is not None else Decimal("-1")),
                     item.address,
                 ),
             )
@@ -1167,7 +1221,7 @@ class HolderGraphAnalyzer:
         for group in grouped.values():
             addresses = tuple(sorted(holder.address for holder in group))
             percentage = sum(
-                (holder.percentage or Decimal("0") for holder in group),
+                (holder.percentage for holder in group if holder.percentage is not None),
                 Decimal("0"),
             )
             if percentage > Decimal("1"):
@@ -1374,14 +1428,20 @@ class InsiderAllocationAnalyzer:
             if cls.kind in _EXCLUDED_KINDS:
                 continue
 
-            pct = holder.percentage or Decimal("0")
+            if holder.percentage is None:
+                has_unknown = True
+                continue
+            pct = holder.percentage
             data = wallet_obs.get(holder.address, {})
             sol_balance_raw = _field(data, "native_sol", "sol_balance", "balance")
-            sol_balance = (
-                to_decimal(sol_balance_raw, "sol_balance")
-                if sol_balance_raw is not _MISSING and sol_balance_raw is not None
-                else None
-            )
+            try:
+                sol_balance = (
+                    to_decimal(sol_balance_raw, "sol_balance")
+                    if sol_balance_raw is not _MISSING and sol_balance_raw is not None
+                    else None
+                )
+            except (TypeError, ValueError):
+                sol_balance = None
 
             has_buy_history = _field(data, "has_valid_buy_history", "buy_history") is True
             acq_source = _field(data, "acquisition_source", "source")
@@ -1405,7 +1465,7 @@ class InsiderAllocationAnalyzer:
                 else None
             )
 
-            if sol_balance is None and pct >= Decimal("0.02") and not data and graph is None:
+            if sol_balance is None and pct >= Decimal("0.02"):
                 has_unknown = True
 
             wallet_suspicious = False
@@ -1416,7 +1476,6 @@ class InsiderAllocationAnalyzer:
                 and not has_buy_history
             ):
                 reason_codes.append(ReasonCode("LARGE_ALLOCATION_LOW_NATIVE_SOL"))
-                wallet_suspicious = True
 
             if pct >= Decimal("0.03") and is_fresh:
                 reason_codes.append(ReasonCode("FRESH_WALLET_LARGE_ALLOCATION"))

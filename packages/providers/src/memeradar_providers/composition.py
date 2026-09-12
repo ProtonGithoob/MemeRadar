@@ -39,6 +39,7 @@ from .birdeye import BirdeyeRestAdapter
 from .dexscreener import DexScreenerAdapter
 from .evm_rpc import EvmRpcAdapter
 from .helius import HeliusRpcAdapter
+from .madeonsol_robinhood import MadeOnSolRobinhoodAdapter
 from .narrative import (
     DisabledNarrativeAdapter,
     NarrativeRestAdapter,
@@ -217,6 +218,7 @@ class ProviderBundle:
     solana_rpc: SolanaRpcAdapter
     bnb_rpc: EvmRpcAdapter | None
     robinhood_rpc: EvmRpcAdapter | None
+    madeonsol: MadeOnSolRobinhoodAdapter | None
     robinhood_launchpad_reconciler: RobinhoodLaunchpadReconciler | None
     chain: OnChainPort
     chain_routes: Mapping[str, OnChainPort]
@@ -276,6 +278,7 @@ class ProviderBundle:
             self.solana_rpc,
             self.bnb_rpc,
             self.robinhood_rpc,
+            self.madeonsol,
             self.helius,
             self.dexscreener,
             self.birdeye,
@@ -329,6 +332,12 @@ def build_provider_bundle(
         settings.narrative_provider == "external"
         and _configured(settings.narrative_api_url)
         and urlsplit(settings.narrative_api_url).scheme.lower() == "https"
+    )
+    madeonsol_configured = (
+        settings.madeonsol_enabled
+        and Chain.ROBINHOOD.value in settings.enabled_chains
+        and _configured(settings.madeonsol_base_url)
+        and _configured(settings.madeonsol_api_key)
     )
     external_wallet_configured = external_wallet_port is not None
     custom_quote_configured = custom_quote_port is not None
@@ -386,6 +395,17 @@ def build_provider_bundle(
         and _configured(settings.robinhood_rpc_url)
         else None
     )
+    madeonsol = (
+        MadeOnSolRobinhoodAdapter(
+            settings.madeonsol_base_url,
+            api_key=cast(str, settings.madeonsol_api_key),
+            client=client,
+            transport=transport,
+            clock=clock,
+        )
+        if madeonsol_configured
+        else None
+    )
     helius = (
         HeliusRpcAdapter(
             cast(str, settings.helius_rpc_url),
@@ -402,9 +422,7 @@ def build_provider_bundle(
         chain_providers.append(helius)
     chain_providers.append(solana_rpc)
     chain: OnChainPort = (
-        chain_providers[0]
-        if len(chain_providers) == 1
-        else BoundedOnChainFallback(chain_providers)
+        chain_providers[0] if len(chain_providers) == 1 else BoundedOnChainFallback(chain_providers)
     )
     chain_routes: dict[str, OnChainPort] = {Chain.SOLANA.value: chain}
     if bnb_rpc is not None:
@@ -459,9 +477,7 @@ def build_provider_bundle(
         if custom_quote_port is not None:
             quote_providers.append(custom_quote_port)
     quote: QuotePort = (
-        quote_providers[0]
-        if len(quote_providers) == 1
-        else BoundedQuoteFallback(quote_providers)
+        quote_providers[0] if len(quote_providers) == 1 else BoundedQuoteFallback(quote_providers)
     )
 
     rugcheck = (
@@ -529,8 +545,13 @@ def build_provider_bundle(
 
     optional_statuses = {
         "bnb_rpc": "CONFIGURED" if bnb_rpc is not None else "UNCONFIGURED_OPTIONAL",
-        "robinhood_rpc": (
-            "CONFIGURED" if robinhood_rpc is not None else "UNCONFIGURED_OPTIONAL"
+        "robinhood_rpc": ("CONFIGURED" if robinhood_rpc is not None else "UNCONFIGURED_OPTIONAL"),
+        "madeonsol": (
+            "CONFIGURED"
+            if madeonsol is not None
+            else "DISABLED"
+            if not settings.madeonsol_enabled
+            else "UNCONFIGURED_OPTIONAL"
         ),
         "helius": "CONFIGURED" if helius is not None else "UNCONFIGURED_OPTIONAL",
         "birdeye": "CONFIGURED" if birdeye is not None else "UNCONFIGURED_OPTIONAL",
@@ -568,6 +589,7 @@ def build_provider_bundle(
         solana_rpc=solana_rpc,
         bnb_rpc=bnb_rpc,
         robinhood_rpc=robinhood_rpc,
+        madeonsol=madeonsol,
         robinhood_launchpad_reconciler=(
             None
             if robinhood_rpc is None

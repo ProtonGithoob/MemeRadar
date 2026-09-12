@@ -20,6 +20,7 @@ def _client() -> TestClient:
                     "ADMIN_API_TOKEN": ADMIN,
                     "WEBSITE_NAME": "MemeRadar",
                     "HELIUS_API_KEY": "provider-secret",
+                    "MADEONSOL_API_KEY": "madeonsol-secret",
                 }
             )
         )
@@ -65,7 +66,12 @@ def test_runtime_settings_return_canonical_metadata_and_secret_state_only() -> N
     assert helius["current_effective_value"] is None
     assert helius["pending_value"] is None
     assert helius["configured_state"] == "CONFIGURED"
+    madeonsol = settings["madeonsol_api_key"]
+    assert madeonsol["secret"] is True
+    assert madeonsol["current_effective_value"] is None
+    assert madeonsol["configured_state"] == "CONFIGURED"
     assert "provider-secret" not in json.dumps(body)
+    assert "madeonsol-secret" not in json.dumps(body)
 
 
 def test_admin_runtime_mutation_applies_hot_setting_and_tracks_restart_pending() -> None:

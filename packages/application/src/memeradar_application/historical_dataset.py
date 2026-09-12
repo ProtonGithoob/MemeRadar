@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from types import MappingProxyType
 
+from memeradar_domain import Observation
 from memeradar_domain.common import normalize_texts, require_text
 
 from .opportunity_research import OpportunityResearchAnalyzer, OpportunityResearchSample
@@ -182,6 +183,134 @@ class HistoricalDatasetReadinessReport:
             "no_lookahead_verified": self.no_lookahead_verified,
             "survivorship_bias": self.survivorship_bias,
             "dataset_version": self.dataset_version,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class MadeOnSolReadinessReport:
+    """Research-only inventory for explicitly marked real MadeOnSol evidence."""
+
+    status: str
+    reason_codes: tuple[str, ...]
+    real_observation_count: int
+    unique_robinhood_token_count: int
+    caller_kol_observation_count: int
+    smart_wallet_observation_count: int
+    deployer_observation_count: int
+    holder_distribution_observation_count: int
+    bundle_lp_security_observation_count: int
+    first_real_observation: str | None
+    latest_real_observation: str | None
+    rate_limit_count: int
+    error_count: int
+    labeled_winner_count: int
+    labeled_rug_count: int
+
+    @classmethod
+    def from_observations(
+        cls,
+        observations: Sequence[Observation],
+        *,
+        real_observations: Sequence[Observation] = (),
+        labels: Mapping[str, str] | None = None,
+        rate_limit_count: int = 0,
+        error_count: int = 0,
+        minimum_real_tokens: int = 100,
+        minimum_labeled_outcomes: int = 100,
+    ) -> MadeOnSolReadinessReport:
+        all_observations = tuple(observations)
+        real = tuple(real_observations)
+        if any(not isinstance(item, Observation) for item in (*all_observations, *real)):
+            raise TypeError("MadeOnSol readiness observations must be Observation values")
+        available_ids = {item.id for item in all_observations}
+        if any(item.id not in available_ids for item in real):
+            raise ValueError("real observations must be selected from observations")
+        if any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in (rate_limit_count, error_count)
+        ):
+            raise ValueError("provider counters must be non-negative integers")
+        if not isinstance(minimum_real_tokens, int) or minimum_real_tokens < 1:
+            raise ValueError("minimum_real_tokens must be positive")
+        if not isinstance(minimum_labeled_outcomes, int) or minimum_labeled_outcomes < 1:
+            raise ValueError("minimum_labeled_outcomes must be positive")
+
+        madeonsol = tuple(
+            item for item in real if item.provenance.provider == "madeonsol-robinhood"
+        )
+        token_addresses = {
+            str(item.normalized_payload["token_address"]).lower()
+            for item in madeonsol
+            if isinstance(item.normalized_payload.get("token_address"), str)
+        }
+        caller_count = sum(item.kind == "social.caller_consensus" for item in madeonsol)
+        smart_wallet_count = sum(item.kind.startswith("wallet.") for item in madeonsol)
+        deployer_count = sum(
+            item.kind.startswith("creator.")
+            or item.normalized_payload.get("deployer_address") is not None
+            for item in madeonsol
+        )
+        holder_count = sum(item.kind == "market.holder_data" for item in madeonsol)
+        bundle_security_lp_count = sum(
+            item.kind.startswith("security.") or item.kind == "liquidity.lp_events"
+            for item in madeonsol
+        )
+        times = sorted(item.occurred_at or item.observed_at for item in madeonsol)
+        normalized_labels = {
+            str(key).lower(): str(value).upper() for key, value in (labels or {}).items()
+        }
+        labeled_winner_count = sum(
+            normalized_labels.get(address) in {"WINNER", "2X", "5X", "10X", "20X", "50X", "100X"}
+            for address in token_addresses
+        )
+        labeled_rug_count = sum(
+            normalized_labels.get(address) in {"RUG", "FAILURE", "SEVERE_FAILURE"}
+            for address in token_addresses
+        )
+        reasons: list[str] = []
+        if not madeonsol:
+            reasons.append("MADEONSOL_REAL_OBSERVATIONS_REQUIRED")
+        if len(token_addresses) < minimum_real_tokens:
+            reasons.append("MADEONSOL_TOKEN_SAMPLES_REQUIRED")
+        if labeled_winner_count + labeled_rug_count < minimum_labeled_outcomes:
+            reasons.append("MADEONSOL_LABELED_OUTCOMES_REQUIRED")
+        return cls(
+            status=(
+                "READY_FOR_OUT_OF_SAMPLE_CALIBRATION" if not reasons else "INSUFFICIENT_SAMPLES"
+            ),
+            reason_codes=tuple(reasons),
+            real_observation_count=len(madeonsol),
+            unique_robinhood_token_count=len(token_addresses),
+            caller_kol_observation_count=caller_count,
+            smart_wallet_observation_count=smart_wallet_count,
+            deployer_observation_count=deployer_count,
+            holder_distribution_observation_count=holder_count,
+            bundle_lp_security_observation_count=bundle_security_lp_count,
+            first_real_observation=times[0].isoformat() if times else None,
+            latest_real_observation=times[-1].isoformat() if times else None,
+            rate_limit_count=rate_limit_count,
+            error_count=error_count,
+            labeled_winner_count=labeled_winner_count,
+            labeled_rug_count=labeled_rug_count,
+        )
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "reason_codes": list(self.reason_codes),
+            "real_observation_count": self.real_observation_count,
+            "unique_robinhood_token_count": self.unique_robinhood_token_count,
+            "caller_kol_observation_count": self.caller_kol_observation_count,
+            "smart_wallet_observation_count": self.smart_wallet_observation_count,
+            "deployer_observation_count": self.deployer_observation_count,
+            "holder_distribution_observation_count": self.holder_distribution_observation_count,
+            "bundle_lp_security_observation_count": self.bundle_lp_security_observation_count,
+            "first_real_observation": self.first_real_observation,
+            "latest_real_observation": self.latest_real_observation,
+            "rate_limit_count": self.rate_limit_count,
+            "error_count": self.error_count,
+            "labeled_winner_count": self.labeled_winner_count,
+            "labeled_rug_count": self.labeled_rug_count,
         }
 
 
@@ -432,4 +561,5 @@ __all__ = [
     "HistoricalDatasetRecord",
     "HistoricalDatasetValidation",
     "HistoricalDatasetValidator",
+    "MadeOnSolReadinessReport",
 ]

@@ -219,6 +219,9 @@ class Settings:
     robinhood_chain_id: int = 4663
     robinhood_sequencer_feed_url: str = "wss://feed.mainnet.chain.robinhood.com"
     robinhood_blockscout_api_url: str | None = None
+    madeonsol_enabled: bool = False
+    madeonsol_api_key: str | None = None
+    madeonsol_base_url: str = "https://madeonsol.com/api/v1"
     x_provider_enabled: bool = False
     x_provider_api_key: str | None = None
     x_provider_bearer_token: str | None = None
@@ -431,6 +434,15 @@ class Settings:
                 "wss://feed.mainnet.chain.robinhood.com",
             ),
             robinhood_blockscout_api_url=_optional_value(values, "ROBINHOOD_BLOCKSCOUT_API_URL"),
+            madeonsol_enabled=_parse_bool(
+                "MADEONSOL_ENABLED", values.get("MADEONSOL_ENABLED", "false")
+            ),
+            madeonsol_api_key=_optional_value(values, "MADEONSOL_API_KEY"),
+            madeonsol_base_url=_default_value(
+                values,
+                "MADEONSOL_BASE_URL",
+                _default_value(values, "MADEONSOL_API_URL", "https://madeonsol.com/api/v1"),
+            ),
             x_provider_enabled=_parse_bool(
                 "X_PROVIDER_ENABLED", values.get("X_PROVIDER_ENABLED", "false")
             ),
@@ -818,6 +830,33 @@ RUNTIME_SETTING_SPECS: tuple[RuntimeSettingSpec, ...] = (
         "RESTART_REQUIRED",
         group="chains",
         description="Robinhood Blockscout endpoint.",
+    ),
+    _spec(
+        "madeonsol_enabled",
+        "madeonsol Robinhood intelligence",
+        "boolean",
+        "RESTART_REQUIRED",
+        group="providers",
+        default=False,
+        description="Enable optional MadeOnSol LIVE_SHADOW evidence collection.",
+    ),
+    _spec(
+        "madeonsol_api_key",
+        "madeonsol Robinhood intelligence",
+        "secret",
+        "RESTART_REQUIRED",
+        group="providers",
+        secret=True,
+        description="MadeOnSol server-side API key.",
+    ),
+    _spec(
+        "madeonsol_base_url",
+        "madeonsol Robinhood intelligence",
+        "string",
+        "RESTART_REQUIRED",
+        group="providers",
+        default="https://madeonsol.com/api/v1",
+        description="MadeOnSol API endpoint.",
     ),
     _spec(
         "wallet_intelligence_provider",

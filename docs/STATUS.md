@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -132,6 +132,133 @@ fixture is truthful: `sample_count=7`, `real_sample_count=0`,
 `smart_wallet_observation_count=0`, evidence class `SYNTHETIC_REDACTED=7`,
 provider `UNKNOWN=7`, `no_lookahead_verified=true`, and status
 `INSUFFICIENT_SAMPLES`. The report is an inventory seam, not calibration.
+
+## 2026-09-12 A+C MadeOnSol shadow and insider-evidence sprint
+
+Baseline source of truth was `origin/main` at
+`80c449eecd41e3d8b6f2679f1a1f625efdc18cdc`; no old or diverged PR branch was
+merged or cherry-picked. PR #3 remains open/dirty and is not the source of
+truth.
+
+### Before-implementation gap matrix
+
+| Requirement | Existing | Partial | Missing | Not needed | Target files |
+|---|---|---|---|---|---|
+| Canonical provider contracts, provenance, freshness, shared transport | yes |  |  |  | existing provider contracts/transport |
+| Robinhood RPC, sequencer, reconciliation, Dexscreener, GoPlus, Chainlink | yes |  |  | MadeOnSol duplicate paths | existing Robinhood/provider composition |
+| Provider metadata/configuration seam | yes | optional composition seam |  | second registry | `provider_metadata.py`, `config.py`, `composition.py` |
+| MadeOnSol Robinhood read-only evidence adapter |  |  | yes |  | `madeonsol_robinhood.py` |
+| Caller, wallet, creator, holder, security/distribution evidence | yes | some provider mapping |  | new scoring models | existing application models |
+| Solana insider-pattern evidence |  | existing E6.4 allocation heuristic |  | second analyzer | `holder_graph.py` |
+| Live-shadow persistence/readiness | yes | provider-specific inventory |  | new storage subsystem | `historical_dataset.py`, `alpha_readiness.py` |
+| New MadeOnSol scoring/risk/alpha weights |  |  |  | intentionally not needed | existing scoring/risk |
+
+### Implemented A+C architecture
+
+The existing flow remains:
+
+```text
+MadeOnSol/RPC/other providers
+→ canonical observations and evidence
+→ existing scoring/risk
+→ existing Early Alpha projection
+→ existing Web/Telegram projections
+```
+
+`MadeOnSolRobinhoodAdapter` is an optional, disabled-by-default,
+Robinhood-only, read-only `LIVE_SHADOW` source. It uses the existing
+`OnChainPort`, `ProviderRequestContext`, `ProviderTransport`, retry/timeout,
+rate-limit, circuit-breaker and provenance contracts. It normalizes the
+currently available MadeOnSol API surfaces for token snapshots, KOL
+consensus/first-touch, buyer quality, top traders, token flow, holders,
+bundle evidence, provider risk and LP events. It has no alpha/risk/execution
+classification and is not placed in the core fallback route, so MadeOnSol
+failure cannot break RPC, market, quote or existing Robinhood paths.
+
+The upstream `MadeOnSol/robinhood-chain-sdk` API was audited at commit
+`241d63978f35458ecac85507098278cdb2f1440d`; GitHub reports MIT licensing.
+MemeRadar independently implemented the adapter and copied no source. The
+`ultranumblol/solana-meme-analyzer` repository had no identified license;
+only the general problem concept was considered. The proprietary
+`solana-sniper-mcp` was not used, copied, adapted, translated or derived from.
+
+Configuration is server-side only and defaults to:
+
+```env
+MADEONSOL_ENABLED=false
+MADEONSOL_API_KEY=
+MADEONSOL_BASE_URL=https://madeonsol.com/api/v1
+```
+
+No migration or new schema is required: observations use the existing
+repository and idempotent provenance boundary. Missing numeric fields remain
+`null`/`UNKNOWN`; explicit zero remains zero; valid empty results remain
+successful empty evidence; provider errors remain distinct from empty data.
+
+The C path extends the existing holder graph/insider allocation analyzer. It
+honors explicit LP, burn, system and program exclusions (and existing
+service/custody/infrastructure classifications), preserves unknown native SOL
+as unknown, and treats low native SOL plus a large token allocation as a weak
+supporting reason only. That combination cannot produce a confirmed insider
+classification and no creator/wallet graph or security engine was duplicated.
+
+### Live-shadow/readiness result
+
+The new readiness report counts only explicitly marked real observations from
+provider `madeonsol-robinhood`; fixtures and synthetic records do not count.
+The fresh `make alpha-readiness` report is:
+
+```text
+real MadeOnSol observations: 0
+unique Robinhood tokens: 0
+caller/KOL: 0
+smart-wallet: 0
+deployer: 0
+holder/distribution: 0
+bundle/LP/security: 0
+labeled winners: 0
+labeled rugs/failures: 0
+rate limits/errors: 0/0
+status: INSUFFICIENT_SAMPLES
+```
+
+No production score or risk weight changed. Promotion remains blocked until
+out-of-sample, no-lookahead, non-survivorship-biased evidence proves lead
+time, precision, false-positive rate, rug avoidance, multiple capture and
+calibration value.
+
+### Verification
+
+- A+C focused tests: `15 passed` for MadeOnSol and insider-pattern behavior;
+  the composition/runtime-settings contract subset brings the focused total
+  to `27 passed`.
+- Full Python: `1244 passed, 11 skipped, 1 warning`.
+- Telegram Early Alpha: `31 passed`; ordinary AlertRenderer regression:
+  `13 passed`.
+- Frontend: `74 passed` across `21` Vitest files; lint, typecheck and
+  production build passed.
+- Browser: `36 passed, 4 skipped` out of 40 across 1440x900, 1024x768,
+  768x1024 and 390x844. The visual matrix covered all 15 routes in dark and
+  light themes. Four skips are authenticated/stateful journeys without
+  test-only credentials.
+- CSS contract, migrations, secret scan, security review, SBOM and
+  `git diff --check` passed. SBOM remains 581 components with digest
+  `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
+- `make verify` reports the protected modes as analysis-only, paper trading,
+  manual execution false and auto execution false.
+
+Implementation SHA: recorded after the implementation commit; final HEAD is
+recorded after the status reconciliation commit.
+
+Remaining P0/P1 issues and exact next unfinished task are unchanged in kind:
+real MadeOnSol credentials/data and labeled historical cohorts are required
+for alpha validation (`BLOCKED_EXTERNAL` / `INSUFFICIENT_SAMPLES`), while
+hosted CI billing/spending restrictions, disabled branch protection (HTTP
+403), and unavailable authenticated browser/database credentials remain
+external blockers. Exact next task: collect compliant read-only Robinhood
+MadeOnSol observations and matured winner/rug/caller/smart-wallet labels,
+then run existing no-lookahead promotion/calibration gates without changing
+protected modes or production weights.
 
 ## 2026-09-11 alpha-readiness and execution-integrity follow-up
 
