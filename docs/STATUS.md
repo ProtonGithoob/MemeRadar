@@ -38,8 +38,9 @@ zero or safe evidence.
   data, Chainlink feed identities, and matured live-shadow observations are
   unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
   is `INSUFFICIENT_SAMPLES`.
-- Latest hosted CI run `34709030647` ran for HEAD
-  `d95b80d7d71eccf37d06297de70ad3120adda077`. Backend quality, Frontend
+- Latest hosted CI run `34709174166` ran for the synchronized status
+  checkpoint `a8a3a2078c04a8e85d06c52ce08e4b463990a6be`. Backend quality,
+  Frontend
   quality, Compose contract, and Secret scan each terminated with `failure`
   before any workflow step executed; Release candidate identity was `skipped`
   with zero steps. GitHub's annotation states: "The job was not started
@@ -239,18 +240,19 @@ passed `36` with `4` credential/state skips.
   `0011_collection_checkpoints`, `27` metadata tables. Security: `PASS`
   with external scans `BLOCKED_EXTERNAL`/`NOT_RUN`. SBOM: `581` components,
   digest `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
-- Latest hosted Actions run is `34709030647` at final synchronized SHA
-  `d95b80d7d71eccf37d06297de70ad3120adda077`. Backend quality, Frontend
+- Latest hosted Actions run is `34709174166` at final synchronized
+  implementation/status SHA `a8a3a2078c04a8e85d06c52ce08e4b463990a6be`.
+  Backend quality, Frontend
   quality, Secret scan and Compose contract were `failure` with zero executed
   steps because GitHub reported the account billing/spending restriction;
   Release candidate identity was `skipped`. Main branch protection remains
   unverified: GitHub API returned HTTP 403 requiring Pro/public visibility.
 
 Implementation checkpoint: `251c6b3`
-(`feat: prove madeonsol shadow and evidence parity`); documentation checkpoint
-before this status refresh: `d95b80d7d71eccf37d06297de70ad3120adda077`.
-The final branch SHA and `HEAD == origin/main` synchronization are reported by
-the handoff after this status refresh is pushed.
+(`feat: prove madeonsol shadow and evidence parity`); the preceding
+documentation checkpoint was `a8a3a2078c04a8e85d06c52ce08e4b463990a6be`.
+This final status-only refresh is intentionally marked `[skip ci]`; the
+previous checkpoint is the latest hosted CI subject.
 
 Real MadeOnSol observations: `0`; unique Robinhood tokens: `0`; caller/KOL,
 smart-wallet, deployer, holder/distribution and bundle/LP/security
