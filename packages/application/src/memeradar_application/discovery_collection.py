@@ -16,6 +16,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from memeradar_domain import Candidate, Observation, QualityState, TokenIdentity, normalize_chain
 from memeradar_domain.common import ensure_utc, freeze_mapping, require_text
 
+from .historical_dataset import COLLECTION_MODE_FIELD, EVIDENCE_ORIGIN_FIELD
 from .provider_contracts import (
     CandidateDiscoveryPort,
     DiscoveryCandidate,
@@ -39,7 +40,13 @@ class DiscoveryCollectionSink(Protocol):
 class DiscoveryCheckpointStore(Protocol):
     async def load(self, key: str) -> str | None: ...
 
-    async def save(self, key: str, cursor: str | None) -> object: ...
+    async def save(
+        self,
+        key: str,
+        cursor: str | None,
+        *,
+        expected_cursor: str | None | object = None,
+    ) -> object: ...
 
 
 def _candidate_id(token: TokenIdentity) -> UUID:
@@ -57,7 +64,8 @@ def _discovery_observation(
     candidate: DiscoveryCandidate,
     candidate_id: UUID,
     *,
-    evidence_class: str,
+    evidence_origin: str,
+    collection_mode: str,
 ) -> Observation:
     payload = {
         "chain": normalize_chain(candidate.token.chain).value,
@@ -65,7 +73,9 @@ def _discovery_observation(
         "discovery_source": candidate.provenance.provider,
         "source_id": candidate.source_id,
         "live_shadow": True,
-        "evidence_class": evidence_class,
+        "evidence_class": evidence_origin,
+        EVIDENCE_ORIGIN_FIELD: evidence_origin,
+        COLLECTION_MODE_FIELD: collection_mode,
     }
     return Observation(
         kind="candidate.discovery",
@@ -151,13 +161,20 @@ class CandidateDiscoveryCollector:
         checkpoint_key: str = "candidate-discovery-live-shadow",
         max_pages: int = 1,
         evidence_class: str = "LIVE_SHADOW",
+        evidence_origin: str | None = None,
+        collection_mode: str = "LIVE_SHADOW",
     ) -> DiscoveryCollectionReport:
         if not isinstance(request, DiscoveryRequest):
             raise TypeError("request must be a DiscoveryRequest")
         provider = require_text(getattr(source, "provider_name", ""), "provider", max_length=128)
         if not 1 <= max_pages <= 100:
             raise ValueError("max_pages must be between 1 and 100")
-        normalized_class = require_text(evidence_class, "evidence_class", max_length=32).upper()
+        normalized_origin = require_text(
+            evidence_origin or evidence_class,
+            "evidence_origin",
+            max_length=32,
+        ).upper()
+        normalized_mode = require_text(collection_mode, "collection_mode", max_length=32).upper()
         cursor = request.cursor
         resumed_from_cursor = None
         if checkpoint_store is not None:
@@ -186,7 +203,11 @@ class CandidateDiscoveryCollector:
 
             next_cursor = _cursor(source)
             if checkpoint_store is not None:
-                await checkpoint_store.save(checkpoint_key, next_cursor)
+                await checkpoint_store.save(
+                    checkpoint_key,
+                    next_cursor,
+                    expected_cursor=cursor,
+                )
             if next_cursor is None:
                 break
             if next_cursor == cursor:
@@ -210,7 +231,8 @@ class CandidateDiscoveryCollector:
                 _discovery_observation(
                     candidate,
                     candidate_id,
-                    evidence_class=normalized_class,
+                    evidence_origin=normalized_origin,
+                    collection_mode=normalized_mode,
                 )
             )
             persisted_observation_count += 1
@@ -232,7 +254,9 @@ class CandidateDiscoveryCollector:
                     raise DiscoveryCollectionError("source returned a non-normalized observation")
                 payload = dict(observation.normalized_payload)
                 payload.setdefault("live_shadow", True)
-                payload.setdefault("evidence_class", normalized_class)
+                payload["evidence_class"] = normalized_origin
+                payload[EVIDENCE_ORIGIN_FIELD] = normalized_origin
+                payload[COLLECTION_MODE_FIELD] = normalized_mode
                 normalized = replace(
                     observation,
                     candidate_id=candidate_id,

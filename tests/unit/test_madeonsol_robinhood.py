@@ -347,7 +347,12 @@ def _current_upstream_payload(path: str) -> dict[str, object]:
     raise AssertionError(path)
 
 
-def _adapter(handler, *, max_concurrency: int = 4) -> MadeOnSolRobinhoodAdapter:
+def _adapter(
+    handler,
+    *,
+    max_concurrency: int = 4,
+    clock=lambda: NOW,
+) -> MadeOnSolRobinhoodAdapter:
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return MadeOnSolRobinhoodAdapter(
         MADEONSOL_DEFAULT_BASE_URL,
@@ -357,7 +362,7 @@ def _adapter(handler, *, max_concurrency: int = 4) -> MadeOnSolRobinhoodAdapter:
             provider_name=MADEONSOL_PROVIDER,
             retry_policy=RetryPolicy(max_attempts=1),
         ),
-        clock=lambda: NOW,
+        clock=clock,
         max_concurrency=max_concurrency,
     )
 
@@ -473,6 +478,54 @@ def test_adapter_maps_current_upstream_nested_response_shapes() -> None:
     assert lp_events["adds_persisted"] is False
     assert lp_events["lp_events"][0]["event_type"] == "remove"
     assert lp_events["lp_events"][0]["provider_is_token_deployer"] is True
+
+
+def test_dynamic_snapshot_source_identity_includes_observation_time() -> None:
+    current_time = NOW
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_payload(request.url.path))
+
+    adapter = _adapter(handler, clock=lambda: current_time)
+    try:
+        first = asyncio.run(adapter.enrich(_request()))
+        current_time = NOW.replace(minute=13)
+        second = asyncio.run(adapter.enrich(_request()))
+    finally:
+        asyncio.run(adapter.aclose())
+
+    first_snapshot = next(item for item in first if item.kind == "market.snapshot")
+    second_snapshot = next(item for item in second if item.kind == "market.snapshot")
+    assert first_snapshot.provenance.source_id != second_snapshot.provenance.source_id
+
+
+def test_lp_event_snapshot_identity_changes_when_a_new_event_is_added() -> None:
+    adapter = _adapter(lambda _: httpx.Response(200, json={}))
+    first_event = {
+        "event": "remove",
+        "pool": "0x" + "5" * 40,
+        "tx_hash": TX_HASH,
+        "log_index": 0,
+        "block_time": "2026-09-12T11:58:00Z",
+    }
+    second_event = {
+        "event": "add",
+        "pool": "0x" + "5" * 40,
+        "tx_hash": "0x" + "8" * 64,
+        "log_index": 0,
+        "block_time": "2026-09-12T11:59:00Z",
+    }
+    try:
+        first = adapter._normalize_lp_events(  # noqa: SLF001 - parser identity contract
+            {"events": [first_event]}, TOKEN, "/lp-events", NOW
+        )
+        second = adapter._normalize_lp_events(  # noqa: SLF001 - parser identity contract
+            {"events": [first_event, second_event]}, TOKEN, "/lp-events", NOW
+        )
+    finally:
+        asyncio.run(adapter.aclose())
+
+    assert first.provenance.source_id != second.provenance.source_id
 
 
 def test_adapter_uses_canonical_discovery_for_first_touches_and_hot_tokens() -> None:

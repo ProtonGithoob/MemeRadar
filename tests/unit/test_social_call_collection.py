@@ -77,13 +77,21 @@ class _CheckpointStore:
     def __init__(self, cursor: str | None = None) -> None:
         self.cursor = cursor
         self.saved: list[str | None] = []
+        self.expected: list[str | None | object] = []
 
     async def load(self, _key: str) -> str | None:
         return self.cursor
 
-    async def save(self, _key: str, cursor: str | None) -> object:
+    async def save(
+        self,
+        _key: str,
+        cursor: str | None,
+        *,
+        expected_cursor: str | None | object = None,
+    ) -> object:
         self.cursor = cursor
         self.saved.append(cursor)
+        self.expected.append(expected_cursor)
         return cursor
 
 
@@ -194,3 +202,4 @@ def test_historical_backfill_resumes_from_checkpoint_and_reports_all_cohorts() -
     assert report.resumed_from_cursor == "cursor-1"
     assert report.cohort_counts == {"extreme_winner": 1, "rug": 1}
     assert checkpoint.saved == [None]
+    assert checkpoint.expected == ["cursor-1"]

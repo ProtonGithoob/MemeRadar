@@ -50,7 +50,7 @@ def test_readiness_projection_exposes_gates_without_changing_protected_modes() -
         "reason_codes": [
             "MADEONSOL_REAL_OBSERVATIONS_REQUIRED",
             "MADEONSOL_TOKEN_SAMPLES_REQUIRED",
-            "MADEONSOL_LABELED_OUTCOMES_REQUIRED",
+            "MADEONSOL_LABELED_OUTCOMES_UNAVAILABLE",
         ],
         "real_observation_count": 0,
         "unique_robinhood_token_count": 0,
@@ -61,10 +61,10 @@ def test_readiness_projection_exposes_gates_without_changing_protected_modes() -
         "bundle_lp_security_observation_count": 0,
         "first_real_observation": None,
         "latest_real_observation": None,
-        "rate_limit_count": 0,
-        "error_count": 0,
-        "labeled_winner_count": 0,
-        "labeled_rug_count": 0,
+        "rate_limit_count": None,
+        "error_count": None,
+        "labeled_winner_count": None,
+        "labeled_rug_count": None,
     }
     assert body["protected_modes"] == {
         "analysis_only": True,
@@ -108,3 +108,47 @@ def test_readiness_api_reuses_persisted_evidence_class_not_shadow_presence() -> 
     assert body["real_observation_count"] == 1
     assert body["unique_robinhood_token_count"] == 1
     assert body["status"] == "INSUFFICIENT_SAMPLES"
+
+
+def test_real_external_origin_collected_in_live_shadow_counts_as_real() -> None:
+    base = Observation(
+        kind="market.snapshot",
+        provenance=Provenance(
+            provider="madeonsol-robinhood",
+            source_id="madeonsol:token:live-shadow",
+            observed_at=NOW,
+            parser_version="madeonsol-robinhood-v1",
+        ),
+        occurred_at=NOW,
+        observed_at=NOW,
+        ingested_at=NOW,
+        quality_state=QualityState.FRESH,
+        normalized_payload={
+            "token_address": "0x" + "2" * 40,
+            "evidence_class": "LIVE_SHADOW",
+            "evidence_origin": "REAL_EXTERNAL",
+            "collection_mode": "LIVE_SHADOW",
+        },
+    )
+    fixture = replace(
+        base,
+        provenance=Provenance(
+            provider="madeonsol-robinhood",
+            source_id="fixture:token:live-shadow",
+            observed_at=NOW,
+            parser_version="fixture-v1",
+        ),
+        normalized_payload={
+            "token_address": "0x" + "3" * 40,
+            "evidence_class": "LIVE_SHADOW",
+            "evidence_origin": "FIXTURE",
+            "collection_mode": "LIVE_SHADOW",
+        },
+    )
+    service = InMemoryReadQueryService(madeonsol_observations=(base, fixture))
+    client = TestClient(create_app(Settings.from_env({}), read_service=service))
+
+    body = client.get("/v1/readiness").json()["alpha_validation"]
+
+    assert body["real_observation_count"] == 1
+    assert body["unique_robinhood_token_count"] == 1

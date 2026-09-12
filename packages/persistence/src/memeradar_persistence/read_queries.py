@@ -11,14 +11,20 @@ from uuid import UUID
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from memeradar_application.chain_opportunity import ChainOpportunitySnapshot
 from memeradar_application.creator_graph import CreatorOutcomeGraph
 from memeradar_application.event_time import event_time_quality
 from memeradar_application.exit_engine import ExitEvaluation
-from memeradar_application.historical_dataset import MadeOnSolReadinessReport
+from memeradar_application.historical_dataset import (
+    EVIDENCE_ORIGIN_FIELD,
+    MADEONSOL_REAL_EVIDENCE_CLASS,
+    MadeOnSolReadinessReport,
+)
 from memeradar_application.holder_graph import HolderGraphAnalyzer, InsiderAllocationAnalyzer
 from memeradar_application.launch_lifecycle import GraduationAwareRouteAnalyzer, _token_matches
+from memeradar_application.provider_metadata import provider_metadata
 from memeradar_application.read_api import (
     AuditEventView,
     AuditQuery,
@@ -44,6 +50,7 @@ from memeradar_application.read_api import (
     ProvenanceView,
     ProviderHealthQuery,
     ProviderHealthView,
+    ReadProviderHealthState,
     ReadQueryPort,
     ShortestPathQuery,
     SocialCallQuery,
@@ -612,6 +619,23 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         )
         self._engine = engine
         self._clock = clock or (lambda: datetime.now(UTC))
+        catalog_provider_health = list(provider_health)
+        configured_health_keys = {
+            (value.provider, value.capability) for value in catalog_provider_health
+        }
+        madeonsol_metadata = provider_metadata("madeonsol-robinhood", "")
+        checked_at = ensure_utc(self._clock(), "provider health read")
+        for capability in madeonsol_metadata.capabilities:
+            key = ("madeonsol-robinhood", capability)
+            if key not in configured_health_keys:
+                catalog_provider_health.append(
+                    ProviderHealthView(
+                        provider=key[0],
+                        capability=key[1],
+                        state=ReadProviderHealthState.UNKNOWN,
+                        checked_at=checked_at,
+                    )
+                )
         self._catalog = InMemoryReadQueryService(
             early_radar=early_radar,
             chain_opportunities=chain_opportunities,
@@ -619,7 +643,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             caller_profiles=caller_profiles,
             social_calls=social_calls,
             caller_convergences=caller_convergences,
-            provider_health=provider_health,
+            provider_health=catalog_provider_health,
             audit_events=audit_events,
             config_versions=config_versions,
             clock=self._clock,
@@ -696,33 +720,113 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
     async def get_madeonsol_readiness(self) -> MadeOnSolReadinessReport:
         checked_at = ensure_utc(self._clock(), "read_at")
         async with self._session_factory() as session:
-            rows = (
-                await session.scalars(
-                    select(ObservationRow)
-                    .where(
-                        ObservationRow.provider == "madeonsol-robinhood",
-                        ObservationRow.observed_at <= checked_at,
-                        ObservationRow.ingested_at <= checked_at,
-                        or_(
-                            ObservationRow.occurred_at <= checked_at,
-                            ObservationRow.occurred_at.is_(None),
-                        ),
+            evidence_origin = ObservationRow.normalized_payload[EVIDENCE_ORIGIN_FIELD].as_string()
+            legacy_evidence_class = ObservationRow.normalized_payload["evidence_class"].as_string()
+            real_filter = or_(
+                evidence_origin == MADEONSOL_REAL_EVIDENCE_CLASS,
+                and_(
+                    evidence_origin.is_(None),
+                    legacy_evidence_class == MADEONSOL_REAL_EVIDENCE_CLASS,
+                ),
+            )
+            base_filters = (
+                ObservationRow.provider == "madeonsol-robinhood",
+                ObservationRow.observed_at <= checked_at,
+                ObservationRow.ingested_at <= checked_at,
+                or_(
+                    ObservationRow.occurred_at <= checked_at,
+                    ObservationRow.occurred_at.is_(None),
+                ),
+                real_filter,
+            )
+            token_address = ObservationRow.normalized_payload["token_address"].as_string()
+            aggregate = await session.execute(
+                select(
+                    func.count(ObservationRow.id),
+                    func.count(func.distinct(func.lower(token_address))),
+                    func.min(
+                        func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at)
+                    ),
+                    func.max(
+                        func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at)
+                    ),
+                ).where(*base_filters)
+            )
+            real_count, token_count, first_seen, latest_seen = aggregate.one()
+
+            async def count_matching(*conditions: ColumnElement[bool]) -> int:
+                result = await session.execute(
+                    select(func.count(ObservationRow.id)).where(
+                        *base_filters,
+                        *conditions,
                     )
-                    .order_by(
-                        func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at),
-                        ObservationRow.observed_at,
-                        ObservationRow.id,
-                    )
-                    .limit(MAX_STORAGE_ROWS)
                 )
-            ).all()
-            observations: list[Observation] = []
-            for row in rows:
-                try:
-                    observations.append(_observation_from_row(row))
-                except (TypeError, ValueError):
-                    continue
-        return MadeOnSolReadinessReport.from_persisted_observations(tuple(observations))
+                return int(result.scalar_one() or 0)
+
+            smart_wallet_count = await count_matching(ObservationRow.kind.like("wallet.%"))
+            deployer_count = await count_matching(
+                or_(
+                    ObservationRow.kind.like("creator.%"),
+                    ObservationRow.normalized_payload["deployer_address"].as_string().is_not(None),
+                )
+            )
+            holder_count = await count_matching(ObservationRow.kind == "market.holder_data")
+            bundle_security_lp_count = await count_matching(
+                or_(
+                    ObservationRow.kind.like("security.%"),
+                    ObservationRow.kind == "liquidity.lp_events",
+                )
+            )
+            caller_count = await count_matching(
+                ObservationRow.kind == "social.caller_consensus"
+            )
+            health_filters = (
+                ObservationRow.provider == "madeonsol-robinhood",
+                ObservationRow.kind == "provider.collection_health",
+                ObservationRow.observed_at <= checked_at,
+                ObservationRow.ingested_at <= checked_at,
+                or_(
+                    ObservationRow.occurred_at <= checked_at,
+                    ObservationRow.occurred_at.is_(None),
+                ),
+            )
+            health_count_result = await session.execute(
+                select(func.count(ObservationRow.id)).where(*health_filters)
+            )
+            health_count = int(health_count_result.scalar_one() or 0)
+            rate_limit_result = await session.execute(
+                select(func.count(ObservationRow.id)).where(
+                    *health_filters,
+                    ObservationRow.normalized_payload["rate_limited"].as_boolean() == True,  # noqa: E712
+                )
+            )
+            error_result = await session.execute(
+                select(func.count(ObservationRow.id)).where(
+                    *health_filters,
+                    ObservationRow.normalized_payload["success"].as_boolean() == False,  # noqa: E712
+                )
+            )
+
+        def iso(value: object) -> str | None:
+            if value is None:
+                return None
+            return ensure_utc(cast(datetime, value), "readiness observation time").isoformat()
+
+        return MadeOnSolReadinessReport.from_counts(
+            real_observation_count=int(real_count or 0),
+            unique_robinhood_token_count=int(token_count or 0),
+            caller_kol_observation_count=caller_count,
+            smart_wallet_observation_count=smart_wallet_count,
+            deployer_observation_count=deployer_count,
+            holder_distribution_observation_count=holder_count,
+            bundle_lp_security_observation_count=bundle_security_lp_count,
+            first_real_observation=iso(first_seen),
+            latest_real_observation=iso(latest_seen),
+            rate_limit_count=(
+                int(rate_limit_result.scalar_one() or 0) if health_count else None
+            ),
+            error_count=int(error_result.scalar_one() or 0) if health_count else None,
+        )
 
     async def _launch_lifecycle_for_tokens(
         self,
@@ -1319,7 +1423,58 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         return await self._catalog.get_shortest_path(query)
 
     async def list_provider_health(self, query: ProviderHealthQuery) -> Page[ProviderHealthView]:
-        return await self._catalog.list_provider_health(query)
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(ObservationRow)
+                    .where(ObservationRow.kind == "provider.collection_health")
+                    .order_by(ObservationRow.observed_at.desc(), ObservationRow.id.desc())
+                    .limit(MAX_STORAGE_ROWS)
+                )
+            ).all()
+        latest: dict[tuple[str, str], ProviderHealthView] = {}
+        for row in rows:
+            payload = row.normalized_payload
+            provider = row.provider
+            capability = payload.get("capability")
+            if not isinstance(capability, str) or not capability:
+                continue
+            key = (provider, capability)
+            if key in latest:
+                continue
+            raw_state = payload.get("state")
+            state = (
+                raw_state
+                if isinstance(raw_state, str)
+                and raw_state in {item.value for item in ReadProviderHealthState}
+                else ReadProviderHealthState.UNKNOWN
+            )
+            raw_error = payload.get("error_class")
+            error_class = raw_error if isinstance(raw_error, str) else None
+            raw_latency = payload.get("latency_ms")
+            latency_ms = raw_latency if isinstance(raw_latency, int | float) else None
+            raw_failures = payload.get("consecutive_failures")
+            consecutive_failures = raw_failures if isinstance(raw_failures, int) else 0
+            raw_quota = payload.get("quota")
+            quota = raw_quota if isinstance(raw_quota, Mapping) else {}
+            latest[key] = ProviderHealthView(
+                provider=provider,
+                capability=capability,
+                state=state,
+                checked_at=row.observed_at,
+                latency_ms=latency_ms,
+                quota=quota,
+                freshness_state=_quality_state(row.quality_state),
+                error_class=error_class,
+                consecutive_failures=consecutive_failures,
+            )
+        values = {
+            (value.provider, value.capability): value for value in self._catalog.provider_health
+        }
+        values.update(latest)
+        return await InMemoryReadQueryService(
+            provider_health=tuple(values.values())
+        ).list_provider_health(query)
 
     async def list_audit_events(self, query: AuditQuery | None = None) -> Page[AuditEventView]:
         normalized_query = AuditQuery() if query is None else query

@@ -84,23 +84,29 @@ def _load_madeonsol_inventory(input_path: Path | None) -> MadeOnSolReadinessRepo
         else record.observation
         for record in records
     )
-    raw_labels = payload.get("labels", {})
-    if not isinstance(raw_labels, dict) or not all(
+    raw_labels = payload.get("labels")
+    labels: Mapping[str, str] | None
+    if raw_labels is None:
+        labels = None
+    elif isinstance(raw_labels, dict) and all(
         isinstance(key, str) and isinstance(value, str) for key, value in raw_labels.items()
     ):
+        labels = raw_labels
+    else:
         raise ValueError("labels must be a string mapping")
-    rate_limit_count = payload.get("rate_limit_count", 0)
-    error_count = payload.get("error_count", 0)
+    rate_limit_count = payload.get("rate_limit_count")
+    error_count = payload.get("error_count")
     if any(
-        not isinstance(value, int) or isinstance(value, bool) or value < 0
+        value is not None
+        and (not isinstance(value, int) or isinstance(value, bool) or value < 0)
         for value in (rate_limit_count, error_count)
     ):
-        raise ValueError("provider counters must be non-negative integers")
+        raise ValueError("provider counters must be non-negative integers or null")
     return MadeOnSolReadinessReport.from_persisted_observations(
         observations,
-        labels=raw_labels,
-        rate_limit_count=cast(int, rate_limit_count),
-        error_count=cast(int, error_count),
+        labels=labels,
+        rate_limit_count=cast(int | None, rate_limit_count),
+        error_count=cast(int | None, error_count),
     )
 
 

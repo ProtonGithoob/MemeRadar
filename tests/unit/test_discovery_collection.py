@@ -91,8 +91,15 @@ class MemorySink:
         del key
         return self.cursor
 
-    async def save(self, key: str, cursor: str | None) -> None:
+    async def save(
+        self,
+        key: str,
+        cursor: str | None,
+        *,
+        expected_cursor: str | None | object = None,
+    ) -> None:
         del key
+        del expected_cursor
         self.cursor = cursor
 
 

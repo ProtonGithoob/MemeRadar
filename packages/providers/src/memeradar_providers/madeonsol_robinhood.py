@@ -56,6 +56,18 @@ MADEONSOL_PROVIDER = "madeonsol-robinhood"
 MADEONSOL_DEFAULT_BASE_URL = "https://madeonsol.com/api/v1"
 MADEONSOL_PARSER_VERSION = "madeonsol-robinhood-v1"
 MADEONSOL_CHAIN_ID = 4663
+_DYNAMIC_SNAPSHOT_KINDS = frozenset(
+    {
+        "market.snapshot",
+        "social.caller_consensus",
+        "wallet.buyer_quality",
+        "security.bundle",
+        "wallet.top_traders",
+        "market.trade_data",
+        "security.provider_risk",
+        "market.holder_data",
+    }
+)
 _MAX_ITEMS = 256
 _CREDENTIAL_QUERY_KEYS = frozenset(
     {
@@ -513,13 +525,14 @@ class MadeOnSolRobinhoodAdapter(CandidateDiscoveryPort, OnChainPort):
         *,
         event_time: datetime | None,
         observed_at: datetime,
+        source_identity: str | None = None,
     ) -> Observation:
         normalized = dict(payload)
         normalized.setdefault("chain", Chain.ROBINHOOD.value)
         normalized.setdefault("event_time_quality", _event_quality(event_time))
         normalized.setdefault("live_shadow", True)
         quality = _quality_state(event_time, observed_at, self._evidence_ttl)
-        observation_identity = (
+        observation_identity = source_identity or (
             event_time.isoformat() if event_time is not None else observed_at.isoformat()
         )
         return Observation(
@@ -1154,18 +1167,32 @@ class MadeOnSolRobinhoodAdapter(CandidateDiscoveryPort, OnChainPort):
         rows = _rows(data, "lp_events", "events", "lp_events")
         events: list[dict[str, object]] = []
         event_times: list[datetime] = []
+        event_identities: list[str] = []
         for row in rows:
             event_time, event_text = _optional_timestamp_text(
                 row, "occurred_at", "occurred_at", "event_time", "block_time"
             )
             if event_time is not None:
                 event_times.append(event_time)
+            transaction_hash = _optional_text(
+                row, "transaction_hash", "tx_hash", "transaction_hash"
+            )
+            log_index = _optional_count(row, "log_index")
+            fallback_identity = (
+                "unknown"
+                if event_time is None
+                else event_time.isoformat()
+            )
+            event_identities.append(
+                f"{transaction_hash}:{'' if log_index is None else log_index}"
+                if transaction_hash is not None
+                else f"{fallback_identity}:{len(event_identities)}"
+            )
             events.append(
                 {
                     "event_type": _optional_text(row, "event_type", "event_type", "type", "event"),
-                    "transaction_hash": _optional_text(
-                        row, "transaction_hash", "tx_hash", "transaction_hash"
-                    ),
+                    "transaction_hash": transaction_hash,
+                    "log_index": log_index,
                     "pool_address": _optional_address(row, "pool_address", "pool_address", "pool"),
                     "provider_address": _optional_address(
                         row, "provider_address", "provider_address", "provider"
@@ -1203,7 +1230,17 @@ class MadeOnSolRobinhoodAdapter(CandidateDiscoveryPort, OnChainPort):
             "event_time": event_time.isoformat() if event_time is not None else None,
         }
         return self._observation(
-            "liquidity.lp_events", path, payload, event_time=event_time, observed_at=observed_at
+            "liquidity.lp_events",
+            path,
+            payload,
+            event_time=event_time,
+            observed_at=observed_at,
+            source_identity=(
+                "lp-events:"
+                + hashlib.sha256("|".join(sorted(event_identities)).encode()).hexdigest()
+                if event_identities
+                else None
+            ),
         )
 
     def _normalize(
@@ -1220,7 +1257,16 @@ class MadeOnSolRobinhoodAdapter(CandidateDiscoveryPort, OnChainPort):
             "market.holder_data": self._normalize_holders,
             "liquidity.lp_events": self._normalize_lp_events,
         }
-        return normalizers[kind](data, address, path, observed_at)
+        observation = normalizers[kind](data, address, path, observed_at)
+        if kind not in _DYNAMIC_SNAPSHOT_KINDS:
+            return observation
+        return replace(
+            observation,
+            provenance=replace(
+                observation.provenance,
+                source_id=f"{self.provider_name}:{path}:{observed_at.isoformat()}",
+            ),
+        )
 
     async def enrich(self, request: OnChainRequest) -> Sequence[Observation]:
         if not isinstance(request, OnChainRequest):

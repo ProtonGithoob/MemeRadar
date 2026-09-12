@@ -13,11 +13,13 @@ from memeradar_application.alert_pipeline import AlertDeliveryService, AlertPoli
 from memeradar_application.config import Settings
 from memeradar_application.discovery_collection import (
     CandidateDiscoveryCollector,
+    DiscoveryCollectionReport,
 )
 from memeradar_application.early_alpha_alert import EarlyAlphaAlertRenderer
 from memeradar_application.event_processing import EventDispatcher, OutboxProcessor, OutboxWorker
+from memeradar_application.historical_dataset import MADEONSOL_REAL_EVIDENCE_CLASS
 from memeradar_application.provider_contracts import DiscoveryRequest, ProviderRequestContext
-from memeradar_domain import EventEnvelope
+from memeradar_domain import EventEnvelope, Observation, Provenance, QualityState
 from memeradar_persistence import (
     SqlAlchemyAlertStore,
     SqlAlchemyOutboxStore,
@@ -26,6 +28,13 @@ from memeradar_persistence import (
 )
 from memeradar_providers.composition import build_provider_bundle
 from memeradar_providers.telegram import TelegramNotificationAdapter
+from memeradar_providers.transport import (
+    ProviderAuthenticationError,
+    ProviderRateLimitedError,
+    ProviderSchemaError,
+    ProviderTimeoutError,
+    ProviderUnavailableError,
+)
 
 LOGGER = logging.getLogger(__name__)
 Sleep = Callable[[float], Awaitable[None]]
@@ -80,6 +89,63 @@ def _madeonsol_shadow_is_configured(settings: Settings) -> bool:
     )
 
 
+def _madeonsol_health_state(error: BaseException) -> tuple[str, bool]:
+    if isinstance(error, ProviderRateLimitedError):
+        return "DEGRADED", True
+    if isinstance(error, ProviderSchemaError):
+        return "DEGRADED", False
+    if isinstance(
+        error,
+        ProviderTimeoutError | ProviderUnavailableError | ProviderAuthenticationError,
+    ):
+        return "DOWN", False
+    return "DEGRADED", False
+
+
+def _madeonsol_collection_health(
+    *,
+    context: ProviderRequestContext,
+    observed_at: datetime,
+    report: DiscoveryCollectionReport | None = None,
+    error: BaseException | None = None,
+) -> Observation:
+    if report is None and error is None:
+        raise ValueError("health observation requires a report or error")
+    success = report is not None
+    if success:
+        state, rate_limited = "HEALTHY", False
+    else:
+        assert error is not None
+        state, rate_limited = _madeonsol_health_state(error)
+    payload: dict[str, object] = {
+        "provider": "madeonsol-robinhood",
+        "capability": "candidate_discovery",
+        "state": state,
+        "success": success,
+        "rate_limited": rate_limited,
+        "collection_mode": "LIVE_SHADOW",
+        "items_fetched": 0 if report is None else report.fetched_count,
+        "items_persisted": 0 if report is None else report.persisted_observation_count,
+        "status": "PROVIDER_ERROR" if report is None else report.status,
+    }
+    if error is not None:
+        payload["error_class"] = type(error).__name__
+    return Observation(
+        kind="provider.collection_health",
+        provenance=Provenance(
+            provider="madeonsol-robinhood",
+            source_id=f"provider-health:candidate-discovery:{context.correlation_id}",
+            observed_at=observed_at,
+            parser_version="worker-collection-health-v1",
+        ),
+        occurred_at=context.requested_at,
+        observed_at=observed_at,
+        ingested_at=observed_at,
+        quality_state=QualityState.FRESH if success else QualityState.UNKNOWN,
+        normalized_payload=payload,
+    )
+
+
 async def _run_madeonsol_shadow(
     stop_event: asyncio.Event,
     settings: Settings,
@@ -122,7 +188,16 @@ async def _run_madeonsol_shadow(
                         checkpoint_store=unit_of_work.checkpoints,
                         checkpoint_key="madeonsol-robinhood:discovery",
                         max_pages=1,
-                        evidence_class="LIVE_SHADOW",
+                        evidence_class=MADEONSOL_REAL_EVIDENCE_CLASS,
+                        evidence_origin=MADEONSOL_REAL_EVIDENCE_CLASS,
+                        collection_mode="LIVE_SHADOW",
+                    )
+                    await unit_of_work.observations.add(
+                        _madeonsol_collection_health(
+                            context=context,
+                            observed_at=datetime.now(UTC),
+                            report=report,
+                        )
                     )
                     await unit_of_work.commit()
                 LOGGER.info(
@@ -134,6 +209,21 @@ async def _run_madeonsol_shadow(
                     },
                 )
             except Exception as error:  # noqa: BLE001 - isolate optional provider failures.
+                try:
+                    async with SqlAlchemyUnitOfWork(engine) as health_uow:
+                        await health_uow.observations.add(
+                            _madeonsol_collection_health(
+                                context=context,
+                                observed_at=datetime.now(UTC),
+                                error=error,
+                            )
+                        )
+                        await health_uow.commit()
+                except Exception as health_error:  # noqa: BLE001 - telemetry cannot stop worker.
+                    LOGGER.warning(
+                        "madeonsol_shadow_health_persist_failed",
+                        extra={"error_class": type(health_error).__name__},
+                    )
                 LOGGER.warning(
                     "madeonsol_shadow_collection_failed",
                     extra={"error_class": type(error).__name__},

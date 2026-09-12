@@ -41,7 +41,13 @@ class SocialCallSink(Protocol):
 class SocialCallCheckpointStore(Protocol):
     async def load(self, key: str) -> str | None: ...
 
-    async def save(self, key: str, cursor: str | None) -> object: ...
+    async def save(
+        self,
+        key: str,
+        cursor: str | None,
+        *,
+        expected_cursor: str | None | object = None,
+    ) -> object: ...
 
 
 def _identity(value: str, field: str) -> str:
@@ -193,6 +199,7 @@ class SocialCallCollector:
             next_cursor = source.last_next_cursor
             if next_cursor is not None:
                 next_cursor = require_text(next_cursor, "next_cursor", max_length=512)
+            expected_cursor = cursor
             if persist_each_page:
                 for call in unique.values():
                     if persisted.get(call.canonical_id) != call:
@@ -200,13 +207,21 @@ class SocialCallCollector:
                         persisted[call.canonical_id] = call
             if normalized_mode is CollectionMode.LIVE or next_cursor is None:
                 if checkpoint_store is not None:
-                    await checkpoint_store.save(checkpoint_key, next_cursor)
+                    await checkpoint_store.save(
+                        checkpoint_key,
+                        next_cursor,
+                        expected_cursor=expected_cursor,
+                    )
                 break
             if next_cursor == cursor:
                 raise SocialCallCollectionError("source cursor did not advance")
             cursor = next_cursor
             if checkpoint_store is not None:
-                await checkpoint_store.save(checkpoint_key, cursor)
+                await checkpoint_store.save(
+                    checkpoint_key,
+                    cursor,
+                    expected_cursor=expected_cursor,
+                )
 
         calls = tuple(
             sorted(

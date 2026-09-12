@@ -29,6 +29,10 @@ function alphaTimestamp(value: string | null): string {
   return value === null ? "UNKNOWN" : new Date(value).toISOString();
 }
 
+function alphaCount(value: number | null): string {
+  return value === null ? "UNKNOWN" : String(value);
+}
+
 export function ReadinessDashboard({ result }: { result: ReadResult<ReadinessRecord> }) {
   if (!result.ok) {
     return (
@@ -64,12 +68,12 @@ export function ReadinessDashboard({ result }: { result: ReadResult<ReadinessRec
           <div><span className="card-label">DEPLOYER OBSERVATIONS</span><strong>{data.alphaValidation.deployerObservationCount}</strong></div>
           <div><span className="card-label">HOLDER / DISTRIBUTION OBSERVATIONS</span><strong>{data.alphaValidation.holderDistributionObservationCount}</strong></div>
           <div><span className="card-label">BUNDLE / LP / SECURITY OBSERVATIONS</span><strong>{data.alphaValidation.bundleLpSecurityObservationCount}</strong></div>
-          <div><span className="card-label">LABELED WINNERS</span><strong>{data.alphaValidation.labeledWinnerCount}</strong></div>
-          <div><span className="card-label">LABELED RUGS / FAILURES</span><strong>{data.alphaValidation.labeledRugCount}</strong></div>
+          <div><span className="card-label">LABELED WINNERS</span><strong>{alphaCount(data.alphaValidation.labeledWinnerCount)}</strong></div>
+          <div><span className="card-label">LABELED RUGS / FAILURES</span><strong>{alphaCount(data.alphaValidation.labeledRugCount)}</strong></div>
           <div><span className="card-label">FIRST REAL OBSERVATION</span><strong>{alphaTimestamp(data.alphaValidation.firstRealObservation)}</strong></div>
           <div><span className="card-label">LATEST REAL OBSERVATION</span><strong>{alphaTimestamp(data.alphaValidation.latestRealObservation)}</strong></div>
-          <div><span className="card-label">RATE LIMITS</span><strong>{data.alphaValidation.rateLimitCount}</strong></div>
-          <div><span className="card-label">PROVIDER ERRORS</span><strong>{data.alphaValidation.errorCount}</strong></div>
+          <div><span className="card-label">RATE LIMITS</span><strong>{alphaCount(data.alphaValidation.rateLimitCount)}</strong></div>
+          <div><span className="card-label">PROVIDER ERRORS</span><strong>{alphaCount(data.alphaValidation.errorCount)}</strong></div>
         </div>
         <small>Reasons: {data.alphaValidation.reasonCodes.join(" · ") || "NONE RECORDED"}</small>
       </section>

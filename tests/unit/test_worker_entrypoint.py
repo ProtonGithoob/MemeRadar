@@ -5,12 +5,19 @@ from uuid import UUID
 
 import memeradar_worker.main as worker_main
 from memeradar_application.config import Settings
+from memeradar_application.discovery_collection import DiscoveryCollectionReport
 from memeradar_application.provider_contracts import (
     DiscoveryCandidate,
     OnChainRequest,
+    ProviderRequestContext,
 )
 from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
-from memeradar_worker.main import _madeonsol_shadow_is_configured, run_worker
+from memeradar_providers.transport import ProviderRateLimitedError
+from memeradar_worker.main import (
+    _madeonsol_collection_health,
+    _madeonsol_shadow_is_configured,
+    run_worker,
+)
 
 NOW = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
 TOKEN = TokenIdentity(
@@ -41,6 +48,37 @@ def test_worker_package_exposes_a_module_entrypoint():
     from memeradar_worker import __main__ as entrypoint
 
     assert callable(entrypoint.main)
+
+
+def test_madeonsol_collection_health_distinguishes_empty_success_from_rate_limit() -> None:
+    context = ProviderRequestContext("health-test", NOW)
+    empty = _madeonsol_collection_health(
+        context=context,
+        observed_at=NOW,
+        report=DiscoveryCollectionReport(
+            provider="madeonsol-robinhood",
+            status="VALID_EMPTY_RESULT",
+            page_count=1,
+            fetched_count=0,
+            unique_candidate_count=0,
+            persisted_observation_count=0,
+            next_cursor=None,
+            resumed_from_cursor=None,
+            completed_at=NOW,
+        ),
+    )
+    limited = _madeonsol_collection_health(
+        context=context,
+        observed_at=NOW,
+        error=ProviderRateLimitedError(1),
+    )
+
+    assert empty.normalized_payload["success"] is True
+    assert empty.normalized_payload["state"] == "HEALTHY"
+    assert empty.normalized_payload["items_fetched"] == 0
+    assert limited.normalized_payload["success"] is False
+    assert limited.normalized_payload["state"] == "DEGRADED"
+    assert limited.normalized_payload["rate_limited"] is True
 
 
 def test_madeonsol_shadow_uses_the_optional_generic_worker_gate() -> None:
@@ -116,8 +154,15 @@ def test_madeonsol_shadow_worker_round_trip_uses_generic_collector(monkeypatch) 
             assert key == "madeonsol-robinhood:discovery"
             return self.cursor
 
-        async def save(self, key: str, cursor: str | None):
+        async def save(
+            self,
+            key: str,
+            cursor: str | None,
+            *,
+            expected_cursor: str | None | object = None,
+        ):
             assert key == "madeonsol-robinhood:discovery"
+            del expected_cursor
             self.cursor = cursor
 
     class UnitOfWork:
@@ -170,11 +215,31 @@ def test_madeonsol_shadow_worker_round_trip_uses_generic_collector(monkeypatch) 
 
     assert UnitOfWork.instance is not None
     assert len(UnitOfWork.instance.candidates.items) == 1
-    assert len(UnitOfWork.instance.observations.items) == 2
+    assert len(UnitOfWork.instance.observations.items) == 3
     assert UnitOfWork.instance.commits == 1
     assert source.discovery_calls == [None]
     assert UnitOfWork.instance.candidates.items[0].discovered_at == NOW - timedelta(minutes=3)
     assert all(
         observation.occurred_at == NOW - timedelta(minutes=3)
         for observation in UnitOfWork.instance.observations.items
+        if observation.kind != "provider.collection_health"
     )
+    assert {
+        observation.normalized_payload["evidence_origin"]
+        for observation in UnitOfWork.instance.observations.items
+        if observation.kind != "provider.collection_health"
+    } == {"REAL_EXTERNAL"}
+    assert {
+        observation.normalized_payload["collection_mode"]
+        for observation in UnitOfWork.instance.observations.items
+        if observation.kind != "provider.collection_health"
+    } == {"LIVE_SHADOW"}
+    health = next(
+        observation
+        for observation in UnitOfWork.instance.observations.items
+        if observation.kind == "provider.collection_health"
+    )
+    assert health.normalized_payload["state"] == "HEALTHY"
+    assert health.normalized_payload["success"] is True
+    assert health.normalized_payload["items_fetched"] == 1
+    assert health.normalized_payload["items_persisted"] == 2

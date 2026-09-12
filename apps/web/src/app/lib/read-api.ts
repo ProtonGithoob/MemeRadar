@@ -637,10 +637,10 @@ export interface AlphaValidationRecord {
   bundleLpSecurityObservationCount: number;
   firstRealObservation: string | null;
   latestRealObservation: string | null;
-  rateLimitCount: number;
-  errorCount: number;
-  labeledWinnerCount: number;
-  labeledRugCount: number;
+  rateLimitCount: number | null;
+  errorCount: number | null;
+  labeledWinnerCount: number | null;
+  labeledRugCount: number | null;
 }
 
 export interface ReadinessRecord {
@@ -2693,18 +2693,18 @@ function parseAlphaValidation(value: unknown): AlphaValidationRecord | null {
   );
   const firstRealObservation = optionalTimestamp(value.first_real_observation);
   const latestRealObservation = optionalTimestamp(value.latest_real_observation);
-  const rateLimitCount = integer(value.rate_limit_count, 0, 1_000_000_000);
-  const errorCount = integer(value.error_count, 0, 1_000_000_000);
-  const labeledWinnerCount = integer(value.labeled_winner_count, 0, 1_000_000_000);
-  const labeledRugCount = integer(value.labeled_rug_count, 0, 1_000_000_000);
+  const rateLimitCount = optionalInteger(value.rate_limit_count, 0, 1_000_000_000);
+  const errorCount = optionalInteger(value.error_count, 0, 1_000_000_000);
+  const labeledWinnerCount = optionalInteger(value.labeled_winner_count, 0, 1_000_000_000);
+  const labeledRugCount = optionalInteger(value.labeled_rug_count, 0, 1_000_000_000);
   if (
     status === null || reasonCodes === null || realObservationCount === null ||
     uniqueRobinhoodTokenCount === null || callerKolObservationCount === null ||
     smartWalletObservationCount === null || deployerObservationCount === null ||
     holderDistributionObservationCount === null || bundleLpSecurityObservationCount === null ||
     firstRealObservation === undefined || latestRealObservation === undefined ||
-    rateLimitCount === null || errorCount === null || labeledWinnerCount === null ||
-    labeledRugCount === null
+    rateLimitCount === undefined || errorCount === undefined ||
+    labeledWinnerCount === undefined || labeledRugCount === undefined
   ) {
     return null;
   }

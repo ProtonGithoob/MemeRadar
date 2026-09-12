@@ -309,6 +309,51 @@ describe("server-side read gateway", () => {
     }
   });
 
+  it("preserves unavailable alpha counters as null instead of measured zero", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({
+      as_of: "2026-09-12T12:00:00.000Z",
+      classification: "NOT_PRODUCTION_READY",
+      gates: [],
+      hosted_ci: {},
+      provider_runtime_blockers: [],
+      protected_modes: {
+        analysis_only: true,
+        paper_trading: true,
+        manual_execution: false,
+        auto_execution: false
+      },
+      live_money: { execution_eligible: false },
+      alpha_validation: {
+        status: "INSUFFICIENT_SAMPLES",
+        reason_codes: ["MADEONSOL_LABELED_OUTCOMES_UNAVAILABLE"],
+        real_observation_count: 0,
+        unique_robinhood_token_count: 0,
+        caller_kol_observation_count: 0,
+        smart_wallet_observation_count: 0,
+        deployer_observation_count: 0,
+        holder_distribution_observation_count: 0,
+        bundle_lp_security_observation_count: 0,
+        first_real_observation: null,
+        latest_real_observation: null,
+        rate_limit_count: null,
+        error_count: null,
+        labeled_winner_count: null,
+        labeled_rug_count: null
+      }
+    })));
+
+    const result = await fetchReadiness();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.alphaValidation.rateLimitCount).toBeNull();
+      expect(result.data.alphaValidation.errorCount).toBeNull();
+      expect(result.data.alphaValidation.labeledWinnerCount).toBeNull();
+      expect(result.data.alphaValidation.labeledRugCount).toBeNull();
+    }
+  });
+
   it("parses backend insider evidence without allowing frontend inference", async () => {
     vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({

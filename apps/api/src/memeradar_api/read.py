@@ -652,10 +652,10 @@ class AlphaValidationResponse(_StrictModel):
     bundle_lp_security_observation_count: int
     first_real_observation: datetime | None = None
     latest_real_observation: datetime | None = None
-    rate_limit_count: int
-    error_count: int
-    labeled_winner_count: int
-    labeled_rug_count: int
+    rate_limit_count: int | None = None
+    error_count: int | None = None
+    labeled_winner_count: int | None = None
+    labeled_rug_count: int | None = None
 
 
 class ReadinessResponse(_StrictModel):

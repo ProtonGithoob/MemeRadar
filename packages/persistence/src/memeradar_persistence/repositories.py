@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import and_, or_, select
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -75,6 +76,13 @@ from .serialization import (
 
 class OutboxLeaseLost(RuntimeError):
     """Raised when a delivery update no longer owns the row lease."""
+
+
+class CheckpointConflict(RuntimeError):
+    """Raised when a worker tries to overwrite a newer collection cursor."""
+
+
+_CHECKPOINT_EXPECTATION_UNSET = object()
 
 
 _CALLER_IDENTITY_NAMESPACE = "https://memeradar.local/caller/"
@@ -155,10 +163,12 @@ def observation_to_row(observation: Observation) -> ObservationRow:
 
 
 def _observation_row_matches(row: ObservationRow, mapped: ObservationRow) -> bool:
+    """Compare immutable source-event content, not later transport timestamps."""
+
     return (
-        row.occurred_at == mapped.occurred_at
-        and row.observed_at == mapped.observed_at
-        and row.ingested_at == mapped.ingested_at
+        row.candidate_id == mapped.candidate_id
+        and row.token_id == mapped.token_id
+        and row.occurred_at == mapped.occurred_at
         and row.parser_version == mapped.parser_version
         and row.quality_state == mapped.quality_state
         and row.normalized_payload == mapped.normalized_payload
@@ -532,24 +542,64 @@ class CollectionCheckpointRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def _ensure_postgres_row(self, key: str) -> None:
+        get_bind = getattr(self._session, "get_bind", None)
+        bind = get_bind() if callable(get_bind) else None
+        dialect = getattr(getattr(bind, "dialect", None), "name", None)
+        if dialect != "postgresql":
+            return
+        await self._session.execute(
+            postgres_insert(CollectionCheckpointRow)
+            .values(
+                id=uuid4(),
+                checkpoint_key=key,
+                cursor=None,
+                updated_at=datetime.now(UTC),
+            )
+            .on_conflict_do_nothing(index_elements=["checkpoint_key"])
+        )
+
     async def load(self, key: str) -> str | None:
         normalized = require_text(key, "checkpoint_key", max_length=256)
+        await self._ensure_postgres_row(normalized)
         row = await self._session.scalar(
             select(CollectionCheckpointRow).where(
                 CollectionCheckpointRow.checkpoint_key == normalized
-            )
+            ).with_for_update()
         )
         return None if row is None else row.cursor
 
-    async def save(self, key: str, cursor: str | None) -> CollectionCheckpointRow:
+    async def save(
+        self,
+        key: str,
+        cursor: str | None,
+        *,
+        expected_cursor: str | None | object = _CHECKPOINT_EXPECTATION_UNSET,
+    ) -> CollectionCheckpointRow:
         normalized = require_text(key, "checkpoint_key", max_length=256)
         if cursor is not None:
             cursor = require_text(cursor, "cursor", max_length=512)
+        if expected_cursor is not _CHECKPOINT_EXPECTATION_UNSET and expected_cursor is not None:
+            if not isinstance(expected_cursor, str):
+                raise TypeError("expected_cursor must be a string or None")
+            expected_cursor = require_text(expected_cursor, "expected_cursor", max_length=512)
         row = await self._session.scalar(
             select(CollectionCheckpointRow).where(
                 CollectionCheckpointRow.checkpoint_key == normalized
-            )
+            ).with_for_update()
         )
+        if row is None:
+            await self._ensure_postgres_row(normalized)
+            row = await self._session.scalar(
+                select(CollectionCheckpointRow)
+                .where(CollectionCheckpointRow.checkpoint_key == normalized)
+                .with_for_update()
+            )
+        if expected_cursor is not _CHECKPOINT_EXPECTATION_UNSET and (
+            row is None and expected_cursor is not None
+            or row is not None and row.cursor != expected_cursor
+        ):
+            raise CheckpointConflict("collection checkpoint changed during collection")
         if row is None:
             row = CollectionCheckpointRow(
                 checkpoint_key=normalized,
@@ -1095,11 +1145,25 @@ class CandidateRepository:
         else:
             if row.token_id != token_row.id:
                 raise ValueError("candidate ID is already bound to another token")
-            row.state = candidate.state.value
-            row.latest_score_id = candidate.latest_score_id
-            row.latest_risk_id = candidate.latest_risk_id
-            row.state_changed_at = candidate.state_changed_at or candidate.discovered_at
-            row.rejection_reason = reason_codes_to_json(candidate.rejection_reason)
+            is_discovery_refresh = (
+                candidate.state is CandidateState.DISCOVERED
+                and not candidate.transitions
+                and candidate.latest_score_id is None
+                and candidate.latest_risk_id is None
+                and not candidate.rejection_reason
+            )
+            if candidate.discovered_at < row.discovered_at:
+                row.discovered_at = candidate.discovered_at
+                row.discovery_source = candidate.discovery_source
+                token_row.first_seen_at = min(token_row.first_seen_at, candidate.discovered_at)
+                if row.state == CandidateState.DISCOVERED.value:
+                    row.state_changed_at = candidate.discovered_at
+            if not is_discovery_refresh:
+                row.state = candidate.state.value
+                row.latest_score_id = candidate.latest_score_id
+                row.latest_risk_id = candidate.latest_risk_id
+                row.state_changed_at = candidate.state_changed_at or candidate.discovered_at
+                row.rejection_reason = reason_codes_to_json(candidate.rejection_reason)
 
         await self._session.flush()
         existing_transitions = {

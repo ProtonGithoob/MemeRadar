@@ -21,6 +21,8 @@ HISTORICAL_DATASET_SCHEMA_VERSION = 1
 HISTORICAL_DATASET_VERSION = "historical-real-dataset-v1"
 HISTORICAL_REAL_EVIDENCE_CLASS = "HISTORICAL_REAL"
 MADEONSOL_REAL_EVIDENCE_CLASS = "REAL_EXTERNAL"
+EVIDENCE_ORIGIN_FIELD = "evidence_origin"
+COLLECTION_MODE_FIELD = "collection_mode"
 HISTORICAL_PARTITION_STRATEGY = "CHRONOLOGICAL_50_25_25"
 DEFAULT_REQUIRED_COHORTS: tuple[str, ...] = (
     "EXTREME_WINNER",
@@ -202,10 +204,10 @@ class MadeOnSolReadinessReport:
     bundle_lp_security_observation_count: int
     first_real_observation: str | None
     latest_real_observation: str | None
-    rate_limit_count: int
-    error_count: int
-    labeled_winner_count: int
-    labeled_rug_count: int
+    rate_limit_count: int | None
+    error_count: int | None
+    labeled_winner_count: int | None
+    labeled_rug_count: int | None
 
     @classmethod
     def from_persisted_observations(
@@ -213,8 +215,8 @@ class MadeOnSolReadinessReport:
         observations: Sequence[Observation],
         *,
         labels: Mapping[str, str] | None = None,
-        rate_limit_count: int = 0,
-        error_count: int = 0,
+        rate_limit_count: int | None = None,
+        error_count: int | None = None,
     ) -> MadeOnSolReadinessReport:
         """Build the operator report from the persisted evidence-class contract."""
 
@@ -223,7 +225,11 @@ class MadeOnSolReadinessReport:
             item
             for item in stored
             if item.provenance.provider == "madeonsol-robinhood"
-            and item.normalized_payload.get("evidence_class") == MADEONSOL_REAL_EVIDENCE_CLASS
+            and item.normalized_payload.get(
+                EVIDENCE_ORIGIN_FIELD,
+                item.normalized_payload.get("evidence_class"),
+            )
+            == MADEONSOL_REAL_EVIDENCE_CLASS
         )
         return cls.from_observations(
             stored,
@@ -240,8 +246,8 @@ class MadeOnSolReadinessReport:
         *,
         real_observations: Sequence[Observation] = (),
         labels: Mapping[str, str] | None = None,
-        rate_limit_count: int = 0,
-        error_count: int = 0,
+        rate_limit_count: int | None = None,
+        error_count: int | None = None,
         minimum_real_tokens: int = 100,
         minimum_labeled_outcomes: int = 100,
     ) -> MadeOnSolReadinessReport:
@@ -253,7 +259,8 @@ class MadeOnSolReadinessReport:
         if any(item.id not in available_ids for item in real):
             raise ValueError("real observations must be selected from observations")
         if any(
-            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            value is not None
+            and (not isinstance(value, int) or isinstance(value, bool) or value < 0)
             for value in (rate_limit_count, error_count)
         ):
             raise ValueError("provider counters must be non-negative integers")
@@ -283,29 +290,23 @@ class MadeOnSolReadinessReport:
             for item in madeonsol
         )
         times = sorted(item.occurred_at or item.observed_at for item in madeonsol)
-        normalized_labels = {
-            str(key).lower(): str(value).upper() for key, value in (labels or {}).items()
-        }
-        labeled_winner_count = sum(
-            normalized_labels.get(address) in {"WINNER", "2X", "5X", "10X", "20X", "50X", "100X"}
-            for address in token_addresses
-        )
-        labeled_rug_count = sum(
-            normalized_labels.get(address) in {"RUG", "FAILURE", "SEVERE_FAILURE"}
-            for address in token_addresses
-        )
-        reasons: list[str] = []
-        if not madeonsol:
-            reasons.append("MADEONSOL_REAL_OBSERVATIONS_REQUIRED")
-        if len(token_addresses) < minimum_real_tokens:
-            reasons.append("MADEONSOL_TOKEN_SAMPLES_REQUIRED")
-        if labeled_winner_count + labeled_rug_count < minimum_labeled_outcomes:
-            reasons.append("MADEONSOL_LABELED_OUTCOMES_REQUIRED")
-        return cls(
-            status=(
-                "READY_FOR_OUT_OF_SAMPLE_CALIBRATION" if not reasons else "INSUFFICIENT_SAMPLES"
-            ),
-            reason_codes=tuple(reasons),
+        if labels is None:
+            labeled_winner_count = None
+            labeled_rug_count = None
+        else:
+            normalized_labels = {
+                str(key).lower(): str(value).upper() for key, value in labels.items()
+            }
+            labeled_winner_count = sum(
+                normalized_labels.get(address)
+                in {"WINNER", "2X", "5X", "10X", "20X", "50X", "100X"}
+                for address in token_addresses
+            )
+            labeled_rug_count = sum(
+                normalized_labels.get(address) in {"RUG", "FAILURE", "SEVERE_FAILURE"}
+                for address in token_addresses
+            )
+        return cls.from_counts(
             real_observation_count=len(madeonsol),
             unique_robinhood_token_count=len(token_addresses),
             caller_kol_observation_count=caller_count,
@@ -315,6 +316,82 @@ class MadeOnSolReadinessReport:
             bundle_lp_security_observation_count=bundle_security_lp_count,
             first_real_observation=times[0].isoformat() if times else None,
             latest_real_observation=times[-1].isoformat() if times else None,
+            rate_limit_count=rate_limit_count,
+            error_count=error_count,
+            labeled_winner_count=labeled_winner_count,
+            labeled_rug_count=labeled_rug_count,
+            minimum_real_tokens=minimum_real_tokens,
+            minimum_labeled_outcomes=minimum_labeled_outcomes,
+        )
+
+    @classmethod
+    def from_counts(
+        cls,
+        *,
+        real_observation_count: int,
+        unique_robinhood_token_count: int,
+        caller_kol_observation_count: int,
+        smart_wallet_observation_count: int,
+        deployer_observation_count: int,
+        holder_distribution_observation_count: int,
+        bundle_lp_security_observation_count: int,
+        first_real_observation: str | None,
+        latest_real_observation: str | None,
+        rate_limit_count: int | None = None,
+        error_count: int | None = None,
+        labeled_winner_count: int | None = None,
+        labeled_rug_count: int | None = None,
+        minimum_real_tokens: int = 100,
+        minimum_labeled_outcomes: int = 100,
+    ) -> MadeOnSolReadinessReport:
+        """Build the same report from bounded database aggregates."""
+
+        counts = (
+            real_observation_count,
+            unique_robinhood_token_count,
+            caller_kol_observation_count,
+            smart_wallet_observation_count,
+            deployer_observation_count,
+            holder_distribution_observation_count,
+            bundle_lp_security_observation_count,
+            rate_limit_count,
+            error_count,
+            labeled_winner_count,
+            labeled_rug_count,
+        )
+        if any(
+            value is not None
+            and (not isinstance(value, int) or isinstance(value, bool) or value < 0)
+            for value in counts
+        ):
+            raise ValueError("readiness counts must be non-negative integers")
+        if not isinstance(minimum_real_tokens, int) or minimum_real_tokens < 1:
+            raise ValueError("minimum_real_tokens must be positive")
+        if not isinstance(minimum_labeled_outcomes, int) or minimum_labeled_outcomes < 1:
+            raise ValueError("minimum_labeled_outcomes must be positive")
+        reasons: list[str] = []
+        if real_observation_count == 0:
+            reasons.append("MADEONSOL_REAL_OBSERVATIONS_REQUIRED")
+        if unique_robinhood_token_count < minimum_real_tokens:
+            reasons.append("MADEONSOL_TOKEN_SAMPLES_REQUIRED")
+        if labeled_winner_count is None or labeled_rug_count is None:
+            reasons.append("MADEONSOL_LABELED_OUTCOMES_UNAVAILABLE")
+        elif labeled_winner_count + labeled_rug_count < minimum_labeled_outcomes:
+            reasons.append("MADEONSOL_LABELED_OUTCOMES_REQUIRED")
+        return cls(
+            status=(
+                "READY_FOR_OUT_OF_SAMPLE_CALIBRATION" if not reasons else "INSUFFICIENT_SAMPLES"
+            ),
+            reason_codes=tuple(reasons),
+            real_observation_count=real_observation_count,
+            unique_robinhood_token_count=unique_robinhood_token_count,
+            caller_kol_observation_count=caller_kol_observation_count,
+            smart_wallet_observation_count=smart_wallet_observation_count,
+            deployer_observation_count=deployer_observation_count,
+            holder_distribution_observation_count=holder_distribution_observation_count,
+            bundle_lp_security_observation_count=bundle_lp_security_observation_count,
+            first_real_observation=first_real_observation,
+            latest_real_observation=latest_real_observation,
             rate_limit_count=rate_limit_count,
             error_count=error_count,
             labeled_winner_count=labeled_winner_count,
@@ -580,7 +657,9 @@ def _time_bounds(records: Sequence[OpportunityResearchSample]) -> dict[str, str 
 
 
 __all__ = [
+    "COLLECTION_MODE_FIELD",
     "DEFAULT_REQUIRED_COHORTS",
+    "EVIDENCE_ORIGIN_FIELD",
     "HISTORICAL_DATASET_SCHEMA_VERSION",
     "HISTORICAL_DATASET_VERSION",
     "HistoricalDatasetConfig",
