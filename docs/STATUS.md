@@ -134,6 +134,137 @@ fixture is truthful: `sample_count=7`, `real_sample_count=0`,
 provider `UNKNOWN=7`, `no_lookahead_verified=true`, and status
 `INSUFFICIENT_SAMPLES`. The report is an inventory seam, not calibration.
 
+## 2026-09-12 A+C end-to-end shadow proof and Web evidence parity
+
+This is the current sprint checkpoint. Baseline source of truth was
+`origin/main` at `e14b889b3aa992f9b088eaaa9f0c4455363db2b0`; it was clean and
+synchronized before implementation. No PR branch was merged or cherry-picked.
+
+### Before → after gap matrix
+
+| Capability | Before | After | Evidence / target |
+|---|---|---|---|
+| MadeOnSol runtime wiring | `MISSING` | `WIRED` | Optional worker uses `ProviderBundle.madeonsol` and the generic collector; `apps/worker/.../main.py` |
+| Candidate discovery | `MISSING` | `WIRED` | `CandidateDiscoveryCollector` persists deterministic candidates from `DiscoveryCandidate` |
+| Observation persistence | `MISSING` | `WIRED` | Existing `ObservationRepository` plus durable `collection_checkpoints` migration `0011` |
+| Readiness API | `MISSING` | `WIRED` | Canonical `MadeOnSolReadinessReport` is nested at `/v1/readiness.alpha_validation` |
+| Readiness frontend | `MISSING` | `WIRED` | `/readiness` renders live-shadow counts/status from the API only |
+| Provider runtime status | `PARTIAL` | `WIRED` | Canonical API overlay covers disabled, missing credential and configured/actual health states |
+| Settings parity | `EXISTING` | `VERIFIED` | Dynamic catalog renders `madeonsol_enabled`, `madeonsol_base_url` and secret state only |
+| Insider backend evidence | `PARTIAL` | `WIRED` | Token read projection reuses `HolderGraphAnalyzer` and `InsiderAllocationAnalyzer` |
+| Insider frontend evidence | `MISSING` | `WIRED` | Token Detail renders bounded `INSIDER PATTERN EVIDENCE` |
+| Caller projection | `RAW_OBSERVATION_ONLY` | `RAW_OBSERVATION_ONLY` | Deliberate: no MadeOnSol-specific caller model or confidence inflation |
+| Wallet projection | `RAW_OBSERVATION_ONLY` | `RAW_OBSERVATION_ONLY` | Deliberate: canonical wallet read models are not fed raw provider labels |
+| Creator projection | `RAW_OBSERVATION_ONLY` | `RAW_OBSERVATION_ONLY` | Deliberate: existing creator graph remains authoritative |
+| Provenance visibility | `PARTIAL` | `WIRED` | Token Detail/timeline and bounded insider projection expose provider/source/time/quality |
+| UNKNOWN semantics | `EXISTING` | `VERIFIED` | Missing values remain `UNKNOWN`/`null`; explicit zero remains zero |
+| Real sample count | `0` | `0` | No credentials or compliant MadeOnSol observations were available |
+| Alpha validation | `CLI_ONLY` | `API + UI` | Shared canonical report remains `INSUFFICIENT_SAMPLES` |
+
+### Runtime proof and reuse boundary
+
+The proven path is:
+
+```text
+MADEONSOL_ENABLED + server credential + Robinhood enabled
+→ existing ProviderBundle
+→ MadeOnSolRobinhoodAdapter
+→ generic CandidateDiscoveryCollector
+→ CandidateRepository + candidate.discovery Observation
+→ token enrichment Observations
+→ existing ObservationRepository / durable cursor
+→ SQL/InMemory read service
+→ MadeOnSolReadinessReport
+→ /v1/readiness.alpha_validation
+→ Web readiness projection
+```
+
+The collector is the existing application seam for optional discovery
+sources; no MadeOnSol daemon, scorer, risk engine, lifecycle, caller model,
+wallet model or Telegram pipeline was added. Stable candidate identity and
+the existing `(provider, kind, source_id)` observation identity make retries
+and worker restarts idempotent. Checkpoints are committed in the same unit of
+work as candidates and observations, so a failed transaction does not advance
+the cursor. Provider event time remains `occurred_at`; delayed ingestion does
+not rewrite it. Valid empty discovery is reported as `VALID_EMPTY_RESULT`, not
+as an outage.
+
+`scripts/alpha_readiness.py` now marks only explicitly listed exported real
+observation IDs as `REAL_EXTERNAL` and calls the same canonical
+`from_persisted_observations` report used by the read API. Fixtures and
+shadow-only observations therefore remain excluded from real counts.
+
+The MadeOnSol feed audit remains intentionally narrow:
+
+| Feed | Classification | Result |
+|---|---|---|
+| KOL first-touch / hot-token discovery | `DISCOVERY_UNIQUE` | Wired through the generic collector |
+| Token snapshot, holders, buyer quality, top traders, flow | `ENRICHMENT_ONLY` | Collected only after canonical token discovery |
+| Bundle, provider risk, LP events, deployer evidence | `ENRICHMENT_ONLY` | Collected as canonical security/liquidity/creator observations |
+| Global alpha-wallet, deployer-trajectory or coordination polling | `NOT_USEFUL` / unproven unique lead | Not added; no second poller was justified |
+
+### Operator parity and browser result
+
+`/readiness` visibly separates engineering/release gates, alpha evidence
+readiness and `NOT_PRODUCTION_READY`. It shows zero counts as measured zero
+and missing timestamps as `UNKNOWN`; provider health is explicitly not alpha
+validation or execution authority. `/providers` uses runtime MadeOnSol
+configuration overlays without returning secrets. `/settings` uses the
+existing dynamic registry. `/tokens/[tokenId]` exposes canonical insider
+allocation evidence, quality, exclusions, reason codes and provenance without
+calculating suspicion in TypeScript. The parity manifest covers these fields.
+
+The prior mobile/tablet browser failure was reproduced. The root cause was
+interaction before client hydration, not an application navigation contract.
+The fix uses a server/client hydration snapshot (`useSyncExternalStore`), an
+explicit `data-nav-hydrated` contract, and normal Playwright actionability
+checks; no sleep or timeout inflation was added. `devIndicators: false` was
+audited and retained only to prevent the dev-only indicator from changing the
+visual test viewport; it does not suppress application errors. The fresh
+parallel visual matrix passed `4/4` projects, and the full browser suite
+passed `36` with `4` credential/state skips.
+
+### Fresh verification and external state
+
+- `make verify`: `1250 passed, 11 skipped, 1 warning`; skips are unchanged
+  optional/environment cases and are not passes.
+- Telegram Early Alpha: `31 passed`; ordinary `AlertRenderer` regression:
+  `13 passed`.
+- Vitest: `77 passed` across `22` files; frontend lint, typecheck and
+  production build passed.
+- Browser: `36 passed, 4 skipped` of `40`; visual matrix `4 passed` in the
+  final hydration/interaction rerun. The four skips require authenticated or
+  stateful test-only credentials.
+- CSS contract: `116` classes checked. Migration check: head
+  `0011_collection_checkpoints`, `27` metadata tables. Security: `PASS`
+  with external scans `BLOCKED_EXTERNAL`/`NOT_RUN`. SBOM: `581` components,
+  digest `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
+- Latest hosted Actions run before this implementation push was
+  `34700482295` at baseline SHA `e14b889b3aa992f9b088eaaa9f0c4455363db2b0`.
+  Backend quality, Frontend quality, Secret scan and Compose contract were
+  `failure` with zero executed steps because GitHub reported the account
+  billing/spending restriction; Release candidate identity was `skipped`.
+  Main branch protection remains unverified: GitHub API returned HTTP 403
+  requiring Pro/public visibility.
+
+Implementation checkpoint: `251c6b3` (`feat: prove madeonsol shadow and
+evidence parity`). Final documentation/push SHA is recorded below after
+synchronization.
+
+Real MadeOnSol observations: `0`; unique Robinhood tokens: `0`; caller/KOL,
+smart-wallet, deployer, holder/distribution and bundle/LP/security
+observations: `0`; labeled winners: `0`; labeled rugs/failures: `0`;
+rate-limit/error counts: `0/0`. Calibration is `INSUFFICIENT_SAMPLES` and
+provider access is `BLOCKED_EXTERNAL`. Protected modes remain exactly
+`ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, and
+`AUTO_EXECUTION=false`. Production remains `NOT_PRODUCTION_READY`; the
+engineering target is `ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION`.
+
+Exact next unfinished task: obtain compliant, read-only MadeOnSol credentials
+and real Robinhood observations, then let the existing persisted report
+surface counts and run the no-lookahead/out-of-sample calibration gate without
+changing production weights or protected modes.
+
 ## 2026-09-12 A+C MadeOnSol shadow and insider-evidence sprint
 
 Baseline source of truth was `origin/main` at
