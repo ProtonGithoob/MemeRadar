@@ -243,8 +243,9 @@ passed `36` with `4` credential/state skips.
   `0011_collection_checkpoints`, `27` metadata tables. Security: `PASS`
   with external scans `BLOCKED_EXTERNAL`/`NOT_RUN`. SBOM: `581` components,
   digest `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
-- Latest hosted Actions run is `34709174166` at final synchronized
-  implementation/status SHA `a8a3a2078c04a8e85d06c52ce08e4b463990a6be`.
+- Latest non-skipped hosted Actions run is `34709174166` at the previous
+  synchronized implementation/status SHA
+  `a8a3a2078c04a8e85d06c52ce08e4b463990a6be`.
   Backend quality, Frontend
   quality, Secret scan and Compose contract were `failure` with zero executed
   steps because GitHub reported the account billing/spending restriction;
@@ -252,10 +253,10 @@ passed `36` with `4` credential/state skips.
   unverified: GitHub API returned HTTP 403 requiring Pro/public visibility.
 
 Implementation checkpoint: `251c6b3`
-(`feat: prove madeonsol shadow and evidence parity`); the preceding
-documentation checkpoint was `a8a3a2078c04a8e85d06c52ce08e4b463990a6be`.
-This final status-only refresh is intentionally marked `[skip ci]`; the
-previous checkpoint is the latest hosted CI subject.
+(`feat: prove madeonsol shadow and evidence parity`); final worker-proof
+checkpoint: `903d9fb` (worker round-trip test plus reconciled status counts).
+The final checkpoint is intentionally marked `[skip ci]` because hosted CI is
+externally blocked; the previous checkpoint is the latest hosted CI subject.
 
 Real MadeOnSol observations: `0`; unique Robinhood tokens: `0`; caller/KOL,
 smart-wallet, deployer, holder/distribution and bundle/LP/security
