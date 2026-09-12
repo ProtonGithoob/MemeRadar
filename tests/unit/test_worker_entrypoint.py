@@ -1,7 +1,24 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from uuid import UUID
 
+import memeradar_worker.main as worker_main
 from memeradar_application.config import Settings
+from memeradar_application.provider_contracts import (
+    DiscoveryCandidate,
+    OnChainRequest,
+)
+from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
 from memeradar_worker.main import _madeonsol_shadow_is_configured, run_worker
+
+NOW = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
+TOKEN = TokenIdentity(
+    mint_address="0x2222222222222222222222222222222222222222",
+    chain="robinhood",
+    token_program="erc20",
+    id=UUID("22222222-2222-2222-2222-222222222222"),
+)
 
 
 def test_worker_stops_after_stop_event_is_set():
@@ -37,3 +54,127 @@ def test_madeonsol_shadow_uses_the_optional_generic_worker_gate() -> None:
         }
     )
     assert _madeonsol_shadow_is_configured(configured)
+
+
+def test_madeonsol_shadow_worker_round_trip_uses_generic_collector(monkeypatch) -> None:
+    class FakeSource:
+        provider_name = "madeonsol-robinhood"
+
+        def __init__(self) -> None:
+            self.last_discovery_cursor = None
+            self.discovery_calls: list[str | None] = []
+
+        async def discover(self, request):
+            self.discovery_calls.append(request.cursor)
+            return (
+                DiscoveryCandidate(
+                    token=TOKEN,
+                    source_id="kol_first_touch:worker-token",
+                    occurred_at=NOW - timedelta(minutes=3),
+                    observed_at=NOW,
+                    ingested_at=NOW,
+                    provenance=Provenance(
+                        provider=self.provider_name,
+                        source_id="kol_first_touch:worker-token",
+                        observed_at=NOW,
+                        parser_version="madeonsol-robinhood-v1",
+                    ),
+                ),
+            )
+
+        async def enrich(self, request: OnChainRequest):
+            return (
+                Observation(
+                    kind="social.caller_consensus",
+                    provenance=Provenance(
+                        provider=self.provider_name,
+                        source_id="madeonsol:caller:worker-token",
+                        observed_at=NOW,
+                        parser_version="madeonsol-robinhood-v1",
+                    ),
+                    occurred_at=NOW - timedelta(minutes=3),
+                    observed_at=NOW,
+                    ingested_at=NOW,
+                    quality_state=QualityState.FRESH,
+                    normalized_payload={"token_address": TOKEN.address},
+                ),
+            )
+
+    class Repository:
+        def __init__(self) -> None:
+            self.items = []
+
+        async def add(self, value):
+            self.items.append(value)
+            return value
+
+    class Checkpoints:
+        def __init__(self) -> None:
+            self.cursor = None
+
+        async def load(self, key: str):
+            assert key == "madeonsol-robinhood:discovery"
+            return self.cursor
+
+        async def save(self, key: str, cursor: str | None):
+            assert key == "madeonsol-robinhood:discovery"
+            self.cursor = cursor
+
+    class UnitOfWork:
+        instance = None
+
+        def __init__(self, engine) -> None:
+            del engine
+            self.candidates = Repository()
+            self.observations = Repository()
+            self.checkpoints = Checkpoints()
+            self.commits = 0
+            UnitOfWork.instance = self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def commit(self):
+            self.commits += 1
+
+    source = FakeSource()
+    bundle = SimpleNamespace(madeonsol=source, aclose=lambda: asyncio.sleep(0))
+    engine = SimpleNamespace(dispose=lambda: asyncio.sleep(0))
+    monkeypatch.setattr(worker_main, "create_database_engine", lambda _: engine)
+    monkeypatch.setattr(worker_main, "build_provider_bundle", lambda _: bundle)
+    monkeypatch.setattr(worker_main, "SqlAlchemyUnitOfWork", UnitOfWork)
+
+    settings = Settings.from_env(
+        {
+            "DATABASE_URL": "sqlite+aiosqlite:///./memeradar-test.db",
+            "ENABLED_CHAINS": "solana,bnb,robinhood",
+            "MADEONSOL_ENABLED": "true",
+            "MADEONSOL_API_KEY": "test-only-key",
+        }
+    )
+    stop_event = asyncio.Event()
+
+    async def stop_after_one_cycle(_: float) -> None:
+        stop_event.set()
+
+    asyncio.run(
+        worker_main._run_madeonsol_shadow(
+            stop_event,
+            settings,
+            sleeper=stop_after_one_cycle,
+        )
+    )
+
+    assert UnitOfWork.instance is not None
+    assert len(UnitOfWork.instance.candidates.items) == 1
+    assert len(UnitOfWork.instance.observations.items) == 2
+    assert UnitOfWork.instance.commits == 1
+    assert source.discovery_calls == [None]
+    assert UnitOfWork.instance.candidates.items[0].discovered_at == NOW - timedelta(minutes=3)
+    assert all(
+        observation.occurred_at == NOW - timedelta(minutes=3)
+        for observation in UnitOfWork.instance.observations.items
+    )

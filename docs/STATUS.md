@@ -72,7 +72,7 @@ No blocker changes the readiness classification or authorizes a mode change.
 The latest local full gate recorded after the alpha-readiness and paper-integrity
 follow-up:
 
-- `make verify`: 1250 Python tests passed, 11 skipped, 1 warning; 22 frontend
+- `make verify`: 1251 Python tests passed, 11 skipped, 1 warning; 22 frontend
   test files and 77 Vitest tests passed. Skips remain environment/optional
   provider cases and are not counted as passes.
 - Telegram-focused tests: 31 passed (`test_early_alpha_alert.py` and
@@ -227,8 +227,11 @@ passed `36` with `4` credential/state skips.
 
 ### Fresh verification and external state
 
-- `make verify`: `1250 passed, 11 skipped, 1 warning`; skips are unchanged
+- `make verify`: `1251 passed, 11 skipped, 1 warning`; skips are unchanged
   optional/environment cases and are not passes.
+- Focused A+C runtime/readiness/provider contract set: `33 passed, 1 warning`
+  through the repository `.venv` runner, including the worker-level fake
+  MadeOnSol round trip.
 - Telegram Early Alpha: `31 passed`; ordinary `AlertRenderer` regression:
   `13 passed`.
 - Vitest: `77 passed` across `22` files; frontend lint, typecheck and
