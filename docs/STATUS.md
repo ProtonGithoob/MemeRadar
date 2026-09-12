@@ -38,17 +38,18 @@ zero or safe evidence.
   data, Chainlink feed identities, and matured live-shadow observations are
   unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
   is `INSUFFICIENT_SAMPLES`.
-- Latest hosted CI run `34599136852` ran for HEAD
-  `ea2c1dc21c28be1214e6040ff235a07cf4e23130`. Backend quality, Frontend
+- Latest hosted CI run `34696935930` ran for HEAD
+  `63553bead866c198abe504c7ce736d16ea415649`. Backend quality, Frontend
   quality, Compose contract, and Secret scan each terminated with `failure`
   before any workflow step executed; Release candidate identity was `skipped`
-  with zero steps. GitHub reported failed recent account payments/spending
-  limit exhaustion, so hosted CI is `BLOCKED_EXTERNAL`, not code failure or
-  PASS. Managed backup/restore and production-like dependency restart/soak
+  with zero steps. GitHub's annotation states: "The job was not started
+  because recent account payments have failed or your spending limit needs to
+  be increased." Hosted CI is therefore `BLOCKED_EXTERNAL`, not code failure
+  or PASS. Managed backup/restore and production-like dependency restart/soak
   remain externally unverified.
 - PR #3 (`feat: add B+C early-alpha Telegram alerts`) is still `OPEN` with
-  `merged=false`, `mergeable=false`, and `mergeable_state=dirty`; its head is
-  `82f14b33152bb9c1cc2c91037e19eebe2d315b4d` against base
+  `merged=false`; the current API reports `mergeable_state=unknown`, and its
+  head is `82f14b33152bb9c1cc2c91037e19eebe2d315b4d` against base
   `1fd899b35676e9e3cfbf2a973941f34d51d107f6`. Its branch was inspected and
   was not merged or cherry-picked. The current main implementation corrects
   the architecture with the canonical state machine, persisted snapshots,
@@ -246,9 +247,13 @@ calibration value.
   `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
 - `make verify` reports the protected modes as analysis-only, paper trading,
   manual execution false and auto execution false.
+- Latest hosted CI: run `34696935930`, HEAD
+  `63553bead866c198abe504c7ce736d16ea415649`; four jobs failed before steps
+  executed for the GitHub billing/spending restriction, and one release job
+  was skipped with zero steps.
 
-Implementation SHA: `b2c6b02b5a870f76a97bace88f7a878682661fea`. The final HEAD
-is the pushed status-reconciliation commit reported at handoff.
+Implementation SHA: `b2c6b02b5a870f76a97bace88f7a878682661fea`.
+Final HEAD SHA: `63553bead866c198abe504c7ce736d16ea415649`.
 
 Remaining P0/P1 issues and exact next unfinished task are unchanged in kind:
 real MadeOnSol credentials/data and labeled historical cohorts are required
