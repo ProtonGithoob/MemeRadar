@@ -9,7 +9,11 @@ import pytest
 
 from memeradar_application.config import Settings
 from memeradar_application.historical_dataset import MadeOnSolReadinessReport
-from memeradar_application.provider_contracts import OnChainRequest, ProviderRequestContext
+from memeradar_application.provider_contracts import (
+    DiscoveryRequest,
+    OnChainRequest,
+    ProviderRequestContext,
+)
 from memeradar_domain import Chain, QualityState, TokenIdentity
 from memeradar_persistence.repositories import observation_to_row
 from memeradar_providers.madeonsol_robinhood import (
@@ -469,6 +473,67 @@ def test_adapter_maps_current_upstream_nested_response_shapes() -> None:
     assert lp_events["adds_persisted"] is False
     assert lp_events["lp_events"][0]["event_type"] == "remove"
     assert lp_events["lp_events"][0]["provider_is_token_deployer"] is True
+
+
+def test_adapter_uses_canonical_discovery_for_first_touches_and_hot_tokens() -> None:
+    hot_token = "0x" + "7" * 40
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/kol/first-touches"):
+            assert request.url.params["limit"] == "2"
+            assert request.url.params["before"] == "2026-09-12T11:00:00Z"
+            return httpx.Response(
+                200,
+                json={
+                    "events": [
+                        {
+                            "token_address": TOKEN,
+                            "first_buy_at": "2026-09-12T11:55:00Z",
+                            "tx_hash": TX_HASH,
+                            "first_kol": {"name": "alpha", "twitter_url": "https://x.test/alpha"},
+                        }
+                    ],
+                    "next_before": "2026-09-12T10:00:00Z",
+                },
+            )
+        if request.url.path.endswith("/kol/hot-tokens"):
+            assert request.url.params["window"] == "1h"
+            return httpx.Response(
+                200,
+                json={
+                    "tokens": [
+                        {
+                            "token_address": hot_token,
+                            "last_trade_at": "2026-09-12T11:59:00Z",
+                            "kols_buying": 2,
+                            "net_eth": 1.5,
+                        }
+                    ]
+                },
+            )
+        raise AssertionError(request.url)
+
+    adapter = _adapter(handler)
+    try:
+        result = asyncio.run(
+            adapter.discover(
+                DiscoveryRequest(
+                    context=ProviderRequestContext("madeonsol-discovery", NOW),
+                    cursor="2026-09-12T11:00:00Z",
+                    limit=2,
+                )
+            )
+        )
+    finally:
+        asyncio.run(adapter.aclose())
+
+    assert {item.token.address for item in result} == {TOKEN.lower(), hot_token}
+    first_touch = next(item for item in result if item.token.address == TOKEN.lower())
+    assert first_touch.occurred_at == datetime(2026, 9, 12, 11, 55, tzinfo=UTC)
+    assert first_touch.provenance.provider == MADEONSOL_PROVIDER
+    assert first_touch.provenance.parser_version == "madeonsol-robinhood-v1"
+    assert first_touch.source_id.startswith("kol_first_touch:")
+    assert adapter.last_discovery_cursor == "2026-09-12T10:00:00Z"
 
 
 def test_missing_numeric_fields_remain_unknown_and_valid_empty_is_not_outage() -> None:

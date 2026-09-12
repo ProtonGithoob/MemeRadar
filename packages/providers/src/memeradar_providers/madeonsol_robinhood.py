@@ -14,11 +14,15 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
-from urllib.parse import parse_qsl, quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit
+from uuid import NAMESPACE_URL, uuid5
 
 import httpx
 
 from memeradar_application.provider_contracts import (
+    CandidateDiscoveryPort,
+    DiscoveryCandidate,
+    DiscoveryRequest,
     OnChainPort,
     OnChainRequest,
     ProviderRequestContext,
@@ -28,6 +32,7 @@ from memeradar_domain import (
     Observation,
     Provenance,
     QualityState,
+    TokenIdentity,
     normalize_chain,
     require_evm_address,
 )
@@ -77,6 +82,8 @@ _ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("market.holder_data", "/rhc/tokens/{address}/holders"),
     ("liquidity.lp_events", "/rhc/lp-events?token={address}"),
 )
+_DISCOVERY_FIRST_TOUCHES = "/rhc/kol/first-touches"
+_DISCOVERY_HOT_TOKENS = "/rhc/kol/hot-tokens"
 
 
 def _payload_hash(value: object) -> str:
@@ -278,7 +285,7 @@ def _event_quality(event_time: datetime | None) -> str:
     return "EXACT" if event_time is not None else "UNKNOWN"
 
 
-class MadeOnSolRobinhoodAdapter(OnChainPort):
+class MadeOnSolRobinhoodAdapter(CandidateDiscoveryPort, OnChainPort):
     """Optional MadeOnSol evidence source for Robinhood Chain.
 
     It is intentionally outside the core fallback route.  Callers can persist
@@ -289,6 +296,7 @@ class MadeOnSolRobinhoodAdapter(OnChainPort):
     capabilities = frozenset(
         {
             "on_chain",
+            "candidate_discovery",
             "market_data",
             "social_calls",
             "caller_history",
@@ -331,6 +339,7 @@ class MadeOnSolRobinhoodAdapter(OnChainPort):
         self._last_rate_limit: RateLimitSnapshot | None = None
         self._rate_limit_count = 0
         self._error_count = 0
+        self._last_discovery_cursor: str | None = None
 
     @staticmethod
     def _validate_endpoint(endpoint: str) -> str:
@@ -378,6 +387,12 @@ class MadeOnSolRobinhoodAdapter(OnChainPort):
     @property
     def error_count(self) -> int:
         return self._error_count
+
+    @property
+    def last_discovery_cursor(self) -> str | None:
+        """Return the provider cursor for the next older discovery page."""
+
+        return self._last_discovery_cursor
 
     def _timeout_for(self, context: ProviderRequestContext) -> float | None:
         if context.deadline_at is None:
@@ -521,6 +536,116 @@ class MadeOnSolRobinhoodAdapter(OnChainPort):
             ingested_at=observed_at,
             quality_state=quality,
             normalized_payload=normalized,
+        )
+
+    @staticmethod
+    def _discovery_token(address: str) -> TokenIdentity:
+        return TokenIdentity(
+            mint_address=address,
+            chain=Chain.ROBINHOOD,
+            token_program="erc20",
+            id=uuid5(NAMESPACE_URL, f"memeradar:token:{Chain.ROBINHOOD.value}:{address}"),
+        )
+
+    def _discovery_candidate(
+        self,
+        row: Mapping[str, object],
+        *,
+        kind: str,
+        event_names: tuple[str, ...],
+        observed_at: datetime,
+        ingested_at: datetime,
+    ) -> DiscoveryCandidate | None:
+        raw_address = _field(row, "token_address", "tokenAddress", "address")
+        if raw_address is _MISSING or raw_address is None or not isinstance(raw_address, str):
+            raise ProviderSchemaError("madeonsol discovery token address was invalid")
+        try:
+            address = require_evm_address(raw_address, "token_address")
+        except (TypeError, ValueError) as exc:
+            raise ProviderSchemaError("madeonsol discovery token address was invalid") from exc
+        event_time, _ = _optional_timestamp_text(row, "event_time", *event_names)
+        if event_time is None:
+            # Discovery requires an actual provider event time; observation time
+            # is not a substitute for historical ordering.
+            return None
+        raw_tx = _field(row, "tx_hash", "transaction_hash")
+        if raw_tx is _MISSING or raw_tx is None:
+            event_identity = event_time.isoformat()
+        elif not isinstance(raw_tx, str):
+            raise ProviderSchemaError("madeonsol discovery tx_hash was invalid")
+        else:
+            try:
+                event_identity = require_text(raw_tx, "tx_hash", max_length=256)
+            except ValueError as exc:
+                raise ProviderSchemaError("madeonsol discovery tx_hash was invalid") from exc
+        source_id = f"{kind}:{address}:{event_identity}"
+        token = self._discovery_token(address)
+        return DiscoveryCandidate(
+            token=token,
+            source_id=source_id,
+            occurred_at=event_time,
+            observed_at=observed_at,
+            ingested_at=ingested_at,
+            provenance=Provenance(
+                provider=self.provider_name,
+                source_id=source_id,
+                observed_at=observed_at,
+                parser_version=self._parser_version,
+                raw_payload_hash=_payload_hash(row),
+            ),
+        )
+
+    @staticmethod
+    def _discovery_path(path: str, params: Mapping[str, object]) -> str:
+        query = urlencode({key: value for key, value in params.items() if value is not None})
+        return f"{path}?{query}" if query else path
+
+    async def discover(self, request: DiscoveryRequest) -> Sequence[DiscoveryCandidate]:
+        """Normalize MadeOnSol KOL discovery into the existing candidate port."""
+
+        if not isinstance(request, DiscoveryRequest):
+            raise TypeError("request must be a DiscoveryRequest")
+        observed_at = ensure_utc(self._clock(), "observed_at")
+        first_params: dict[str, object] = {"limit": min(request.limit, 100)}
+        if request.cursor is not None:
+            first_params["before"] = request.cursor
+        first_path = self._discovery_path(_DISCOVERY_FIRST_TOUCHES, first_params)
+        hot_path = self._discovery_path(_DISCOVERY_HOT_TOKENS, {"window": "1h"})
+        first_data, hot_data = await asyncio.gather(
+            self._get(first_path, context=request.context),
+            self._get(hot_path, context=request.context),
+        )
+        first_rows = _rows(first_data, "first_touches", "events")
+        hot_rows = _rows(hot_data, "hot_tokens", "tokens")
+        candidates: dict[str, DiscoveryCandidate] = {}
+        for row, kind, event_names in (
+            (first_rows, "kol_first_touch", ("first_buy_at", "first_touch_at")),
+            (hot_rows, "kol_hot_token", ("last_trade_at", "last_trade_time")),
+        ):
+            for item in row[: request.limit]:
+                candidate = self._discovery_candidate(
+                    item,
+                    kind=kind,
+                    event_names=event_names,
+                    observed_at=observed_at,
+                    ingested_at=observed_at,
+                )
+                if candidate is None:
+                    continue
+                key = candidate.token.canonical_id
+                current = candidates.get(key)
+                if current is None or candidate.occurred_at < current.occurred_at:
+                    candidates[key] = candidate
+        self._last_discovery_cursor = (
+            _optional_text(first_data, "next_before", "next_before")
+            if isinstance(first_data, Mapping)
+            else None
+        )
+        return tuple(
+            sorted(
+                candidates.values(),
+                key=lambda item: (item.occurred_at, item.token.canonical_id),
+            )
         )
 
     @staticmethod

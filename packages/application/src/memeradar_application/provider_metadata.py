@@ -53,6 +53,7 @@ _REGISTRY: dict[str, ProviderMetadata] = {
         "MadeOnSol Robinhood intelligence",
         ("robinhood",),
         (
+            "candidate_discovery",
             "market_data",
             "social_calls",
             "caller_history",
