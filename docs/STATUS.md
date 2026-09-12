@@ -168,8 +168,11 @@ MadeOnSol/RPC/other providers
 
 `MadeOnSolRobinhoodAdapter` is an optional, disabled-by-default,
 Robinhood-only, read-only `LIVE_SHADOW` source. It uses the existing
-`OnChainPort`, `ProviderRequestContext`, `ProviderTransport`, retry/timeout,
-rate-limit, circuit-breaker and provenance contracts. It normalizes the
+`CandidateDiscoveryPort`, `OnChainPort`, `ProviderRequestContext`,
+`ProviderTransport`, retry/timeout, rate-limit, circuit-breaker and
+provenance contracts. Its canonical discovery method normalizes KOL
+first-touch and hot-token events with stable token identity, exact event time,
+pagination cursor and deduplication. Token enrichment normalizes the
 currently available MadeOnSol API surfaces for token snapshots, KOL
 consensus/first-touch, buyer quality, top traders, token flow, holders,
 bundle evidence, provider risk and LP events. It has no alpha/risk/execution
@@ -230,30 +233,35 @@ calibration value.
 
 ### Verification
 
-- A+C focused tests: `15 passed` for MadeOnSol and insider-pattern behavior;
-  the composition/runtime-settings contract subset brings the focused total
-  to `27 passed`.
-- Full Python: `1244 passed, 11 skipped, 1 warning`.
+- A+C focused tests: `16 passed` for MadeOnSol and insider-pattern behavior;
+  the provider/metadata/composition/runtime-settings contract subset brings
+  the focused total to `29 passed`.
+- Full Python: `1245 passed, 11 skipped, 1 warning`.
 - Telegram Early Alpha: `31 passed`; ordinary AlertRenderer regression:
   `13 passed`.
 - Frontend: `74 passed` across `21` Vitest files; lint, typecheck and
   production build passed.
-- Browser: `36 passed, 4 skipped` out of 40 across 1440x900, 1024x768,
-  768x1024 and 390x844. The visual matrix covered all 15 routes in dark and
-  light themes. Four skips are authenticated/stateful journeys without
-  test-only credentials.
+- Browser serial verification: `36 passed, 4 skipped` out of 40 across
+  1440x900, 1024x768, 768x1024 and 390x844. The visual matrix covered all 15
+  routes in dark and light themes. Four skips are authenticated/stateful
+  journeys without test-only credentials. One fully-parallel rerun had one
+  mobile navigation timing failure; the isolated case and the serial matrix
+  passed, so this remains a test-runner flake rather than a blessed failure.
 - CSS contract, migrations, secret scan, security review, SBOM and
   `git diff --check` passed. SBOM remains 581 components with digest
   `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
 - `make verify` reports the protected modes as analysis-only, paper trading,
   manual execution false and auto execution false.
-- Latest hosted CI: run `34696935930`, HEAD
-  `63553bead866c198abe504c7ce736d16ea415649`; four jobs failed before steps
-  executed for the GitHub billing/spending restriction, and one release job
-  was skipped with zero steps.
+- Latest hosted CI observed before this local checkpoint: run `34697008654`,
+  HEAD `d07c9d0dab98a14de2c4ecf612d11982decb0ddb`; four jobs failed before
+  steps executed for the GitHub billing/spending restriction, and one release
+  job was skipped with zero steps. The post-checkpoint run is reported in the
+  final handoff after push.
 
-Implementation SHA: `b2c6b02b5a870f76a97bace88f7a878682661fea`.
-Final HEAD SHA: `63553bead866c198abe504c7ce736d16ea415649`.
+Implementation SHA: `c29216d` (`feat: expose MadeOnSol canonical discovery`),
+on top of the prior A+C implementation `b2c6b02`.
+Final branch SHA is the documentation checkpoint commit pushed with this
+entry; the exact full SHA and hosted run are recorded in the final handoff.
 
 Remaining P0/P1 issues and exact next unfinished task are unchanged in kind:
 real MadeOnSol credentials/data and labeled historical cohorts are required
