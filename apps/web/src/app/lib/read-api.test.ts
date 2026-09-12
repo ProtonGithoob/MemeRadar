@@ -12,6 +12,7 @@ import {
   fetchProviderHealth,
   fetchPositions,
   fetchPosition,
+  fetchReadiness,
   fetchTimeline,
   fetchToken,
   fetchWallet,
@@ -253,6 +254,99 @@ describe("server-side read gateway", () => {
     if (result.ok) {
       expect(result.data.groups.providers[0]?.value).toBeNull();
       expect(result.data.groups.chains[0]?.value).toBe("solana,bnb,robinhood");
+    }
+  });
+
+  it("keeps canonical alpha validation zeros and unknown timestamps intact", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({
+      as_of: "2026-09-12T12:00:00.000Z",
+      classification: "NOT_PRODUCTION_READY",
+      gates: [{
+        id: "alpha",
+        name: "Alpha evidence",
+        status: "INSUFFICIENT_SAMPLES",
+        evidence_counts: { real: 0 },
+        blockers: ["REAL_PROVIDER_ACCESS_UNAVAILABLE"],
+        next_action: "Collect real evidence"
+      }],
+      hosted_ci: {},
+      provider_runtime_blockers: ["MADEONSOL_CREDENTIALS_UNAVAILABLE"],
+      protected_modes: {
+        analysis_only: true,
+        paper_trading: true,
+        manual_execution: false,
+        auto_execution: false
+      },
+      live_money: { execution_eligible: false },
+      alpha_validation: {
+        status: "INSUFFICIENT_SAMPLES",
+        reason_codes: ["MADEONSOL_REAL_OBSERVATIONS_REQUIRED"],
+        real_observation_count: 0,
+        unique_robinhood_token_count: 0,
+        caller_kol_observation_count: 0,
+        smart_wallet_observation_count: 0,
+        deployer_observation_count: 0,
+        holder_distribution_observation_count: 0,
+        bundle_lp_security_observation_count: 0,
+        first_real_observation: null,
+        latest_real_observation: null,
+        rate_limit_count: 0,
+        error_count: 0,
+        labeled_winner_count: 0,
+        labeled_rug_count: 0
+      }
+    })));
+
+    const result = await fetchReadiness();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.alphaValidation.realObservationCount).toBe(0);
+      expect(result.data.alphaValidation.uniqueRobinhoodTokenCount).toBe(0);
+      expect(result.data.alphaValidation.firstRealObservation).toBeNull();
+      expect(result.data.alphaValidation.status).toBe("INSUFFICIENT_SAMPLES");
+    }
+  });
+
+  it("parses backend insider evidence without allowing frontend inference", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({
+      id: TOKEN_ID,
+      chain: "solana",
+      mint_address: "So11111111111111111111111111111111111111112",
+      token_program: "spl-token",
+      symbol: "MOON",
+      name: "Moon Fixture",
+      decimals: 6,
+      status: "ACTIVE",
+      creator_wallet: null,
+      pools: [],
+      candidate: null,
+      launch_lifecycle: {},
+      insider_evidence: {
+        suspicion_state: "UNKNOWN",
+        suspicious_holder_count: null,
+        suspicious_supply_pct: null,
+        confidence: null,
+        reason_codes: ["HOLDER_EVIDENCE_MISSING"],
+        evidence_refs: [],
+        provenance: [],
+        excluded_address_count: 0,
+        excluded_address_categories: [],
+        top_suspicious_wallets: [],
+        quality_state: "UNKNOWN",
+        as_of: null
+      }
+    })));
+
+    const result = await fetchToken(TOKEN_ID);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.insiderEvidence?.suspicionState).toBe("UNKNOWN");
+      expect(result.data.insiderEvidence?.suspiciousSupplyPct).toBeNull();
+      expect(result.data.insiderEvidence?.excludedAddressCount).toBe(0);
     }
   });
 

@@ -16,6 +16,8 @@ from memeradar_application.chain_opportunity import ChainOpportunitySnapshot
 from memeradar_application.creator_graph import CreatorOutcomeGraph
 from memeradar_application.event_time import event_time_quality
 from memeradar_application.exit_engine import ExitEvaluation
+from memeradar_application.historical_dataset import MadeOnSolReadinessReport
+from memeradar_application.holder_graph import HolderGraphAnalyzer, InsiderAllocationAnalyzer
 from memeradar_application.launch_lifecycle import GraduationAwareRouteAnalyzer, _token_matches
 from memeradar_application.read_api import (
     AuditEventView,
@@ -301,6 +303,7 @@ def _token_view(
     candidate: CandidateView | None,
     *,
     launch_lifecycle: Mapping[str, object] | None = None,
+    insider_evidence: Mapping[str, object] | None = None,
 ) -> TokenView:
     return TokenView(
         id=row.id,
@@ -317,7 +320,99 @@ def _token_view(
         pools=tuple(_pool_view(pool) for pool in row.pools),
         candidate=candidate,
         launch_lifecycle={} if launch_lifecycle is None else launch_lifecycle,
+        insider_evidence=insider_evidence,
     )
+
+
+def _insider_evidence(
+    row: TokenRow,
+    observations: Sequence[Observation],
+    *,
+    now: datetime,
+) -> Mapping[str, object]:
+    """Project the existing holder/graph analyzer without adding UI heuristics."""
+
+    token = _token_identity(row)
+    if normalize_chain(token.chain).value != "solana":
+        return {
+            "suspicion_state": "UNKNOWN",
+            "suspicious_holder_count": None,
+            "suspicious_supply_pct": None,
+            "confidence": None,
+            "reason_codes": ["INSIDER_EVIDENCE_UNSUPPORTED_CHAIN"],
+            "evidence_refs": [],
+            "provenance": [],
+            "excluded_address_count": None,
+            "excluded_address_categories": [],
+            "top_suspicious_wallets": [],
+            "quality_state": QualityState.UNKNOWN.value,
+            "as_of": None,
+        }
+    try:
+        analyzer = HolderGraphAnalyzer()
+        checked_at = ensure_utc(now, "now")
+        snapshot = analyzer.snapshot_holders(
+            token,
+            observations,
+            now=checked_at,
+            config_hash="insider-suspicion-read-v1",
+            creator_address=row.creator_wallet,
+        )
+        graph = analyzer.build_wallet_graph(
+            token,
+            observations,
+            seed_addresses=tuple(holder.address for holder in snapshot.holders),
+            now=checked_at,
+            config_hash="insider-suspicion-read-v1",
+        )
+        suspicion = InsiderAllocationAnalyzer().evaluate(
+            token,
+            snapshot,
+            graph,
+            observations,
+            as_of=checked_at,
+            config_hash="insider-suspicion-read-v1",
+        )
+    except (TypeError, ValueError, OverflowError):
+        return {
+            "suspicion_state": "UNKNOWN",
+            "suspicious_holder_count": None,
+            "suspicious_supply_pct": None,
+            "confidence": None,
+            "reason_codes": ["INSIDER_EVIDENCE_INVALID"],
+            "evidence_refs": [],
+            "provenance": [],
+            "excluded_address_count": None,
+            "excluded_address_categories": [],
+            "top_suspicious_wallets": [],
+            "quality_state": QualityState.INVALID.value,
+            "as_of": None,
+        }
+    return {
+        "suspicion_state": suspicion.state.value,
+        "suspicious_holder_count": suspicion.suspicious_holder_count,
+        "suspicious_supply_pct": suspicion.suspicious_supply_pct,
+        "confidence": suspicion.confidence,
+        "reason_codes": [reason.code for reason in suspicion.reason_codes],
+        "evidence_refs": list(suspicion.evidence_refs[:32]),
+        "provenance": [
+            {
+                "provider": item.provider,
+                "source_id": item.source_id,
+                "observed_at": item.observed_at,
+                "parser_version": item.parser_version,
+                "raw_payload_hash": item.raw_payload_hash,
+            }
+            for item in suspicion.provenance[:16]
+        ],
+        "excluded_address_count": len(snapshot.excluded_addresses),
+        "excluded_address_categories": sorted(
+            {item.kind.value for item in snapshot.excluded_addresses}
+        ),
+        "top_suspicious_wallets": list(suspicion.top_suspicious_wallets[:10]),
+        "quality_state": suspicion.quality_state.value,
+        "as_of": suspicion.as_of,
+    }
 
 
 def _observation_timeline(row: ObservationRow) -> TimelineEntryView:
@@ -562,6 +657,73 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         )
         return _candidate_view(row, score=score, risk=risk)
 
+    async def _observations_for_token(
+        self,
+        session: AsyncSession,
+        row: TokenRow,
+        *,
+        as_of: datetime,
+    ) -> tuple[Observation, ...]:
+        checked_at = ensure_utc(as_of, "as_of")
+        rows = (
+            await session.scalars(
+                select(ObservationRow)
+                .where(
+                    ObservationRow.token_id == row.id,
+                    ObservationRow.observed_at <= checked_at,
+                    ObservationRow.ingested_at <= checked_at,
+                    or_(
+                        ObservationRow.occurred_at <= checked_at,
+                        ObservationRow.occurred_at.is_(None),
+                    ),
+                )
+                .order_by(
+                    func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at),
+                    ObservationRow.observed_at,
+                    ObservationRow.id,
+                )
+                .limit(MAX_STORAGE_ROWS)
+            )
+        ).all()
+        values: list[Observation] = []
+        for observation_row in rows:
+            try:
+                values.append(_observation_from_row(observation_row))
+            except (TypeError, ValueError):
+                continue
+        return tuple(values)
+
+    async def get_madeonsol_readiness(self) -> MadeOnSolReadinessReport:
+        checked_at = ensure_utc(self._clock(), "read_at")
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(ObservationRow)
+                    .where(
+                        ObservationRow.provider == "madeonsol-robinhood",
+                        ObservationRow.observed_at <= checked_at,
+                        ObservationRow.ingested_at <= checked_at,
+                        or_(
+                            ObservationRow.occurred_at <= checked_at,
+                            ObservationRow.occurred_at.is_(None),
+                        ),
+                    )
+                    .order_by(
+                        func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at),
+                        ObservationRow.observed_at,
+                        ObservationRow.id,
+                    )
+                    .limit(MAX_STORAGE_ROWS)
+                )
+            ).all()
+            observations: list[Observation] = []
+            for row in rows:
+                try:
+                    observations.append(_observation_from_row(row))
+                except (TypeError, ValueError):
+                    continue
+        return MadeOnSolReadinessReport.from_persisted_observations(tuple(observations))
+
     async def _launch_lifecycle_for_tokens(
         self,
         session: AsyncSession,
@@ -751,7 +913,13 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             lifecycle = await self._launch_lifecycle_for_tokens(
                 session, (row,), as_of=self._clock()
             )
-            return _token_view(row, candidate, launch_lifecycle=lifecycle.get(row.id, {}))
+            observations = await self._observations_for_token(session, row, as_of=self._clock())
+            return _token_view(
+                row,
+                candidate,
+                launch_lifecycle=lifecycle.get(row.id, {}),
+                insider_evidence=_insider_evidence(row, observations, now=self._clock()),
+            )
 
     async def _position_mark_for_token(
         self,
@@ -1006,7 +1174,16 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                     else await self._candidate_view_for_row(session, row.candidate)
                 )
                 values.append(
-                    _token_view(row, candidate, launch_lifecycle=lifecycle.get(row.id, {}))
+                    _token_view(
+                        row,
+                        candidate,
+                        launch_lifecycle=lifecycle.get(row.id, {}),
+                        insider_evidence=_insider_evidence(
+                            row,
+                            await self._observations_for_token(session, row, as_of=self._clock()),
+                            now=self._clock(),
+                        ),
+                    )
                 )
             return tuple(values)
 

@@ -52,6 +52,7 @@ from .models import (
     AlertRow,
     CallerIdentityRow,
     CandidateRow,
+    CollectionCheckpointRow,
     CrossChainIdentityEvidenceRow,
     DomainEventRow,
     FeatureSnapshotRow,
@@ -523,6 +524,44 @@ class ObservationRepository:
 
     async def save(self, observation: Observation) -> ObservationRow:
         return await self.add(observation)
+
+
+class CollectionCheckpointRepository:
+    """Persist bounded provider cursors in the caller's transaction."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def load(self, key: str) -> str | None:
+        normalized = require_text(key, "checkpoint_key", max_length=256)
+        row = await self._session.scalar(
+            select(CollectionCheckpointRow).where(
+                CollectionCheckpointRow.checkpoint_key == normalized
+            )
+        )
+        return None if row is None else row.cursor
+
+    async def save(self, key: str, cursor: str | None) -> CollectionCheckpointRow:
+        normalized = require_text(key, "checkpoint_key", max_length=256)
+        if cursor is not None:
+            cursor = require_text(cursor, "cursor", max_length=512)
+        row = await self._session.scalar(
+            select(CollectionCheckpointRow).where(
+                CollectionCheckpointRow.checkpoint_key == normalized
+            )
+        )
+        if row is None:
+            row = CollectionCheckpointRow(
+                checkpoint_key=normalized,
+                cursor=cursor,
+                updated_at=datetime.now(UTC),
+            )
+            self._session.add(row)
+        else:
+            row.cursor = cursor
+            row.updated_at = datetime.now(UTC)
+        await self._session.flush()
+        return row
 
 
 class SocialCallObservationRepository:

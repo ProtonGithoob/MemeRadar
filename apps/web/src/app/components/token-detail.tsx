@@ -314,6 +314,45 @@ function RiskFactors({ token, early }: { token: TokenRecord; early: EarlyRadarRe
   );
 }
 
+function InsiderEvidencePanel({ token }: { token: TokenRecord }) {
+  const evidence = token.insiderEvidence;
+  if (evidence === null) {
+    return (
+      <article className="detail-panel">
+        <div className="panel-heading"><div><p className="eyebrow">Distribution evidence</p><h3>INSIDER PATTERN EVIDENCE</h3></div><small>UNKNOWN</small></div>
+        <p className="muted-copy">No canonical insider-allocation projection is available.</p>
+      </article>
+    );
+  }
+  const wallets = evidence.topSuspiciousWallets.length === 0
+    ? "UNKNOWN"
+    : evidence.topSuspiciousWallets.map((wallet) => shortIdentity(wallet, 10)).join(", ");
+  const reasons = evidence.reasonCodes.length === 0 ? "NONE RECORDED" : evidence.reasonCodes.join(", ");
+  const providers = evidence.provenance.length === 0
+    ? "UNKNOWN"
+    : [...new Set(evidence.provenance.map((item) => item.provider))].join(", ");
+  return (
+    <article className="detail-panel" aria-label="Insider pattern evidence">
+      <div className="panel-heading">
+        <div><p className="eyebrow">Distribution evidence</p><h3>INSIDER PATTERN EVIDENCE</h3></div>
+        <Pill label={evidence.suspicionState} tone={evidenceTone(evidence.suspicionState)} />
+      </div>
+      <dl className="detail-list">
+        <div><dt>QUALITY</dt><dd>{evidence.qualityState}</dd></div>
+        <div><dt>SUSPICIOUS HOLDERS</dt><dd>{evidence.suspiciousHolderCount ?? "UNKNOWN"}</dd></div>
+        <div><dt>SUSPICIOUS SUPPLY</dt><dd>{displayPercent(evidence.suspiciousSupplyPct)}</dd></div>
+        <div><dt>CONFIDENCE</dt><dd>{formatConfidence(evidence.confidence)}</dd></div>
+        <div><dt>EXCLUDED INFRASTRUCTURE</dt><dd>{evidence.excludedAddressCount ?? "UNKNOWN"}</dd></div>
+        <div><dt>EXCLUDED CATEGORIES</dt><dd>{evidence.excludedAddressCategories.join(", ") || "UNKNOWN"}</dd></div>
+        <div><dt>TOP SUSPICIOUS WALLETS</dt><dd>{wallets}</dd></div>
+        <div><dt>REASON CODES</dt><dd>{reasons}</dd></div>
+        <div><dt>PROVENANCE</dt><dd>{providers}</dd></div>
+        <div><dt>AS OF</dt><dd>{displayDate(evidence.asOf)}</dd></div>
+      </dl>
+    </article>
+  );
+}
+
 type CheckState = "ok" | "fail" | "unknown";
 
 function ChecklistItem({ label, state, value }: { label: string; state: CheckState; value: string }) {
@@ -670,6 +709,7 @@ export function TokenDetailView({
         </div>
         <Inspector>
           <RiskFactors early={earlyRecord} token={token} />
+          <InsiderEvidencePanel token={token} />
           <EntryChecklist early={earlyRecord} token={token} />
           <SignalSummary early={earlyRecord} />
           <ProvenancePanel entries={entries ?? []} token={token} />

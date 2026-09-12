@@ -20,6 +20,7 @@ from .opportunity_research import OpportunityResearchAnalyzer, OpportunityResear
 HISTORICAL_DATASET_SCHEMA_VERSION = 1
 HISTORICAL_DATASET_VERSION = "historical-real-dataset-v1"
 HISTORICAL_REAL_EVIDENCE_CLASS = "HISTORICAL_REAL"
+MADEONSOL_REAL_EVIDENCE_CLASS = "REAL_EXTERNAL"
 HISTORICAL_PARTITION_STRATEGY = "CHRONOLOGICAL_50_25_25"
 DEFAULT_REQUIRED_COHORTS: tuple[str, ...] = (
     "EXTREME_WINNER",
@@ -205,6 +206,32 @@ class MadeOnSolReadinessReport:
     error_count: int
     labeled_winner_count: int
     labeled_rug_count: int
+
+    @classmethod
+    def from_persisted_observations(
+        cls,
+        observations: Sequence[Observation],
+        *,
+        labels: Mapping[str, str] | None = None,
+        rate_limit_count: int = 0,
+        error_count: int = 0,
+    ) -> MadeOnSolReadinessReport:
+        """Build the operator report from the persisted evidence-class contract."""
+
+        stored = tuple(observations)
+        real = tuple(
+            item
+            for item in stored
+            if item.provenance.provider == "madeonsol-robinhood"
+            and item.normalized_payload.get("evidence_class") == MADEONSOL_REAL_EVIDENCE_CLASS
+        )
+        return cls.from_observations(
+            stored,
+            real_observations=real,
+            labels=labels,
+            rate_limit_count=rate_limit_count,
+            error_count=error_count,
+        )
 
     @classmethod
     def from_observations(

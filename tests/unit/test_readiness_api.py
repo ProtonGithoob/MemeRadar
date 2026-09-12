@@ -1,9 +1,16 @@
 """Machine-readable production-readiness projection contracts."""
 
+from dataclasses import replace
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
 from memeradar_api.main import create_app
 from memeradar_application.config import Settings
+from memeradar_application.read_api import InMemoryReadQueryService
+from memeradar_domain import Observation, Provenance, QualityState
+
+NOW = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
 
 
 def test_readiness_projection_exposes_gates_without_changing_protected_modes() -> None:
@@ -38,9 +45,66 @@ def test_readiness_projection_exposes_gates_without_changing_protected_modes() -
         for item in body["gates"]
     )
     assert body["live_money"]["status"] == "OUT_OF_SCOPE"
+    assert body["alpha_validation"] == {
+        "status": "INSUFFICIENT_SAMPLES",
+        "reason_codes": [
+            "MADEONSOL_REAL_OBSERVATIONS_REQUIRED",
+            "MADEONSOL_TOKEN_SAMPLES_REQUIRED",
+            "MADEONSOL_LABELED_OUTCOMES_REQUIRED",
+        ],
+        "real_observation_count": 0,
+        "unique_robinhood_token_count": 0,
+        "caller_kol_observation_count": 0,
+        "smart_wallet_observation_count": 0,
+        "deployer_observation_count": 0,
+        "holder_distribution_observation_count": 0,
+        "bundle_lp_security_observation_count": 0,
+        "first_real_observation": None,
+        "latest_real_observation": None,
+        "rate_limit_count": 0,
+        "error_count": 0,
+        "labeled_winner_count": 0,
+        "labeled_rug_count": 0,
+    }
     assert body["protected_modes"] == {
         "analysis_only": True,
         "paper_trading": True,
         "manual_execution": False,
         "auto_execution": False,
     }
+
+
+def test_readiness_api_reuses_persisted_evidence_class_not_shadow_presence() -> None:
+    base = Observation(
+        kind="market.snapshot",
+        provenance=Provenance(
+            provider="madeonsol-robinhood",
+            source_id="madeonsol:token:1",
+            observed_at=NOW,
+            parser_version="madeonsol-robinhood-v1",
+        ),
+        occurred_at=NOW,
+        observed_at=NOW,
+        ingested_at=NOW,
+        quality_state=QualityState.FRESH,
+        normalized_payload={"token_address": "0x" + "1" * 40},
+    )
+    service = InMemoryReadQueryService(
+        madeonsol_observations=(
+            base,
+            replace(
+                base,
+                normalized_payload={
+                    **base.normalized_payload,
+                    "evidence_class": "REAL_EXTERNAL",
+                },
+            ),
+        )
+    )
+    client = TestClient(create_app(Settings.from_env({}), read_service=service))
+
+    body = client.get("/v1/readiness").json()["alpha_validation"]
+
+    assert body["real_observation_count"] == 1
+    assert body["unique_robinhood_token_count"] == 1
+    assert body["status"] == "INSUFFICIENT_SAMPLES"

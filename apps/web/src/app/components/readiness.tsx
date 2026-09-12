@@ -25,6 +25,10 @@ function counts(gate: ReadinessGateRecord): string {
     : values.map(([key, value]) => `${key.replaceAll("_", " ")}=${value}`).join(" · ");
 }
 
+function alphaTimestamp(value: string | null): string {
+  return value === null ? "UNKNOWN" : new Date(value).toISOString();
+}
+
 export function ReadinessDashboard({ result }: { result: ReadResult<ReadinessRecord> }) {
   if (!result.ok) {
     return (
@@ -42,10 +46,33 @@ export function ReadinessDashboard({ result }: { result: ReadResult<ReadinessRec
       <div className="page-heading">
         <div>
           <p className="eyebrow">GATED RELEASE EVIDENCE</p>
-          <h2>Production readiness</h2>
+          <h2>Operator readiness</h2>
         </div>
         <small>{data.classification} · AS OF {new Date(data.asOf).toISOString()}</small>
       </div>
+      <section className="section-block intelligence-section" aria-labelledby="alpha-validation-title">
+        <div className="section-heading">
+          <div><p className="eyebrow">ALPHA VALIDATION / LIVE SHADOW</p><h3 id="alpha-validation-title">Alpha evidence readiness</h3></div>
+          <SafetyBadge label="STATUS" value={data.alphaValidation.status} tone="advisory" />
+        </div>
+        <p>MadeOnSol evidence is research-only. Provider health does not validate alpha or authorize execution.</p>
+        <div className="operations-summary">
+          <div><span className="card-label">REAL OBSERVATIONS</span><strong>{data.alphaValidation.realObservationCount}</strong></div>
+          <div><span className="card-label">UNIQUE ROBINHOOD TOKENS</span><strong>{data.alphaValidation.uniqueRobinhoodTokenCount}</strong></div>
+          <div><span className="card-label">CALLER / KOL OBSERVATIONS</span><strong>{data.alphaValidation.callerKolObservationCount}</strong></div>
+          <div><span className="card-label">SMART-WALLET OBSERVATIONS</span><strong>{data.alphaValidation.smartWalletObservationCount}</strong></div>
+          <div><span className="card-label">DEPLOYER OBSERVATIONS</span><strong>{data.alphaValidation.deployerObservationCount}</strong></div>
+          <div><span className="card-label">HOLDER / DISTRIBUTION OBSERVATIONS</span><strong>{data.alphaValidation.holderDistributionObservationCount}</strong></div>
+          <div><span className="card-label">BUNDLE / LP / SECURITY OBSERVATIONS</span><strong>{data.alphaValidation.bundleLpSecurityObservationCount}</strong></div>
+          <div><span className="card-label">LABELED WINNERS</span><strong>{data.alphaValidation.labeledWinnerCount}</strong></div>
+          <div><span className="card-label">LABELED RUGS / FAILURES</span><strong>{data.alphaValidation.labeledRugCount}</strong></div>
+          <div><span className="card-label">FIRST REAL OBSERVATION</span><strong>{alphaTimestamp(data.alphaValidation.firstRealObservation)}</strong></div>
+          <div><span className="card-label">LATEST REAL OBSERVATION</span><strong>{alphaTimestamp(data.alphaValidation.latestRealObservation)}</strong></div>
+          <div><span className="card-label">RATE LIMITS</span><strong>{data.alphaValidation.rateLimitCount}</strong></div>
+          <div><span className="card-label">PROVIDER ERRORS</span><strong>{data.alphaValidation.errorCount}</strong></div>
+        </div>
+        <small>Reasons: {data.alphaValidation.reasonCodes.join(" · ") || "NONE RECORDED"}</small>
+      </section>
       <section className="section-block intelligence-section" aria-labelledby="readiness-gates-title">
         <div className="section-heading">
           <div><p className="eyebrow">PR-1 THROUGH PR-7</p><h3 id="readiness-gates-title">Acceptance gates</h3></div>

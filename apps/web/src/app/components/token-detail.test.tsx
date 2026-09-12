@@ -47,7 +47,21 @@ const token: TokenRecord = {
     riskReasonCodes: ["AUTHORITY_CLEAR"],
     evidenceRefs: ["market:1"]
   },
-  launchLifecycle: null
+  launchLifecycle: null,
+  insiderEvidence: {
+    suspicionState: "UNKNOWN",
+    suspiciousHolderCount: null,
+    suspiciousSupplyPct: null,
+    confidence: null,
+    reasonCodes: ["INSUFFICIENT_WALLET_HISTORY"],
+    evidenceRefs: ["holder:fixture"],
+    provenance: [{ provider: "holder-fixture", sourceId: "holder:fixture", observedAt: "2026-08-31T12:04:00.000Z", parserVersion: "holder-v1" }],
+    excludedAddressCount: 2,
+    excludedAddressCategories: ["POOL", "PROGRAM"],
+    topSuspiciousWallets: [],
+    qualityState: "UNKNOWN",
+    asOf: "2026-08-31T12:04:00.000Z"
+  }
 };
 
 const lifecycle: LaunchLifecycleRecord = {
@@ -170,6 +184,8 @@ describe("TokenDetailView", () => {
     expect(screen.getByText("CREATOR WALLET")).toBeInTheDocument();
     expect(screen.getByText("SCORE 84 / 100")).toBeInTheDocument();
     expect(screen.getByText("HOLDER CONCENTRATION / CLUSTERS")).toBeInTheDocument();
+    expect(screen.getByText("INSIDER PATTERN EVIDENCE")).toBeInTheDocument();
+    expect(screen.getByText("INSUFFICIENT_WALLET_HISTORY")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Price evidence chart" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Liquidity evidence chart" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Net flow evidence chart" })).toBeInTheDocument();

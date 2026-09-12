@@ -17,6 +17,7 @@ from memeradar_application.config import Settings
 from memeradar_application.control import ControlAction, ControlPlanePort
 from memeradar_application.early_scoring import AsymmetricAlphaProjection
 from memeradar_application.event_time import EventTimeQuality
+from memeradar_application.historical_dataset import MadeOnSolReadinessReport
 from memeradar_application.provider_contracts import ProviderCapabilityStatus
 from memeradar_application.provider_metadata import provider_metadata
 from memeradar_application.read_api import (
@@ -424,6 +425,7 @@ class TokenResponse(_StrictModel):
     pools: list[PoolResponse] = Field(default_factory=list)
     candidate: CandidateResponse | None = None
     launch_lifecycle: dict[str, object] = Field(default_factory=dict)
+    insider_evidence: dict[str, object] | None = None
 
 
 class WalletResponse(_StrictModel):
@@ -638,6 +640,24 @@ class ReadinessGateResponse(_StrictModel):
     next_action: str
 
 
+class AlphaValidationResponse(_StrictModel):
+    status: str
+    reason_codes: list[str] = Field(default_factory=list)
+    real_observation_count: int
+    unique_robinhood_token_count: int
+    caller_kol_observation_count: int
+    smart_wallet_observation_count: int
+    deployer_observation_count: int
+    holder_distribution_observation_count: int
+    bundle_lp_security_observation_count: int
+    first_real_observation: datetime | None = None
+    latest_real_observation: datetime | None = None
+    rate_limit_count: int
+    error_count: int
+    labeled_winner_count: int
+    labeled_rug_count: int
+
+
 class ReadinessResponse(_StrictModel):
     as_of: datetime
     classification: str
@@ -646,6 +666,7 @@ class ReadinessResponse(_StrictModel):
     provider_runtime_blockers: list[str] = Field(default_factory=list)
     protected_modes: dict[str, bool]
     live_money: dict[str, object]
+    alpha_validation: AlphaValidationResponse
 
 
 class AuditEventResponse(_StrictModel):
@@ -1012,6 +1033,9 @@ def _token_response(value: TokenView) -> TokenResponse:
         pools=[_pool_response(pool) for pool in value.pools],
         candidate=None if value.candidate is None else _candidate_response(value.candidate),
         launch_lifecycle=_mapping(value.launch_lifecycle),
+        insider_evidence=(
+            None if value.insider_evidence is None else _mapping(value.insider_evidence)
+        ),
     )
 
 
@@ -1231,7 +1255,10 @@ def _creator_reputation_response(value: CreatorReputationView) -> CreatorReputat
     )
 
 
-def _provider_health_response(value: ProviderHealthView) -> ProviderHealthResponse:
+def _provider_health_response(
+    value: ProviderHealthView,
+    settings: Settings | None = None,
+) -> ProviderHealthResponse:
     assert value.capability_status is not None
     metadata = provider_metadata(value.provider, value.capability)
     capability_status = (
@@ -1239,6 +1266,22 @@ def _provider_health_response(value: ProviderHealthView) -> ProviderHealthRespon
         if isinstance(value.capability_status, ProviderCapabilityStatus)
         else value.capability_status
     )
+    runtime_state = ReadProviderHealthState(value.state)
+    enabled = metadata.enabled
+    credential_state = metadata.credential_state
+    endpoint_state = metadata.endpoint_state
+    if value.provider == "madeonsol-robinhood" and settings is not None:
+        enabled = settings.madeonsol_enabled
+        credential_state = "CONFIGURED" if settings.madeonsol_api_key else "NOT_CONFIGURED"
+        endpoint_state = "CONFIGURED" if settings.madeonsol_base_url else "NOT_CONFIGURED"
+        if not enabled:
+            credential_state = "DISABLED"
+            endpoint_state = "DISABLED"
+            runtime_state = ReadProviderHealthState.UNKNOWN
+            capability_status = ProviderCapabilityStatus.UNSUPPORTED.value
+        elif not settings.madeonsol_api_key:
+            runtime_state = ReadProviderHealthState.UNKNOWN
+            capability_status = ProviderCapabilityStatus.CONFIGURATION_MISSING.value
     return ProviderHealthResponse(
         provider=value.provider,
         provider_id=metadata.provider_id,
@@ -1246,14 +1289,14 @@ def _provider_health_response(value: ProviderHealthView) -> ProviderHealthRespon
         chains=list(metadata.chains),
         capabilities=list(metadata.capabilities),
         required=metadata.required,
-        enabled=metadata.enabled,
+        enabled=enabled,
         setting_keys=list(metadata.setting_keys),
-        credential_state=metadata.credential_state,
-        endpoint_state=metadata.endpoint_state,
+        credential_state=credential_state,
+        endpoint_state=endpoint_state,
         fallback_position=metadata.fallback_position,
-        runtime_health=ReadProviderHealthState(value.state).value,
+        runtime_health=runtime_state.value,
         capability=value.capability,
-        state=ReadProviderHealthState(value.state).value,
+        state=runtime_state.value,
         checked_at=value.checked_at,
         latency_ms=value.latency_ms,
         quota=_mapping(value.quota),
@@ -1663,7 +1706,40 @@ async def _resolve_search(service: ReadQueryPort, raw_query: str) -> SearchResol
     return SearchResolveResponse(kind="NOT_FOUND", query=raw_query, reason_codes=["NOT_FOUND"])
 
 
-def _readiness_projection(settings: object) -> ReadinessResponse:
+def _alpha_validation_response(
+    report: MadeOnSolReadinessReport,
+) -> AlphaValidationResponse:
+    return AlphaValidationResponse(
+        status=report.status,
+        reason_codes=list(report.reason_codes),
+        real_observation_count=report.real_observation_count,
+        unique_robinhood_token_count=report.unique_robinhood_token_count,
+        caller_kol_observation_count=report.caller_kol_observation_count,
+        smart_wallet_observation_count=report.smart_wallet_observation_count,
+        deployer_observation_count=report.deployer_observation_count,
+        holder_distribution_observation_count=report.holder_distribution_observation_count,
+        bundle_lp_security_observation_count=report.bundle_lp_security_observation_count,
+        first_real_observation=(
+            None
+            if report.first_real_observation is None
+            else datetime.fromisoformat(report.first_real_observation)
+        ),
+        latest_real_observation=(
+            None
+            if report.latest_real_observation is None
+            else datetime.fromisoformat(report.latest_real_observation)
+        ),
+        rate_limit_count=report.rate_limit_count,
+        error_count=report.error_count,
+        labeled_winner_count=report.labeled_winner_count,
+        labeled_rug_count=report.labeled_rug_count,
+    )
+
+
+def _readiness_projection(
+    settings: object,
+    alpha_validation: MadeOnSolReadinessReport | None = None,
+) -> ReadinessResponse:
     protected_modes = {
         "analysis_only": bool(getattr(settings, "analysis_only", True)),
         "paper_trading": bool(getattr(settings, "paper_trading", True)),
@@ -1740,6 +1816,9 @@ def _readiness_projection(settings: object) -> ReadinessResponse:
             "execution_eligible": False,
             "next_action": "No live-money action is in scope; preserve protected modes.",
         },
+        alpha_validation=_alpha_validation_response(
+            alpha_validation or MadeOnSolReadinessReport.from_persisted_observations(())
+        ),
     )
 
 
@@ -1771,7 +1850,12 @@ def build_read_router(
 
     @router.get("/readiness", response_model=ReadinessResponse)
     async def get_readiness() -> ReadinessResponse:
-        return _readiness_projection(settings)
+        report = MadeOnSolReadinessReport.from_persisted_observations(())
+        if service is not None:
+            getter = getattr(service, "get_madeonsol_readiness", None)
+            if callable(getter):
+                report = await _call(getter())
+        return _readiness_projection(settings, report)
 
     @router.get("/candidates", response_model=PageResponse[CandidateResponse])
     async def list_candidates(
@@ -1940,7 +2024,7 @@ def build_read_router(
     ) -> PageResponse[ProviderHealthResponse]:
         query = _build(lambda: ProviderHealthQuery(**params.model_dump()))
         page = await _call(_require_service(service).list_provider_health(query))
-        return _page_response(page, _provider_health_response)
+        return _page_response(page, lambda value: _provider_health_response(value, settings))
 
     @router.get("/audit/events", response_model=PageResponse[AuditEventResponse])
     async def list_audit_events(
@@ -1981,6 +2065,7 @@ def build_read_router(
 
 
 __all__ = [
+    "AlphaValidationResponse",
     "AuditEventResponse",
     "AuditQueryParams",
     "CallerConvergenceQueryParams",

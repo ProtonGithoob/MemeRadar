@@ -44,6 +44,7 @@ def main() -> int:
         "config_versions",
         "audit_events",
         "chain_cursors",
+        "collection_checkpoints",
         "stream_gaps",
         "stream_verifications",
         "orders",
@@ -53,9 +54,9 @@ def main() -> int:
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0010_active_position_claim"]:
+    if heads != ["0011_collection_checkpoints"]:
         print(
-            "migration_error: expected exactly one 0010_active_position_claim head",
+            "migration_error: expected exactly one 0011_collection_checkpoints head",
             file=sys.stderr,
         )
         return 1

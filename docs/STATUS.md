@@ -38,8 +38,8 @@ zero or safe evidence.
   data, Chainlink feed identities, and matured live-shadow observations are
   unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
   is `INSUFFICIENT_SAMPLES`.
-- Latest hosted CI run `34696935930` ran for HEAD
-  `63553bead866c198abe504c7ce736d16ea415649`. Backend quality, Frontend
+- Latest hosted CI run `34700482295` ran for HEAD
+  `e14b889b3aa992f9b088eaaa9f0c4455363db2b0`. Backend quality, Frontend
   quality, Compose contract, and Secret scan each terminated with `failure`
   before any workflow step executed; Release candidate identity was `skipped`
   with zero steps. GitHub's annotation states: "The job was not started
@@ -71,8 +71,8 @@ No blocker changes the readiness classification or authorizes a mode change.
 The latest local full gate recorded after the alpha-readiness and paper-integrity
 follow-up:
 
-- `make verify`: 1230 Python tests passed, 11 skipped, 1 warning; 21 frontend
-  test files and 74 Vitest tests passed. Skips remain environment/optional
+- `make verify`: 1250 Python tests passed, 11 skipped, 1 warning; 22 frontend
+  test files and 77 Vitest tests passed. Skips remain environment/optional
   provider cases and are not counted as passes.
 - Telegram-focused tests: 31 passed (`test_early_alpha_alert.py` and
   `test_early_alpha_pipeline.py`); ordinary `AlertRenderer` regression passed.
@@ -81,7 +81,7 @@ follow-up:
 - Ruff, strict mypy across 131 source files, frontend lint/typecheck,
   production build, Compose validation, tracked-file secret scan, migrations,
   security review, SBOM, CSS contract, and `git diff --check`: passed.
-- Migration head: `0010_active_position_claim`; metadata tables: 26. Runtime
+- Migration head: `0011_collection_checkpoints`; metadata tables: 27. Runtime
   migration was skipped because `MEMERADAR_DATABASE_URL`/`DATABASE_URL` was
   absent; offline PostgreSQL SQL generation verified both new unique indexes.
   Database integration was skipped because `MEMERADAR_TEST_DATABASE_URL` was

@@ -49,9 +49,10 @@ test("responsive visual matrix keeps every operator surface bounded", async ({ p
       if (layout.viewport <= 768) {
         const openNavigation = page.getByRole("button", { name: "Open navigation" });
         await expect(openNavigation).toBeVisible();
-        await openNavigation.click({ force: true });
+        await expect(openNavigation).toHaveAttribute("data-nav-hydrated", "true");
+        await openNavigation.click();
         await expect(page.getByRole("button", { name: "Close navigation" })).toBeVisible();
-        await page.getByRole("button", { name: "Close navigation" }).click({ force: true });
+        await page.getByRole("button", { name: "Close navigation" }).click();
       }
 
       if (testInfo.project.name === "desktop" && route === "/") {

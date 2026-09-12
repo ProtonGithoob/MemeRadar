@@ -30,6 +30,7 @@ def test_core_persistence_tables_are_declared() -> None:
         "orders",
         "fills",
         "cash_ledger",
+        "collection_checkpoints",
         "alerts",
         "domain_events",
         "outbox",
@@ -75,6 +76,11 @@ def test_idempotency_and_identity_constraints_are_explicit() -> None:
         isinstance(constraint, UniqueConstraint)
         and {column.name for column in constraint.columns} == {"idempotency_key"}
         for constraint in tables["cash_ledger"].constraints
+    )
+    assert any(
+        isinstance(constraint, UniqueConstraint)
+        and {column.name for column in constraint.columns} == {"checkpoint_key"}
+        for constraint in tables["collection_checkpoints"].constraints
     )
 
 

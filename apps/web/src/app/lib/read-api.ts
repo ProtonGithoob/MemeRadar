@@ -180,6 +180,22 @@ export interface TokenRecord {
   pools: PoolRecord[];
   candidate: CandidateRecord | null;
   launchLifecycle: LaunchLifecycleRecord | null;
+  insiderEvidence: InsiderEvidenceRecord | null;
+}
+
+export interface InsiderEvidenceRecord {
+  suspicionState: string;
+  suspiciousHolderCount: number | null;
+  suspiciousSupplyPct: number | null;
+  confidence: number | null;
+  reasonCodes: string[];
+  evidenceRefs: string[];
+  provenance: ProvenanceRecord[];
+  excludedAddressCount: number | null;
+  excludedAddressCategories: string[];
+  topSuspiciousWallets: string[];
+  qualityState: TimelineQuality;
+  asOf: string | null;
 }
 
 export interface ProvenanceRecord {
@@ -609,6 +625,24 @@ export interface ReadinessGateRecord {
   nextAction: string;
 }
 
+export interface AlphaValidationRecord {
+  status: string;
+  reasonCodes: string[];
+  realObservationCount: number;
+  uniqueRobinhoodTokenCount: number;
+  callerKolObservationCount: number;
+  smartWalletObservationCount: number;
+  deployerObservationCount: number;
+  holderDistributionObservationCount: number;
+  bundleLpSecurityObservationCount: number;
+  firstRealObservation: string | null;
+  latestRealObservation: string | null;
+  rateLimitCount: number;
+  errorCount: number;
+  labeledWinnerCount: number;
+  labeledRugCount: number;
+}
+
 export interface ReadinessRecord {
   asOf: string;
   classification: string;
@@ -617,6 +651,7 @@ export interface ReadinessRecord {
   providerRuntimeBlockers: string[];
   protectedModes: ProtectedModesRecord;
   liveMoney: Record<string, unknown>;
+  alphaValidation: AlphaValidationRecord;
 }
 
 export interface ChainOpportunityFilters {
@@ -1213,6 +1248,46 @@ function parseLaunchLifecycle(value: unknown): LaunchLifecycleRecord | null {
   };
 }
 
+function parseInsiderEvidence(value: unknown): InsiderEvidenceRecord | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const suspicionState = boundedString(value.suspicion_state, 64);
+  const suspiciousHolderCount = optionalInteger(value.suspicious_holder_count, 0, 1_000_000);
+  const suspiciousSupplyPct = optionalFiniteNumber(value.suspicious_supply_pct, 0, 1);
+  const confidence = optionalFiniteNumber(value.confidence, 0, 1);
+  const reasonCodes = stringArray(value.reason_codes ?? [], 128);
+  const evidenceRefs = stringArray(value.evidence_refs ?? [], 256);
+  const provenance = parseProvenanceList(value.provenance ?? []);
+  const excludedAddressCount = optionalInteger(value.excluded_address_count, 0, 1_000_000);
+  const excludedAddressCategories = stringArray(value.excluded_address_categories ?? [], 64);
+  const topSuspiciousWallets = stringArray(value.top_suspicious_wallets ?? [], 128);
+  const qualityState = optionalQuality(value.quality_state);
+  const asOf = optionalTimestamp(value.as_of);
+  if (
+    suspicionState === null || suspiciousHolderCount === undefined ||
+    suspiciousSupplyPct === undefined || confidence === undefined || reasonCodes === null ||
+    evidenceRefs === null || provenance === null || excludedAddressCount === undefined ||
+    excludedAddressCategories === null || topSuspiciousWallets === null ||
+    qualityState === null || qualityState === undefined || asOf === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    suspicionState,
+    suspiciousHolderCount,
+    suspiciousSupplyPct,
+    confidence,
+    reasonCodes,
+    evidenceRefs,
+    provenance,
+    excludedAddressCount,
+    excludedAddressCategories,
+    topSuspiciousWallets,
+    qualityState,
+    asOf
+  };
+}
+
 function parseToken(value: unknown): TokenRecord | null {
   if (!isRecord(value)) return null;
   const id = uuid(value.id);
@@ -1241,6 +1316,7 @@ function parseToken(value: unknown): TokenRecord | null {
   const lifecycleMissing = rawLifecycle === null || rawLifecycle === undefined ||
     (isRecord(rawLifecycle) && Object.keys(rawLifecycle).length === 0);
   const launchLifecycle = lifecycleMissing ? null : parseLaunchLifecycle(rawLifecycle);
+  const insiderEvidence = parseInsiderEvidence(value.insider_evidence);
 
   if (
     id === null || chain === null || mintAddress === null || tokenProgram === null ||
@@ -1249,7 +1325,8 @@ function parseToken(value: unknown): TokenRecord | null {
     status === null || creatorWallet === undefined || pools === null ||
     pools.some((pool): pool is null => pool === null) ||
     (!lifecycleMissing && launchLifecycle === null) ||
-    (value.candidate !== null && value.candidate !== undefined && candidate === null)
+    (value.candidate !== null && value.candidate !== undefined && candidate === null) ||
+    insiderEvidence === undefined
   ) {
     return null;
   }
@@ -1268,7 +1345,8 @@ function parseToken(value: unknown): TokenRecord | null {
     creatorWallet,
     pools: pools as PoolRecord[],
     candidate,
-    launchLifecycle
+    launchLifecycle,
+    insiderEvidence
   };
 }
 
@@ -2598,6 +2676,57 @@ function parseReadinessGate(value: unknown): ReadinessGateRecord | null {
   return { id, name, status: status as ReadinessStatus, evidenceCounts, blockers, nextAction };
 }
 
+function parseAlphaValidation(value: unknown): AlphaValidationRecord | null {
+  if (!isRecord(value)) return null;
+  const status = boundedString(value.status, 64);
+  const reasonCodes = stringArray(value.reason_codes ?? [], 128);
+  const realObservationCount = integer(value.real_observation_count, 0, 1_000_000_000);
+  const uniqueRobinhoodTokenCount = integer(value.unique_robinhood_token_count, 0, 1_000_000_000);
+  const callerKolObservationCount = integer(value.caller_kol_observation_count, 0, 1_000_000_000);
+  const smartWalletObservationCount = integer(value.smart_wallet_observation_count, 0, 1_000_000_000);
+  const deployerObservationCount = integer(value.deployer_observation_count, 0, 1_000_000_000);
+  const holderDistributionObservationCount = integer(
+    value.holder_distribution_observation_count, 0, 1_000_000_000
+  );
+  const bundleLpSecurityObservationCount = integer(
+    value.bundle_lp_security_observation_count, 0, 1_000_000_000
+  );
+  const firstRealObservation = optionalTimestamp(value.first_real_observation);
+  const latestRealObservation = optionalTimestamp(value.latest_real_observation);
+  const rateLimitCount = integer(value.rate_limit_count, 0, 1_000_000_000);
+  const errorCount = integer(value.error_count, 0, 1_000_000_000);
+  const labeledWinnerCount = integer(value.labeled_winner_count, 0, 1_000_000_000);
+  const labeledRugCount = integer(value.labeled_rug_count, 0, 1_000_000_000);
+  if (
+    status === null || reasonCodes === null || realObservationCount === null ||
+    uniqueRobinhoodTokenCount === null || callerKolObservationCount === null ||
+    smartWalletObservationCount === null || deployerObservationCount === null ||
+    holderDistributionObservationCount === null || bundleLpSecurityObservationCount === null ||
+    firstRealObservation === undefined || latestRealObservation === undefined ||
+    rateLimitCount === null || errorCount === null || labeledWinnerCount === null ||
+    labeledRugCount === null
+  ) {
+    return null;
+  }
+  return {
+    status,
+    reasonCodes,
+    realObservationCount,
+    uniqueRobinhoodTokenCount,
+    callerKolObservationCount,
+    smartWalletObservationCount,
+    deployerObservationCount,
+    holderDistributionObservationCount,
+    bundleLpSecurityObservationCount,
+    firstRealObservation,
+    latestRealObservation,
+    rateLimitCount,
+    errorCount,
+    labeledWinnerCount,
+    labeledRugCount
+  };
+}
+
 function parseReadiness(value: unknown): ReadinessRecord | null {
   if (!isRecord(value)) return null;
   const asOf = timestamp(value.as_of);
@@ -2607,10 +2736,12 @@ function parseReadiness(value: unknown): ReadinessRecord | null {
   const hostedCi = safePayload(value.hosted_ci ?? {});
   const providerRuntimeBlockers = stringArray(value.provider_runtime_blockers ?? [], 128);
   const liveMoney = safePayload(value.live_money ?? {});
+  const alphaValidation = parseAlphaValidation(value.alpha_validation);
   const modes = value.protected_modes;
   if (
     asOf === null || classification === null || gates === null || gates.some((gate) => gate === null) ||
-    hostedCi === null || providerRuntimeBlockers === null || liveMoney === null || !isRecord(modes) ||
+    hostedCi === null || providerRuntimeBlockers === null || liveMoney === null ||
+    alphaValidation === null || !isRecord(modes) ||
     modes.analysis_only !== true || modes.paper_trading !== true ||
     modes.manual_execution !== false || modes.auto_execution !== false
   ) {
@@ -2628,7 +2759,8 @@ function parseReadiness(value: unknown): ReadinessRecord | null {
       manualExecution: false,
       autoExecution: false
     },
-    liveMoney
+    liveMoney,
+    alphaValidation
   };
 }
 

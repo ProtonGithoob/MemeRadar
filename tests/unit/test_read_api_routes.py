@@ -296,3 +296,60 @@ def test_read_views_preserve_unknown_health_and_protected_modes() -> None:
     assert settings.paper_trading is True
     assert settings.manual_execution is False
     assert settings.auto_execution is False
+
+
+def test_madeonsol_provider_projection_uses_runtime_configuration_without_secret() -> None:
+    health = ProviderHealthView(
+        provider="madeonsol-robinhood",
+        capability="candidate_discovery",
+        state=ReadProviderHealthState.HEALTHY,
+        checked_at=NOW,
+    )
+    service = InMemoryReadQueryService(provider_health=(health,))
+
+    disabled = _client(service).get("/v1/providers/health")
+    disabled_item = disabled.json()["items"][0]
+    assert disabled_item["provider_id"] == "madeonsol-robinhood"
+    assert set(disabled_item["capabilities"]) >= {
+        "candidate_discovery",
+        "market_data",
+        "social_calls",
+        "caller_history",
+        "wallet_activity",
+        "wallet_enrichment",
+        "token_security",
+        "risk_summary",
+    }
+    assert disabled_item["enabled"] is False
+    assert disabled_item["credential_state"] == "DISABLED"
+    assert disabled_item["endpoint_state"] == "DISABLED"
+    assert disabled_item["state"] == "UNKNOWN"
+
+    missing = TestClient(
+        create_app(
+            Settings.from_env({"MADEONSOL_ENABLED": "true"}),
+            read_service=service,
+        )
+    ).get("/v1/providers/health")
+    missing_item = missing.json()["items"][0]
+    assert missing_item["enabled"] is True
+    assert missing_item["credential_state"] == "NOT_CONFIGURED"
+    assert missing_item["state"] == "UNKNOWN"
+    assert missing_item["capability_status"] == "CONFIGURATION_MISSING"
+
+    configured = TestClient(
+        create_app(
+            Settings.from_env(
+                {
+                    "MADEONSOL_ENABLED": "true",
+                    "MADEONSOL_API_KEY": "server-only-secret",
+                }
+            ),
+            read_service=service,
+        )
+    ).get("/v1/providers/health")
+    configured_item = configured.json()["items"][0]
+    assert configured_item["enabled"] is True
+    assert configured_item["credential_state"] == "CONFIGURED"
+    assert configured_item["state"] == "HEALTHY"
+    assert "server-only-secret" not in configured.text

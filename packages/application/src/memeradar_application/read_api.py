@@ -21,6 +21,7 @@ from memeradar_domain import (
     Chain,
     EarlyDecisionState,
     Freshness,
+    Observation,
     Position,
     PositionMode,
     PositionState,
@@ -46,6 +47,7 @@ from .creator_graph import CreatorOutcomeGraph
 from .early_scoring import AsymmetricAlphaProjection
 from .event_time import EventTimeQuality
 from .exit_engine import ExitEvaluation
+from .historical_dataset import MadeOnSolReadinessReport
 from .provider_contracts import ProviderCapabilityStatus, provider_capability_status
 from .smart_money_convergence import CallerConvergenceEvidence, CallerConvergenceState
 
@@ -1084,6 +1086,7 @@ class TokenView:
     pools: tuple[PoolView, ...] = ()
     candidate: CandidateView | None = None
     launch_lifecycle: Mapping[str, object] = field(default_factory=dict)
+    insider_evidence: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
@@ -1128,6 +1131,8 @@ class TokenView:
         if self.candidate is not None and not isinstance(self.candidate, CandidateView):
             raise TypeError("candidate must be a CandidateView or None")
         object.__setattr__(self, "launch_lifecycle", safe_read_payload(self.launch_lifecycle))
+        if self.insider_evidence is not None:
+            object.__setattr__(self, "insider_evidence", safe_read_payload(self.insider_evidence))
 
 
 @dataclass(frozen=True, slots=True)
@@ -2627,6 +2632,8 @@ class ReadQueryPort(Protocol):
 
     async def get_token(self, token_id: UUID) -> TokenView | None: ...
 
+    async def get_madeonsol_readiness(self) -> MadeOnSolReadinessReport: ...
+
     async def list_timeline(
         self, token_id: UUID, query: TimelineQuery
     ) -> Page[TimelineEntryView]: ...
@@ -2784,6 +2791,7 @@ class InMemoryReadQueryService:
         provider_health: Sequence[ProviderHealthView] = (),
         audit_events: Sequence[AuditEventView] = (),
         config_versions: Sequence[ConfigVersionView] = (),
+        madeonsol_observations: Sequence[Observation] = (),
         positions: Sequence[PositionView] = (),
         creator_graph: CreatorOutcomeGraph | None = None,
         clock: Callable[[], datetime] | None = None,
@@ -2805,6 +2813,7 @@ class InMemoryReadQueryService:
         self.provider_health = tuple(provider_health)
         self.audit_events = tuple(audit_events)
         self.config_versions = tuple(config_versions)
+        self._madeonsol_observations = tuple(madeonsol_observations)
         self.positions = tuple(positions)
         self._creator_graph = creator_graph or CreatorOutcomeGraph()
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -2820,6 +2829,13 @@ class InMemoryReadQueryService:
             raise TypeError("tokens must contain TokenView values")
         if any(not isinstance(value, PositionView) for value in self.positions):
             raise TypeError("positions must contain PositionView values")
+        if any(not isinstance(value, Observation) for value in self._madeonsol_observations):
+            raise TypeError("madeonsol_observations must contain Observation values")
+
+    async def get_madeonsol_readiness(self) -> MadeOnSolReadinessReport:
+        return MadeOnSolReadinessReport.from_persisted_observations(
+            self._madeonsol_observations
+        )
 
     async def list_candidates(self, query: CandidateQuery) -> Page[CandidateView]:
         if not isinstance(query, CandidateQuery):

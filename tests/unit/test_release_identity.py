@@ -21,8 +21,8 @@ def test_release_identity_is_reproducible_and_binds_existing_release_inputs() ->
     assert identity["git_sha"] == git_sha
     assert identity["app_version"] == "0.1.0"
     assert identity["api_version"] == "0.1.0"
-    assert identity["migration_heads"] == ["0010_active_position_claim"]
-    assert identity["migration_table_count"] == 26
+    assert identity["migration_heads"] == ["0011_collection_checkpoints"]
+    assert identity["migration_table_count"] == 27
     assert identity["config_hash"].startswith("sha256:")
     assert identity["sbom_schema_version"] == "security-sbom-v1"
     assert identity["sbom_component_count"] == 581

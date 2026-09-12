@@ -310,6 +310,21 @@ class ChainCursorRow(Base):
     parser_registry_version: Mapped[str] = mapped_column(String(128), nullable=False)
 
 
+class CollectionCheckpointRow(Base):
+    """Durable cursor for bounded non-chain provider collections."""
+
+    __tablename__ = "collection_checkpoints"
+    __table_args__ = (
+        UniqueConstraint("checkpoint_key", name="uq_collection_checkpoints_key"),
+        Index("ix_collection_checkpoints_updated_at", "updated_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    checkpoint_key: Mapped[str] = mapped_column(String(256), nullable=False)
+    cursor: Mapped[str | None] = mapped_column(String(512))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class StreamGapRow(Base):
     """Durable projection of every detected and merged stream gap."""
 

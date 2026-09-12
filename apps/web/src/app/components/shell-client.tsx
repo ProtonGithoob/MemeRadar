@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+
+const noHydrationSubscription = () => () => undefined;
+const clientHydrated = () => true;
+const serverHydrated = () => false;
 
 const NAV_SECTIONS: Array<{
   label: string;
@@ -46,6 +50,11 @@ function isActive(pathname: string, href: string): boolean {
 export function SidebarNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const hydrated = useSyncExternalStore(
+    noHydrationSubscription,
+    clientHydrated,
+    serverHydrated
+  );
 
   return (
     <>
@@ -53,6 +62,7 @@ export function SidebarNav() {
         aria-expanded={open}
         aria-label={open ? "Close navigation" : "Open navigation"}
         className="ws-nav__toggle"
+        data-nav-hydrated={hydrated ? "true" : "false"}
         onClick={() => setOpen((value) => !value)}
         type="button"
       >

@@ -50,7 +50,10 @@ const runtimeSettings: RuntimeSettingsRecord = {
   groups: {
     providers: [
       { key: "market_data_provider", value: "dexscreener", state: "CONFIGURED", secret: false },
-      { key: "decision_entry_ready_threshold", value: 85, state: "CONFIGURED", secret: false, decisionAffecting: true }
+      { key: "decision_entry_ready_threshold", value: 85, state: "CONFIGURED", secret: false, decisionAffecting: true },
+      { key: "madeonsol_enabled", value: false, state: "DEFAULTED", secret: false },
+      { key: "madeonsol_api_key", value: null, state: "UNCONFIGURED_OPTIONAL", configuredState: "NOT_CONFIGURED", secret: true },
+      { key: "madeonsol_base_url", value: "https://madeonsol.com/api/v1", state: "DEFAULTED", secret: false }
     ],
     chains: [{ key: "enabled_chains", value: "solana,bnb,robinhood", state: "CONFIGURED", secret: false }],
     telegram: [{ key: "bot_token", value: null, state: "UNCONFIGURED_OPTIONAL", secret: true }],
@@ -89,6 +92,10 @@ describe("SettingsDashboard", () => {
     expect(screen.getByText("ADMIN")).toBeInTheDocument();
     expect(screen.getByText("EXECUTION")).toBeInTheDocument();
     expect(screen.getByText("decision_entry_ready_threshold")).toBeInTheDocument();
+    expect(screen.getByText("MADEONSOL ENABLED")).toBeInTheDocument();
+    expect(screen.getByText("MADEONSOL BASE URL")).toBeInTheDocument();
+    expect(screen.getByText("MADEONSOL API KEY")).toBeInTheDocument();
+    expect(screen.getByText("NOT_CONFIGURED")).toBeInTheDocument();
     expect(screen.queryByText("must-not-render")).not.toBeInTheDocument();
   });
 

@@ -70,6 +70,8 @@ def test_runtime_settings_return_canonical_metadata_and_secret_state_only() -> N
     assert madeonsol["secret"] is True
     assert madeonsol["current_effective_value"] is None
     assert madeonsol["configured_state"] == "CONFIGURED"
+    assert settings["madeonsol_enabled"]["current_effective_value"] is False
+    assert settings["madeonsol_base_url"]["current_effective_value"] == "https://madeonsol.com/api/v1"
     assert "provider-secret" not in json.dumps(body)
     assert "madeonsol-secret" not in json.dumps(body)
 

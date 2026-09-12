@@ -7,6 +7,7 @@ import argparse
 import json
 import sys
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -20,6 +21,7 @@ for source_root in (
         sys.path.insert(0, source_root_text)
 
 from memeradar_application.historical_dataset import (  # noqa: E402
+    MADEONSOL_REAL_EVIDENCE_CLASS,
     HistoricalDatasetReadinessReport,
     HistoricalDatasetRecord,
     MadeOnSolReadinessReport,
@@ -53,7 +55,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def _load_madeonsol_inventory(input_path: Path | None) -> MadeOnSolReadinessReport:
     if input_path is None:
-        return MadeOnSolReadinessReport.from_observations(())
+        return MadeOnSolReadinessReport.from_persisted_observations(())
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("MadeOnSol observation export must be an object")
@@ -70,8 +72,17 @@ def _load_madeonsol_inventory(input_path: Path | None) -> MadeOnSolReadinessRepo
     ):
         raise ValueError("real_observation_ids must be a string list")
     real_ids = set(raw_real_ids)
-    real_observations = tuple(
-        record.observation for record in records if str(record.event_id) in real_ids
+    observations = tuple(
+        replace(
+            record.observation,
+            normalized_payload={
+                **record.observation.normalized_payload,
+                "evidence_class": MADEONSOL_REAL_EVIDENCE_CLASS,
+            },
+        )
+        if str(record.event_id) in real_ids
+        else record.observation
+        for record in records
     )
     raw_labels = payload.get("labels", {})
     if not isinstance(raw_labels, dict) or not all(
@@ -85,9 +96,8 @@ def _load_madeonsol_inventory(input_path: Path | None) -> MadeOnSolReadinessRepo
         for value in (rate_limit_count, error_count)
     ):
         raise ValueError("provider counters must be non-negative integers")
-    return MadeOnSolReadinessReport.from_observations(
+    return MadeOnSolReadinessReport.from_persisted_observations(
         observations,
-        real_observations=real_observations,
         labels=raw_labels,
         rate_limit_count=cast(int, rate_limit_count),
         error_count=cast(int, error_count),
