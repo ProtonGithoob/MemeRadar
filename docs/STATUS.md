@@ -38,8 +38,8 @@ zero or safe evidence.
   data, Chainlink feed identities, and matured live-shadow observations are
   unavailable; real-provider validation is `BLOCKED_EXTERNAL` and calibration
   is `INSUFFICIENT_SAMPLES`.
-- Latest hosted CI run `34717510371` ran for final pushed SHA
-  `732d3234c24c6223129f34d97f017e75de2e8a3d`. Backend quality, Frontend
+- Latest hosted CI run `34717558195` ran for final pushed SHA
+  `3b6aa7f6460a366f990d3de195106743f3ba49e8`. Backend quality, Frontend
   quality, Compose contract, and Secret scan each terminated with `failure`
   and zero executed steps; Release candidate identity was `skipped` with zero
   steps. This repeats the previously documented account billing/spending
@@ -162,8 +162,8 @@ change was required; migration verification remains at head
 - `make verify` passed with the same local gates; its security report keeps
   container/npm/pip external scans `NOT_RUN` and external acceptance
   `BLOCKED_EXTERNAL`.
-- Latest hosted Actions state: run `34717510371`, HEAD
-  `732d3234c24c6223129f34d97f017e75de2e8a3d`; Backend quality, Frontend
+- Latest hosted Actions state: run `34717558195`, HEAD
+  `3b6aa7f6460a366f990d3de195106743f3ba49e8`; Backend quality, Frontend
   quality, Secret scan, and Compose contract were `failure` with `0` executed
   steps, and Release candidate identity was `skipped` with `0` steps.
 - Main branch protection remains unverified; the GitHub protection endpoint
