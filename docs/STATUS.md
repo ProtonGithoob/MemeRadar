@@ -258,6 +258,103 @@ fixture is truthful: `sample_count=7`, `real_sample_count=0`,
 provider `UNKNOWN=7`, `no_lookahead_verified=true`, and status
 `INSUFFICIENT_SAMPLES`. The report is an inventory seam, not calibration.
 
+## 2026-09-13 frontend parity and precision workstation sprint
+
+Baseline source of truth was `origin/main` at
+`a0f3ae4d3bfdf52eee08822cf36a07737bc6daa0`; `main` was clean and
+synchronized before implementation. PR #3 remains open and untouched; it was
+not merged, cherry-picked, or used as a source of truth. The backend data-
+integrity hardening from `09e0caa981b5e333ce2baaf6d80d06c76fc950ef` was
+preserved.
+
+### Before → after frontend/backend parity matrix
+
+| Area | Before | After | Result |
+|---|---|---|---|
+| Route/field ownership | Historical coverage and silent omissions | Machine-reviewable `docs/FRONTEND_BACKEND_PARITY.md`, route owners, backend route families, and categorized omissions | `RESOLVED` |
+| Parity enforcement | Manifest checked only for basic shape | Every entry has an owner/backend route and every omission has an allowed explicit status/reason | `RESOLVED` |
+| Provider capability/runtime health | Frontend parser dropped `capability_status` and conflated runtime state | `CAPABILITY` and `RUNTIME HEALTH` are parsed and rendered as separate backend fields; unknown remains unknown | `RESOLVED` |
+| Readiness layers | Success showed alpha data, but failed reads collapsed the operator model | Engineering, alpha-evidence, and production lanes render separately; failed reads keep lanes `UNKNOWN` | `RESOLVED` |
+| Visual system | Functional but generic/flat page treatment and duplicated heading patterns | Canonical `apps/web/DESIGN.md`, design tokens, shared `PageHeader`, restrained surfaces, semantic state styling, and responsive shell refinements | `RESOLVED` |
+| CSS contract | Critical graph classes were checked narrowly | All static frontend classes are checked: 290 classes across 59 files | `RESOLVED` |
+| Mobile navigation | Floating control could cover content | Navigation control is reserved in the topbar region with accessible labeling and reduced-motion support | `RESOLVED` |
+| Frontend business logic | Must remain projection-only | No frontend alpha, risk, insider, provider-health, or readiness calculation was added | `RESOLVED` |
+
+### Scope and artifacts
+
+The inspected design methodology was the MIT-licensed
+[`xiaopu-ai/web-design`](https://github.com/xiaopu-ai/web-design) repository at
+commit `22a4f482cc4caa2394391c0c31ff0aefd1908774`. Its methodology and
+quality principles were used only as a reference; MemeRadar retains its own
+teal, evidence-first workstation identity and no external logo, font, or brand
+identity was copied.
+
+The canonical UI contract is now [apps/web/DESIGN.md](../apps/web/DESIGN.md),
+and the route/field inventory is
+[FRONTEND_BACKEND_PARITY.md](FRONTEND_BACKEND_PARITY.md). The audit covered
+the 15 requested operator routes (`/`, `/radar`, `/ultra-early`,
+`/opportunities`, `/positions`, `/wallets`, wallet detail, `/wallet-graph`,
+`/callers`, token detail, `/providers`, `/operations`, `/audit`, `/settings`,
+and `/readiness`) plus global search, health/operations/control routes,
+runtime settings, and `Telegram/EarlyAlpha` parity. Shared page headers,
+surface/typography/spacing tokens, state treatment, local table scrolling,
+responsive shell behavior, reduced motion, and accessible focus treatment were
+upgraded without creating a second component library or adding a runtime
+dependency.
+
+The only backend truth surfaced differently in this sprint is the existing
+provider `capability_status` and `runtime_health` pair, parsed and shown
+separately by the generic provider card. Readiness lanes are also a frontend
+projection of the existing `/v1/readiness` response. No backend service,
+schema, migration, provider adapter, scoring/risk policy, Telegram semantic,
+or execution path changed. `devIndicators: false` was removed because it hid
+framework diagnostics without being a product contract; production browser
+verification remains authoritative.
+
+### Verification
+
+- Full local `make verify`: PASS. Python `1263 passed, 18 skipped, 1
+  warning`; Vitest `79 passed` across `22` files; Ruff, strict mypy, frontend
+  lint/typecheck, Compose validation, secret scan, migrations, security review,
+  SBOM, CSS contract, and `git diff --check` passed.
+- CSS contract: `290` static frontend classes checked across `59` files.
+- Production build: PASS; Next `16.3.3` generated the complete route table.
+- Browser matrix: `36 passed, 4 skipped` of `40` in the serial production
+  run, covering all requested routes, dark/light themes, and
+  `1440x900`, `1024x768`, `768x1024`, and `390x844`. The four skips require
+  unavailable test-only authenticated/stateful credentials. A parallel
+  browser attempt had a session-level Chrome flake; the isolated test and
+  final serial matrix passed, so no arbitrary delay was added.
+- PostgreSQL integration was not rerun because this sprint changed no backend
+  code or schema; the prior root-cause baseline remains `18 passed` and
+  migration head `0011_collection_checkpoints` with `27` tables.
+- Security remains `PASS` with the four protected modes verified; external
+  container/npm/pip scans remain `NOT_RUN` and external acceptance remains
+  `BLOCKED_EXTERNAL`. SBOM remains `581` components with digest
+  `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
+- Development-only Playwright requests against `next dev` were blocked by
+  the current Next origin/HMR harness when using `127.0.0.1`; production
+  server acceptance passed. No product behavior was inferred from that
+  harness condition and no timeout/sleep workaround was introduced.
+
+### Data, safety, and next task
+
+Real MadeOnSol observations remain `0`; unique Robinhood tokens, caller/KOL,
+smart-wallet, deployer, holder/distribution, and security/LP observations are
+all `0`. Mature winner/rug labels remain `null`/`UNKNOWN`, and alpha
+validation remains `INSUFFICIENT_SAMPLES`. No fake sample or readiness claim
+was added. Protected modes remain exactly
+`ANALYSIS_ONLY=true`, `PAPER_TRADING=true`,
+`MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`; production remains
+`NOT_PRODUCTION_READY` while engineering remains
+`ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION`.
+
+Implementation commit: `066d59f` (`feat: complete frontend parity and
+workstation design`). Exact next unfinished task: obtain compliant real
+provider evidence and run the existing out-of-sample alpha calibration gates;
+no additional frontend semantics or scoring weights are required before that
+data exists.
+
 ## 2026-09-12 A+C end-to-end shadow proof and Web evidence parity
 
 This is the current sprint checkpoint. Baseline source of truth was
