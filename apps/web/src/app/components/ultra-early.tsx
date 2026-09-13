@@ -15,6 +15,7 @@ import {
   riskTone,
   shortIdentity
 } from "./format";
+import { PageHeader } from "./ui";
 
 function readFailureMessage(result: ReadResult<unknown>): string {
   if (result.ok) return "";
@@ -128,13 +129,11 @@ export function UltraEarlyWorkspace({
   const [preset, setPreset] = useState<PresetKey>("ALL");
 
   const heading = (
-    <div className="page-heading">
-      <div>
-        <p className="eyebrow">Launch intelligence / read-only</p>
-        <h2>Ultra-Early Detection</h2>
-      </div>
-      <small>Observed, derived and paper-only fields; UNKNOWN remains explicit. Auto execution: LOCKED.</small>
-    </div>
+    <PageHeader
+      eyebrow="Launch intelligence / read-only"
+      note="Observed, derived and paper-only fields; UNKNOWN remains explicit. Auto execution: LOCKED."
+      title="Ultra-Early Detection"
+    />
   );
 
   if (!result.ok) {

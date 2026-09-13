@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { SafetyBadge } from "./status-badges";
 import type { ReadinessGateRecord, ReadinessRecord, ReadResult } from "../lib/read-api";
+import { PageHeader } from "./ui";
 
 function tone(status: ReadinessGateRecord["status"]): "safe" | "paper" | "disabled" | "advisory" {
   if (status === "PASS") return "safe";
@@ -33,27 +34,50 @@ function alphaCount(value: number | null): string {
   return value === null ? "UNKNOWN" : String(value);
 }
 
+function ReadinessLanes({ data }: { data?: ReadinessRecord }): React.ReactNode {
+  return (
+    <section className="readiness-lanes" aria-label="Readiness layers">
+      <div className="readiness-lane readiness-lane--engineering">
+        <span className="card-label">ENGINEERING READINESS</span>
+        <strong>{data ? "CANONICAL GATES" : "UNKNOWN"}</strong>
+        <small>Software/release evidence is separate from alpha validation and production classification.</small>
+      </div>
+      <div className="readiness-lane readiness-lane--alpha">
+        <span className="card-label">ALPHA EVIDENCE READINESS</span>
+        <strong>{data?.alphaValidation.status ?? "UNKNOWN"}</strong>
+        <small>Real external samples and mature labels are measured separately.</small>
+      </div>
+      <div className="readiness-lane readiness-lane--production">
+        <span className="card-label">PRODUCTION CLASSIFICATION</span>
+        <strong>{data?.classification ?? "UNKNOWN"}</strong>
+        <small>Classification is canonical; the browser cannot promote it.</small>
+      </div>
+    </section>
+  );
+}
+
 export function ReadinessDashboard({ result }: { result: ReadResult<ReadinessRecord> }) {
   if (!result.ok) {
-    return (
+    return <>
+      <PageHeader eyebrow="Gated release evidence" note={failure(result)} title="Operator readiness" />
+      <ReadinessLanes />
       <div className="read-state read-state--error" role="status">
         <span className="eyebrow">PRODUCTION READINESS / READ-ONLY</span>
         <strong>{failure(result)}</strong>
         <p>No readiness state was inferred from a failed read.</p>
         <Link href="/readiness">RETRY</Link>
       </div>
-    );
+    </>;
   }
   const { data } = result;
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">GATED RELEASE EVIDENCE</p>
-          <h2>Operator readiness</h2>
-        </div>
-        <small>{data.classification} · AS OF {new Date(data.asOf).toISOString()}</small>
-      </div>
+      <PageHeader
+        eyebrow="Gated release evidence"
+        note={`${data.classification} · AS OF ${new Date(data.asOf).toISOString()}`}
+        title="Operator readiness"
+      />
+      <ReadinessLanes data={data} />
       <section className="section-block intelligence-section" aria-labelledby="alpha-validation-title">
         <div className="section-heading">
           <div><p className="eyebrow">ALPHA VALIDATION / LIVE SHADOW</p><h3 id="alpha-validation-title">Alpha evidence readiness</h3></div>

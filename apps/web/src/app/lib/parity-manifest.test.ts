@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import { PARITY_MANIFEST } from "./parity-manifest";
+import type { ParityOmissionStatus } from "./parity-manifest";
 
 const ROUTES = [
   "/", "/radar", "/ultra-early", "/opportunities", "/positions", "/wallets",
   "/wallets/[address]", "/wallet-graph", "/callers", "/tokens/[tokenId]", "/providers",
   "/operations", "/audit", "/settings", "/readiness"
+];
+
+const ALLOWED_OMISSION_STATUSES: ParityOmissionStatus[] = [
+  "BACKEND_NOT_EXPOSED",
+  "RAW_EVIDENCE_ONLY",
+  "INTENTIONALLY_OMITTED",
+  "SECRET",
+  "EXECUTION_OUT_OF_SCOPE",
+  "UNSUPPORTED"
 ];
 
 describe("route parity manifest", () => {
@@ -15,7 +25,13 @@ describe("route parity manifest", () => {
       expect(entry, route).toBeDefined();
       expect(entry.apiFields.length, route).toBeGreaterThan(0);
       expect(entry.frontendFields.length, route).toBeGreaterThan(0);
-      expect(entry.omissions.every((item) => item.field.length > 0 && item.reason.length > 0), route).toBe(true);
+      expect(entry.backendRoutes.length, route).toBeGreaterThan(0);
+      expect(entry.owner.length, route).toBeGreaterThan(0);
+      expect(entry.omissions.every((item) => (
+        item.field.length > 0 &&
+        item.reason.length > 0 &&
+        ALLOWED_OMISSION_STATUSES.includes(item.status)
+      )), route).toBe(true);
     }
   });
 

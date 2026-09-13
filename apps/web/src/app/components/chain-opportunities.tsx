@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 
 import { FreshnessBadge } from "./status-badges";
+import { PageHeader } from "./ui";
 import { formatConfidence, Unknown, Pill } from "./format";
 import type { ChainOpportunityRecord, ReadPage, ReadResult } from "../lib/read-api";
 
@@ -98,14 +99,8 @@ export function ChainOpportunitiesDashboard({
   result: ReadResult<ReadPage<ChainOpportunityRecord>>;
 }) {
   return (
-    <main className="workspace-main">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">RESEARCH / MULTI-CHAIN EVIDENCE</p>
-          <h2>Chain opportunities</h2>
-        </div>
-        <small>BOUNDED READ · NO EXECUTION AUTHORITY</small>
-      </div>
+    <div className="workspace-main">
+      <PageHeader eyebrow="Research / multichain evidence" note="BOUNDED READ · NO EXECUTION AUTHORITY" title="Chain opportunities" />
       <p className="section-note">Recent chain activity is corroborating evidence, not a trade signal.</p>
       {!result.ok ? (
         <div className="read-state read-state--error" role="status">
@@ -130,6 +125,6 @@ export function ChainOpportunitiesDashboard({
         <strong>EXECUTION LOCKED</strong>
         <span>Chain evidence remains advisory and cannot authorize a position.</span>
       </section>
-    </main>
+    </div>
   );
 }

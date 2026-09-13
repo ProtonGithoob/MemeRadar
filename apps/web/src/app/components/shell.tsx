@@ -7,12 +7,16 @@ import { ThemeToggle } from "./theme-toggle";
 
 type ChipTone = "ok" | "warn" | "danger" | "info" | "disabled" | "unknown";
 
-function StatusChip({ label, value, tone }: { label: string; value: string; tone: ChipTone }) {
+function StatusChip({ label, value, tone, displayLabel = label, displayValue = value }: { label: string; value: string; tone: ChipTone; displayLabel?: string; displayValue?: string }) {
   return (
     <span className={`chip chip--${tone}`} role="status" aria-label={`${label}: ${value}`}>
-      {label} {value}
+      {displayLabel} {displayValue}
     </span>
   );
+}
+
+function compactState(value: string): string {
+  return value === "UNKNOWN" ? "UNK" : value === "HEALTHY" ? "OK" : value === "DEGRADED" ? "DEG" : value === "LOCKED" ? "LOCK" : value === "INVALID" ? "INV" : value;
 }
 
 function toneForState(state: string): ChipTone {
@@ -38,26 +42,28 @@ type OperationalState = OperationsRecord["overallState"];
 
 function ChainStatus({
   label,
+  displayLabel,
   providers,
   chain
 }: {
   label: string;
+  displayLabel?: string;
   providers: OperationsRecord["providers"];
   chain: string;
 }) {
   const state = chainState(providers, chain);
-  return <StatusChip label={label} value={state} tone={toneForState(state)} />;
+  return <StatusChip displayLabel={displayLabel} displayValue={compactState(state)} label={label} value={state} tone={toneForState(state)} />;
 }
 
 function TopBarStatus({ operations }: { operations: ReadResult<OperationsRecord> }) {
   if (!operations.ok) {
     return (
       <div className="ws-topbar__status" aria-label="System status">
-        <StatusChip label="STACK" value="UNKNOWN" tone="unknown" />
-        <StatusChip label="PROVIDERS" value="UNKNOWN" tone="unknown" />
-        <ChainStatus label="SOLANA" providers={[]} chain="solana" />
+        <StatusChip displayValue="UNK" label="STACK" value="UNKNOWN" tone="unknown" />
+        <StatusChip displayLabel="PROV" displayValue="UNK" label="PROVIDERS" value="UNKNOWN" tone="unknown" />
+        <ChainStatus displayLabel="SOL" label="SOLANA" providers={[]} chain="solana" />
         <ChainStatus label="BNB" providers={[]} chain="bnb" />
-        <ChainStatus label="ROBINHOOD" providers={[]} chain="robinhood" />
+        <ChainStatus displayLabel="RH" label="ROBINHOOD" providers={[]} chain="robinhood" />
       </div>
     );
   }
@@ -86,11 +92,11 @@ function TopBarStatus({ operations }: { operations: ReadResult<OperationsRecord>
         : "ok";
   return (
     <div className="ws-topbar__status" aria-label="System status">
-      <StatusChip label="STACK" value={overview.overallState} tone={toneForState(overview.overallState)} />
-      <StatusChip label="PROVIDERS" value={providerSummary} tone={providerTone} />
-      <ChainStatus label="SOLANA" providers={providers} chain="solana" />
+      <StatusChip displayValue={compactState(overview.overallState)} label="STACK" value={overview.overallState} tone={toneForState(overview.overallState)} />
+      <StatusChip displayLabel="PROV" displayValue={providerSummary.replace("DEGRADED", "DEG").replace("UNKNOWN", "UNK").replace("READY", "OK")} label="PROVIDERS" value={providerSummary} tone={providerTone} />
+      <ChainStatus displayLabel="SOL" label="SOLANA" providers={providers} chain="solana" />
       <ChainStatus label="BNB" providers={providers} chain="bnb" />
-      <ChainStatus label="ROBINHOOD" providers={providers} chain="robinhood" />
+      <ChainStatus displayLabel="RH" label="ROBINHOOD" providers={providers} chain="robinhood" />
     </div>
   );
 }
@@ -99,9 +105,9 @@ function ProtectedModeStatus({ operations }: { operations: ReadResult<Operations
   if (!operations.ok) {
     return (
       <div className="ws-topbar__actions" aria-label="Protected operating modes">
-        <StatusChip label="ANALYSIS ONLY" value="UNKNOWN" tone="unknown" />
-        <StatusChip label="PAPER TRADING" value="UNKNOWN" tone="unknown" />
-        <StatusChip label="EXECUTION" value="UNKNOWN" tone="unknown" />
+        <StatusChip displayLabel="ANALYSIS" displayValue="UNK" label="ANALYSIS ONLY" value="UNKNOWN" tone="unknown" />
+        <StatusChip displayLabel="PAPER" displayValue="UNK" label="PAPER TRADING" value="UNKNOWN" tone="unknown" />
+        <StatusChip displayLabel="EXEC" displayValue="UNK" label="EXECUTION" value="UNKNOWN" tone="unknown" />
         <RealtimeStatus />
         <ThemeToggle />
       </div>
@@ -110,9 +116,9 @@ function ProtectedModeStatus({ operations }: { operations: ReadResult<Operations
   const modes = operations.data.modes;
   return (
     <div className="ws-topbar__actions" aria-label="Protected operating modes">
-      <StatusChip label="ANALYSIS ONLY" value={modes.analysisOnly ? "ON" : "INVALID"} tone={modes.analysisOnly ? "ok" : "danger"} />
-      <StatusChip label="PAPER TRADING" value={modes.paperTrading ? "ON" : "INVALID"} tone={modes.paperTrading ? "warn" : "danger"} />
-      <StatusChip label="EXECUTION" value={!modes.manualExecution && !modes.autoExecution ? "LOCKED" : "INVALID"} tone={!modes.manualExecution && !modes.autoExecution ? "disabled" : "danger"} />
+      <StatusChip displayLabel="ANALYSIS" label="ANALYSIS ONLY" value={modes.analysisOnly ? "ON" : "INVALID"} tone={modes.analysisOnly ? "ok" : "danger"} />
+      <StatusChip displayLabel="PAPER" label="PAPER TRADING" value={modes.paperTrading ? "ON" : "INVALID"} tone={modes.paperTrading ? "warn" : "danger"} />
+      <StatusChip displayLabel="EXEC" displayValue={modes.manualExecution || modes.autoExecution ? "INV" : "LOCK"} label="EXECUTION" value={!modes.manualExecution && !modes.autoExecution ? "LOCKED" : "INVALID"} tone={!modes.manualExecution && !modes.autoExecution ? "disabled" : "danger"} />
       <RealtimeStatus />
       <ThemeToggle />
     </div>

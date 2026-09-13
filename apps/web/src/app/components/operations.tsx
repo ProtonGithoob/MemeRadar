@@ -6,6 +6,7 @@ import type {
   OperationsRecord,
   ReadResult
 } from "../lib/read-api";
+import { PageHeader } from "./ui";
 
 function readableDate(value: string): string {
   const date = new Date(value);
@@ -262,13 +263,12 @@ export function OperationsDashboard({ result }: { result: ReadResult<OperationsR
   return (
     <>
       <section className="section-block intelligence-section" aria-labelledby="operations-title">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">OBSERVABILITY / OPERATIONS / READ-ONLY</p>
-            <h3 id="operations-title">Operations</h3>
-          </div>
-          <p className="section-note">Operational health is evidence quality, never a positive trade signal.</p>
-        </div>
+        <PageHeader
+          eyebrow="Observability / operations / read-only"
+          id="operations-title"
+          note="Operational health is evidence quality, never a positive trade signal."
+          title="Operations"
+        />
         <OperationsContent result={result} />
       </section>
       <section className="boundary-strip" aria-labelledby="operations-boundary-title">

@@ -404,6 +404,7 @@ export interface ProviderHealthRecord {
   fallbackPosition?: number | null;
   runtimeHealth?: ProviderHealthState;
   capability: string;
+  capabilityStatus?: string;
   state: ProviderHealthState;
   checkedAt: string;
   latencyMs: number | null;
@@ -1891,10 +1892,13 @@ function parseProviderHealth(value: unknown): ProviderHealthRecord | null {
   const settingKeys = stringArray(value.setting_keys, 128) ?? [];
   const credentialState = boundedString(value.credential_state, 32) ?? "UNKNOWN";
   const endpointState = boundedString(value.endpoint_state, 32) ?? "UNKNOWN";
+  const capabilityStatus = boundedString(value.capability_status, 32) ?? "UNKNOWN";
+  const runtimeHealth = boundedString(value.runtime_health, 16) ?? "UNKNOWN";
   const fallbackPosition = optionalInteger(value.fallback_position, 0, 1_000_000);
   if (
     provider === null || capability === null || state === null ||
-    !PROVIDER_HEALTH_STATES.has(state as ProviderHealthState) || checkedAt === null ||
+    !PROVIDER_HEALTH_STATES.has(state as ProviderHealthState) ||
+    !PROVIDER_HEALTH_STATES.has(runtimeHealth as ProviderHealthState) || checkedAt === null ||
     latencyMs === undefined || quota === null || freshnessState === undefined ||
     errorClass === undefined || consecutiveFailures === null
   ) {
@@ -1912,8 +1916,9 @@ function parseProviderHealth(value: unknown): ProviderHealthRecord | null {
     credentialState,
     endpointState,
     fallbackPosition: fallbackPosition === undefined ? null : fallbackPosition,
-    runtimeHealth: state as ProviderHealthState,
+    runtimeHealth: runtimeHealth as ProviderHealthState,
     capability,
+    capabilityStatus,
     state: state as ProviderHealthState,
     checkedAt,
     latencyMs,

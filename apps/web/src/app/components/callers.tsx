@@ -10,6 +10,7 @@ import type {
   ReadResult,
   SocialCallRecord
 } from "../lib/read-api";
+import { PageHeader } from "./ui";
 
 function readableDate(value: string): string {
   const date = new Date(value);
@@ -318,13 +319,11 @@ export function CallersDashboard({
   }, [chain, convergence, kolTier]);
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">X / TELEGRAM / MULTICHAIN RESEARCH</p>
-          <h2>Caller intelligence</h2>
-        </div>
-        <small>Historical caller and convergence evidence is advisory and no-lookahead scoped.</small>
-      </div>
+      <PageHeader
+        eyebrow="X / Telegram / multichain research"
+        note="Historical caller and convergence evidence is advisory and no-lookahead scoped."
+        title="Caller intelligence"
+      />
       <section className="section-block" aria-labelledby="caller-filters-title">
         <div className="section-heading"><div><p className="eyebrow">EXISTING EVIDENCE FIELDS</p><h3 id="caller-filters-title">Filter and sort</h3></div><p className="section-note">No unsupported statistics are calculated in the browser.</p></div>
         <CallerFilters

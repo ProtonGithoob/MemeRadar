@@ -7,6 +7,7 @@ import type {
   ReadPage,
   ReadResult
 } from "../lib/read-api";
+import { PageHeader } from "./ui";
 
 function readableDate(value: string | null): string {
   if (value === null) return "UNKNOWN TIME";
@@ -173,10 +174,12 @@ export function PositionsDashboard({ result }: { result: ReadResult<ReadPage<Pos
   return (
     <>
       <section className="section-block intelligence-section" aria-labelledby="positions-title">
-        <div className="section-heading">
-          <div><p className="eyebrow">PAPER PORTFOLIO / OBSERVED + DERIVED EVIDENCE</p><h3 id="positions-title">Positions</h3></div>
-          <p className="section-note">Marks and PnL are read-only projections; unknown data stays visible.</p>
-        </div>
+        <PageHeader
+          eyebrow="Paper portfolio / observed + derived evidence"
+          id="positions-title"
+          note="Marks and PnL are read-only projections; unknown data stays visible."
+          title="Positions"
+        />
         <PositionsContent result={result} />
       </section>
       <section className="boundary-strip" aria-labelledby="position-boundary-title">

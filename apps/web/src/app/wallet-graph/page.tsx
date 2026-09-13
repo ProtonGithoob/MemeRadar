@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import { WalletGraphExplorer } from "../components/wallet-graph";
+import { PageHeader } from "../components/ui";
 
 export const metadata: Metadata = {
   title: "Wallet & Creator Outcome Graph — MemeRadar",
@@ -9,13 +10,11 @@ export const metadata: Metadata = {
 export default function WalletGraphPage() {
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">Read-only outcome graph / E8.6</p>
-          <h2>Wallet &amp; Creator Outcome Graph</h2>
-        </div>
-        <small>Relationships are advisory evidence, not execution authority.</small>
-      </div>
+      <PageHeader
+        eyebrow="Read-only outcome graph / E8.6"
+        note="Relationships are advisory evidence, not execution authority."
+        title="Wallet & Creator Outcome Graph"
+      />
       <WalletGraphExplorer />
     </>
   );

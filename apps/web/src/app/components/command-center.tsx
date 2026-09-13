@@ -9,6 +9,7 @@ import type {
 } from "../lib/read-api";
 import { joinRadarRows, readFailureMessage } from "./radar";
 import { RadarTable } from "./radar-table";
+import { PageHeader } from "./ui";
 
 const FUNNEL_STATES = ["WATCH", "EARLY_WATCH", "STRONG_SETUP", "HIGH_CONFLUENCE", "ENTRY_READY"] as const;
 
@@ -152,13 +153,11 @@ export function CommandCenter({
 }) {
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">Evidence-first / analysis-only / paper trading</p>
-          <h2>Overview</h2>
-        </div>
-        <small>All surfaces are read-only; no browser execution authority exists.</small>
-      </div>
+      <PageHeader
+        eyebrow="Command center / evidence-first / read-only"
+        note="All surfaces are read-only; no browser execution authority exists."
+        title="Overview"
+      />
 
       <StatusStrip operations={operations} />
 

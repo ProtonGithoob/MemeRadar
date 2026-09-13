@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { SafetyBadge } from "./status-badges";
+import { PageHeader } from "./ui";
 import type {
   ControlConfigRecord,
   ControlStateRecord,
@@ -457,13 +458,12 @@ export function SettingsDashboard({
   return (
     <>
       <section className="section-block intelligence-section" aria-labelledby="settings-title">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">CONTROL PLANE / VALIDATED READ</p>
-            <h3 id="settings-title">Settings and controls</h3>
-          </div>
-          <p className="section-note">Runtime changes are allow-listed, audited and permission-gated.</p>
-        </div>
+        <PageHeader
+          eyebrow="Control plane / validated read"
+          id="settings-title"
+          note="Runtime changes are allow-listed, audited and permission-gated."
+          title="Settings and controls"
+        />
         <ProtectedModesPanel result={stateResult} />
         <div className="settings-block">
           <div className="panel-heading"><div><p className="eyebrow">EMERGENCY STATE</p><h3>Current control state</h3></div></div>

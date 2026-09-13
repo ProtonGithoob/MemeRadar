@@ -10,6 +10,7 @@ import type {
   RuntimeSettingRecord,
   RuntimeSettingsRecord
 } from "../lib/read-api";
+import { PageHeader } from "./ui";
 
 function readableDate(value: string): string {
   const date = new Date(value);
@@ -80,6 +81,8 @@ function ProviderRow({ record, settings }: { record: ProviderHealthRecord; setti
       <div className="provider-card__state">
         <span className="card-label">CURRENT STATE</span>
         <strong>{record.state}</strong>
+        <small>CAPABILITY {record.capabilityStatus ?? "UNKNOWN"}</small>
+        <small>RUNTIME HEALTH {record.runtimeHealth ?? "UNKNOWN"}</small>
         <small>{record.consecutiveFailures} consecutive failure{record.consecutiveFailures === 1 ? "" : "s"}</small>
       </div>
       <ProviderConfiguration provider={record} settings={settings} />
@@ -145,13 +148,12 @@ export function ProvidersDashboard({
   return (
     <>
       <section className="section-block intelligence-section" aria-labelledby="providers-title">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">TRANSPORT / QUOTA / FRESHNESS</p>
-            <h3 id="providers-title">Provider health</h3>
-          </div>
-          <p className="section-note">Health is evidence quality, never a positive trade signal.</p>
-        </div>
+        <PageHeader
+          eyebrow="Transport / quota / freshness"
+          id="providers-title"
+          note="Health is evidence quality, never a positive trade signal."
+          title="Provider health"
+        />
         <ProvidersContent result={result} settings={runtimeSettings} />
       </section>
       <section className="boundary-strip" aria-labelledby="provider-boundary-title">

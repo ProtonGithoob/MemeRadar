@@ -8,6 +8,7 @@ import type {
   ReadResult
 } from "../lib/read-api";
 import { RadarTable, type RadarRow } from "./radar-table";
+import { PageHeader } from "./ui";
 
 const candidateStates = [
   "DISCOVERED",
@@ -100,13 +101,11 @@ export function RadarExplorer({
 }) {
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">Ranked observations / read-only</p>
-          <h2>Radar</h2>
-        </div>
-        <small>Ranking and state come from the bounded read API. API order is preserved until you sort.</small>
-      </div>
+      <PageHeader
+        eyebrow="Ranked observations / read-only"
+        note="Ranking and state come from the bounded read API. API order is preserved until you sort."
+        title="Radar"
+      />
       <Filters filters={filters} />
       <RadarContent earlyResult={earlyResult} result={result} />
     </>

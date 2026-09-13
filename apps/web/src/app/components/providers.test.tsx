@@ -14,6 +14,8 @@ const healthy: ProviderHealthRecord = {
   enabled: true,
   settingKeys: ["fixture_market_url"],
   capability: "market_data",
+  capabilityStatus: "AVAILABLE",
+  runtimeHealth: "HEALTHY",
   state: "HEALTHY",
   checkedAt: "2026-08-31T12:00:00.000Z",
   latencyMs: 42,
@@ -49,6 +51,8 @@ describe("ProvidersDashboard", () => {
     expect(screen.getByText("fixture-market")).toBeInTheDocument();
     expect(screen.getByText("fixture-social")).toBeInTheDocument();
     expect(screen.getByText("HEALTHY")).toBeInTheDocument();
+    expect(screen.getAllByText(/CAPABILITY\s+AVAILABLE/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/RUNTIME HEALTH\s+HEALTHY/).length).toBeGreaterThan(0);
     expect(screen.getByText("DEGRADED")).toBeInTheDocument();
     expect(screen.getByText("STALE")).toBeInTheDocument();
     expect(screen.getByText(/ERROR rate_limited/)).toBeInTheDocument();

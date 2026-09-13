@@ -1,4 +1,4 @@
-"""Fail when static classes in the critical graph surface lack CSS definitions."""
+"""Fail when static classes in the frontend lack CSS definitions."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPONENT = ROOT / "apps/web/src/app/components/wallet-graph.tsx"
+APP = ROOT / "apps/web/src/app"
 STYLESHEET = ROOT / "apps/web/src/app/globals.css"
 
 
@@ -26,13 +26,19 @@ def static_classes(source: str) -> set[str]:
 
 def main() -> int:
     defined = css_classes(STYLESHEET.read_text(encoding="utf-8"))
-    referenced = static_classes(COMPONENT.read_text(encoding="utf-8"))
+    referenced: set[str] = set()
+    sources = sorted(APP.rglob("*.tsx"))
+    for source in sources:
+        referenced.update(static_classes(source.read_text(encoding="utf-8")))
     missing = sorted(referenced - defined)
     if missing:
         print("Missing static CSS classes:")
         print("\n".join(missing))
         return 1
-    print(f"CSS contract OK: {len(referenced)} static graph classes checked")
+    print(
+        f"CSS contract OK: {len(referenced)} static frontend classes checked "
+        f"across {len(sources)} files"
+    )
     return 0
 
 

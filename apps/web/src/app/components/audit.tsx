@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { SafetyBadge } from "./status-badges";
+import { PageHeader } from "./ui";
 import type {
   AuditEventRecord,
   ConfigVersionRecord,
@@ -123,10 +124,12 @@ export function AuditDashboard({
   return (
     <>
       <section className="section-block intelligence-section" aria-labelledby="audit-title">
-        <div className="section-heading">
-          <div><p className="eyebrow">IMMUTABLE CONTROL HISTORY / READ-ONLY</p><h3 id="audit-title">Audit explorer</h3></div>
-          <p className="section-note">Audit and config projections are evidence, not permissions.</p>
-        </div>
+        <PageHeader
+          eyebrow="Immutable control history / read-only"
+          id="audit-title"
+          note="Audit and config projections are evidence, not permissions."
+          title="Audit explorer"
+        />
         <section className="settings-block" aria-labelledby="audit-events-title">
           <div className="panel-heading"><div><p className="eyebrow">OPERATOR / SYSTEM EVENTS</p><h3 id="audit-events-title">Audit events</h3></div><SafetyBadge label="MUTATION" value="API-GATED" tone="disabled" /></div>
           <AuditEvents result={auditResult} />
@@ -143,4 +146,3 @@ export function AuditDashboard({
     </>
   );
 }
-

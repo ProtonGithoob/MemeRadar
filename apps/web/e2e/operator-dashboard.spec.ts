@@ -88,7 +88,7 @@ test("operator intelligence routes render server-side evidence boundaries", asyn
     const response = await page.goto(path);
     expect(response?.status()).toBe(200);
     if (path === "/readiness" && !authenticatedRead) {
-      await expect(page.getByText(/READINESS (NOT CONFIGURED|AUTHORIZATION UNAVAILABLE|UNAVAILABLE)/)).toBeVisible();
+      await expect(page.getByText(/READINESS (NOT CONFIGURED|AUTHORIZATION UNAVAILABLE|UNAVAILABLE)/).first()).toBeVisible();
     } else {
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     }

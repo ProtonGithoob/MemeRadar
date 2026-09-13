@@ -3,6 +3,7 @@ import Link from "next/link";
 import { FreshnessBadge, SafetyBadge, ScoreBadge } from "./status-badges";
 import { isValidWalletAddress } from "../lib/read-api";
 import type { ReadPage, ReadResult, WalletRecord } from "../lib/read-api";
+import { PageHeader } from "./ui";
 
 function shortIdentity(value: string, visible = 9): string {
   if (value.length <= visible * 2 + 1) return value;
@@ -110,13 +111,12 @@ export function WalletsDashboard({ result }: { result: ReadResult<ReadPage<Walle
   return (
     <>
       <section className="section-block intelligence-section" aria-labelledby="wallets-title">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">INTERNAL WALLET EVIDENCE / RANKED READ</p>
-            <h3 id="wallets-title">Smart wallets</h3>
-          </div>
-          <p className="section-note">Scores are historical evidence, not order authority.</p>
-        </div>
+        <PageHeader
+          eyebrow="Internal wallet evidence / ranked read"
+          id="wallets-title"
+          note="Scores are historical evidence, not order authority."
+          title="Smart wallets"
+        />
         <WalletsContent result={result} />
       </section>
       <section className="boundary-strip" aria-labelledby="wallet-boundary-title">
