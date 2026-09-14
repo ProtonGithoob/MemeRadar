@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import math
-from collections.abc import AsyncIterable, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterable, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
@@ -24,6 +24,54 @@ from .transport import (
 
 HELIUS_PROVIDER = "helius"
 HELIUS_STREAM_PARSER_VERSION = "helius-stream-v1"
+_ACTIVITY_ALIASES = {
+    "SWAP": "SWAP",
+    "TOKEN_SWAP": "SWAP",
+    "DEX_SWAP": "SWAP",
+    "SWAP_TRANSACTION": "SWAP",
+    "ADD_LIQUIDITY": "LIQUIDITY_ADD",
+    "LIQUIDITY_ADD": "LIQUIDITY_ADD",
+    "LIQUIDITY_ADDED": "LIQUIDITY_ADD",
+    "DEPOSIT_LIQUIDITY": "LIQUIDITY_ADD",
+    "REMOVE_LIQUIDITY": "LIQUIDITY_REMOVE",
+    "LIQUIDITY_REMOVE": "LIQUIDITY_REMOVE",
+    "LIQUIDITY_REMOVED": "LIQUIDITY_REMOVE",
+    "WITHDRAW_LIQUIDITY": "LIQUIDITY_REMOVE",
+    "BRIDGE": "BRIDGE",
+    "BRIDGE_TRANSFER": "BRIDGE",
+    "CROSS_CHAIN_TRANSFER": "BRIDGE",
+    "TOKEN_BRIDGE": "BRIDGE",
+    "TRANSFER": "TRANSFER",
+    "TOKEN_TRANSFER": "TRANSFER",
+    "SPL_TRANSFER": "TRANSFER",
+    "NATIVE_TRANSFER": "TRANSFER",
+    "ERC20_TRANSFER": "TRANSFER",
+    "TOKEN_LAUNCH": "TOKEN_LAUNCH",
+    "TOKEN_CREATED": "TOKEN_LAUNCH",
+    "CREATE_TOKEN": "TOKEN_LAUNCH",
+    "LAUNCH": "TOKEN_LAUNCH",
+    "MEV": "MEV_ARBITRAGE",
+    "ARBITRAGE": "MEV_ARBITRAGE",
+    "MEV_ARBITRAGE": "MEV_ARBITRAGE",
+    "ARBITRAGE_TRADE": "MEV_ARBITRAGE",
+}
+_ACTIVITY_FIELDS = (
+    "activity_kind",
+    "activity_type",
+    "transaction_type",
+    "event_type",
+    "action",
+    "type",
+)
+_ACTIVITY_NESTED_FIELDS = ("event", "activity", "operation")
+_ACTIVITY_FLAG_ALIASES = {
+    "is_swap": "SWAP",
+    "is_bridge": "BRIDGE",
+    "is_transfer": "TRANSFER",
+    "is_token_launch": "TOKEN_LAUNCH",
+    "is_mev": "MEV_ARBITRAGE",
+    "is_arbitrage": "MEV_ARBITRAGE",
+}
 MessageSource = AsyncIterable[object]
 SourceFactory = Callable[[], MessageSource | Awaitable[MessageSource]]
 ObservationSink = Callable[[Observation], Awaitable[None] | None]
@@ -94,6 +142,44 @@ def _quality(payload: Mapping[str, object]) -> QualityState:
         return QualityState.UNKNOWN
 
 
+def _activity_alias(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().upper().replace("-", "_").replace(" ", "_")
+    return _ACTIVITY_ALIASES.get(normalized)
+
+
+def _activity_kind(payload: Mapping[str, object]) -> str:
+    """Classify only explicit transaction/activity labels, never descriptions."""
+
+    candidates: list[str] = []
+    for field in _ACTIVITY_FIELDS:
+        value = payload.get(field, _MISSING)
+        if value is not _MISSING:
+            normalized = _activity_alias(value)
+            if normalized is not None:
+                candidates.append(normalized)
+    for field in _ACTIVITY_NESTED_FIELDS:
+        value = payload.get(field)
+        if isinstance(value, Mapping):
+            for nested_field in ("activity_kind", "activity_type", "type", "kind", "name"):
+                normalized = _activity_alias(value.get(nested_field))
+                if normalized is not None:
+                    candidates.append(normalized)
+        elif isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+            for item in value:
+                if isinstance(item, Mapping):
+                    for nested_field in ("activity_kind", "activity_type", "type", "kind", "name"):
+                        normalized = _activity_alias(item.get(nested_field))
+                        if normalized is not None:
+                            candidates.append(normalized)
+    for field, normalized in _ACTIVITY_FLAG_ALIASES.items():
+        if payload.get(field) is True:
+            candidates.append(normalized)
+    distinct = set(candidates)
+    return next(iter(distinct)) if len(distinct) == 1 else "UNKNOWN"
+
+
 def _deterministic_observation_id(source_id: str) -> UUID:
     return uuid5(NAMESPACE_URL, f"memeradar:{HELIUS_PROVIDER}:stream:{source_id}")
 
@@ -151,6 +237,7 @@ class HeliusObservationNormalizer:
         normalized_payload = {str(key): value for key, value in safe_payload.items()}
         normalized_payload["source_id"] = source_id
         normalized_payload["normalized_kind"] = kind
+        normalized_payload["activity_kind"] = _activity_kind(message)
         provenance = Provenance(
             provider=HELIUS_PROVIDER,
             source_id=source_id,

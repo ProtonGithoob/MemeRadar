@@ -222,6 +222,9 @@ class Settings:
     madeonsol_enabled: bool = False
     madeonsol_api_key: str | None = None
     madeonsol_base_url: str = "https://madeonsol.com/api/v1"
+    gmgn_enabled: bool = False
+    gmgn_api_key: str | None = None
+    gmgn_base_url: str = "https://openapi.gmgn.ai"
     x_provider_enabled: bool = False
     x_provider_api_key: str | None = None
     x_provider_bearer_token: str | None = None
@@ -442,6 +445,13 @@ class Settings:
                 values,
                 "MADEONSOL_BASE_URL",
                 _default_value(values, "MADEONSOL_API_URL", "https://madeonsol.com/api/v1"),
+            ),
+            gmgn_enabled=_parse_bool("GMGN_ENABLED", values.get("GMGN_ENABLED", "false")),
+            gmgn_api_key=_optional_value(values, "GMGN_API_KEY"),
+            gmgn_base_url=_default_value(
+                values,
+                "GMGN_BASE_URL",
+                "https://openapi.gmgn.ai",
             ),
             x_provider_enabled=_parse_bool(
                 "X_PROVIDER_ENABLED", values.get("X_PROVIDER_ENABLED", "false")
@@ -857,6 +867,33 @@ RUNTIME_SETTING_SPECS: tuple[RuntimeSettingSpec, ...] = (
         group="providers",
         default="https://madeonsol.com/api/v1",
         description="MadeOnSol API endpoint.",
+    ),
+    _spec(
+        "gmgn_enabled",
+        "gmgn read-only intelligence",
+        "boolean",
+        "RESTART_REQUIRED",
+        group="providers",
+        default=False,
+        description="Enable optional GMGN LIVE_SHADOW evidence collection.",
+    ),
+    _spec(
+        "gmgn_api_key",
+        "gmgn read-only intelligence",
+        "secret",
+        "RESTART_REQUIRED",
+        group="providers",
+        secret=True,
+        description="GMGN server-side read API key.",
+    ),
+    _spec(
+        "gmgn_base_url",
+        "gmgn read-only intelligence",
+        "string",
+        "RESTART_REQUIRED",
+        group="providers",
+        default="https://openapi.gmgn.ai",
+        description="GMGN audited read API endpoint.",
     ),
     _spec(
         "wallet_intelligence_provider",

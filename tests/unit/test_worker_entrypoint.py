@@ -14,6 +14,7 @@ from memeradar_application.provider_contracts import (
 from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
 from memeradar_providers.transport import ProviderRateLimitedError
 from memeradar_worker.main import (
+    _gmgn_shadow_is_configured,
     _madeonsol_collection_health,
     _madeonsol_shadow_is_configured,
     run_worker,
@@ -92,6 +93,19 @@ def test_madeonsol_shadow_uses_the_optional_generic_worker_gate() -> None:
         }
     )
     assert _madeonsol_shadow_is_configured(configured)
+
+
+def test_gmgn_shadow_requires_explicit_read_only_configuration() -> None:
+    assert not _gmgn_shadow_is_configured(Settings.from_env({}))
+    configured = Settings.from_env(
+        {
+            "DATABASE_URL": "sqlite+aiosqlite:///./memeradar-test.db",
+            "ENABLED_CHAINS": "solana,bnb",
+            "GMGN_ENABLED": "true",
+            "GMGN_API_KEY": "test-only-key",
+        }
+    )
+    assert _gmgn_shadow_is_configured(configured)
 
 
 def test_madeonsol_shadow_worker_round_trip_uses_generic_collector(monkeypatch) -> None:

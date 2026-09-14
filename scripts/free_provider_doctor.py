@@ -37,6 +37,7 @@ from memeradar_providers.dexscreener import (  # noqa: E402
     SOLANA_NATIVE_MINT,
     DexScreenerAdapter,
 )
+from memeradar_providers.gmgn import GmgnAdapter  # noqa: E402
 from memeradar_providers.helius import HeliusRpcAdapter  # noqa: E402
 from memeradar_providers.narrative import (  # noqa: E402
     NarrativeRestAdapter,
@@ -89,6 +90,9 @@ def _configuration(values: Mapping[str, str], settings: Settings) -> dict[str, s
         ),
         "helius_rpc_url": _presence(settings.helius_rpc_url),
         "helius_api_key": _presence(settings.helius_api_key),
+        "gmgn_enabled": str(settings.gmgn_enabled).lower(),
+        "gmgn_base_url": _presence(settings.gmgn_base_url),
+        "gmgn_api_key": _presence(settings.gmgn_api_key),
         "birdeye_api_url": _presence(settings.birdeye_api_url),
         "birdeye_api_key": _presence(settings.birdeye_api_key),
         "rugcheck_api_url": _presence(settings.rugcheck_api_url),
@@ -394,6 +398,27 @@ async def _run_probes(
                 ),
                 lambda adapter: adapter.check_health(context=context),
             )
+        if (
+            settings.gmgn_enabled
+            and settings.gmgn_api_key
+            and settings.gmgn_base_url.lower().startswith("https://")
+            and any(chain in settings.enabled_chains for chain in ("solana", "bnb"))
+        ):
+            await probe_adapter(
+                optional,
+                "gmgn",
+                lambda: GmgnAdapter(
+                    settings.gmgn_base_url,
+                    api_key=settings.gmgn_api_key,
+                    client=effective_client,
+                    transport=transport,
+                    clock=clock,
+                    chains=tuple(
+                        chain for chain in ("solana", "bnb") if chain in settings.enabled_chains
+                    ),
+                ),
+                lambda adapter: adapter.check_health(context=context),
+            )
         if settings.rugcheck_api_url:
             rugcheck_url = settings.rugcheck_api_url
             rugcheck_api_key = settings.rugcheck_api_key
@@ -533,6 +558,7 @@ def _base_report(settings: Settings, configuration: Mapping[str, str]) -> Doctor
         },
         "optional": {
             "helius": _unconfigured(),
+            "gmgn": _unconfigured(),
             "birdeye": _unconfigured(),
             "rugcheck": _unconfigured(),
             "social_analytics": _unconfigured(),
@@ -561,6 +587,17 @@ def _apply_optional_configuration(
             if settings.helius_rpc_url and settings.helius_api_key
             else _unconfigured("CREDENTIAL_CONFIGURATION_MISSING")
         )
+    if settings.gmgn_enabled or settings.gmgn_api_key:
+        if not settings.gmgn_enabled:
+            optional["gmgn"] = _item("DISABLED", "GMGN_DISABLED")
+        else:
+            optional["gmgn"] = (
+                _item("CONFIGURED", "CREDENTIALS_CONFIGURED")
+                if settings.gmgn_api_key
+                and settings.gmgn_base_url.lower().startswith("https://")
+                and any(chain in settings.enabled_chains for chain in ("solana", "bnb"))
+                else _unconfigured("CREDENTIAL_CONFIGURATION_MISSING")
+            )
     if settings.birdeye_api_url or settings.birdeye_api_key:
         optional["birdeye"] = (
             _item("CONFIGURED", "CREDENTIALS_CONFIGURED")

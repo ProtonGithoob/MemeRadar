@@ -7,6 +7,7 @@ import logging
 import signal
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import uuid4
 
 from memeradar_application.alert_pipeline import AlertDeliveryService, AlertPolicy
@@ -18,7 +19,11 @@ from memeradar_application.discovery_collection import (
 from memeradar_application.early_alpha_alert import EarlyAlphaAlertRenderer
 from memeradar_application.event_processing import EventDispatcher, OutboxProcessor, OutboxWorker
 from memeradar_application.historical_dataset import MADEONSOL_REAL_EVIDENCE_CLASS
-from memeradar_application.provider_contracts import DiscoveryRequest, ProviderRequestContext
+from memeradar_application.provider_contracts import (
+    CandidateDiscoveryPort,
+    DiscoveryRequest,
+    ProviderRequestContext,
+)
 from memeradar_domain import EventEnvelope, Observation, Provenance, QualityState
 from memeradar_persistence import (
     SqlAlchemyAlertStore,
@@ -60,6 +65,8 @@ async def run_worker(
         workers.append(_run_alert_outbox(stop_event, settings, sleeper=sleeper))
     if _madeonsol_shadow_is_configured(settings):
         workers.append(_run_madeonsol_shadow(stop_event, settings, sleeper=sleeper))
+    if _gmgn_shadow_is_configured(settings):
+        workers.append(_run_gmgn_shadow(stop_event, settings, sleeper=sleeper))
     if workers:
         await asyncio.gather(*workers)
     else:
@@ -89,6 +96,17 @@ def _madeonsol_shadow_is_configured(settings: Settings) -> bool:
     )
 
 
+def _gmgn_shadow_is_configured(settings: Settings) -> bool:
+    return bool(
+        settings.database_url
+        and settings.gmgn_enabled
+        and settings.gmgn_api_key
+        and settings.gmgn_base_url
+        and settings.gmgn_base_url.lower().startswith("https://")
+        and any(chain in settings.enabled_chains for chain in ("solana", "bnb"))
+    )
+
+
 def _madeonsol_health_state(error: BaseException) -> tuple[str, bool]:
     if isinstance(error, ProviderRateLimitedError):
         return "DEGRADED", True
@@ -109,6 +127,23 @@ def _madeonsol_collection_health(
     report: DiscoveryCollectionReport | None = None,
     error: BaseException | None = None,
 ) -> Observation:
+    return _collection_health(
+        provider="madeonsol-robinhood",
+        context=context,
+        observed_at=observed_at,
+        report=report,
+        error=error,
+    )
+
+
+def _collection_health(
+    *,
+    provider: str,
+    context: ProviderRequestContext,
+    observed_at: datetime,
+    report: DiscoveryCollectionReport | None = None,
+    error: BaseException | None = None,
+) -> Observation:
     if report is None and error is None:
         raise ValueError("health observation requires a report or error")
     success = report is not None
@@ -118,7 +153,7 @@ def _madeonsol_collection_health(
         assert error is not None
         state, rate_limited = _madeonsol_health_state(error)
     payload: dict[str, object] = {
-        "provider": "madeonsol-robinhood",
+        "provider": provider,
         "capability": "candidate_discovery",
         "state": state,
         "success": success,
@@ -133,7 +168,7 @@ def _madeonsol_collection_health(
     return Observation(
         kind="provider.collection_health",
         provenance=Provenance(
-            provider="madeonsol-robinhood",
+            provider=provider,
             source_id=f"provider-health:candidate-discovery:{context.correlation_id}",
             observed_at=observed_at,
             parser_version="worker-collection-health-v1",
@@ -146,10 +181,13 @@ def _madeonsol_collection_health(
     )
 
 
-async def _run_madeonsol_shadow(
+async def _run_provider_shadow(
     stop_event: asyncio.Event,
     settings: Settings,
     *,
+    provider_name: str,
+    source_attribute: str,
+    checkpoint_key: str | None,
     sleeper: Sleep,
 ) -> None:
     """Consume the optional adapter through the generic discovery collector."""
@@ -160,9 +198,10 @@ async def _run_madeonsol_shadow(
     try:
         engine = create_database_engine(settings.database_url)
         bundle = build_provider_bundle(settings)
-        source = bundle.madeonsol
+        source = getattr(bundle, source_attribute)
         if source is None:
             return
+        source = cast(CandidateDiscoveryPort, source)
         collector = CandidateDiscoveryCollector()
         while not stop_event.is_set():
             requested_at = datetime.now(UTC)
@@ -185,15 +224,18 @@ async def _run_madeonsol_shadow(
                         source,
                         _Sink(),
                         DiscoveryRequest(context=context, limit=100),
-                        checkpoint_store=unit_of_work.checkpoints,
-                        checkpoint_key="madeonsol-robinhood:discovery",
+                        checkpoint_store=(
+                            unit_of_work.checkpoints if checkpoint_key is not None else None
+                        ),
+                        checkpoint_key=checkpoint_key or f"{provider_name}:discovery",
                         max_pages=1,
                         evidence_class=MADEONSOL_REAL_EVIDENCE_CLASS,
                         evidence_origin=MADEONSOL_REAL_EVIDENCE_CLASS,
                         collection_mode="LIVE_SHADOW",
                     )
                     await unit_of_work.observations.add(
-                        _madeonsol_collection_health(
+                        _collection_health(
+                            provider=provider_name,
                             context=context,
                             observed_at=datetime.now(UTC),
                             report=report,
@@ -201,8 +243,9 @@ async def _run_madeonsol_shadow(
                     )
                     await unit_of_work.commit()
                 LOGGER.info(
-                    "madeonsol_shadow_collection",
+                    "provider_shadow_collection",
                     extra={
+                        "provider": provider_name,
                         "status": report.status,
                         "fetched_count": report.fetched_count,
                         "persisted_observation_count": report.persisted_observation_count,
@@ -212,7 +255,8 @@ async def _run_madeonsol_shadow(
                 try:
                     async with SqlAlchemyUnitOfWork(engine) as health_uow:
                         await health_uow.observations.add(
-                            _madeonsol_collection_health(
+                            _collection_health(
+                                provider=provider_name,
                                 context=context,
                                 observed_at=datetime.now(UTC),
                                 error=error,
@@ -221,25 +265,66 @@ async def _run_madeonsol_shadow(
                         await health_uow.commit()
                 except Exception as health_error:  # noqa: BLE001 - telemetry cannot stop worker.
                     LOGGER.warning(
-                        "madeonsol_shadow_health_persist_failed",
-                        extra={"error_class": type(health_error).__name__},
+                        "provider_shadow_health_persist_failed",
+                        extra={
+                            "provider": provider_name,
+                            "error_class": type(health_error).__name__,
+                        },
                     )
                 LOGGER.warning(
-                    "madeonsol_shadow_collection_failed",
-                    extra={"error_class": type(error).__name__},
+                    "provider_shadow_collection_failed",
+                    extra={
+                        "provider": provider_name,
+                        "error_class": type(error).__name__,
+                    },
                 )
             if not stop_event.is_set():
                 await sleeper(settings.worker_poll_interval_seconds)
     except Exception as error:  # noqa: BLE001 - optional provider must not stop other workers.
         LOGGER.warning(
-            "madeonsol_shadow_setup_failed",
-            extra={"error_class": type(error).__name__},
+            "provider_shadow_setup_failed",
+            extra={
+                "provider": provider_name,
+                "error_class": type(error).__name__,
+            },
         )
     finally:
         if bundle is not None:
             await bundle.aclose()
         if engine is not None:
             await engine.dispose()
+
+
+async def _run_madeonsol_shadow(
+    stop_event: asyncio.Event,
+    settings: Settings,
+    *,
+    sleeper: Sleep,
+) -> None:
+    await _run_provider_shadow(
+        stop_event,
+        settings,
+        provider_name="madeonsol-robinhood",
+        source_attribute="madeonsol",
+        checkpoint_key="madeonsol-robinhood:discovery",
+        sleeper=sleeper,
+    )
+
+
+async def _run_gmgn_shadow(
+    stop_event: asyncio.Event,
+    settings: Settings,
+    *,
+    sleeper: Sleep,
+) -> None:
+    await _run_provider_shadow(
+        stop_event,
+        settings,
+        provider_name="gmgn",
+        source_attribute="gmgn",
+        checkpoint_key=None,
+        sleeper=sleeper,
+    )
 
 
 async def _run_alert_outbox(

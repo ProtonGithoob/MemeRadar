@@ -38,6 +38,7 @@ from memeradar_domain import Chain, TokenIdentity
 from .birdeye import BirdeyeRestAdapter
 from .dexscreener import DexScreenerAdapter
 from .evm_rpc import EvmRpcAdapter
+from .gmgn import GmgnAdapter
 from .helius import HeliusRpcAdapter
 from .madeonsol_robinhood import MadeOnSolRobinhoodAdapter
 from .narrative import (
@@ -219,6 +220,7 @@ class ProviderBundle:
     bnb_rpc: EvmRpcAdapter | None
     robinhood_rpc: EvmRpcAdapter | None
     madeonsol: MadeOnSolRobinhoodAdapter | None
+    gmgn: GmgnAdapter | None
     robinhood_launchpad_reconciler: RobinhoodLaunchpadReconciler | None
     chain: OnChainPort
     chain_routes: Mapping[str, OnChainPort]
@@ -250,6 +252,8 @@ class ProviderBundle:
         self.dexscreener.register_token(token)
         if self.birdeye is not None:
             self.birdeye.register_token(token)
+        if self.gmgn is not None:
+            self.gmgn.register_token(token)
 
     def provenance_defaults(self) -> Mapping[str, str]:
         """Return safe route provenance labels for status/readiness surfaces."""
@@ -279,6 +283,7 @@ class ProviderBundle:
             self.bnb_rpc,
             self.robinhood_rpc,
             self.madeonsol,
+            self.gmgn,
             self.helius,
             self.dexscreener,
             self.birdeye,
@@ -338,6 +343,13 @@ def build_provider_bundle(
         and Chain.ROBINHOOD.value in settings.enabled_chains
         and _configured(settings.madeonsol_base_url)
         and _configured(settings.madeonsol_api_key)
+    )
+    gmgn_configured = (
+        settings.gmgn_enabled
+        and _configured(settings.gmgn_api_key)
+        and _configured(settings.gmgn_base_url)
+        and urlsplit(settings.gmgn_base_url).scheme.lower() == "https"
+        and any(chain in settings.enabled_chains for chain in (Chain.SOLANA.value, Chain.BNB.value))
     )
     external_wallet_configured = external_wallet_port is not None
     custom_quote_configured = custom_quote_port is not None
@@ -404,6 +416,23 @@ def build_provider_bundle(
             clock=clock,
         )
         if madeonsol_configured
+        else None
+    )
+    gmgn = (
+        GmgnAdapter(
+            settings.gmgn_base_url,
+            api_key=cast(str, settings.gmgn_api_key),
+            client=client,
+            transport=transport,
+            clock=clock,
+            token_registry=token_registry,
+            chains=tuple(
+                chain
+                for chain in (Chain.SOLANA, Chain.BNB)
+                if chain.value in settings.enabled_chains
+            ),
+        )
+        if gmgn_configured
         else None
     )
     helius = (
@@ -553,6 +582,13 @@ def build_provider_bundle(
             if not settings.madeonsol_enabled
             else "UNCONFIGURED_OPTIONAL"
         ),
+        "gmgn": (
+            "CONFIGURED"
+            if gmgn is not None
+            else "DISABLED"
+            if not settings.gmgn_enabled
+            else "UNCONFIGURED_OPTIONAL"
+        ),
         "helius": "CONFIGURED" if helius is not None else "UNCONFIGURED_OPTIONAL",
         "birdeye": "CONFIGURED" if birdeye is not None else "UNCONFIGURED_OPTIONAL",
         "rugcheck": "CONFIGURED" if rugcheck is not None else "UNCONFIGURED_OPTIONAL",
@@ -590,6 +626,7 @@ def build_provider_bundle(
         bnb_rpc=bnb_rpc,
         robinhood_rpc=robinhood_rpc,
         madeonsol=madeonsol,
+        gmgn=gmgn,
         robinhood_launchpad_reconciler=(
             None
             if robinhood_rpc is None

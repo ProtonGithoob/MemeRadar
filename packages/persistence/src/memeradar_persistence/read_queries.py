@@ -18,8 +18,10 @@ from memeradar_application.creator_graph import CreatorOutcomeGraph
 from memeradar_application.event_time import event_time_quality
 from memeradar_application.exit_engine import ExitEvaluation
 from memeradar_application.historical_dataset import (
+    COLLECTION_MODE_FIELD,
     EVIDENCE_ORIGIN_FIELD,
     MADEONSOL_REAL_EVIDENCE_CLASS,
+    ExternalProviderReadinessReport,
     MadeOnSolReadinessReport,
 )
 from memeradar_application.holder_graph import HolderGraphAnalyzer, InsiderAllocationAnalyzer
@@ -623,19 +625,20 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         configured_health_keys = {
             (value.provider, value.capability) for value in catalog_provider_health
         }
-        madeonsol_metadata = provider_metadata("madeonsol-robinhood", "")
         checked_at = ensure_utc(self._clock(), "provider health read")
-        for capability in madeonsol_metadata.capabilities:
-            key = ("madeonsol-robinhood", capability)
-            if key not in configured_health_keys:
-                catalog_provider_health.append(
-                    ProviderHealthView(
-                        provider=key[0],
-                        capability=key[1],
-                        state=ReadProviderHealthState.UNKNOWN,
-                        checked_at=checked_at,
+        for provider in ("madeonsol-robinhood", "gmgn"):
+            metadata = provider_metadata(provider, "")
+            for capability in metadata.capabilities:
+                key = (provider, capability)
+                if key not in configured_health_keys:
+                    catalog_provider_health.append(
+                        ProviderHealthView(
+                            provider=key[0],
+                            capability=key[1],
+                            state=ReadProviderHealthState.UNKNOWN,
+                            checked_at=checked_at,
+                        )
                     )
-                )
         self._catalog = InMemoryReadQueryService(
             early_radar=early_radar,
             chain_opportunities=chain_opportunities,
@@ -722,11 +725,20 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         async with self._session_factory() as session:
             evidence_origin = ObservationRow.normalized_payload[EVIDENCE_ORIGIN_FIELD].as_string()
             legacy_evidence_class = ObservationRow.normalized_payload["evidence_class"].as_string()
-            real_filter = or_(
-                evidence_origin == MADEONSOL_REAL_EVIDENCE_CLASS,
-                and_(
-                    evidence_origin.is_(None),
-                    legacy_evidence_class == MADEONSOL_REAL_EVIDENCE_CLASS,
+            collection_mode = ObservationRow.normalized_payload[COLLECTION_MODE_FIELD].as_string()
+            real_filter = and_(
+                or_(
+                    evidence_origin == MADEONSOL_REAL_EVIDENCE_CLASS,
+                    and_(
+                        evidence_origin.is_(None),
+                        legacy_evidence_class == MADEONSOL_REAL_EVIDENCE_CLASS,
+                    ),
+                ),
+                or_(
+                    collection_mode.is_(None),
+                    func.upper(collection_mode).notin_(
+                        ("FIXTURE", "MOCK", "SYNTHETIC", "DEMO", "REPLAY", "REDACTED")
+                    ),
                 ),
             )
             base_filters = (
@@ -820,6 +832,122 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             deployer_observation_count=deployer_count,
             holder_distribution_observation_count=holder_count,
             bundle_lp_security_observation_count=bundle_security_lp_count,
+            first_real_observation=iso(first_seen),
+            latest_real_observation=iso(latest_seen),
+            rate_limit_count=(
+                int(rate_limit_result.scalar_one() or 0) if health_count else None
+            ),
+            error_count=int(error_result.scalar_one() or 0) if health_count else None,
+        )
+
+    async def get_gmgn_readiness(self) -> ExternalProviderReadinessReport:
+        """Aggregate only persisted, explicitly real GMGN shadow evidence."""
+
+        checked_at = ensure_utc(self._clock(), "read_at")
+        async with self._session_factory() as session:
+            evidence_origin = ObservationRow.normalized_payload[EVIDENCE_ORIGIN_FIELD].as_string()
+            legacy_evidence_class = ObservationRow.normalized_payload["evidence_class"].as_string()
+            collection_mode = ObservationRow.normalized_payload[COLLECTION_MODE_FIELD].as_string()
+            real_filter = and_(
+                or_(
+                    evidence_origin == MADEONSOL_REAL_EVIDENCE_CLASS,
+                    and_(
+                        evidence_origin.is_(None),
+                        legacy_evidence_class == MADEONSOL_REAL_EVIDENCE_CLASS,
+                    ),
+                ),
+                or_(
+                    collection_mode.is_(None),
+                    func.upper(collection_mode).notin_(
+                        ("FIXTURE", "MOCK", "SYNTHETIC", "DEMO", "REPLAY", "REDACTED")
+                    ),
+                ),
+            )
+            base_filters = (
+                ObservationRow.provider == "gmgn",
+                ObservationRow.observed_at <= checked_at,
+                ObservationRow.ingested_at <= checked_at,
+                or_(
+                    ObservationRow.occurred_at <= checked_at,
+                    ObservationRow.occurred_at.is_(None),
+                ),
+                real_filter,
+            )
+            token_address = ObservationRow.normalized_payload["token_address"].as_string()
+            chain = ObservationRow.normalized_payload["chain"].as_string()
+            aggregate = await session.execute(
+                select(
+                    func.count(ObservationRow.id),
+                    func.count(func.distinct(func.lower(chain) + ":" + func.lower(token_address))),
+                    func.min(func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at)),
+                    func.max(func.coalesce(ObservationRow.occurred_at, ObservationRow.observed_at)),
+                ).where(*base_filters)
+            )
+            real_count, token_count, first_seen, latest_seen = aggregate.one()
+            chain_rows = await session.execute(
+                select(chain, func.count(func.distinct(func.lower(token_address))))
+                .where(*base_filters)
+                .group_by(chain)
+            )
+
+            async def count_matching(*conditions: ColumnElement[bool]) -> int:
+                result = await session.execute(
+                    select(func.count(ObservationRow.id)).where(*base_filters, *conditions)
+                )
+                return int(result.scalar_one() or 0)
+
+            caller_count = await count_matching(ObservationRow.kind == "social.caller_consensus")
+            smart_wallet_count = await count_matching(ObservationRow.kind.like("wallet.%"))
+            holder_count = await count_matching(ObservationRow.kind == "market.holder_data")
+            security_count = await count_matching(ObservationRow.kind.like("security.%"))
+            creator_count = await count_matching(ObservationRow.kind.like("creator.%"))
+            candidate_count = await count_matching(ObservationRow.kind == "candidate.discovery")
+            health_filters = (
+                ObservationRow.provider == "gmgn",
+                ObservationRow.kind == "provider.collection_health",
+                ObservationRow.observed_at <= checked_at,
+                ObservationRow.ingested_at <= checked_at,
+                or_(
+                    ObservationRow.occurred_at <= checked_at,
+                    ObservationRow.occurred_at.is_(None),
+                ),
+            )
+            health_count_result = await session.execute(
+                select(func.count(ObservationRow.id)).where(*health_filters)
+            )
+            health_count = int(health_count_result.scalar_one() or 0)
+            rate_limit_result = await session.execute(
+                select(func.count(ObservationRow.id)).where(
+                    *health_filters,
+                    ObservationRow.normalized_payload["rate_limited"].as_boolean() == True,  # noqa: E712
+                )
+            )
+            error_result = await session.execute(
+                select(func.count(ObservationRow.id)).where(
+                    *health_filters,
+                    ObservationRow.normalized_payload["success"].as_boolean() == False,  # noqa: E712
+                )
+            )
+
+        def iso(value: object) -> str | None:
+            if value is None:
+                return None
+            return ensure_utc(cast(datetime, value), "readiness observation time").isoformat()
+
+        return ExternalProviderReadinessReport.from_counts(
+            provider="gmgn",
+            real_observation_count=int(real_count or 0),
+            unique_token_count=int(token_count or 0),
+            chain_token_counts={
+                str(chain_name or "unknown").lower(): int(count or 0)
+                for chain_name, count in chain_rows.all()
+            },
+            candidate_observation_count=candidate_count,
+            caller_kol_observation_count=caller_count,
+            smart_wallet_observation_count=smart_wallet_count,
+            holder_distribution_observation_count=holder_count,
+            security_risk_observation_count=security_count,
+            creator_observation_count=creator_count,
             first_real_observation=iso(first_seen),
             latest_real_observation=iso(latest_seen),
             rate_limit_count=(

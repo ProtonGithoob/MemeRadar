@@ -151,6 +151,67 @@ def test_graduation_without_completed_discovery_remains_unknown() -> None:
     assert no_route.route_available is False
 
 
+def test_vendor_dex_live_label_without_verified_route_does_not_create_dex_liveness() -> None:
+    token = _token()
+    at = NOW + timedelta(minutes=1)
+    snapshot = GraduationAwareRouteAnalyzer().snapshot(
+        token,
+        (
+            _observation(
+                "gmgn:dex-live",
+                at,
+                {
+                    "provider": "gmgn",
+                    "chain": "robinhood",
+                    "token_address": TOKEN,
+                    "lifecycle_state": "DEX_LIVE",
+                },
+            ),
+        ),
+        now=at + timedelta(seconds=1),
+        config_hash="launch-route-test-v1",
+    )
+
+    assert snapshot.lifecycle_state is LaunchLifecycleState.UNKNOWN
+    assert snapshot.route_state is RouteState.UNKNOWN
+
+
+def test_weak_gmgn_lifecycle_corroboration_cannot_override_canonical_bonding() -> None:
+    token = _token()
+    bonding = _observation(
+        "rpc:bonding",
+        NOW,
+        {
+            "provider": "evm-public-rpc:robinhood",
+            "chain": "robinhood",
+            "token_address": TOKEN,
+            "event_type": "bonding",
+            "rpc_reconciled": True,
+            "authoritative": True,
+        },
+    )
+    weak_live = _observation(
+        "gmgn:graduated",
+        NOW + timedelta(minutes=1),
+        {
+            "provider": "gmgn",
+            "chain": "robinhood",
+            "token_address": TOKEN,
+            "event_type": "graduated",
+        },
+    )
+
+    snapshot = GraduationAwareRouteAnalyzer().snapshot(
+        token,
+        (bonding, weak_live),
+        now=NOW + timedelta(minutes=1, seconds=1),
+        config_hash="launch-route-test-v1",
+    )
+
+    assert snapshot.lifecycle_state is LaunchLifecycleState.BONDING
+    assert snapshot.route_state is RouteState.BONDING_ROUTE
+
+
 def test_expired_lifecycle_evidence_is_stale_without_becoming_a_route() -> None:
     token = _token()
     snapshot = GraduationAwareRouteAnalyzer().snapshot(

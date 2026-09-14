@@ -47,7 +47,7 @@ from .creator_graph import CreatorOutcomeGraph
 from .early_scoring import AsymmetricAlphaProjection
 from .event_time import EventTimeQuality
 from .exit_engine import ExitEvaluation
-from .historical_dataset import MadeOnSolReadinessReport
+from .historical_dataset import ExternalProviderReadinessReport, MadeOnSolReadinessReport
 from .provider_contracts import ProviderCapabilityStatus, provider_capability_status
 from .smart_money_convergence import CallerConvergenceEvidence, CallerConvergenceState
 
@@ -2634,6 +2634,8 @@ class ReadQueryPort(Protocol):
 
     async def get_madeonsol_readiness(self) -> MadeOnSolReadinessReport: ...
 
+    async def get_gmgn_readiness(self) -> ExternalProviderReadinessReport: ...
+
     async def list_timeline(
         self, token_id: UUID, query: TimelineQuery
     ) -> Page[TimelineEntryView]: ...
@@ -2792,6 +2794,7 @@ class InMemoryReadQueryService:
         audit_events: Sequence[AuditEventView] = (),
         config_versions: Sequence[ConfigVersionView] = (),
         madeonsol_observations: Sequence[Observation] = (),
+        gmgn_observations: Sequence[Observation] = (),
         positions: Sequence[PositionView] = (),
         creator_graph: CreatorOutcomeGraph | None = None,
         clock: Callable[[], datetime] | None = None,
@@ -2814,6 +2817,7 @@ class InMemoryReadQueryService:
         self.audit_events = tuple(audit_events)
         self.config_versions = tuple(config_versions)
         self._madeonsol_observations = tuple(madeonsol_observations)
+        self._gmgn_observations = tuple(gmgn_observations)
         self.positions = tuple(positions)
         self._creator_graph = creator_graph or CreatorOutcomeGraph()
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -2831,10 +2835,17 @@ class InMemoryReadQueryService:
             raise TypeError("positions must contain PositionView values")
         if any(not isinstance(value, Observation) for value in self._madeonsol_observations):
             raise TypeError("madeonsol_observations must contain Observation values")
+        if any(not isinstance(value, Observation) for value in self._gmgn_observations):
+            raise TypeError("gmgn_observations must contain Observation values")
 
     async def get_madeonsol_readiness(self) -> MadeOnSolReadinessReport:
         return MadeOnSolReadinessReport.from_persisted_observations(
             self._madeonsol_observations
+        )
+
+    async def get_gmgn_readiness(self) -> ExternalProviderReadinessReport:
+        return ExternalProviderReadinessReport.from_persisted_observations(
+            "gmgn", self._gmgn_observations
         )
 
     async def list_candidates(self, query: CandidateQuery) -> Page[CandidateView]:

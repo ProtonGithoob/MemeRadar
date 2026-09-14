@@ -343,6 +343,21 @@ def _is_verified_route(payload: Mapping[str, object], provider: str) -> bool:
     )
 
 
+def _is_strong_reconciled_lifecycle(observation: Observation) -> bool:
+    provider = observation.provenance.provider.lower()
+    payload = observation.normalized_payload
+    return payload.get("rpc_reconciled") is True and (
+        payload.get("authoritative") is True
+        or provider.startswith("evm-public-rpc:")
+        or provider.startswith("canonical")
+    )
+
+
+def _is_weak_external_lifecycle(observation: Observation) -> bool:
+    provider = observation.provenance.provider.lower()
+    return provider in {"gmgn", "madeonsol-robinhood"} or provider.startswith("external:")
+
+
 def _route_signal(
     payload: Mapping[str, object],
     lifecycle: LaunchLifecycleState | None,
@@ -549,7 +564,9 @@ class GraduationAwareRouteAnalyzer:
             except (TypeError, ValueError, OverflowError):
                 invalid = True
                 continue
-            if row_lifecycle is not None:
+            # A raw vendor DEX_LIVE label is never lifecycle authority.  A
+            # verified route below can still derive DEX_LIVE canonically.
+            if row_lifecycle is not None and row_lifecycle is not LaunchLifecycleState.DEX_LIVE:
                 lifecycle_rows.append((observation, row_lifecycle))
             if row_route is not None:
                 route_rows.append((observation, row_route))
@@ -560,6 +577,11 @@ class GraduationAwareRouteAnalyzer:
                     row_venue,
                     row_progress,
                 )
+
+        if any(_is_strong_reconciled_lifecycle(row[0]) for row in lifecycle_rows):
+            lifecycle_rows = [
+                row for row in lifecycle_rows if not _is_weak_external_lifecycle(row[0])
+            ]
 
         collapsed_lifecycle_rows, lifecycle_conflict, lifecycle_deduped = _collapse(
             lifecycle_rows

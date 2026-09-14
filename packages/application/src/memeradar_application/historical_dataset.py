@@ -7,7 +7,7 @@ evidence is adequate for research gates.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from types import MappingProxyType
@@ -23,6 +23,9 @@ HISTORICAL_REAL_EVIDENCE_CLASS = "HISTORICAL_REAL"
 MADEONSOL_REAL_EVIDENCE_CLASS = "REAL_EXTERNAL"
 EVIDENCE_ORIGIN_FIELD = "evidence_origin"
 COLLECTION_MODE_FIELD = "collection_mode"
+_NON_REAL_COLLECTION_MODES = frozenset(
+    {"FIXTURE", "MOCK", "SYNTHETIC", "DEMO", "REPLAY", "REDACTED"}
+)
 HISTORICAL_PARTITION_STRATEGY = "CHRONOLOGICAL_50_25_25"
 DEFAULT_REQUIRED_COHORTS: tuple[str, ...] = (
     "EXTREME_WINNER",
@@ -37,6 +40,17 @@ DEFAULT_REQUIRED_COHORTS: tuple[str, ...] = (
     "EDITED_DELETED_CALL",
 )
 _PARTITIONS = ("TRAIN", "VALIDATION", "TEST")
+
+
+def _is_real_external_observation(item: Observation) -> bool:
+    payload = item.normalized_payload
+    origin = payload.get(EVIDENCE_ORIGIN_FIELD, payload.get("evidence_class"))
+    if origin != MADEONSOL_REAL_EVIDENCE_CLASS:
+        return False
+    mode = payload.get(COLLECTION_MODE_FIELD)
+    return not (
+        isinstance(mode, str) and mode.strip().upper() in _NON_REAL_COLLECTION_MODES
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,11 +239,7 @@ class MadeOnSolReadinessReport:
             item
             for item in stored
             if item.provenance.provider == "madeonsol-robinhood"
-            and item.normalized_payload.get(
-                EVIDENCE_ORIGIN_FIELD,
-                item.normalized_payload.get("evidence_class"),
-            )
-            == MADEONSOL_REAL_EVIDENCE_CLASS
+            and _is_real_external_observation(item)
         )
         return cls.from_observations(
             stored,
@@ -409,6 +419,306 @@ class MadeOnSolReadinessReport:
             "deployer_observation_count": self.deployer_observation_count,
             "holder_distribution_observation_count": self.holder_distribution_observation_count,
             "bundle_lp_security_observation_count": self.bundle_lp_security_observation_count,
+            "first_real_observation": self.first_real_observation,
+            "latest_real_observation": self.latest_real_observation,
+            "rate_limit_count": self.rate_limit_count,
+            "error_count": self.error_count,
+            "labeled_winner_count": self.labeled_winner_count,
+            "labeled_rug_count": self.labeled_rug_count,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ExternalProviderReadinessReport:
+    """Provider-neutral real-evidence inventory for optional alpha sources."""
+
+    provider: str
+    status: str
+    reason_codes: tuple[str, ...]
+    real_observation_count: int
+    unique_token_count: int
+    chain_token_counts: Mapping[str, int]
+    candidate_observation_count: int
+    caller_kol_observation_count: int
+    smart_wallet_observation_count: int
+    holder_distribution_observation_count: int
+    security_risk_observation_count: int
+    creator_observation_count: int
+    first_real_observation: str | None
+    latest_real_observation: str | None
+    rate_limit_count: int | None
+    error_count: int | None
+    labeled_winner_count: int | None
+    labeled_rug_count: int | None
+
+    @classmethod
+    def from_persisted_observations(
+        cls,
+        provider: str,
+        observations: Sequence[Observation],
+        *,
+        labels: Mapping[str, str] | None = None,
+        rate_limit_count: int | None = None,
+        error_count: int | None = None,
+        minimum_real_tokens: int = 100,
+        minimum_labeled_outcomes: int = 100,
+    ) -> ExternalProviderReadinessReport:
+        normalized_provider = require_text(provider, "provider", max_length=128)
+        stored = tuple(observations)
+        if any(not isinstance(item, Observation) for item in stored):
+            raise TypeError("external provider readiness observations must be Observation values")
+        provider_rows = tuple(
+            item
+            for item in stored
+            if item.provenance.provider == normalized_provider
+        )
+        real = tuple(
+            item
+            for item in provider_rows
+            if item.kind != "provider.collection_health"
+            and _is_real_external_observation(item)
+        )
+        health = tuple(item for item in provider_rows if item.kind == "provider.collection_health")
+        derived_rate_limit = (
+            sum(item.normalized_payload.get("rate_limited") is True for item in health)
+            if health
+            else None
+        )
+        derived_errors = (
+            sum(item.normalized_payload.get("success") is False for item in health)
+            if health
+            else None
+        )
+        return cls.from_observations(
+            normalized_provider,
+            real,
+            labels=labels,
+            rate_limit_count=derived_rate_limit if rate_limit_count is None else rate_limit_count,
+            error_count=derived_errors if error_count is None else error_count,
+            minimum_real_tokens=minimum_real_tokens,
+            minimum_labeled_outcomes=minimum_labeled_outcomes,
+        )
+
+    @classmethod
+    def from_observations(
+        cls,
+        provider: str,
+        observations: Sequence[Observation],
+        *,
+        labels: Mapping[str, str] | None = None,
+        rate_limit_count: int | None = None,
+        error_count: int | None = None,
+        minimum_real_tokens: int = 100,
+        minimum_labeled_outcomes: int = 100,
+    ) -> ExternalProviderReadinessReport:
+        normalized_provider = require_text(provider, "provider", max_length=128)
+        stored = tuple(observations)
+        if any(not isinstance(item, Observation) for item in stored):
+            raise TypeError("external provider readiness observations must be Observation values")
+        provider_rows = tuple(
+            item for item in stored if item.provenance.provider == normalized_provider
+        )
+        real = tuple(
+            item
+            for item in provider_rows
+            if item.kind != "provider.collection_health"
+            and _is_real_external_observation(item)
+        )
+        for value, field_name in (
+            (rate_limit_count, "rate_limit_count"),
+            (error_count, "error_count"),
+        ):
+            if value is not None and (
+                not isinstance(value, int) or isinstance(value, bool) or value < 0
+            ):
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        if (
+            not isinstance(minimum_real_tokens, int)
+            or isinstance(minimum_real_tokens, bool)
+            or minimum_real_tokens < 1
+        ):
+            raise ValueError("minimum_real_tokens must be positive")
+        if (
+            not isinstance(minimum_labeled_outcomes, int)
+            or isinstance(minimum_labeled_outcomes, bool)
+            or minimum_labeled_outcomes < 1
+        ):
+            raise ValueError("minimum_labeled_outcomes must be positive")
+
+        token_keys: set[str] = set()
+        chain_counts: dict[str, set[str]] = {}
+        for item in real:
+            payload = item.normalized_payload
+            address = next(
+                (
+                    raw.strip().lower()
+                    for key in ("token_address", "mint_address", "asset_address")
+                    for raw in (payload.get(key),)
+                    if isinstance(raw, str) and raw.strip()
+                ),
+                None,
+            )
+            if address is None:
+                continue
+            raw_chain = str(payload.get("chain", "unknown")).lower()
+            chain = {"sol": "solana", "bsc": "bnb"}.get(raw_chain, raw_chain)
+            token_key = f"{chain}:{address}"
+            token_keys.add(token_key)
+            chain_counts.setdefault(chain, set()).add(address)
+
+        def count(predicate: Callable[[Observation], bool]) -> int:
+            return sum(predicate(item) for item in real)
+
+        if labels is None:
+            winner_count = None
+            rug_count = None
+        else:
+            normalized_labels = {
+                str(key).lower(): str(value).upper() for key, value in labels.items()
+            }
+            winner_labels = {"WINNER", "2X", "5X", "10X", "20X", "50X", "100X"}
+            rug_labels = {"RUG", "FAILURE", "SEVERE_FAILURE"}
+            winner_count = sum(
+                normalized_labels.get(key, normalized_labels.get(address)) in winner_labels
+                for key in token_keys
+                for address in (key.split(":", 1)[1],)
+            )
+            rug_count = sum(
+                normalized_labels.get(key, normalized_labels.get(address)) in rug_labels
+                for key in token_keys
+                for address in (key.split(":", 1)[1],)
+            )
+        times = sorted(item.occurred_at or item.observed_at for item in real)
+        return cls.from_counts(
+            provider=normalized_provider,
+            real_observation_count=len(real),
+            unique_token_count=len(token_keys),
+            chain_token_counts={key: len(value) for key, value in chain_counts.items()},
+            candidate_observation_count=count(lambda item: item.kind == "candidate.discovery"),
+            caller_kol_observation_count=count(
+                lambda item: item.kind == "social.caller_consensus"
+            ),
+            smart_wallet_observation_count=count(lambda item: item.kind.startswith("wallet.")),
+            holder_distribution_observation_count=count(
+                lambda item: item.kind == "market.holder_data"
+            ),
+            security_risk_observation_count=count(lambda item: item.kind.startswith("security.")),
+            creator_observation_count=count(lambda item: item.kind.startswith("creator.")),
+            first_real_observation=times[0].isoformat() if times else None,
+            latest_real_observation=times[-1].isoformat() if times else None,
+            rate_limit_count=rate_limit_count,
+            error_count=error_count,
+            labeled_winner_count=winner_count,
+            labeled_rug_count=rug_count,
+            minimum_real_tokens=minimum_real_tokens,
+            minimum_labeled_outcomes=minimum_labeled_outcomes,
+        )
+
+    @classmethod
+    def from_counts(
+        cls,
+        *,
+        provider: str,
+        real_observation_count: int,
+        unique_token_count: int,
+        chain_token_counts: Mapping[str, int],
+        candidate_observation_count: int,
+        caller_kol_observation_count: int,
+        smart_wallet_observation_count: int,
+        holder_distribution_observation_count: int,
+        security_risk_observation_count: int,
+        creator_observation_count: int,
+        first_real_observation: str | None,
+        latest_real_observation: str | None,
+        rate_limit_count: int | None = None,
+        error_count: int | None = None,
+        labeled_winner_count: int | None = None,
+        labeled_rug_count: int | None = None,
+        minimum_real_tokens: int = 100,
+        minimum_labeled_outcomes: int = 100,
+    ) -> ExternalProviderReadinessReport:
+        normalized_provider = require_text(provider, "provider", max_length=128)
+        counts = (
+            real_observation_count,
+            unique_token_count,
+            candidate_observation_count,
+            caller_kol_observation_count,
+            smart_wallet_observation_count,
+            holder_distribution_observation_count,
+            security_risk_observation_count,
+            creator_observation_count,
+            rate_limit_count,
+            error_count,
+            labeled_winner_count,
+            labeled_rug_count,
+        )
+        if any(
+            value is not None
+            and (not isinstance(value, int) or isinstance(value, bool) or value < 0)
+            for value in counts
+        ):
+            raise ValueError("readiness counts must be non-negative integers")
+        normalized_chain_counts: dict[str, int] = {}
+        for chain, value in chain_token_counts.items():
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError("chain token counts must be non-negative integers")
+            normalized_chain_counts[require_text(chain, "chain", max_length=32).lower()] = value
+        if (
+            not isinstance(minimum_real_tokens, int)
+            or isinstance(minimum_real_tokens, bool)
+            or minimum_real_tokens < 1
+        ):
+            raise ValueError("minimum_real_tokens must be positive")
+        if (
+            not isinstance(minimum_labeled_outcomes, int)
+            or isinstance(minimum_labeled_outcomes, bool)
+            or minimum_labeled_outcomes < 1
+        ):
+            raise ValueError("minimum_labeled_outcomes must be positive")
+        reasons: list[str] = []
+        if real_observation_count == 0:
+            reasons.append(f"{normalized_provider.upper()}_REAL_OBSERVATIONS_REQUIRED")
+        if unique_token_count < minimum_real_tokens:
+            reasons.append(f"{normalized_provider.upper()}_TOKEN_SAMPLES_REQUIRED")
+        if labeled_winner_count is None or labeled_rug_count is None:
+            reasons.append(f"{normalized_provider.upper()}_LABELED_OUTCOMES_UNAVAILABLE")
+        elif labeled_winner_count + labeled_rug_count < minimum_labeled_outcomes:
+            reasons.append(f"{normalized_provider.upper()}_LABELED_OUTCOMES_REQUIRED")
+        return cls(
+            provider=normalized_provider,
+            status="READY_FOR_OUT_OF_SAMPLE_CALIBRATION" if not reasons else "INSUFFICIENT_SAMPLES",
+            reason_codes=tuple(reasons),
+            real_observation_count=real_observation_count,
+            unique_token_count=unique_token_count,
+            chain_token_counts=MappingProxyType(dict(sorted(normalized_chain_counts.items()))),
+            candidate_observation_count=candidate_observation_count,
+            caller_kol_observation_count=caller_kol_observation_count,
+            smart_wallet_observation_count=smart_wallet_observation_count,
+            holder_distribution_observation_count=holder_distribution_observation_count,
+            security_risk_observation_count=security_risk_observation_count,
+            creator_observation_count=creator_observation_count,
+            first_real_observation=first_real_observation,
+            latest_real_observation=latest_real_observation,
+            rate_limit_count=rate_limit_count,
+            error_count=error_count,
+            labeled_winner_count=labeled_winner_count,
+            labeled_rug_count=labeled_rug_count,
+        )
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "provider": self.provider,
+            "status": self.status,
+            "reason_codes": list(self.reason_codes),
+            "real_observation_count": self.real_observation_count,
+            "unique_token_count": self.unique_token_count,
+            "chain_token_counts": dict(self.chain_token_counts),
+            "candidate_observation_count": self.candidate_observation_count,
+            "caller_kol_observation_count": self.caller_kol_observation_count,
+            "smart_wallet_observation_count": self.smart_wallet_observation_count,
+            "holder_distribution_observation_count": self.holder_distribution_observation_count,
+            "security_risk_observation_count": self.security_risk_observation_count,
+            "creator_observation_count": self.creator_observation_count,
             "first_real_observation": self.first_real_observation,
             "latest_real_observation": self.latest_real_observation,
             "rate_limit_count": self.rate_limit_count,
@@ -668,4 +978,5 @@ __all__ = [
     "HistoricalDatasetValidation",
     "HistoricalDatasetValidator",
     "MadeOnSolReadinessReport",
+    "ExternalProviderReadinessReport",
 ]

@@ -54,6 +54,66 @@ def test_webhook_normalization_is_redacted_provenanced_and_deterministic() -> No
     assert first.normalized_payload["api_key"] == "[REDACTED]"
 
 
+@pytest.mark.parametrize(
+    ("activity_type", "expected"),
+    (
+        ("SWAP", "SWAP"),
+        ("token_swap", "SWAP"),
+        ("ADD_LIQUIDITY", "LIQUIDITY_ADD"),
+        ("liquidity_removed", "LIQUIDITY_REMOVE"),
+        ("cross_chain_transfer", "BRIDGE"),
+        ("SPL_TRANSFER", "TRANSFER"),
+        ("TOKEN_LAUNCH", "TOKEN_LAUNCH"),
+        ("arbitrage", "MEV_ARBITRAGE"),
+    ),
+)
+def test_transaction_activity_taxonomy_is_factual_and_deterministic(
+    activity_type: str,
+    expected: str,
+) -> None:
+    observation = HeliusObservationNormalizer(clock=lambda: NOW).normalize(
+        {
+            "source_id": f"taxonomy-{activity_type}",
+            "type": "transaction",
+            "activity_type": activity_type,
+            "timestamp": int(NOW.timestamp()),
+        },
+        observed_at=NOW,
+    )
+
+    assert observation.normalized_payload["activity_kind"] == expected
+    assert "bullish" not in observation.normalized_payload
+    assert "bearish" not in observation.normalized_payload
+    assert "rug" not in observation.normalized_payload
+
+
+def test_transaction_activity_taxonomy_keeps_ambiguous_and_weak_signals_unknown() -> None:
+    normalizer = HeliusObservationNormalizer(clock=lambda: NOW)
+
+    ambiguous = normalizer.normalize(
+        {
+            "source_id": "taxonomy-ambiguous",
+            "type": "transaction",
+            "activity_type": "swap",
+            "event_type": "transfer",
+            "timestamp": int(NOW.timestamp()),
+        },
+        observed_at=NOW,
+    )
+    weak_mint = normalizer.normalize(
+        {
+            "source_id": "taxonomy-mint",
+            "type": "transaction",
+            "activity_type": "TOKEN_MINT",
+            "timestamp": int(NOW.timestamp()),
+        },
+        observed_at=NOW,
+    )
+
+    assert ambiguous.normalized_payload["activity_kind"] == "UNKNOWN"
+    assert weak_mint.normalized_payload["activity_kind"] == "UNKNOWN"
+
+
 def test_missing_identity_or_malformed_timestamp_is_classified_schema_failure() -> None:
     normalizer = HeliusObservationNormalizer(clock=lambda: NOW)
 

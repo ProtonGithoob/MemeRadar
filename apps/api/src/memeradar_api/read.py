@@ -17,7 +17,10 @@ from memeradar_application.config import Settings
 from memeradar_application.control import ControlAction, ControlPlanePort
 from memeradar_application.early_scoring import AsymmetricAlphaProjection
 from memeradar_application.event_time import EventTimeQuality
-from memeradar_application.historical_dataset import MadeOnSolReadinessReport
+from memeradar_application.historical_dataset import (
+    ExternalProviderReadinessReport,
+    MadeOnSolReadinessReport,
+)
 from memeradar_application.provider_contracts import ProviderCapabilityStatus
 from memeradar_application.provider_metadata import provider_metadata
 from memeradar_application.read_api import (
@@ -658,6 +661,27 @@ class AlphaValidationResponse(_StrictModel):
     labeled_rug_count: int | None = None
 
 
+class ExternalProviderReadinessResponse(_StrictModel):
+    provider: str
+    status: str
+    reason_codes: list[str] = Field(default_factory=list)
+    real_observation_count: int
+    unique_token_count: int
+    chain_token_counts: dict[str, int] = Field(default_factory=dict)
+    candidate_observation_count: int
+    caller_kol_observation_count: int
+    smart_wallet_observation_count: int
+    holder_distribution_observation_count: int
+    security_risk_observation_count: int
+    creator_observation_count: int
+    first_real_observation: datetime | None = None
+    latest_real_observation: datetime | None = None
+    rate_limit_count: int | None = None
+    error_count: int | None = None
+    labeled_winner_count: int | None = None
+    labeled_rug_count: int | None = None
+
+
 class ReadinessResponse(_StrictModel):
     as_of: datetime
     classification: str
@@ -667,6 +691,7 @@ class ReadinessResponse(_StrictModel):
     protected_modes: dict[str, bool]
     live_money: dict[str, object]
     alpha_validation: AlphaValidationResponse
+    gmgn_alpha_validation: ExternalProviderReadinessResponse
 
 
 class AuditEventResponse(_StrictModel):
@@ -1282,6 +1307,22 @@ def _provider_health_response(
         elif not settings.madeonsol_api_key:
             runtime_state = ReadProviderHealthState.UNKNOWN
             capability_status = ProviderCapabilityStatus.CONFIGURATION_MISSING.value
+    if value.provider == "gmgn" and settings is not None:
+        enabled = settings.gmgn_enabled
+        credential_state = "CONFIGURED" if settings.gmgn_api_key else "NOT_CONFIGURED"
+        endpoint_state = (
+            "CONFIGURED"
+            if settings.gmgn_base_url and settings.gmgn_base_url.lower().startswith("https://")
+            else "NOT_CONFIGURED"
+        )
+        if not enabled:
+            credential_state = "DISABLED"
+            endpoint_state = "DISABLED"
+            runtime_state = ReadProviderHealthState.UNKNOWN
+            capability_status = ProviderCapabilityStatus.UNSUPPORTED.value
+        elif not settings.gmgn_api_key or endpoint_state != "CONFIGURED":
+            runtime_state = ReadProviderHealthState.UNKNOWN
+            capability_status = ProviderCapabilityStatus.CONFIGURATION_MISSING.value
     return ProviderHealthResponse(
         provider=value.provider,
         provider_id=metadata.provider_id,
@@ -1736,9 +1777,43 @@ def _alpha_validation_response(
     )
 
 
+def _external_provider_readiness_response(
+    report: ExternalProviderReadinessReport,
+) -> ExternalProviderReadinessResponse:
+    return ExternalProviderReadinessResponse(
+        provider=report.provider,
+        status=report.status,
+        reason_codes=list(report.reason_codes),
+        real_observation_count=report.real_observation_count,
+        unique_token_count=report.unique_token_count,
+        chain_token_counts=dict(report.chain_token_counts),
+        candidate_observation_count=report.candidate_observation_count,
+        caller_kol_observation_count=report.caller_kol_observation_count,
+        smart_wallet_observation_count=report.smart_wallet_observation_count,
+        holder_distribution_observation_count=report.holder_distribution_observation_count,
+        security_risk_observation_count=report.security_risk_observation_count,
+        creator_observation_count=report.creator_observation_count,
+        first_real_observation=(
+            None
+            if report.first_real_observation is None
+            else datetime.fromisoformat(report.first_real_observation)
+        ),
+        latest_real_observation=(
+            None
+            if report.latest_real_observation is None
+            else datetime.fromisoformat(report.latest_real_observation)
+        ),
+        rate_limit_count=report.rate_limit_count,
+        error_count=report.error_count,
+        labeled_winner_count=report.labeled_winner_count,
+        labeled_rug_count=report.labeled_rug_count,
+    )
+
+
 def _readiness_projection(
     settings: object,
     alpha_validation: MadeOnSolReadinessReport | None = None,
+    gmgn_alpha_validation: ExternalProviderReadinessReport | None = None,
 ) -> ReadinessResponse:
     protected_modes = {
         "analysis_only": bool(getattr(settings, "analysis_only", True)),
@@ -1819,6 +1894,10 @@ def _readiness_projection(
         alpha_validation=_alpha_validation_response(
             alpha_validation or MadeOnSolReadinessReport.from_persisted_observations(())
         ),
+        gmgn_alpha_validation=_external_provider_readiness_response(
+            gmgn_alpha_validation
+            or ExternalProviderReadinessReport.from_persisted_observations("gmgn", ())
+        ),
     )
 
 
@@ -1851,11 +1930,15 @@ def build_read_router(
     @router.get("/readiness", response_model=ReadinessResponse)
     async def get_readiness() -> ReadinessResponse:
         report = MadeOnSolReadinessReport.from_persisted_observations(())
+        gmgn_report = ExternalProviderReadinessReport.from_persisted_observations("gmgn", ())
         if service is not None:
             getter = getattr(service, "get_madeonsol_readiness", None)
             if callable(getter):
                 report = await _call(getter())
-        return _readiness_projection(settings, report)
+            gmgn_getter = getattr(service, "get_gmgn_readiness", None)
+            if callable(gmgn_getter):
+                gmgn_report = await _call(gmgn_getter())
+        return _readiness_projection(settings, report, gmgn_report)
 
     @router.get("/candidates", response_model=PageResponse[CandidateResponse])
     async def list_candidates(
@@ -2096,6 +2179,7 @@ __all__ = [
     "ProviderHealthResponse",
     "ProvenanceResponse",
     "ReadinessGateResponse",
+    "ExternalProviderReadinessResponse",
     "ReadinessResponse",
     "SearchResolveResponse",
     "ShortestPathQueryParams",

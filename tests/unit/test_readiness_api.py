@@ -152,3 +152,37 @@ def test_real_external_origin_collected_in_live_shadow_counts_as_real() -> None:
 
     assert body["real_observation_count"] == 1
     assert body["unique_robinhood_token_count"] == 1
+
+
+def test_readiness_api_exposes_gmgn_real_shadow_inventory_without_promotion() -> None:
+    observation = Observation(
+        kind="security.provider_risk",
+        provenance=Provenance(
+            provider="gmgn",
+            source_id="gmgn:security:1",
+            observed_at=NOW,
+            parser_version="gmgn-openapi-v1",
+        ),
+        occurred_at=NOW,
+        observed_at=NOW,
+        ingested_at=NOW,
+        quality_state=QualityState.FRESH,
+        normalized_payload={
+            "chain": "solana",
+            "token_address": "So11111111111111111111111111111111111111112",
+            "evidence_origin": "REAL_EXTERNAL",
+            "evidence_class": "REAL_EXTERNAL",
+            "collection_mode": "LIVE_SHADOW",
+        },
+    )
+    service = InMemoryReadQueryService(gmgn_observations=(observation,))
+    client = TestClient(create_app(Settings.from_env({}), read_service=service))
+
+    body = client.get("/v1/readiness").json()["gmgn_alpha_validation"]
+
+    assert body["provider"] == "gmgn"
+    assert body["real_observation_count"] == 1
+    assert body["unique_token_count"] == 1
+    assert body["security_risk_observation_count"] == 1
+    assert body["status"] == "INSUFFICIENT_SAMPLES"
+    assert body["labeled_winner_count"] is None

@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -31,6 +31,80 @@ There is no wallet signer, live order submission, automatic execution, or
 execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
+
+## 2026-09-14 external alpha intelligence integration
+
+Baseline source of truth was `origin/main` at
+`b9c46b3fb3c881ca04c76ed9e25872ecc86e5c15`; `main` was fast-forwarded and
+clean before implementation. The committed requirements and plan are recorded
+in the [integration specification](superpowers/specs/2026-09-14-external-alpha-intelligence-integration.md)
+and [implementation plan](superpowers/plans/2026-09-14-external-alpha-intelligence-integration.md).
+
+### Implementation result
+
+- GMGN is a direct, read-only, optional backend adapter using the audited
+  `https://openapi.gmgn.ai` contract. It is disabled by default, requires an
+  explicit API key and HTTPS endpoint, never enters the core provider route
+  plan, has `scoring_weight=0`, and runs only in `LIVE_SHADOW` when configured.
+  The upstream audit and exact blocker/allowance decisions are in the
+  [audit](EXTERNAL_ALPHA_INTELLIGENCE_AUDIT_2026-09-14.md) and [before gap
+  matrix](EXTERNAL_ALPHA_INTELLIGENCE_GAP_MATRIX_2026-09-14.md).
+- Helius now normalizes explicit factual activity kinds into the canonical
+  `SWAP`, `LIQUIDITY_ADD`, `LIQUIDITY_REMOVE`, `BRIDGE`, `TRANSFER`,
+  `TOKEN_LAUNCH`, `MEV_ARBITRAGE`, or `UNKNOWN` taxonomy. It adds no
+  directional or risk conclusions.
+- Lifecycle regression coverage proves bonding is not a DEX route, provider
+  graduation is not verified liquidity, first verified liquidity is distinct
+  from first verified swap, and weak external lifecycle evidence cannot
+  override stronger canonical evidence. No Numi lifecycle or execution path
+  was added.
+- Real-provider readiness accounting explicitly excludes fixtures, mocks,
+  synthetic, demo, replay-only, and redacted observations. GMGN currently has
+  no compliant real sample or matured label, so its report is
+  `INSUFFICIENT_SAMPLES`; no neutral score is manufactured.
+- No scoring/risk weights, database migration, protected mode, signer,
+  execution path, duplicate wallet graph, alert engine, reliability framework,
+  or second Helius stack was introduced. Solbeam remains a documentation/UI
+  reference only.
+
+### Current GMGN real-data inventory
+
+```text
+real observations: 0
+unique SOL/BSC tokens: 0
+candidate observations: 0
+caller/KOL observations: 0
+smart-wallet observations: 0
+holder/distribution observations: 0
+security/risk observations: 0
+first/last real observation: null / null
+provider errors/rate limits: null / null (no persisted real attempt)
+winner/rug labels: null / null
+sample status: INSUFFICIENT_SAMPLES
+```
+
+### Verification evidence
+
+- Focused GMGN/Helius/lifecycle/readiness/worker/doctor tests:
+  `51 passed, 1 warning`; Helius taxonomy `15 passed`; lifecycle `11 passed`.
+- Telegram and alert tests: `52 passed`.
+- Full Python suite: `1287 passed, 18 skipped, 1 warning`.
+- `make verify`: passed. Ruff, mypy (`134` source files), CSS contract,
+  frontend lint/typecheck/tests (`79 passed`), Compose config, secret scan,
+  migration check, security review, SBOM, and `git diff --check` passed.
+  The security report correctly leaves container/npm/pip external scans
+  `NOT_RUN` and external acceptance `BLOCKED_EXTERNAL`.
+- Frontend production build passed. Browser journeys passed `36` with `4`
+  credential-dependent skips.
+- Integration tests were skipped because
+  `MEMERADAR_TEST_DATABASE_URL` is not configured. Runtime migration was
+  skipped for the same missing database URL; migration files remain at head
+  `0011_collection_checkpoints` with `27` tables.
+- `make alpha-readiness` remains `INSUFFICIENT_SAMPLES` with zero real
+  observations; fixture/replay examples remain non-promotional. No external
+  provider success is claimed.
+
+Implementation commit: to be recorded after the final commit.
 
 ## Current blockers
 
