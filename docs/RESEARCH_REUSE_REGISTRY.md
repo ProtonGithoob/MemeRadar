@@ -1,255 +1,51 @@
-# Research Reuse Registry
+# Research / Reuse Registry
 
-This file captures externally researched open-source patterns that are useful to MemeRadar. It is a design/reference registry, not a blanket license to copy source code. Codex must verify each upstream license before reusing code. When license status is unclear or restrictive, use only independently implemented architectural ideas and protocol behavior.
+Purpose: prevent duplicate subsystems, unsafe source copying, vendor-semantic leakage and repeated re-analysis of external repositories. Revalidate upstream state before implementing from any entry.
 
-## Integration principles
+| Source | Audit pin | License state at audit | Accepted reuse | Explicitly rejected | Integration mode | Weight / execution status | Revalidation trigger |
+|---|---|---|---|---|---|---|---|
+| `GMGNAI/gmgn-skills` | `4a48b8a31e19b62c96ee57ba76b46310f84043f0` | Root MIT LICENSE verified | Read-only SOL/BSC discovery, market, KOL/Smart Money, holder/distribution, bundler/sniper/insider and security evidence **if stable server read contract is verified** | CLI subprocess dependency, private key, wallet management, swap, cooking, market/limit/strategy orders, provider-owned final scoring | Optional provider; disabled by default; LIVE_SHADOW | weight=0; no execution | upstream API/schema/auth change; license change; production promotion proposal |
+| `SoCloseSociety/WhalegodTG` | `3b0733ceb8d0bd10f52d21e86ae97ca0aa9f49a6` | Root MIT LICENSE verified | Factual transaction activity taxonomy concept; bounded ingestion/dedupe ideas where current MemeRadar lacks them | Telegram/SQLite stack; bullish/bearish/degen conclusions; duplicate alert engine/webhook stack | Independent minimal implementation inside existing Helius normalizer | no score/execution effect | Helius payload contract change; taxonomy expansion |
+| `numi-ai/numi-trading-agent` | `cb460ff96508c8fdae64ac169b4fc6cc2703f4ff` | README/package say MIT; root LICENSE not found at audit | Independently reimplemented lifecycle invariants and tests | source/test/comment copying; Numi RiskManager; second Robinhood lifecycle; 1inch/live signer execution | Architectural reference only | no weight/execution effect | root license appears; current MemeRadar lifecycle design materially changes |
+| `CodeMuscle/solbeam` | `234423a8f0180deffc6b9d83fa84e35687049670` | README says MIT; root LICENSE not found at audit | UI/research concepts only | source/data-model reuse; duplicate Helius/wallet/alert stack; treating roadmap as implemented | Docs/reference only | none | root license appears and a concrete missing MemeRadar capability is proven |
+| `MadeOnSol/robinhood-chain-sdk` | Existing MemeRadar work; pin separately before new changes | Prior integration research only; revalidate before source reuse | Existing `madeonsol-robinhood` optional provider direction and canonical Robinhood intelligence evidence | duplicate Robinhood scorer/risk/lifecycle/Telegram systems | Existing optional LIVE_SHADOW integration track | no production promotion without real OOS evidence | any new MadeOnSol capability, API or weight proposal |
 
-1. Preserve MemeRadar's provider-independent domain/application boundaries.
-2. Do not replace deterministic risk gates with third-party scores or LLM opinions.
-3. Treat third-party smart-money/KOL labels as corroborating evidence, not unquestioned truth.
-4. Prefer native/on-chain verification when available.
-5. Every imported signal must retain provenance, observed/occurred/ingested timestamps, freshness and confidence.
-6. New low-latency paths must not bypass risk, position sizing or execution policy.
-7. New execution code remains disabled while `MANUAL_EXECUTION=false` and `AUTO_EXECUTION=false`.
+## Registry rules
 
-## Current A+C references
+1. **Existing MemeRadar architecture wins.** External projects provide evidence or ideas; they do not define MemeRadar's domain boundaries.
+2. **License is necessary but not sufficient.** Even with a permissive license, prefer a small independent implementation over importing foreign architecture.
+3. **No source copy from ambiguous-license entries.** A README badge/string is not treated as equivalent to a verified root license for source reuse in this registry.
+4. **Provider labels remain provider labels.** `smart_money`, `insider`, `rug`, `KOL`, `alpha` and similar upstream concepts require provenance and must not silently become canonical truth.
+5. **UNKNOWN is preserved.** Missing, unsupported or unavailable values do not become zero, false, safe or neutral.
+6. **Research providers do not receive signing authority.** No private key, wallet custody, swap/order or execution capability is added through research reuse.
+7. **Promotion is empirical.** A provider can be available and still have weight 0 indefinitely.
+8. **Real-data accounting is strict.** Fixtures, mocks, demos, replay-only and synthetic data cannot satisfy promotion sample requirements.
+9. **Revalidate before implementation.** Verify upstream ref, current docs/API contract, license, security implications and existing MemeRadar overlap before changing code.
 
-`MadeOnSol/robinhood-chain-sdk` was audited on 2026-09-12 at upstream commit
-`241d63978f35458ecac85507098278cdb2f1440d`; the repository advertises MIT
-licensing. MemeRadar uses only its documented Robinhood API surface and
-independently implements a bounded, read-only adapter. No upstream source was
-copied into the repository.
+## Approved semantic boundaries
 
-`ultranumblol/solana-meme-analyzer` was reviewed only for the general insider-
-pattern problem. Its repository metadata did not identify a license, so no
-source, names, tests, or comments were reused; the supporting evidence remains
-an independent extension of MemeRadar's existing holder graph.
+### GMGN
 
-`nirholas/solana-sniper-mcp` was not used. Its proprietary source was not
-copied, adapted, translated, or derived from.
+Accepted as supporting evidence only:
 
-## High-value references and patterns
+- token discovery/trending;
+- KOL and Smart Money observations;
+- top trader/holder context;
+- bundler, rat-trader, sniper, fresh-wallet and suspected-insider measures;
+- creator/dev holding context;
+- wash-trading/honeypot/rug context;
+- bonding-curve state as lifecycle corroboration.
 
-### moonbags
-Useful patterns:
-- common `SignalSource` abstraction across heterogeneous feeds;
-- smart-money/KOL WebSocket signals;
-- cross-source deduplication and cooldowns;
-- dev-wallet/smart-money distribution as exit evidence;
-- Jupiter-style execution boundary plus trailing-stop lifecycle.
+Not accepted as direct canonical truth or execution authority.
 
-MemeRadar adaptation:
-- introduce a provider-neutral `ExternalSignalPort`/signal normalization layer only if existing ports cannot represent the evidence cleanly;
-- map smart-money/KOL signals into existing wallet/confluence observations rather than creating a parallel decision system;
-- implement source-level dedupe and correlation IDs before feature aggregation;
-- consume smart-money distribution in Exit Engine as one reason-coded signal.
+### WhalegodTG
 
-### slightlyuseless/memecoin-trading-bot
-Useful patterns:
-- strategy plug-in interface decoupled from discovery/wallet/safety/execution;
-- launch/migration discovery separation;
-- replaceable entry strategies.
+Accepted concept: factual activity type. Directional meaning is deliberately excluded.
 
-MemeRadar adaptation:
-- add a versioned `AlphaStrategy` interface above feature snapshots so scoring/decision variants can be replayed and A/B tested;
-- strategies must be pure/deterministic for a fixed snapshot/config;
-- strategy output cannot override hard risk gates.
+### Numi
 
-### WhiteOwl
-Useful patterns:
-- unified operator UX for social, holder, launchpad, paper/live and copy-trading evidence;
-- modular capability/skills concept.
+Accepted concept: route/lifecycle proof must be stronger than a launchpad state label. No second lifecycle engine.
 
-MemeRadar adaptation:
-- use the UX idea only: one evidence timeline for X/KOL, on-chain, smart-wallet, market and exits;
-- maintain explicit badges separating observed facts, derived scores, external labels, LLM narrative, paper and live states.
+### Solbeam
 
-### meme-coins-analyzer
-Useful patterns:
-- smart-money + Twitter/KOL + launchpad/event monitoring in one event architecture;
-- time-series observability and alert taxonomy.
-
-MemeRadar adaptation:
-- expand metrics for ingest latency, signal latency, feature latency and decision latency;
-- preserve PostgreSQL as durable truth while using Redis only for ephemeral windows/dedupe.
-
-### Solana Trading Lab / replayer-rust
-Useful patterns:
-- compact historical Pump.fun event storage;
-- deterministic event replay for strategy/backtest evaluation.
-
-MemeRadar adaptation:
-- Phase 10 must implement event-log replay with no-lookahead protection;
-- enable bulk cohort analysis such as `AlphaScore>=X` outcome distributions and signal precision by token age/launch venue;
-- optionally extract high-throughput replay into Rust only after profiling proves Python is insufficient.
-
-### pumpr-bot
-Useful patterns:
-- very short 30-second launch momentum windows;
-- unique-buyer and SOL-volume acceleration;
-- sell pressure as fast exit evidence.
-
-MemeRadar adaptation:
-- add micro-windows `5s/15s/30s/60s` for launch-time features in addition to `1m/5m/15m`;
-- derive unique buyers, buy volume, sell volume, buy/sell ratio, net-flow acceleration and buyer-arrival rate;
-- these features are advisory components only and must obey minimum-liquidity/security evidence requirements.
-
-### CabalSpy-style labeled wallet intelligence
-Useful patterns:
-- large labeled KOL/smart-money/whale wallet sets;
-- wallet PnL/win-rate ranking;
-- multi-wallet cluster signals;
-- KOL side-wallet/bundle detection.
-
-MemeRadar adaptation:
-- add provider-neutral external wallet-label ingestion with provenance and TTL;
-- compare external labels against MemeRadar's own `SmartWalletScore`;
-- expose `smart_wallet_confluence`, `tracked_supply_pct`, `external_label_confidence`, `bundle_confidence` and `side_wallet_cluster_confidence` as separate features;
-- correlated wallets must still count as one actor cluster in confluence.
-
-### PumpKit / Pump.fun protocol trackers
-Useful patterns:
-- typed protocol event decoding;
-- WebSocket-first lifecycle with HTTP polling fallback;
-- launch, graduation, whale trade, creator fee and CTO/fee-redirection events;
-- bonding-curve state and progression;
-- caller/KOL performance tracking.
-
-Important licensing note:
-- do not copy source code where upstream licensing is restrictive/unclear;
-- independently implement protocol decoders from official/public protocol contracts and transaction evidence.
-
-MemeRadar adaptation:
-- extend Pump.fun protocol normalization with `launch`, `trade`, `graduation`, `creator_fee_claim`, `fee_recipient_change/CTO`, `bonding_curve_progress` and `whale_trade` event kinds where reliably derivable;
-- WebSocket/stream is preferred, bounded polling is fallback;
-- use caller outcome history to improve `AuthorTrustScore`, but never infer trust from follower count alone.
-
-### yegor104/pumpfun-tracker
-Useful patterns:
-- wallet-attributed Pump.fun trade decoding;
-- per-wallet realized PnL accounting;
-- continuity of the same mint across bonding-curve graduation into PumpSwap;
-- preserving acquisition history across the migration boundary.
-
-MemeRadar adaptation:
-- do not add a second tracker or second wallet ledger;
-- extend the canonical wallet/accounting path with a cross-venue continuity invariant keyed by mint and verified migration evidence;
-- preserve pre-migration quantity and execution-price cost basis when the same mint moves to PumpSwap;
-- reject/downgrade conflicting successor pools, duplicate migration evidence and missing pre-migration state;
-- feed continuous history into existing SmartWalletScore/outcome evidence only after policy-appropriate finality;
-- implement through `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md` E11.10.
-
-### petershepherd/j33t-intel
-Useful patterns:
-- historical reconstruction of successful launches and known rugs;
-- search for scanner/filter settings that would have detected winners earlier;
-- simultaneous evaluation of upside capture and rug rejection;
-- explicit early-launch behavioral features such as holder, dev, bundle, authority, liquidity and flow evidence.
-
-MemeRadar adaptation:
-- do not create a parallel Potential Score or Rug Risk Score;
-- use the existing replay/backtest/calibration stack to evaluate current EarlyScore/AlphaScore/risk policy candidates;
-- create time-split winner-vs-rug cohorts and optimize only on TRAIN while reporting VALIDATION/TEST unchanged;
-- compare early detection age/market cap against false-positive/rug-acceptance costs;
-- never auto-promote the winning configuration;
-- implement through `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md` E10.3.
-
-### VitalikCholan/solana-dynamic-indexer
-Useful patterns:
-- Anchor IDL parsing and validation;
-- automatic discovery of instructions/events/accounts;
-- IDL-assisted decoder/schema scaffolding;
-- real-time plus backfill operational model.
-
-MemeRadar adaptation:
-- do not replace typed canonical persistence with dynamic runtime DDL;
-- E8.4 remains the authority for verified `(program_id, discriminator/tag)` routing, gaps, backfill and replay;
-- optionally add an offline developer tool that parses an Anchor IDL and emits a reviewable protocol-registry/decoder scaffold plus fixture skeletons;
-- unreviewed IDLs must never auto-register into production runtime;
-- implement through `docs/EXTERNAL_REPO_GAP_INTEGRATION_2026_09_02.md` E8.5 only after higher-priority validation work.
-
-### Abdullateef1x/whale-sentinel
-Useful patterns:
-- realtime whale activity presentation;
-- wallet reputation/classification;
-- accumulation/distribution and buy/sell-pressure interpretation;
-- DEX swap-centric smart-money monitoring.
-
-MemeRadar adaptation:
-- no second whale/smart-money engine is warranted because SmartWalletScore, actor-cluster dedupe, micro-flow, confluence and ExitRisk already cover the core capability;
-- use this repository only as a regression/reference source when reviewing wallet reputation and accumulation/distribution features;
-- Jupiter/DFlow execution ideas are explicitly out of scope for this research integration and must not unlock execution.
-
-### Yellowstone gRPC / Solana-Sniper-Rust-Bot pattern
-Useful patterns:
-- sub-second account/transaction streaming;
-- native Pump.fun/PumpSwap/Raydium/LaunchLab decoding;
-- separate low-latency hot path;
-- blockhash refresh, signature dedupe and routing concerns in execution systems.
-
-MemeRadar adaptation:
-- define an optional future `LowLatencyDexEventSource` using Yellowstone gRPC;
-- keep normalized events identical to the existing provider contracts;
-- if performance requires it, implement a Rust sidecar only for ingestion/decoding, communicating over a versioned internal contract;
-- never let the sidecar score risk or authorize trades;
-- measure `chain_event_to_ingest_ms` and `chain_event_to_decision_ms` before/after extraction.
-
-### native Pump.fun SDK pattern
-Useful patterns:
-- deterministic instruction construction;
-- bonding-curve and AMM migration state;
-- fee and creator-fee mechanics.
-
-MemeRadar adaptation:
-- first use this knowledge for transaction decoding/simulation and fee-model accuracy;
-- future execution transaction construction belongs behind `ExecutionPort` and remains disabled until Phase 12 acceptance.
-
-### GMGN-style token / smart-money signal APIs
-Useful patterns:
-- smart-money/KOL positions;
-- holders/traders/dev-wallet information;
-- token risk indicators and social links;
-- real-time event triggers including smart-money buy, large buy, CTO and bundler sell.
-
-MemeRadar adaptation:
-- use as a secondary `CrossValidationProvider`, never primary authority;
-- reconcile GMGN-style evidence with Helius/Birdeye/native on-chain evidence;
-- agreement may increase confidence, disagreement must generate explicit `CONFLICTED` state/reason code;
-- external rug/security claims never replace deterministic authority/holder/flow checks.
-
-## Target correlation pipeline
-
-The desired high-value correlation path is:
-
-```text
-X/KOL mention
-    +
-Pump/DEX protocol event
-    +
-smart-wallet / whale entry
-    +
-micro-flow acceleration
-    +
-holder / bundle / side-wallet checks
-    +
-liquidity / sellability
-    +
-deterministic security gate
-            |
-            v
-      FeatureSnapshot
-            |
-      AlphaStrategy
-            |
-       AlphaScore
-            |
-    DecisionStateMachine
-            |
-      alert / paper entry
-            |
- position + creator/smart-money distribution monitoring
-            |
-        Exit Engine
-```
-
-The key product differentiator is correlation: no single X mention, wallet label, third-party token score, launch event or LLM output should independently authorize an entry.
+Reference only.
