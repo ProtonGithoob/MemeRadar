@@ -155,7 +155,11 @@ def create_app(
         )
     )
     app.include_router(
-        build_operations_router(operations_service, authenticator=role_authenticator)
+        build_operations_router(
+            operations_service,
+            authenticator=role_authenticator,
+            settings=runtime_settings,
+        )
     )
     if owned_read_service is not None:
         app.add_event_handler("shutdown", owned_read_service.aclose)

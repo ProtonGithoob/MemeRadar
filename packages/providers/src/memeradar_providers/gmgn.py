@@ -165,7 +165,7 @@ def _text(value: object, field: str, *, max_length: int = 512) -> str | None:
         raise ProviderSchemaError(f"gmgn {field} was invalid") from exc
 
 
-def _decimal(value: object, field: str) -> str | None:
+def _non_negative_decimal(value: object, field: str) -> str | None:
     if value is None or value is _MISSING:
         return None
     if isinstance(value, str) and not value.strip():
@@ -177,6 +177,26 @@ def _decimal(value: object, field: str) -> str | None:
     if not parsed.is_finite() or parsed < 0:
         raise ProviderSchemaError(f"gmgn {field} was invalid")
     return str(parsed)
+
+
+def _signed_decimal(value: object, field: str) -> str | None:
+    if value is None or value is _MISSING:
+        return None
+    if isinstance(value, str) and not value.strip():
+        return None
+    try:
+        parsed = to_decimal(value, field)
+    except (TypeError, ValueError) as exc:
+        raise ProviderSchemaError(f"gmgn {field} was invalid") from exc
+    if not parsed.is_finite():
+        raise ProviderSchemaError(f"gmgn {field} was invalid")
+    return str(parsed)
+
+
+def _decimal(value: object, field: str) -> str | None:
+    """Keep the legacy helper name for non-negative provider values."""
+
+    return _non_negative_decimal(value, field)
 
 
 def _count(value: object, field: str) -> int | None:
@@ -515,6 +535,7 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
         payload: Mapping[str, object],
         *,
         event_time: datetime | None,
+        observation_semantics: str,
         observed_at: datetime,
         raw_payload: object,
     ) -> Observation:
@@ -526,6 +547,8 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
             "evidence_class": GMGN_REAL_EVIDENCE_CLASS,
             "evidence_origin": GMGN_REAL_EVIDENCE_CLASS,
             "collection_mode": GMGN_COLLECTION_MODE,
+            "observation_semantics": observation_semantics,
+            "event_time_quality": "UNKNOWN" if event_time is None else "EXACT",
         }
         occurred_at, normalized_observed, ingested_at = ensure_ordered_timestamps(
             event_time,
@@ -698,6 +721,7 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
             "top_10_holder_rate": _decimal(stat.get("top_10_holder_rate"), "top_10_holder_rate"),
             "creator_hold_rate": _decimal(stat.get("creator_hold_rate"), "creator_hold_rate"),
             "provider_lifecycle_corroboration": "is_on_curve_only",
+            "provider_creation_at": info_event.isoformat() if info_event is not None else None,
         }
         observations = [
             self._observation(
@@ -705,7 +729,8 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
                 _ENDPOINTS["token_info"],
                 token,
                 info_payload,
-                event_time=info_event,
+                event_time=None,
+                observation_semantics="SNAPSHOT",
                 observed_at=observed_at,
                 raw_payload=info,
             )
@@ -732,7 +757,8 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
                     ),
                     "provider_creator_evidence": True,
                 },
-                event_time=info_event,
+                event_time=None,
+                observation_semantics="SNAPSHOT",
                 observed_at=observed_at,
                 raw_payload=dev,
             )
@@ -749,7 +775,8 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
                 _ENDPOINTS["security"],
                 token,
                 self._security_payload(security, stat, dev),
-                event_time=_optional_timestamp(security, "as_of", "updated_at"),
+                event_time=None,
+                observation_semantics="SNAPSHOT",
                 observed_at=observed_at,
                 raw_payload=security,
             )
@@ -786,7 +813,7 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
                     ),
                     "buy_volume": _decimal(row.get("buy_volume_cur"), "buy_volume"),
                     "sell_volume": _decimal(row.get("sell_volume_cur"), "sell_volume"),
-                    "profit": _decimal(row.get("profit"), "profit"),
+                    "profit": _signed_decimal(row.get("profit"), "profit"),
                     "labels": wallet_tags,
                     "gmgn_smart_money": True if is_smart else None,
                     "gmgn_kol": True if is_kol else None,
@@ -819,7 +846,8 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
                 _ENDPOINTS["traders"],
                 token,
                 trader_payload,
-                event_time=_optional_timestamp(data, "as_of", "updated_at"),
+                event_time=None,
+                observation_semantics="AGGREGATE",
                 observed_at=observed_at,
                 raw_payload=data,
             ),
@@ -828,7 +856,8 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
                 _ENDPOINTS["traders"],
                 token,
                 caller_payload,
-                event_time=_optional_timestamp(data, "as_of", "updated_at"),
+                event_time=None,
+                observation_semantics="AGGREGATE",
                 observed_at=observed_at,
                 raw_payload=data,
             ),
@@ -877,7 +906,8 @@ class GmgnAdapter(CandidateDiscoveryPort, MarketDataPort, OnChainPort):
                 "distribution_evidence": "provider_observed",
                 "is_on_curve_semantics": "lifecycle_corroboration_only",
             },
-            event_time=_optional_timestamp(data, "as_of", "updated_at"),
+            event_time=None,
+            observation_semantics="AGGREGATE",
             observed_at=observed_at,
             raw_payload=data,
         )

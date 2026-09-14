@@ -2,6 +2,11 @@
 
 This supplement records the approved Option A audit without replacing MemeRadar's existing historical `docs/RESEARCH_REUSE_REGISTRY.md` ledger.
 
+The GMGN upstream `main` ref was revalidated on 2026-09-14 as
+`685c46b324f8075b555307a2faa7f7bd54242a5d`; its root MIT LICENSE was
+reverified. The implementation remains independently written against the
+audited server-side read contract.
+
 | Source | Audit pin | License state at audit | Accepted reuse | Explicitly rejected | Integration mode | Weight / execution status | Revalidation trigger |
 |---|---|---|---|---|---|---|---|
 | `GMGNAI/gmgn-skills` | `4a48b8a31e19b62c96ee57ba76b46310f84043f0` | Root MIT LICENSE verified | Read-only SOL/BSC discovery, market, KOL/Smart Money, holder/distribution, bundler/sniper/insider and security evidence **if stable server read contract is verified** | CLI subprocess dependency, private key, wallet management, swap, cooking, market/limit/strategy orders, provider-owned final scoring | Optional provider; disabled by default; LIVE_SHADOW | weight=0; no execution | upstream API/schema/auth change; license change; production promotion proposal |

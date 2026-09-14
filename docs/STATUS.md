@@ -34,44 +34,49 @@ zero or safe evidence.
 
 ## 2026-09-14 external alpha intelligence integration
 
-Baseline source of truth was `origin/main` at
-`b9c46b3fb3c881ca04c76ed9e25872ecc86e5c15`; `main` was fast-forwarded and
-clean before implementation. The committed requirements and plan are recorded
-in the [integration specification](superpowers/specs/2026-09-14-external-alpha-intelligence-integration.md)
+The current root-cause hardening baseline is `origin/main` at
+`76794f4177a5c0efe5c6f7379d749908f66b344b`; the worktree was clean and the
+local remote-tracking ref matched before implementation. The initial fetch
+could not update `.git/FETCH_HEAD` and the network retry was blocked by DNS;
+this environmental limitation is recorded in the [before gap
+matrix](GMGN_ROOT_CAUSE_HARDENING_GAP_MATRIX_2026-09-14.md). The committed
+requirements and plan remain the [integration specification](superpowers/specs/2026-09-14-external-alpha-intelligence-integration.md)
 and [implementation plan](superpowers/plans/2026-09-14-external-alpha-intelligence-integration.md).
 
 ### Implementation result
 
-- GMGN is a direct, read-only, optional backend adapter using the audited
+- GMGN remains a direct, read-only, optional backend adapter using the audited
   `https://openapi.gmgn.ai` contract. It is disabled by default, requires an
   explicit API key and HTTPS endpoint, never enters the core provider route
   plan, has `scoring_weight=0`, and runs only in `LIVE_SHADOW` when configured.
-  The upstream audit and exact blocker/allowance decisions are in the
-  [audit](EXTERNAL_ALPHA_INTELLIGENCE_AUDIT_2026-09-14.md) and [before gap
-  matrix](EXTERNAL_ALPHA_INTELLIGENCE_GAP_MATRIX_2026-09-14.md).
-- Helius now normalizes explicit factual activity kinds into the canonical
-  `SWAP`, `LIQUIDITY_ADD`, `LIQUIDITY_REMOVE`, `BRIDGE`, `TRANSFER`,
-  `TOKEN_LAUNCH`, `MEV_ARBITRAGE`, or `UNKNOWN` taxonomy. It adds no
-  directional or risk conclusions.
-- Lifecycle regression coverage proves bonding is not a DEX route, provider
-  graduation is not verified liquidity, first verified liquidity is distinct
-  from first verified swap, and weak external lifecycle evidence cannot
-  override stronger canonical evidence. No Numi lifecycle or execution path
-  was added.
-- Real-provider readiness accounting explicitly excludes fixtures, mocks,
-  synthetic, demo, replay-only, and redacted observations. GMGN currently has
-  no compliant real sample or matured label, so its report is
-  `INSUFFICIENT_SAMPLES`; no neutral score is manufactured.
+  No GMGN execution, signer, wallet-custody or subprocess surface exists.
+- Signed trader `profit` uses a dedicated signed decimal parser; physical
+  quantities, ratios and counts retain their non-negative/count validation.
+  Snapshot and aggregate enrichment rows retain `occurred_at=null` and record
+  their observation semantics instead of pretending to be provider events.
+- The provider-neutral evidence policy excludes unpromoted `LIVE_SHADOW` rows
+  from production-facing raw-observation projections while replay/research
+  opts in explicitly. Canonical observations remain persisted for readiness,
+  replay, ablation and diagnostics.
+- Readiness keeps raw real observation volume separate from independent sample
+  units, with independent units derived from unique provider tokens. Fixtures,
+  mocks, synthetic, demo, replay-only and redacted rows remain excluded.
+- Runtime read and operations projections derive GMGN `enabled`, `configured`
+  and health state from canonical settings without exposing credentials.
+- Helius taxonomy and canonical lifecycle behavior remain unchanged except for
+  regression protection; a failing shadow lifecycle test proved the shared
+  evidence policy was also required at the lifecycle owner.
 - No scoring/risk weights, database migration, protected mode, signer,
   execution path, duplicate wallet graph, alert engine, reliability framework,
-  or second Helius stack was introduced. Solbeam remains a documentation/UI
-  reference only.
+  or second Helius stack was introduced. Solbeam remains documentation/UI
+  research only.
 
 ### Current GMGN real-data inventory
 
 ```text
 real observations: 0
 unique SOL/BSC tokens: 0
+independent sample units: 0
 candidate observations: 0
 caller/KOL observations: 0
 smart-wallet observations: 0
@@ -81,30 +86,38 @@ first/last real observation: null / null
 provider errors/rate limits: null / null (no persisted real attempt)
 winner/rug labels: null / null
 sample status: INSUFFICIENT_SAMPLES
+live validation: BLOCKED_EXTERNAL
 ```
 
 ### Verification evidence
 
-- Focused GMGN/Helius/lifecycle/readiness/worker/doctor tests:
-  `51 passed, 1 warning`; Helius taxonomy `15 passed`; lifecycle `11 passed`.
-- Telegram and alert tests: `52 passed`.
-- Full Python suite: `1287 passed, 18 skipped, 1 warning`.
-- `make verify`: passed. Ruff, mypy (`134` source files), CSS contract,
-  frontend lint/typecheck/tests (`79 passed`), Compose config, secret scan,
-  migration check, security review, SBOM, and `git diff --check` passed.
-  The security report correctly leaves container/npm/pip external scans
-  `NOT_RUN` and external acceptance `BLOCKED_EXTERNAL`.
-- Frontend production build passed. Browser journeys passed `36` with `4`
-  credential-dependent skips.
-- Integration tests were skipped because
-  `MEMERADAR_TEST_DATABASE_URL` is not configured. Runtime migration was
-  skipped for the same missing database URL; migration files remain at head
-  `0011_collection_checkpoints` with `27` tables.
-- `make alpha-readiness` remains `INSUFFICIENT_SAMPLES` with zero real
-  observations; fixture/replay examples remain non-promotional. No external
-  provider success is claimed.
-
-Implementation commit: `d1a0b7b` (`d1a0b7b71b4e5f149f335d65fb389b8b4ec77097`).
+- Focused hardening suite: `49 passed, 1 warning` for GMGN, shadow isolation,
+  read API, readiness API and operations; the Helius taxonomy/provider suite
+  passed `26`; the lifecycle suite passed `26`; the readiness contract/API
+  suite passed `6, 1 warning`; and the worker/provider-doctor/provider-health/
+  transport suite passed `26`.
+- `make verify` passed locally: Python `1306 passed, 18 skipped, 1 warning`;
+  frontend CSS contract `290` classes across `59` files; frontend lint and
+  typecheck passed; frontend tests `22 files, 79 tests passed`; Compose,
+  secret scan, migrations, deterministic security review and SBOM passed.
+  SBOM: `581` components, digest
+  `sha256:baffabf73a73ed3b5565e8caac547f505aab6f92f232f950bcb34efba1a20e95`.
+- `make frontend-build` passed and generated `15` routes. The PostgreSQL
+  integration target was skipped because `MEMERADAR_TEST_DATABASE_URL` is not
+  configured; this is not counted as a pass.
+- Browser verification is environmental: the dev journey run recorded `26
+  passed, 10 failed, 4 skipped`, dominated by dev-server/page-load timeouts;
+  a production-server retry was blocked by the Chromium and system Chrome host
+  sandbox (`Operation not permitted`). These browser checks are not reported
+  as passed.
+- `make provider-doctor` remains blocked by its existing direct-script import
+  defect; the module invocation ran and reported `BLOCKED_EXTERNAL` with
+  missing Helius credentials. Deterministic security checks passed, while
+  external container/npm/pip scans remain `BLOCKED_EXTERNAL`; direct web
+  `npm audit` reports `3 vulnerabilities (2 moderate, 1 high)` and no audit
+  fix or dependency upgrade was applied in this sprint.
+- Final `git diff --check`, lint, typecheck, secret scan, security review, SBOM
+  and migration verification passed after the documentation updates.
 
 ## Current blockers
 

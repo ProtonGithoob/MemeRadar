@@ -28,6 +28,7 @@ from .event_time import (
     event_time_quality,
     ordering_time,
 )
+from .evidence_policy import production_observations
 
 
 class LaunchLifecycleState(str, Enum):
@@ -518,8 +519,16 @@ def _first_event_time(
 class GraduationAwareRouteAnalyzer:
     """Combine lifecycle observations with explicit, verified route evidence."""
 
-    def __init__(self, policy: LaunchLifecyclePolicy | None = None) -> None:
+    def __init__(
+        self,
+        policy: LaunchLifecyclePolicy | None = None,
+        *,
+        include_shadow: bool = False,
+    ) -> None:
         self.policy = policy or LaunchLifecyclePolicy()
+        if not isinstance(include_shadow, bool):
+            raise TypeError("include_shadow must be a boolean")
+        self.include_shadow = include_shadow
 
     def snapshot(
         self,
@@ -535,12 +544,12 @@ class GraduationAwareRouteAnalyzer:
         normalized_config = require_text(config_hash, "config_hash")
         if isinstance(observations, str | bytes | bytearray):
             raise TypeError("observations must be a sequence")
-
         matched: list[Observation] = []
         invalid = False
-        for observation in observations:
-            if not isinstance(observation, Observation):
-                raise TypeError("observations must contain Observation values")
+        for observation in production_observations(
+            observations,
+            include_shadow=self.include_shadow,
+        ):
             if observation.kind not in _LIFECYCLE_KINDS and observation.kind not in _ROUTE_KINDS:
                 continue
             if not _token_matches(observation, token):

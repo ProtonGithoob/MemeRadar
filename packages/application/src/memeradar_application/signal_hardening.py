@@ -35,6 +35,7 @@ from memeradar_domain.events import normalize_reason_codes
 
 from .event_time import exact_event_time
 from .evidence_helpers import combined_quality as _combined_quality
+from .evidence_policy import production_observations
 
 SIGNAL_HARDENING_VERSION = "signal-hardening-v1"
 DEFAULT_SIGNAL_EVIDENCE_TTL = timedelta(minutes=5)
@@ -1176,8 +1177,16 @@ class _TimedObservation:
 class SignalHardeningAnalyzer:
     """Analyze normalized observations at an event-time boundary."""
 
-    def __init__(self, *, policy: SignalHardeningPolicy | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        policy: SignalHardeningPolicy | None = None,
+        include_shadow: bool = False,
+    ) -> None:
         self.policy = policy or SignalHardeningPolicy()
+        if not isinstance(include_shadow, bool):
+            raise TypeError("include_shadow must be a boolean")
+        self.include_shadow = include_shadow
 
     @staticmethod
     def _matches(observation: Observation, token: TokenIdentity) -> bool:
@@ -1200,15 +1209,14 @@ class SignalHardeningAnalyzer:
         *,
         now: datetime,
     ) -> tuple[tuple[_TimedObservation, ...], bool, bool]:
-        if isinstance(observations, str | bytes | bytearray):
-            raise TypeError("observations must be a sequence")
         records: list[_TimedObservation] = []
         by_source: dict[tuple[str, str, str], object] = {}
         future = False
         conflict = False
-        for observation in observations:
-            if not isinstance(observation, Observation):
-                raise TypeError("observations must contain Observation values")
+        for observation in production_observations(
+            observations,
+            include_shadow=self.include_shadow,
+        ):
             if not self._matches(observation, token):
                 continue
             event_at = exact_event_time(observation)

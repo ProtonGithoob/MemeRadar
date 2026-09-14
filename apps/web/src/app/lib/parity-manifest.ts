@@ -114,8 +114,8 @@ export const PARITY_MANIFEST: Record<string, ParityManifestEntry> = {
   "/providers": {
     backendRoutes: ["/providers/health", "/config/runtime-settings"],
     owner: "ProvidersDashboard",
-    apiFields: ["provider_id", "display_name", "chains", "capabilities", "enabled", "setting_keys", "configuration", "credential_state", "endpoint_state", "capability_status", "health", "latency", "freshness", "quota", "failures", "errors"],
-    frontendFields: ["provider_id", "display_name", "chains", "capabilities", "capability_status", "enabled", "setting_keys", "configuration", "credential_state", "endpoint_state", "mode", "health", "latency", "freshness", "quota", "failures", "doctor"],
+    apiFields: ["provider_id", "display_name", "chains", "capabilities", "enabled", "configured", "setting_keys", "configuration", "credential_state", "endpoint_state", "capability_status", "health", "latency", "freshness", "quota", "failures", "errors"],
+    frontendFields: ["provider_id", "display_name", "chains", "capabilities", "capability_status", "enabled", "configured", "setting_keys", "configuration", "credential_state", "endpoint_state", "mode", "health", "latency", "freshness", "quota", "failures", "doctor"],
     omissions: [
       { field: "external_stream_continuity", reason: "not currently persisted in ProviderHealthResponse", status: "BACKEND_NOT_EXPOSED" },
       { field: "robinhood_sequencer_rpc_launchpad_state", reason: "no persisted sequencer/RPC operational counters in ProviderHealthResponse; reconciliation state remains in the read-service seam", status: "BACKEND_NOT_EXPOSED" },

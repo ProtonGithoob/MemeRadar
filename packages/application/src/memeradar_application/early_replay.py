@@ -620,7 +620,7 @@ class EarlyOutcomeLabeler:
     def _price(record: ReplayEventRecord) -> Decimal | None:
         if record.observation.kind not in _PRICE_KINDS:
             return None
-        return market_reference_price(record.observation)
+        return market_reference_price(record.observation, include_shadow=True)
 
 
 ForwardOutcomeLabel = EarlyOutcomeLabel

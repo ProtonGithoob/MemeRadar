@@ -125,7 +125,7 @@ def _event_ref(record: ReplayEventRecord) -> str:
 
 
 def _payload_price(observation: Observation) -> Decimal | None:
-    price = market_reference_price(observation)
+    price = market_reference_price(observation, include_shadow=True)
     if price is not None:
         return price
     semantics = _field(observation.normalized_payload, "price_semantics", "price_role")

@@ -23,6 +23,8 @@ from memeradar_domain.common import (
 )
 from memeradar_domain.events import normalize_reason_codes
 
+from .evidence_policy import production_observations
+
 LAUNCH_RISK_VERSION = "launch-risk-v1"
 _QUALITY_SEVERITY = {
     QualityState.FRESH: 0,
@@ -238,13 +240,12 @@ class LaunchRiskAnalyzer:
         launch_footprint: object | None = None,
         deployer_activity: object | None = None,
         holder_graph: object | None = None,
+        include_shadow: bool = False,
     ) -> LaunchRiskSnapshot:
         checkpoint = ensure_utc(as_of, "as_of")
         if isinstance(observations, str | bytes | bytearray):
             raise TypeError("observations must be a sequence")
-        normalized = tuple(observations)
-        if any(not isinstance(value, Observation) for value in normalized):
-            raise TypeError("observations must contain Observation values")
+        normalized = production_observations(observations, include_shadow=include_shadow)
         actors: list[str] = []
         bundles: list[str] = []
         funders: list[str] = []

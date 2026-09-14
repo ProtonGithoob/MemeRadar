@@ -22,7 +22,7 @@ from memeradar_application.historical_dataset import (
     MadeOnSolReadinessReport,
 )
 from memeradar_application.provider_contracts import ProviderCapabilityStatus
-from memeradar_application.provider_metadata import provider_metadata
+from memeradar_application.provider_metadata import provider_metadata_for_settings
 from memeradar_application.read_api import (
     DEFAULT_PAGE_LIMIT,
     MAX_CURSOR_LENGTH,
@@ -609,6 +609,7 @@ class ProviderHealthResponse(_StrictModel):
     capabilities: list[str] = Field(default_factory=list)
     required: bool
     enabled: bool
+    configured: bool
     setting_keys: list[str] = Field(default_factory=list)
     credential_state: str
     endpoint_state: str
@@ -667,6 +668,7 @@ class ExternalProviderReadinessResponse(_StrictModel):
     reason_codes: list[str] = Field(default_factory=list)
     real_observation_count: int
     unique_token_count: int
+    independent_sample_count: int
     chain_token_counts: dict[str, int] = Field(default_factory=dict)
     candidate_observation_count: int
     caller_kol_observation_count: int
@@ -1285,7 +1287,7 @@ def _provider_health_response(
     settings: Settings | None = None,
 ) -> ProviderHealthResponse:
     assert value.capability_status is not None
-    metadata = provider_metadata(value.provider, value.capability)
+    metadata = provider_metadata_for_settings(value.provider, value.capability, settings)
     capability_status = (
         value.capability_status.value
         if isinstance(value.capability_status, ProviderCapabilityStatus)
@@ -1295,32 +1297,16 @@ def _provider_health_response(
     enabled = metadata.enabled
     credential_state = metadata.credential_state
     endpoint_state = metadata.endpoint_state
-    if value.provider == "madeonsol-robinhood" and settings is not None:
-        enabled = settings.madeonsol_enabled
-        credential_state = "CONFIGURED" if settings.madeonsol_api_key else "NOT_CONFIGURED"
-        endpoint_state = "CONFIGURED" if settings.madeonsol_base_url else "NOT_CONFIGURED"
+    configured = (
+        enabled
+        and credential_state == "CONFIGURED"
+        and endpoint_state == "CONFIGURED"
+    )
+    if settings is not None and value.provider in {"madeonsol-robinhood", "gmgn"}:
         if not enabled:
-            credential_state = "DISABLED"
-            endpoint_state = "DISABLED"
             runtime_state = ReadProviderHealthState.UNKNOWN
             capability_status = ProviderCapabilityStatus.UNSUPPORTED.value
-        elif not settings.madeonsol_api_key:
-            runtime_state = ReadProviderHealthState.UNKNOWN
-            capability_status = ProviderCapabilityStatus.CONFIGURATION_MISSING.value
-    if value.provider == "gmgn" and settings is not None:
-        enabled = settings.gmgn_enabled
-        credential_state = "CONFIGURED" if settings.gmgn_api_key else "NOT_CONFIGURED"
-        endpoint_state = (
-            "CONFIGURED"
-            if settings.gmgn_base_url and settings.gmgn_base_url.lower().startswith("https://")
-            else "NOT_CONFIGURED"
-        )
-        if not enabled:
-            credential_state = "DISABLED"
-            endpoint_state = "DISABLED"
-            runtime_state = ReadProviderHealthState.UNKNOWN
-            capability_status = ProviderCapabilityStatus.UNSUPPORTED.value
-        elif not settings.gmgn_api_key or endpoint_state != "CONFIGURED":
+        elif not configured:
             runtime_state = ReadProviderHealthState.UNKNOWN
             capability_status = ProviderCapabilityStatus.CONFIGURATION_MISSING.value
     return ProviderHealthResponse(
@@ -1331,6 +1317,7 @@ def _provider_health_response(
         capabilities=list(metadata.capabilities),
         required=metadata.required,
         enabled=enabled,
+        configured=configured,
         setting_keys=list(metadata.setting_keys),
         credential_state=credential_state,
         endpoint_state=endpoint_state,
@@ -1786,6 +1773,7 @@ def _external_provider_readiness_response(
         reason_codes=list(report.reason_codes),
         real_observation_count=report.real_observation_count,
         unique_token_count=report.unique_token_count,
+        independent_sample_count=report.independent_sample_count,
         chain_token_counts=dict(report.chain_token_counts),
         candidate_observation_count=report.candidate_observation_count,
         caller_kol_observation_count=report.caller_kol_observation_count,

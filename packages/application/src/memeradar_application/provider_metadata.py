@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +131,11 @@ _REGISTRY: dict[str, ProviderMetadata] = {
     ),
 }
 
+_RUNTIME_CONFIGURATION_FIELDS = {
+    "madeonsol-robinhood": ("madeonsol_enabled", "madeonsol_api_key", "madeonsol_base_url"),
+    "gmgn": ("gmgn_enabled", "gmgn_api_key", "gmgn_base_url"),
+}
+
 
 def provider_metadata(provider: str, capability: str) -> ProviderMetadata:
     """Return explicit metadata; unknown providers remain visibly unclassified."""
@@ -152,4 +157,36 @@ def provider_metadata(provider: str, capability: str) -> ProviderMetadata:
     )
 
 
-__all__ = ["ProviderMetadata", "provider_metadata"]
+def provider_metadata_for_settings(
+    provider: str,
+    capability: str,
+    settings: object | None = None,
+) -> ProviderMetadata:
+    """Project optional-provider metadata from canonical runtime settings."""
+
+    metadata = provider_metadata(provider, capability)
+    fields = _RUNTIME_CONFIGURATION_FIELDS.get(provider)
+    if fields is None or settings is None:
+        return metadata
+    enabled_name, credential_name, endpoint_name = fields
+    enabled = bool(getattr(settings, enabled_name, False))
+    credential_configured = bool(getattr(settings, credential_name, None))
+    endpoint = getattr(settings, endpoint_name, None)
+    endpoint_configured = bool(endpoint)
+    if provider == "gmgn":
+        endpoint_configured = endpoint_configured and str(endpoint).lower().startswith("https://")
+    if not enabled:
+        credential_state = "DISABLED"
+        endpoint_state = "DISABLED"
+    else:
+        credential_state = "CONFIGURED" if credential_configured else "NOT_CONFIGURED"
+        endpoint_state = "CONFIGURED" if endpoint_configured else "NOT_CONFIGURED"
+    return replace(
+        metadata,
+        enabled=enabled,
+        credential_state=credential_state,
+        endpoint_state=endpoint_state,
+    )
+
+
+__all__ = ["ProviderMetadata", "provider_metadata", "provider_metadata_for_settings"]

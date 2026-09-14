@@ -100,8 +100,10 @@ The implementation reimplements small provider-neutral seams rather than
 copying external code. CabalSpy's public MIT SDK/docs, GMGN-style scanner
 material and Robinhood launchpad references were used only for
 architecture/research; no external source code or unverified protocol identity
-was imported. Live provider credentials and compliant historical real-data
-cohorts remain external validation blockers.
+was imported. The optional GMGN adapter is independently implemented against
+the audited server-side read contract and remains `LIVE_SHADOW` with weight
+zero. Live provider credentials and compliant historical real-data cohorts
+remain external validation blockers.
 
 ### Opportunity discovery evidence
 
@@ -597,14 +599,35 @@ deterministic token-security hard gates or authorize execution.
 `FixtureExternalWalletIntelligenceAdapter` in
 `packages/providers/src/memeradar_providers/external_wallet.py` is the
 network-free replay adapter. Its redacted fixture lives under
-`fixtures/providers/external_wallet/` and contains no credentials. No GMGN,
-CabalSpy or other live adapter is enabled: this checkout has no documented and
-legally approved operator endpoint contract, so adding a brittle scraper would
-violate the provider and security boundaries. `make external-wallet-doctor`
-reports configuration presence and returns an explicit unsupported/degraded
-state for configured live configuration without probing arbitrary URLs or
-emitting secrets. Live acceptance is separate from the keyless fixture PASS;
-the local wallet pipeline remains the default.
+`fixtures/providers/external_wallet/` and contains no credentials. GMGN is a
+separate optional read-only adapter using only the audited market/token HTTP
+routes; its labels and risk fields remain corroborating evidence and never
+replace internal wallet/security authority. Both live acceptance and external
+wallet acceptance are separate from keyless fixture PASS; the local wallet
+pipeline remains the default.
+
+## GMGN read-only LIVE_SHADOW
+
+`GmgnAdapter` in
+`packages/providers/src/memeradar_providers/gmgn.py` uses the shared transport,
+typed provider errors, redaction, canonical chain/address normalization and
+`CandidateDiscoveryCollector`. It is optional, disabled by default, not
+required for health, read-only, and excluded from the core provider route plan.
+Its normalized discovery, market, creator, top-trader/KOL, holder and security
+observations are persisted as `REAL_EXTERNAL` evidence with
+`collection_mode=LIVE_SHADOW`; the shared application evidence policy keeps
+unpromoted shadow rows out of production decision projections while replay and
+research may opt in explicitly. Readiness distinguishes retained polling rows
+from unique-token independent sample units.
+
+The adapter accepts only the audited `GET /v1/market/rank`,
+`GET /v1/token/info`, `GET /v1/token/security`,
+`GET /v1/market/token_top_holders` and
+`GET /v1/market/token_top_traders` routes. GMGN smart-money/KOL/insider/rug,
+honeypot and lifecycle fields are provider evidence only. There is no
+`gmgn-cli`, browser scraping, private key, signer, wallet custody, swap,
+order, cooking or copy-trading path. Missing credentials, unavailable network
+access and insufficient real labels remain explicit external blockers.
 
 ## RugCheck / token-security risk layer
 

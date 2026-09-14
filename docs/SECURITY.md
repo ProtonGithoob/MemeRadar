@@ -62,7 +62,10 @@ disagreement is `CONFLICTED_EXTERNAL_WALLET_LABEL`. External security/rug
 fields remain advisory evidence and cannot create or clear deterministic
 on-chain hard gates. The fixture adapter never accesses the network, and
 `make external-wallet-doctor` reports presence only and never emits secrets or
-probes an unapproved URL. No live GMGN/CabalSpy adapter is enabled.
+probes an unapproved URL. GMGN's separately audited adapter, when explicitly configured, is limited to
+server-side read-only HTTPS routes, remains `LIVE_SHADOW` with weight zero and
+has no signing, wallet-custody or execution capability. No real GMGN samples
+or alpha validation are claimed in this checkout.
 
 Sprint 7.1 keeps Telegram behind the application-facing `NotificationPort`.
 `TelegramNotificationAdapter` accepts only HTTPS base URLs, sends the bot

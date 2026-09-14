@@ -16,6 +16,12 @@ This supplement records the Option A external-alpha audit while preserving the f
 **Pinned audit ref:** `4a48b8a31e19b62c96ee57ba76b46310f84043f0`  
 **License state:** root MIT LICENSE verified during the 2026-09-14 audit.
 
+**Current upstream revalidation:** `main` resolved to
+`685c46b324f8075b555307a2faa7f7bd54242a5d` on 2026-09-14; the root MIT
+LICENSE was reverified. The audited server-side read contract remains the
+documented market/token OpenAPI surface used below; no execution surface is
+required or imported.
+
 ### Useful influence
 
 GMGN exposes a dense early-token intelligence surface across relevant chains, including:

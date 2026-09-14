@@ -22,6 +22,8 @@ from memeradar_domain import (
 )
 from memeradar_domain.common import ensure_utc, normalize_texts, require_text, to_decimal
 
+from .evidence_policy import is_production_evidence_eligible
+
 PRICE_SEMANTICS_VERSION = "price-semantics-v1"
 DEFAULT_PRICE_EVIDENCE_TTL = timedelta(minutes=5)
 _MISSING = object()
@@ -235,9 +237,12 @@ def resolve_price_evidence(
     evidence_refs: Sequence[str] = (),
     now: datetime | None = None,
     ttl: timedelta = DEFAULT_PRICE_EVIDENCE_TTL,
+    include_shadow: bool = False,
 ) -> PriceEvidence:
     """Resolve one price without crossing execution and market semantics."""
 
+    if not isinstance(include_shadow, bool):
+        raise TypeError("include_shadow must be a boolean")
     if not isinstance(ttl, timedelta) or ttl <= timedelta(0):
         raise ValueError("ttl must be positive")
     (
@@ -257,6 +262,25 @@ def resolve_price_evidence(
         provenance=provenance,
         evidence_refs=evidence_refs,
     )
+    if (
+        isinstance(value, Observation)
+        and not include_shadow
+        and not is_production_evidence_eligible(value)
+    ):
+        return PriceEvidence(
+            price=None,
+            semantics=PriceSemantics.UNKNOWN,
+            source_field=None,
+            as_of=normalized_observed_at,
+            expires_at=normalized_observed_at + ttl,
+            quality_state=(
+                normalized_quality
+                if normalized_quality is not QualityState.FRESH
+                else QualityState.UNKNOWN
+            ),
+            provenance=normalized_provenance,
+            evidence_refs=normalized_refs,
+        )
     checked_at = normalized_observed_at if now is None else ensure_utc(now, "now")
     raw_semantics = _field(payload, "price_semantics", "price_role", "price_type")
     explicit_semantics = None if raw_semantics is None else _normalize_semantics(raw_semantics[1])
@@ -354,6 +378,7 @@ def market_reference_price(
     evidence_refs: Sequence[str] = (),
     now: datetime | None = None,
     ttl: timedelta = DEFAULT_PRICE_EVIDENCE_TTL,
+    include_shadow: bool = False,
 ) -> Decimal | None:
     """Return a usable market mark, never an execution-only price."""
 
@@ -367,6 +392,7 @@ def market_reference_price(
         evidence_refs=evidence_refs,
         now=now,
         ttl=ttl,
+        include_shadow=include_shadow,
     )
     if evidence.semantics is not PriceSemantics.MARKET_REFERENCE:
         return None

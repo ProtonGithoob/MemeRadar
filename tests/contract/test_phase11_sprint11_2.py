@@ -83,6 +83,70 @@ def test_default_operations_service_is_safe_without_provider_or_database_configu
     assert body["modes"]["auto_execution"] is False
 
 
+def test_operations_provider_projection_uses_runtime_configuration_without_secret() -> None:
+    service = InMemoryOperationsQueryService(
+        reliability=ReliabilityMetrics().snapshot(),
+        providers=(
+            ProviderOperationalInput(
+                provider="gmgn",
+                capability="candidate_discovery",
+                state=OperationalState.UNKNOWN,
+                checked_at=NOW,
+                freshness_state=QualityState.UNKNOWN,
+            ),
+        ),
+    )
+    client = TestClient(
+        create_app(
+            Settings.from_env(
+                {
+                    "GMGN_ENABLED": "true",
+                    "GMGN_API_KEY": "server-only-secret",
+                }
+            ),
+            operations_service=service,
+        )
+    )
+
+    response = client.get("/v1/operations/overview")
+
+    assert response.status_code == 200
+    item = response.json()["providers"][0]
+    assert item["enabled"] is True
+    assert item["configured"] is True
+    assert item["credential_state"] == "CONFIGURED"
+    assert item["state"] == "UNKNOWN"
+    assert "server-only-secret" not in response.text
+
+
+def test_operations_provider_projection_fails_closed_for_disabled_or_incomplete_gmgn() -> None:
+    service = InMemoryOperationsQueryService(
+        reliability=ReliabilityMetrics().snapshot(),
+        providers=(
+            ProviderOperationalInput(
+                provider="gmgn",
+                capability="candidate_discovery",
+                state=OperationalState.HEALTHY,
+                checked_at=NOW,
+                freshness_state=QualityState.FRESH,
+            ),
+        ),
+    )
+
+    disabled = TestClient(
+        create_app(Settings.from_env({}), operations_service=service)
+    ).get("/v1/operations/overview")
+    assert disabled.json()["providers"][0]["state"] == "UNKNOWN"
+
+    incomplete = TestClient(
+        create_app(
+            Settings.from_env({"GMGN_ENABLED": "true"}),
+            operations_service=service,
+        )
+    ).get("/v1/operations/overview")
+    assert incomplete.json()["providers"][0]["state"] == "UNKNOWN"
+
+
 def test_operations_boundary_has_no_provider_sdk_or_execution_authority() -> None:
     for relative in (
         "packages/application/src/memeradar_application/observability.py",

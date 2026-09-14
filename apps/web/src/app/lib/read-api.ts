@@ -398,6 +398,7 @@ export interface ProviderHealthRecord {
   capabilities?: string[];
   required?: boolean;
   enabled?: boolean;
+  configured?: boolean;
   settingKeys?: string[];
   credentialState?: string;
   endpointState?: string;
@@ -426,6 +427,7 @@ export interface OperationalProviderRecord {
   capabilities?: string[];
   required?: boolean;
   enabled?: boolean;
+  configured?: boolean;
   settingKeys?: string[];
   credentialState?: string;
   endpointState?: string;
@@ -1887,6 +1889,7 @@ function parseProviderHealth(value: unknown): ProviderHealthRecord | null {
   const consecutiveFailures = integer(value.consecutive_failures, 0, 1_000_000);
   const providerId = boundedString(value.provider_id, 128) ?? provider;
   const displayName = boundedString(value.display_name, 128) ?? provider;
+  const configured = typeof value.configured === "boolean" ? value.configured : undefined;
   const chains = stringArray(value.chains, 64) ?? [];
   const capabilities = stringArray(value.capabilities, 64) ?? [capability ?? "unknown"];
   const settingKeys = stringArray(value.setting_keys, 128) ?? [];
@@ -1912,6 +1915,7 @@ function parseProviderHealth(value: unknown): ProviderHealthRecord | null {
     capabilities,
     required: typeof value.required === "boolean" ? value.required : false,
     enabled: typeof value.enabled === "boolean" ? value.enabled : false,
+    configured,
     settingKeys,
     credentialState,
     endpointState,
@@ -1948,6 +1952,7 @@ function parseOperationalProvider(value: unknown): OperationalProviderRecord | n
   const reasonCodes = stringArray(value.reason_codes, 128);
   const providerId = boundedString(value.provider_id, 128) ?? provider;
   const displayName = boundedString(value.display_name, 128) ?? provider;
+  const configured = typeof value.configured === "boolean" ? value.configured : undefined;
   const chains = stringArray(value.chains, 64) ?? [];
   const capabilities = stringArray(value.capabilities, 64) ?? [capability ?? "unknown"];
   const settingKeys = stringArray(value.setting_keys, 128) ?? [];
@@ -1978,6 +1983,7 @@ function parseOperationalProvider(value: unknown): OperationalProviderRecord | n
     capabilities,
     required: typeof value.required === "boolean" ? value.required : false,
     enabled: typeof value.enabled === "boolean" ? value.enabled : false,
+    configured,
     settingKeys,
     credentialState,
     endpointState,

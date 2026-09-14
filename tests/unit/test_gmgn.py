@@ -10,19 +10,30 @@ import httpx
 import pytest
 
 from memeradar_application.config import Settings
+from memeradar_application.discovery_collection import CandidateDiscoveryCollector
+from memeradar_application.early_features import EarlyFeatureEngine
 from memeradar_application.historical_dataset import ExternalProviderReadinessReport
 from memeradar_application.provider_contracts import (
     DiscoveryRequest,
     OnChainRequest,
     ProviderRequestContext,
 )
-from memeradar_domain import Chain, Observation, Provenance, QualityState, TokenIdentity
+from memeradar_domain import (
+    CandidateState,
+    Chain,
+    Observation,
+    Provenance,
+    QualityState,
+    TokenIdentity,
+)
 from memeradar_providers.composition import build_provider_bundle
 from memeradar_providers.gmgn import (
     GMGN_DEFAULT_BASE_URL,
     GMGN_PARSER_VERSION,
     GMGN_PROVIDER,
     GmgnAdapter,
+    _decimal,
+    _signed_decimal,
 )
 from memeradar_providers.transport import (
     ProviderAuthenticationError,
@@ -125,6 +136,7 @@ def _response(path: str, address: str = SOL_TOKEN) -> dict[str, object]:
                     {
                         "address": BSC_WALLET if address == BSC_TOKEN else SOL_WALLET,
                         "amount_percentage": "0.04",
+                        "profit": "0",
                         "maker_token_tags": ["smart_money"],
                     }
                 ]
@@ -223,7 +235,10 @@ def test_gmgn_discovery_and_enrichment_use_verified_read_routes_and_canonical_ev
     assert all(item.provenance.provider == GMGN_PROVIDER for item in observations)
     assert all(item.provenance.parser_version == GMGN_PARSER_VERSION for item in observations)
     assert all(item.normalized_payload["live_shadow"] is True for item in observations)
-    assert any(item.occurred_at == NOW - timedelta(seconds=90) for item in observations)
+    assert all(item.occurred_at is None for item in observations)
+    assert {
+        item.normalized_payload["observation_semantics"] for item in observations
+    } == {"SNAPSHOT", "AGGREGATE"}
     security = next(item for item in observations if item.kind == "security.provider_risk")
     assert security.normalized_payload["is_honeypot"] is None
     assert security.normalized_payload["rug_ratio"] == "0.18"
@@ -240,6 +255,121 @@ def test_gmgn_discovery_and_enrichment_use_verified_read_routes_and_canonical_ev
         "/v1/market/token_top_holders",
         "/v1/market/token_top_traders",
     }
+
+
+def test_gmgn_adapter_collector_and_readiness_keep_shadow_out_of_early_features() -> None:
+    class Sink:
+        def __init__(self) -> None:
+            self.candidates = []
+            self.observations = []
+
+        async def save_candidate(self, candidate: object) -> object:
+            self.candidates.append(candidate)
+            return candidate
+
+        async def save_observation(self, observation: object) -> object:
+            self.observations.append(observation)
+            return observation
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_response(request.url.path))
+
+    async def collect() -> tuple[object, Sink]:
+        adapter = _adapter(handler)
+        sink = Sink()
+        try:
+            report = await CandidateDiscoveryCollector(clock=lambda: NOW).collect(
+                adapter,
+                sink,
+                DiscoveryRequest(context=_context(), limit=10),
+                evidence_class="REAL_EXTERNAL",
+                evidence_origin="REAL_EXTERNAL",
+                collection_mode="LIVE_SHADOW",
+            )
+        finally:
+            await adapter.aclose()
+        return report, sink
+
+    report, sink = asyncio.run(collect())
+    candidate = sink.candidates[0]
+    observations = tuple(sink.observations)
+    readiness = ExternalProviderReadinessReport.from_persisted_observations(
+        "gmgn", observations
+    )
+
+    assert candidate.state is CandidateState.DISCOVERED
+    assert report.persisted_observation_count == 7
+    assert readiness.real_observation_count == 7
+    assert readiness.unique_token_count == 1
+    assert readiness.independent_sample_count == 1
+    assert readiness.status == "INSUFFICIENT_SAMPLES"
+    assert EarlyFeatureEngine().compute(candidate.token.id, NOW, observations) == (
+        EarlyFeatureEngine().compute(candidate.token.id, NOW, ())
+    )
+
+
+@pytest.mark.parametrize("profit", ("-1250.40", "0", "725.10"))
+def test_gmgn_signed_trader_profit_is_normalized_without_failing_enrichment(
+    profit: str,
+) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = _response(request.url.path)
+        if request.url.path == "/v1/market/token_top_traders":
+            data = payload["data"]
+            assert isinstance(data, dict)
+            rows = data["list"]
+            assert isinstance(rows, list)
+            rows[0] = {**rows[0], "profit": profit}
+        return httpx.Response(200, json=payload)
+
+    adapter = _adapter(handler)
+    try:
+        observations = asyncio.run(
+            adapter.enrich(OnChainRequest(context=_context(), token=_token()))
+        )
+    finally:
+        asyncio.run(adapter.aclose())
+
+    traders = next(item for item in observations if item.kind == "wallet.top_traders")
+    assert traders.normalized_payload["traders"][0]["profit"] == profit
+
+
+@pytest.mark.parametrize(
+    ("path", "field"),
+    (
+        ("/v1/token/info", "liquidity"),
+        ("/v1/market/token_top_holders", "amount_percentage"),
+    ),
+)
+def test_gmgn_non_negative_numeric_domains_reject_negative_values(path: str, field: str) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = _response(request.url.path)
+        if request.url.path == path:
+            data = payload["data"]
+            assert isinstance(data, dict)
+            if path.endswith("info"):
+                data[field] = "-1"
+            else:
+                rows = data["list"]
+                assert isinstance(rows, list)
+                rows[0] = {**rows[0], field: "-1"}
+        return httpx.Response(200, json=payload)
+
+    adapter = _adapter(handler)
+    try:
+        with pytest.raises(ProviderSchemaError):
+            asyncio.run(adapter.enrich(OnChainRequest(context=_context(), token=_token())))
+    finally:
+        asyncio.run(adapter.aclose())
+
+
+def test_gmgn_decimal_parser_preserves_none_and_rejects_malformed_values() -> None:
+    assert _decimal(None, "optional") is None
+    assert _signed_decimal(None, "profit") is None
+    with pytest.raises(ProviderSchemaError):
+        _decimal("not-a-number", "optional")
+    with pytest.raises(ProviderSchemaError):
+        _signed_decimal("not-a-number", "profit")
 
 
 def test_gmgn_valid_empty_discovery_is_not_a_provider_failure() -> None:
@@ -384,6 +514,7 @@ def test_gmgn_readiness_counts_only_real_provider_evidence_and_stays_insufficien
 
     assert report.real_observation_count == 5
     assert report.unique_token_count == 1
+    assert report.independent_sample_count == 1
     assert report.chain_token_counts == {"solana": 1}
     assert report.candidate_observation_count == 1
     assert report.caller_kol_observation_count == 1
@@ -392,3 +523,43 @@ def test_gmgn_readiness_counts_only_real_provider_evidence_and_stays_insufficien
     assert report.security_risk_observation_count == 1
     assert report.status == "INSUFFICIENT_SAMPLES"
     assert "GMGN_LABELED_OUTCOMES_UNAVAILABLE" in report.reason_codes
+
+
+def test_gmgn_repeated_polling_snapshots_are_not_independent_alpha_samples() -> None:
+    observations = tuple(
+        _observation(
+            "market.snapshot",
+            f"poll:{index}",
+            {"chain": "solana", "token_address": SOL_TOKEN},
+            collection_mode="LIVE_SHADOW",
+        )
+        for index in range(100)
+    )
+
+    report = ExternalProviderReadinessReport.from_persisted_observations("gmgn", observations)
+
+    assert report.real_observation_count == 100
+    assert report.unique_token_count == 1
+    assert report.independent_sample_count == 1
+    assert report.status == "INSUFFICIENT_SAMPLES"
+
+
+def test_gmgn_readiness_counts_unique_tokens_as_independent_units() -> None:
+    observations = (
+        _observation(
+            "market.snapshot",
+            "solana:token",
+            {"chain": "solana", "token_address": SOL_TOKEN},
+        ),
+        _observation(
+            "market.snapshot",
+            "bnb:token",
+            {"chain": "bnb", "token_address": BSC_TOKEN},
+        ),
+    )
+
+    report = ExternalProviderReadinessReport.from_observations("gmgn", observations)
+
+    assert report.real_observation_count == 2
+    assert report.unique_token_count == 2
+    assert report.independent_sample_count == 2

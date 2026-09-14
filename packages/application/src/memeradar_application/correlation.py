@@ -60,6 +60,7 @@ from .evidence_helpers import (
 from .evidence_helpers import (
     combined_quality as _combined_quality,
 )
+from .evidence_policy import production_observations
 from .provider_contracts import SocialMention
 from .signal_hardening import (
     DeployerActivitySnapshot,
@@ -676,8 +677,16 @@ def _conduct_amount(activity: WalletActivity) -> Decimal | None:
 class CallerMarketConductAnalyzer:
     """Build retrospective caller/wallet correlations without identity claims."""
 
-    def __init__(self, *, policy: CallerMarketConductPolicy | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        policy: CallerMarketConductPolicy | None = None,
+        include_shadow: bool = False,
+    ) -> None:
         self.policy = policy or CallerMarketConductPolicy()
+        if not isinstance(include_shadow, bool):
+            raise TypeError("include_shadow must be a boolean")
+        self.include_shadow = include_shadow
 
     @staticmethod
     def _bounded(
@@ -790,7 +799,10 @@ class CallerMarketConductAnalyzer:
             maximum=self.policy.max_related_calls,
         )
         market_values = self._bounded(
-            market_observations,
+            production_observations(
+                market_observations,
+                include_shadow=self.include_shadow,
+            ),
             field_name="market_observations",
             maximum=self.policy.max_market_observations,
         )
@@ -1201,8 +1213,16 @@ def _record_sort_key(record: _CorrelationRecord) -> tuple[object, ...]:
 class CorrelationWindowBuilder:
     """Build bounded launch features from normalized, replayable evidence."""
 
-    def __init__(self, *, policy: CorrelationWindowPolicy | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        policy: CorrelationWindowPolicy | None = None,
+        include_shadow: bool = False,
+    ) -> None:
         self.policy = policy or CorrelationWindowPolicy()
+        if not isinstance(include_shadow, bool):
+            raise TypeError("include_shadow must be a boolean")
+        self.include_shadow = include_shadow
 
     @staticmethod
     def _observation_matches(observation: Observation, token: TokenIdentity) -> bool:
@@ -2252,7 +2272,10 @@ class CorrelationWindowBuilder:
         checked_at = ensure_utc(now, "now")
         normalized_config_hash = require_text(config_hash, "config_hash")
         observation_values = self._bounded_inputs(
-            observations,
+            production_observations(
+                observations,
+                include_shadow=self.include_shadow,
+            ),
             field_name="observations",
             maximum=self.policy.max_observations,
         )

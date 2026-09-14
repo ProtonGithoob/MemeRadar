@@ -11,11 +11,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from memeradar_application.control import ControlAction
 from memeradar_application.observability import (
     OperationalAlert,
+    OperationalState,
     OperationsOverview,
     OperationsReadPort,
     ProviderOperationalStatus,
 )
-from memeradar_application.provider_metadata import provider_metadata
+from memeradar_application.provider_metadata import provider_metadata_for_settings
 from memeradar_domain import AlertSeverity, QualityState
 
 from .auth import RoleTokenAuthenticator
@@ -33,6 +34,7 @@ class ProviderOperationalResponse(_StrictModel):
     capabilities: list[str] = Field(default_factory=list)
     required: bool
     enabled: bool
+    configured: bool
     setting_keys: list[str] = Field(default_factory=list)
     credential_state: str
     endpoint_state: str
@@ -80,8 +82,23 @@ class OperationsOverviewResponse(_StrictModel):
     execution_eligible: bool = False
 
 
-def _provider_response(value: ProviderOperationalStatus) -> ProviderOperationalResponse:
-    metadata = provider_metadata(value.provider, value.capability)
+def _provider_response(
+    value: ProviderOperationalStatus,
+    settings: object | None = None,
+) -> ProviderOperationalResponse:
+    metadata = provider_metadata_for_settings(value.provider, value.capability, settings)
+    configured = (
+        metadata.enabled
+        and metadata.credential_state == "CONFIGURED"
+        and metadata.endpoint_state == "CONFIGURED"
+    )
+    runtime_state = value.state
+    if (
+        settings is not None
+        and value.provider in {"madeonsol-robinhood", "gmgn"}
+        and (not metadata.enabled or not configured)
+    ):
+        runtime_state = OperationalState.UNKNOWN
     return ProviderOperationalResponse(
         provider=value.provider,
         provider_id=metadata.provider_id,
@@ -90,13 +107,14 @@ def _provider_response(value: ProviderOperationalStatus) -> ProviderOperationalR
         capabilities=list(metadata.capabilities),
         required=metadata.required,
         enabled=metadata.enabled,
+        configured=configured,
         setting_keys=list(metadata.setting_keys),
         credential_state=metadata.credential_state,
         endpoint_state=metadata.endpoint_state,
         fallback_position=metadata.fallback_position,
-        runtime_health=value.state.value,
+        runtime_health=runtime_state.value,
         capability=value.capability,
-        state=value.state.value,
+        state=runtime_state.value,
         slo_state=value.slo_state.value,
         checked_at=value.checked_at,
         latency_ms=value.latency_ms,
@@ -125,7 +143,11 @@ def _alert_response(value: OperationalAlert) -> OperationalAlertResponse:
     )
 
 
-def _overview_response(value: OperationsOverview) -> OperationsOverviewResponse:
+def _overview_response(
+    value: OperationsOverview,
+    *,
+    settings: object | None = None,
+) -> OperationsOverviewResponse:
     if value.execution_eligible:
         raise ValueError("operations overview cannot authorize execution")
     serialized = value.to_dict()
@@ -142,7 +164,7 @@ def _overview_response(value: OperationsOverview) -> OperationsOverviewResponse:
         slo_state=value.slo_state.value,
         policy_version=value.policy_version,
         measurement_method=value.measurement_method,
-        providers=[_provider_response(item) for item in value.providers],
+        providers=[_provider_response(item, settings) for item in value.providers],
         alerts=[_alert_response(item) for item in value.alerts],
         metrics=metrics,
         early_detection=early_detection,
@@ -154,6 +176,8 @@ def _overview_response(value: OperationsOverview) -> OperationsOverviewResponse:
 def build_operations_router(
     service: OperationsReadPort | None,
     authenticator: RoleTokenAuthenticator | None = None,
+    *,
+    settings: object | None = None,
 ) -> APIRouter:
     """Build a single bounded operations read route over an application port."""
 
@@ -172,7 +196,7 @@ def build_operations_router(
     async def get_operations_overview() -> OperationsOverviewResponse:
         if service is None:
             raise RuntimeError("operations read service is not configured")
-        return _overview_response(await service.get_operations_overview())
+        return _overview_response(await service.get_operations_overview(), settings=settings)
 
     return router
 

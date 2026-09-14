@@ -353,3 +353,75 @@ def test_madeonsol_provider_projection_uses_runtime_configuration_without_secret
     assert configured_item["credential_state"] == "CONFIGURED"
     assert configured_item["state"] == "HEALTHY"
     assert "server-only-secret" not in configured.text
+
+
+def test_gmgn_provider_projection_reports_runtime_configuration_truthfully() -> None:
+    unknown_health = ProviderHealthView(
+        provider="gmgn",
+        capability="candidate_discovery",
+        state=ReadProviderHealthState.UNKNOWN,
+        checked_at=NOW,
+    )
+    healthy_health = ProviderHealthView(
+        provider="gmgn",
+        capability="candidate_discovery",
+        state=ReadProviderHealthState.HEALTHY,
+        checked_at=NOW,
+    )
+
+    disabled = _client(InMemoryReadQueryService(provider_health=(unknown_health,))).get(
+        "/v1/providers/health"
+    )
+    disabled_item = disabled.json()["items"][0]
+    assert disabled_item["enabled"] is False
+    assert disabled_item["configured"] is False
+    assert disabled_item["credential_state"] == "DISABLED"
+    assert disabled_item["endpoint_state"] == "DISABLED"
+    assert disabled_item["state"] == "UNKNOWN"
+
+    missing = TestClient(
+        create_app(
+            Settings.from_env({"GMGN_ENABLED": "true"}),
+            read_service=InMemoryReadQueryService(provider_health=(unknown_health,)),
+        )
+    ).get("/v1/providers/health")
+    missing_item = missing.json()["items"][0]
+    assert missing_item["enabled"] is True
+    assert missing_item["configured"] is False
+    assert missing_item["credential_state"] == "NOT_CONFIGURED"
+    assert missing_item["state"] == "UNKNOWN"
+
+    configured = TestClient(
+        create_app(
+            Settings.from_env(
+                {
+                    "GMGN_ENABLED": "true",
+                    "GMGN_API_KEY": "server-only-secret",
+                }
+            ),
+            read_service=InMemoryReadQueryService(provider_health=(unknown_health,)),
+        )
+    ).get("/v1/providers/health")
+    configured_item = configured.json()["items"][0]
+    assert configured_item["enabled"] is True
+    assert configured_item["configured"] is True
+    assert configured_item["credential_state"] == "CONFIGURED"
+    assert configured_item["state"] == "UNKNOWN"
+    assert "server-only-secret" not in configured.text
+
+    healthy = TestClient(
+        create_app(
+            Settings.from_env(
+                {
+                    "GMGN_ENABLED": "true",
+                    "GMGN_API_KEY": "server-only-secret",
+                }
+            ),
+            read_service=InMemoryReadQueryService(provider_health=(healthy_health,)),
+        )
+    ).get("/v1/providers/health")
+    healthy_item = healthy.json()["items"][0]
+    assert healthy_item["enabled"] is True
+    assert healthy_item["configured"] is True
+    assert healthy_item["state"] == "HEALTHY"
+    assert "server-only-secret" not in healthy.text

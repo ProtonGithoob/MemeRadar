@@ -27,6 +27,7 @@ from memeradar_domain.events import normalize_reason_codes
 
 from .correlation import ULTRA_EARLY_CORRELATION_WINDOWS
 from .event_time import exact_event_time
+from .evidence_policy import production_observations
 
 EARLY_WINDOW_LABELS = tuple(name for name, _ in ULTRA_EARLY_CORRELATION_WINDOWS)
 EARLY_WINDOW_DURATIONS: Mapping[str, timedelta] = MappingProxyType(
@@ -254,15 +255,15 @@ class EarlyFeatureEngine:
         token_id: UUID,
         as_of: datetime,
         observations: Sequence[Observation],
+        *,
+        include_shadow: bool = False,
     ) -> EarlyFeatureSnapshot:
         if not isinstance(token_id, UUID):
             raise TypeError("token_id must be a UUID")
         checkpoint = ensure_utc(as_of, "as_of")
         if isinstance(observations, str | bytes | bytearray):
             raise TypeError("observations must be a sequence")
-        normalized = tuple(observations)
-        if any(not isinstance(observation, Observation) for observation in normalized):
-            raise TypeError("observations must contain Observation values")
+        normalized = production_observations(observations, include_shadow=include_shadow)
         candidates = tuple(
             observation
             for observation in normalized

@@ -733,6 +733,7 @@ describe("server-side read gateway", () => {
           state: "DEGRADED",
           checked_at: "2026-08-31T12:01:00.000Z",
           latency_ms: 125,
+          configured: true,
           quota: { remaining: 4, limit: 10 },
           freshness_state: "STALE",
           error_class: "rate_limited",
@@ -817,6 +818,7 @@ describe("server-side read gateway", () => {
 
     expect(wallets.ok && wallets.data.items[0]?.score).toBe(91);
     expect(health.ok && health.data.items[0]?.state).toBe("DEGRADED");
+    expect(health.ok && health.data.items[0]?.configured).toBe(true);
     expect(audits.ok && audits.data.items[0]?.action).toBe("control.analysis_pause");
     expect(configs.ok && configs.data.items[0]?.configHash).toBe("sha256:fixture");
     expect(state.ok && state.data.executionKillSwitch).toBe(true);

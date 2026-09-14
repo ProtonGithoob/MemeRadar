@@ -31,6 +31,7 @@ from memeradar_domain.events import normalize_reason_codes
 from .event_time import exact_event_time
 from .evidence_helpers import append_unique as _append_unique
 from .evidence_helpers import append_unique_value as _append_provenance
+from .evidence_policy import production_observations
 
 _MISSING = object()
 _HOLDER_KINDS = frozenset({"market.holder_data"})
@@ -669,11 +670,11 @@ class HolderGraphAnalyzer:
         self,
         token: TokenIdentity,
         observations: Sequence[Observation],
+        *,
+        include_shadow: bool = False,
     ) -> tuple[Observation, ...]:
         values: list[Observation] = []
-        for observation in observations:
-            if not isinstance(observation, Observation):
-                raise TypeError("observations must contain Observation values")
+        for observation in production_observations(observations, include_shadow=include_shadow):
             if observation.kind in _HOLDER_KINDS and _observation_matches(observation, token):
                 values.append(observation)
         return tuple(values)
@@ -682,11 +683,11 @@ class HolderGraphAnalyzer:
         self,
         token: TokenIdentity,
         observations: Sequence[Observation],
+        *,
+        include_shadow: bool = False,
     ) -> tuple[Observation, ...]:
         values: list[Observation] = []
-        for observation in observations:
-            if not isinstance(observation, Observation):
-                raise TypeError("observations must contain Observation values")
+        for observation in production_observations(observations, include_shadow=include_shadow):
             if observation.kind in _GRAPH_KINDS and _observation_matches(observation, token):
                 values.append(observation)
         return tuple(values)
@@ -730,6 +731,7 @@ class HolderGraphAnalyzer:
         now: datetime,
         config_hash: str,
         creator_address: str | None = None,
+        include_shadow: bool = False,
     ) -> HolderConcentrationSnapshot:
         if not isinstance(token, TokenIdentity):
             raise TypeError("token must be a TokenIdentity")
@@ -740,7 +742,11 @@ class HolderGraphAnalyzer:
             if creator_address is None
             else require_solana_address(creator_address, "creator_address")
         )
-        matched = self._holder_observations(token, observations)
+        matched = self._holder_observations(
+            token,
+            observations,
+            include_shadow=include_shadow,
+        )
         if not matched:
             return self._empty_holder_snapshot(
                 token,
@@ -918,6 +924,7 @@ class HolderGraphAnalyzer:
         seed_addresses: Sequence[str],
         now: datetime,
         config_hash: str,
+        include_shadow: bool = False,
     ) -> WalletGraphSnapshot:
         if not isinstance(token, TokenIdentity):
             raise TypeError("token must be a TokenIdentity")
@@ -933,7 +940,11 @@ class HolderGraphAnalyzer:
         )
         matched = tuple(
             observation
-            for observation in self._graph_observations(token, observations)
+            for observation in self._graph_observations(
+                token,
+                observations,
+                include_shadow=include_shadow,
+            )
             if exact_event_time(observation) is not None
         )
         if not matched:
@@ -1352,6 +1363,7 @@ class InsiderAllocationAnalyzer:
         as_of: datetime,
         launch_at: datetime | None = None,
         config_hash: str = "insider-suspicion-v1",
+        include_shadow: bool = False,
     ) -> InsiderAllocationSuspicion:
         checked_at = ensure_utc(as_of, "as_of")
         expires_at = checked_at + timedelta(minutes=5)
@@ -1395,9 +1407,7 @@ class InsiderAllocationAnalyzer:
             )
 
         wallet_obs: dict[str, dict[str, object]] = {}
-        for obs in observations:
-            if not isinstance(obs, Observation):
-                continue
+        for obs in production_observations(observations, include_shadow=include_shadow):
             payload = obs.normalized_payload
             addr = _field(payload, "wallet_address", "address", "holder")
             if isinstance(addr, str) and addr.strip():

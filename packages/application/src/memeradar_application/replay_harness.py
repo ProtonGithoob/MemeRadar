@@ -1712,7 +1712,7 @@ class OutcomeLabeler:
     def _price(record: ReplayEventRecord) -> Decimal | None:
         if record.observation.kind not in _PRICE_KINDS:
             return None
-        return market_reference_price(record.observation)
+        return market_reference_price(record.observation, include_shadow=True)
 
     @staticmethod
     def _liquidity(record: ReplayEventRecord) -> Decimal | None:
@@ -1948,11 +1948,15 @@ class ReplayHarness:
     ) -> None:
         from .early_replay import EarlyOutcomeLabeler
 
-        self.correlation_builder = correlation_builder or CorrelationWindowBuilder()
+        self.correlation_builder = correlation_builder or CorrelationWindowBuilder(
+            include_shadow=True
+        )
         self.feature_aggregator = feature_aggregator or FeatureWindowAggregator()
         self.outcome_labeler = OutcomeLabeler(outcome_policy)
         self.early_outcome_labeler = EarlyOutcomeLabeler(early_outcome_policy)
-        self.signal_hardening_analyzer = signal_hardening_analyzer or SignalHardeningAnalyzer()
+        self.signal_hardening_analyzer = signal_hardening_analyzer or SignalHardeningAnalyzer(
+            include_shadow=True
+        )
 
     def replay(
         self,

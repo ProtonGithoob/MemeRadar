@@ -37,6 +37,7 @@ from .evidence_helpers import (
 from .evidence_helpers import (
     combined_quality as _combined_quality,
 )
+from .evidence_policy import production_observations
 from .provider_contracts import QuoteSnapshot
 
 _MISSING = object()
@@ -381,8 +382,16 @@ class _TradeRecord:
 class FlowAnalyzer:
     """Analyze bounded normalized market/trade evidence without provider coupling."""
 
-    def __init__(self, *, policy: FlowAnalysisPolicy | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        policy: FlowAnalysisPolicy | None = None,
+        include_shadow: bool = False,
+    ) -> None:
         self.policy = policy or FlowAnalysisPolicy()
+        if not isinstance(include_shadow, bool):
+            raise TypeError("include_shadow must be a boolean")
+        self.include_shadow = include_shadow
 
     def _matching(
         self,
@@ -391,9 +400,10 @@ class FlowAnalyzer:
         kinds: frozenset[str],
     ) -> tuple[Observation, ...]:
         values: list[Observation] = []
-        for observation in observations:
-            if not isinstance(observation, Observation):
-                raise TypeError("observations must contain Observation values")
+        for observation in production_observations(
+            observations,
+            include_shadow=self.include_shadow,
+        ):
             if observation.kind in kinds and _observation_matches(observation, token):
                 values.append(observation)
         return tuple(values)

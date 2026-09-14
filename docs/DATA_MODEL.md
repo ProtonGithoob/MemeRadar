@@ -721,9 +721,10 @@ The keyless replay path is the network-free
 `FixtureExternalWalletIntelligenceAdapter` and
 `fixtures/providers/external_wallet/replay.json`. No physical migration is
 needed for this application evidence seam; persistence of external raw
-payloads/features remains a later Phase 6 projection task. No live GMGN,
-CabalSpy or scraping adapter is claimed without a documented/legal operator
-endpoint.
+payloads/features remains a later Phase 6 projection task. GMGN's separately
+audited read-only adapter persists through the existing observation seam as
+`REAL_EXTERNAL`/`LIVE_SHADOW`; no scraping adapter, real sample or alpha
+validation is claimed without configured access and matured labels.
 
 ## Market / holder data
 

@@ -168,9 +168,11 @@ fail-closes disagreement as `CONFLICTED_EXTERNAL_WALLET_LABEL`, ignores stale
 labels for positive confidence and collapses external wallets through the
 internal holder graph. Tracked supply, bundle, side-wallet and security flags
 remain corroborating token features; no external result mutates internal score
-or risk records and every result is permanently non-executable. No documented
-and legally approved GMGN/CabalSpy endpoint is configured, so no live adapter
-or live-provider success is claimed.
+or risk records and every result is permanently non-executable. The separately
+audited GMGN HTTP adapter is optional, read-only and `LIVE_SHADOW` with weight
+zero; it is disabled without explicit credentials and has no execution
+authority. No live-provider success or alpha validation is claimed in this
+checkout.
 
 **Acceptance:** removing the external provider cannot change deterministic internal risk results; it only removes corroborating features/confidence.
 
