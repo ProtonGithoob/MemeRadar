@@ -104,7 +104,7 @@ sample status: INSUFFICIENT_SAMPLES
   observations; fixture/replay examples remain non-promotional. No external
   provider success is claimed.
 
-Implementation commit: to be recorded after the final commit.
+Implementation commit: `d1a0b7b` (`d1a0b7b71b4e5f149f335d65fb389b8b4ec77097`).
 
 ## Current blockers
 
