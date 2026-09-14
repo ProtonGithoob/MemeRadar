@@ -45,6 +45,9 @@ and [implementation plan](superpowers/plans/2026-09-14-external-alpha-intelligen
 
 ### Implementation result
 
+The implementation checkpoint is commit `9a4e9d1`
+(`fix: harden GMGN shadow evidence boundaries`).
+
 - GMGN remains a direct, read-only, optional backend adapter using the audited
   `https://openapi.gmgn.ai` contract. It is disabled by default, requires an
   explicit API key and HTTPS endpoint, never enters the core provider route
