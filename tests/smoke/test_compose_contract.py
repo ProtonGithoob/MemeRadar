@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import yaml
+from tests.route_helpers import app_routes
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATH = ROOT / "infra" / "compose" / "docker-compose.yml"
@@ -52,7 +53,9 @@ def test_dockerfiles_keep_runtime_entrypoints_explicit():
     assert "COPY packages/telemetry/src ./packages/telemetry/src" in worker_dockerfile
     assert "/app/packages/providers/src" in worker_dockerfile
     assert "COPY packages/providers/src ./packages/providers/src" in worker_dockerfile
-    assert '"npm", "run", "dev"' in web_dockerfile
+    assert "RUN npm run build" in web_dockerfile
+    assert 'ENV NODE_ENV=production' in web_dockerfile
+    assert 'CMD ["node", "server.js"]' in web_dockerfile
 
 
 def test_helius_read_layer_and_doctor_are_explicit_and_keyless():
@@ -414,7 +417,7 @@ def test_launchpad_dex_adapters_and_manual_submission_are_explicit_and_safe():
     assert RaydiumAdapter().provider_name == "raydium"
     assert MeteoraAdapter().provider_name == "meteora"
     assert CanonicalDuplicateDetector
-    route_paths = {route.path for route in create_app(Settings.from_env({})).routes}
+    route_paths = {route.path for route in app_routes(create_app(Settings.from_env({})))}
     assert "/v1/manual/mints" in route_paths
     env_example = (ROOT / ".env.example").read_text()
     assert "OPERATOR_API_TOKEN=" in env_example
@@ -704,7 +707,7 @@ def test_control_api_rbac_and_kill_switch_are_packaged_and_safe():
 
     settings = Settings.from_env({})
     app = create_app(settings)
-    route_paths = {route.path for route in app.routes}
+    route_paths = {route.path for route in app_routes(app)}
     assert "/v1/control/state" in route_paths
     assert "/v1/control/config" in route_paths
     assert "/v1/control/analysis-kill-switch" in route_paths

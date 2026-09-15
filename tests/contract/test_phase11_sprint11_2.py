@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from tests.route_helpers import app_routes
 
 from memeradar_api.main import create_app
 from memeradar_application.config import Settings
@@ -61,7 +62,7 @@ def test_operations_overview_is_bounded_get_only_and_preserves_unknown_states() 
 
     routes = {
         route.path: route.methods
-        for route in client.app.routes
+        for route in app_routes(client.app)
         if route.path == "/v1/operations/overview"
     }
     assert routes == {"/v1/operations/overview": {"GET"}}

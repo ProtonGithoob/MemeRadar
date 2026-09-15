@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from tests.route_helpers import app_routes
 
 from memeradar_api.main import create_app
 from memeradar_application.config import Settings
@@ -148,12 +149,12 @@ def test_read_api_route_surface_is_bounded_get_only_and_provider_free_at_applica
     }
     read_routes = {
         route.path
-        for route in app.routes
+        for route in app_routes(app)
         if route.path.startswith("/v1/") and "read" in getattr(route, "tags", [])
     }
 
     assert read_routes == expected
-    for route in app.routes:
+    for route in app_routes(app):
         if route.path in expected:
             assert route.methods == {"GET"}
     application_source = (

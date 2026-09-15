@@ -2,7 +2,10 @@
 
 import asyncio
 import json
+import os
+import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 from scripts.provider_doctor import run_doctor
@@ -11,6 +14,7 @@ from memeradar_providers.transport import ProviderTransport, RetryPolicy, Transp
 
 NOW = datetime(2026, 8, 27, 6, 0, tzinfo=UTC)
 SECRET = "doctor-secret-value"
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def configured_environment() -> dict[str, str]:
@@ -29,6 +33,27 @@ def one_shot_transport() -> ProviderTransport:
         timeouts=TransportTimeouts(overall_seconds=1),
         retry_policy=RetryPolicy(max_attempts=1),
     )
+
+
+def test_supported_make_invocation_bootstraps_scripts_package() -> None:
+    environment = os.environ.copy()
+    environment.update({"HELIUS_RPC_URL": "", "HELIUS_API_KEY": ""})
+    result = subprocess.run(
+        ["make", "provider-doctor"],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "ModuleNotFoundError" not in result.stderr
+    report = json.loads(
+        next(line for line in reversed(result.stdout.splitlines()) if line.startswith("{"))
+    )
+    assert report["status"] == "BLOCKED_EXTERNAL"
+    assert report["reason"] == "CONFIGURATION_MISSING"
 
 
 def test_missing_configuration_is_blocked_without_echoing_values() -> None:

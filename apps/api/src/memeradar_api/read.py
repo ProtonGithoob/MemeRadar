@@ -668,6 +668,8 @@ class ExternalProviderReadinessResponse(_StrictModel):
     reason_codes: list[str] = Field(default_factory=list)
     real_observation_count: int
     unique_token_count: int
+    unique_token_sample_count: int
+    # Deprecated compatibility field; it is the same unique-token proxy.
     independent_sample_count: int
     chain_token_counts: dict[str, int] = Field(default_factory=dict)
     candidate_observation_count: int
@@ -1773,6 +1775,7 @@ def _external_provider_readiness_response(
         reason_codes=list(report.reason_codes),
         real_observation_count=report.real_observation_count,
         unique_token_count=report.unique_token_count,
+        unique_token_sample_count=report.unique_token_sample_count,
         independent_sample_count=report.independent_sample_count,
         chain_token_counts=dict(report.chain_token_counts),
         candidate_observation_count=report.candidate_observation_count,

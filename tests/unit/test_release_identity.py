@@ -25,7 +25,7 @@ def test_release_identity_is_reproducible_and_binds_existing_release_inputs() ->
     assert identity["migration_table_count"] == 27
     assert identity["config_hash"].startswith("sha256:")
     assert identity["sbom_schema_version"] == "security-sbom-v1"
-    assert identity["sbom_component_count"] == 581
+    assert identity["sbom_component_count"] == 582
     assert str(identity["sbom_digest"]).startswith("sha256:")
     assert identity["protected_modes"] == {
         "analysis_only": True,

@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -16,6 +16,7 @@ documents below.
 | Shadow collection | `NOT_ACTIVE` | No live shadow evidence is claimed from fixtures or an unavailable stack. |
 | Real-world alpha | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` | Historical-real and matured live-shadow samples remain insufficient. |
 | Production readiness | `NOT_PRODUCTION_READY` | See [Production Readiness](PRODUCTION_READINESS.md). |
+| Read-only production gate | `PROD_READ_ONLY_NOT_ACCEPTED` | Local deterministic and production-like gates pass; hosted CI, branch protection, managed deployment/operations, and credentialed external acceptance remain blocked. |
 | Live-money eligibility | `OUT_OF_SCOPE` / not eligible | No live-money workflow is enabled or authorized. |
 
 Protected modes are unchanged and enforced:
@@ -31,6 +32,77 @@ There is no wallet signer, live order submission, automatic execution, or
 execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
+
+## 2026-09-15 final PROD_READ_ONLY closure sprint
+
+The synchronized baseline was `4de20300c064ce903ecd482bd52a12ccf7a23114`
+(`main == origin/main`, clean worktree). This closure sprint addressed the
+three reviewed correctness boundaries and the remaining repository-controlled
+release defects without adding a provider-specific scorer, risk engine,
+lifecycle, execution path, wallet graph or alert pipeline.
+
+### Root-cause fixes
+
+- Evidence policy now allow-lists recognized collection modes and admits only
+  explicit `PRODUCTION` rows to production-facing projections. Missing mode is
+  retained only for audited legacy rows with no trust markers. Provider
+  `evidence_promotion_state` is never promotion authority; shadow payloads
+  claiming `PROMOTED` remain ineligible.
+- The full production decision chain has a provider-neutral equality regression
+  for baseline versus baseline plus GMGN `LIVE_SHADOW`. Canonical GMGN rows
+  remain persisted and research/readiness/replay-visible.
+- Readiness uses raw observation volume separately from the bounded
+  `unique_token_sample_count` proxy. One token polled 100 times remains one
+  sample unit and `INSUFFICIENT_SAMPLES`; no statistical independence claim is
+  made.
+- Production configuration now requires database/Redis/readiness and strong
+  role tokens, the web gateway reads server-only runtime environment values,
+  and the web image is a non-root standalone production build. The provider
+  doctor Make targets use the supported module invocation.
+- The web runtime/build boundary and two browser contract defects were fixed;
+  the production-like authenticated browser matrix is `33 passed, 0 failed,
+  7 scoped skips`.
+- The frontend runtime graph has no vulnerabilities; full npm audit retains
+  only two moderate dev-only Vitest findings (GHSA-82fw-gwwq-j7x9), requiring a
+  separate major upgrade decision. Python `pip-audit` is clean.
+
+### Verification snapshot
+
+- `make verify`: `1330 passed, 19 skipped, 7 warnings`; Ruff, mypy, CSS
+  contract, frontend lint/typecheck/tests (`23 files, 80 tests`), Compose,
+  secret scan, migration check, local security review and SBOM all pass.
+- Disposable PostgreSQL 16.14 integration: `19 passed, 2 warnings`; migration
+  head `0011_collection_checkpoints`; 27 metadata tables / 28 public tables
+  including `alembic_version`. Checkpoint/CAS, persistence, readiness and
+  repeated-poll accounting are covered.
+- Backup/restore and a non-destructive rollback from the prior ref were proven
+  against disposable/local Compose infrastructure. The bounded read-only
+  production-soak tool completed 100 synthetic iterations; live acceptance is
+  not claimed.
+- Current SBOM: 582 components, digest
+  `sha256:e63fadcc56b9461e192ae70e9bd01ba01dc6a4e223143ab71a09aca9875933aa`.
+
+### Current data and blockers
+
+```text
+real GMGN observations: 0
+unique SOL/BSC tokens: 0
+unique token sample units: 0
+winner labels: null
+rug labels: null
+first/last real observation: null / null
+sample status: INSUFFICIENT_SAMPLES
+GMGN live validation: BLOCKED_EXTERNAL (no credentialed real provider access)
+```
+
+Local API/worker/web/PostgreSQL/Redis health, auth, runtime provider-state
+truthfulness, protected modes and `execution_eligible=false` are verified.
+`PROD_READ_ONLY_ACCEPTED` is not claimed because hosted Actions execution is
+blocked by the account runner/billing state, branch protection returns GitHub
+API HTTP 403 for the private repository plan, and managed production
+deployment/rollback, backup/restore, sustained soak, and external-provider
+credentials are not available. These exact results are recorded in the
+[closure gap matrix](PROD_READ_ONLY_CLOSURE_GAP_MATRIX_2026-09-15.md).
 
 ## 2026-09-14 external alpha intelligence integration
 

@@ -301,6 +301,7 @@ def test_gmgn_adapter_collector_and_readiness_keep_shadow_out_of_early_features(
     assert report.persisted_observation_count == 7
     assert readiness.real_observation_count == 7
     assert readiness.unique_token_count == 1
+    assert readiness.unique_token_sample_count == 1
     assert readiness.independent_sample_count == 1
     assert readiness.status == "INSUFFICIENT_SAMPLES"
     assert EarlyFeatureEngine().compute(candidate.token.id, NOW, observations) == (
@@ -514,6 +515,7 @@ def test_gmgn_readiness_counts_only_real_provider_evidence_and_stays_insufficien
 
     assert report.real_observation_count == 5
     assert report.unique_token_count == 1
+    assert report.unique_token_sample_count == 1
     assert report.independent_sample_count == 1
     assert report.chain_token_counts == {"solana": 1}
     assert report.candidate_observation_count == 1
@@ -523,6 +525,26 @@ def test_gmgn_readiness_counts_only_real_provider_evidence_and_stays_insufficien
     assert report.security_risk_observation_count == 1
     assert report.status == "INSUFFICIENT_SAMPLES"
     assert "GMGN_LABELED_OUTCOMES_UNAVAILABLE" in report.reason_codes
+
+
+@pytest.mark.parametrize("collection_mode", ("UNKNOWN", "", "malformed"))
+def test_gmgn_readiness_rejects_unknown_collection_modes(
+    collection_mode: str,
+) -> None:
+    observation = _observation(
+        "market.snapshot",
+        f"unknown-mode:{collection_mode!r}",
+        {"chain": "solana", "token_address": SOL_TOKEN},
+        collection_mode=collection_mode,
+    )
+
+    report = ExternalProviderReadinessReport.from_persisted_observations(
+        "gmgn", (observation,)
+    )
+
+    assert report.real_observation_count == 0
+    assert report.unique_token_count == 0
+    assert report.status == "INSUFFICIENT_SAMPLES"
 
 
 def test_gmgn_repeated_polling_snapshots_are_not_independent_alpha_samples() -> None:
@@ -540,6 +562,7 @@ def test_gmgn_repeated_polling_snapshots_are_not_independent_alpha_samples() -> 
 
     assert report.real_observation_count == 100
     assert report.unique_token_count == 1
+    assert report.unique_token_sample_count == 1
     assert report.independent_sample_count == 1
     assert report.status == "INSUFFICIENT_SAMPLES"
 
@@ -562,4 +585,5 @@ def test_gmgn_readiness_counts_unique_tokens_as_independent_units() -> None:
 
     assert report.real_observation_count == 2
     assert report.unique_token_count == 2
+    assert report.unique_token_sample_count == 2
     assert report.independent_sample_count == 2

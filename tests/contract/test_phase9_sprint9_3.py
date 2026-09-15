@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi.testclient import TestClient
+from tests.route_helpers import app_routes
 
 from memeradar_api.main import create_app
 from memeradar_application.alert_pipeline import AlertEventProjector, AlertRenderer
@@ -41,7 +42,7 @@ def test_position_read_routes_are_get_only_and_never_execution_authority() -> No
     assert response.json()["items"] == []
     route_methods = {
         route.path: route.methods
-        for route in client.app.routes
+        for route in app_routes(client.app)
         if route.path.startswith("/v1/positions")
     }
     assert route_methods == {

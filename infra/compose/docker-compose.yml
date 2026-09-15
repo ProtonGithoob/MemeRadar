@@ -35,13 +35,17 @@ services:
       context: ../..
       dockerfile: infra/docker/api.Dockerfile
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
       API_HOST: 0.0.0.0
       API_PORT: "8000"
-      DATABASE_URL: postgresql://memeradar:memeradar_local_only@postgres:5432/memeradar
-      REDIS_URL: redis://redis:6379/0
-      REQUIRE_DATABASE_FOR_READINESS: "true"
-      REQUIRE_REDIS_FOR_READINESS: "true"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://memeradar:memeradar_local_only@postgres:5432/memeradar}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REQUIRE_DATABASE_FOR_READINESS: ${REQUIRE_DATABASE_FOR_READINESS:-true}
+      REQUIRE_REDIS_FOR_READINESS: ${REQUIRE_REDIS_FOR_READINESS:-true}
+      VIEWER_API_TOKEN: ${VIEWER_API_TOKEN:-}
+      OPERATOR_API_TOKEN: ${OPERATOR_API_TOKEN:-}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
+      EXECUTION_API_TOKEN: ${EXECUTION_API_TOKEN:-}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
       HELIUS_RPC_URL: ${HELIUS_RPC_URL:-}
       HELIUS_API_KEY: ${HELIUS_API_KEY:-}
@@ -79,6 +83,12 @@ services:
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       ALERT_MAX_MESSAGES_PER_WINDOW: ${ALERT_MAX_MESSAGES_PER_WINDOW:-20}
       ALERT_RATE_LIMIT_WINDOW_SECONDS: ${ALERT_RATE_LIMIT_WINDOW_SECONDS:-60}
+      MADEONSOL_ENABLED: ${MADEONSOL_ENABLED:-false}
+      MADEONSOL_API_KEY: ${MADEONSOL_API_KEY:-}
+      MADEONSOL_BASE_URL: ${MADEONSOL_BASE_URL:-https://madeonsol.com/api/v1}
+      GMGN_ENABLED: ${GMGN_ENABLED:-false}
+      GMGN_API_KEY: ${GMGN_API_KEY:-}
+      GMGN_BASE_URL: ${GMGN_BASE_URL:-https://openapi.gmgn.ai}
       ANALYSIS_ONLY: "true"
       PAPER_TRADING: "true"
       MANUAL_EXECUTION: "false"
@@ -105,11 +115,15 @@ services:
       context: ../..
       dockerfile: infra/docker/worker.Dockerfile
     environment:
-      APP_ENV: development
-      DATABASE_URL: postgresql://memeradar:memeradar_local_only@postgres:5432/memeradar
-      REDIS_URL: redis://redis:6379/0
-      REQUIRE_DATABASE_FOR_READINESS: "true"
-      REQUIRE_REDIS_FOR_READINESS: "true"
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://memeradar:memeradar_local_only@postgres:5432/memeradar}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REQUIRE_DATABASE_FOR_READINESS: ${REQUIRE_DATABASE_FOR_READINESS:-true}
+      REQUIRE_REDIS_FOR_READINESS: ${REQUIRE_REDIS_FOR_READINESS:-true}
+      VIEWER_API_TOKEN: ${VIEWER_API_TOKEN:-}
+      OPERATOR_API_TOKEN: ${OPERATOR_API_TOKEN:-}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
+      EXECUTION_API_TOKEN: ${EXECUTION_API_TOKEN:-}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
       HELIUS_RPC_URL: ${HELIUS_RPC_URL:-}
       HELIUS_API_KEY: ${HELIUS_API_KEY:-}
@@ -147,6 +161,12 @@ services:
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       ALERT_MAX_MESSAGES_PER_WINDOW: ${ALERT_MAX_MESSAGES_PER_WINDOW:-20}
       ALERT_RATE_LIMIT_WINDOW_SECONDS: ${ALERT_RATE_LIMIT_WINDOW_SECONDS:-60}
+      MADEONSOL_ENABLED: ${MADEONSOL_ENABLED:-false}
+      MADEONSOL_API_KEY: ${MADEONSOL_API_KEY:-}
+      MADEONSOL_BASE_URL: ${MADEONSOL_BASE_URL:-https://madeonsol.com/api/v1}
+      GMGN_ENABLED: ${GMGN_ENABLED:-false}
+      GMGN_API_KEY: ${GMGN_API_KEY:-}
+      GMGN_BASE_URL: ${GMGN_BASE_URL:-https://openapi.gmgn.ai}
       ANALYSIS_ONLY: "true"
       PAPER_TRADING: "true"
       MANUAL_EXECUTION: "false"
@@ -163,7 +183,9 @@ services:
       dockerfile: infra/docker/web.Dockerfile
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_HOST_PORT:-18000}
-      MEMERADAR_API_BASE_URL: http://api:8000
+      MEMERADAR_API_BASE_URL: ${MEMERADAR_API_BASE_URL:-http://api:8000}
+      MEMERADAR_VIEWER_API_TOKEN: ${MEMERADAR_VIEWER_API_TOKEN:-}
+      MEMERADAR_ADMIN_API_TOKEN: ${MEMERADAR_ADMIN_API_TOKEN:-}
     ports:
       - "127.0.0.1:${WEB_HOST_PORT:-13000}:3000"
     depends_on:

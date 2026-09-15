@@ -21,6 +21,7 @@ from memeradar_application.historical_dataset import (
     COLLECTION_MODE_FIELD,
     EVIDENCE_ORIGIN_FIELD,
     MADEONSOL_REAL_EVIDENCE_CLASS,
+    REAL_EVIDENCE_COLLECTION_MODES,
     ExternalProviderReadinessReport,
     MadeOnSolReadinessReport,
 )
@@ -736,9 +737,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                 ),
                 or_(
                     collection_mode.is_(None),
-                    func.upper(collection_mode).notin_(
-                        ("FIXTURE", "MOCK", "SYNTHETIC", "DEMO", "REPLAY", "REDACTED")
-                    ),
+                    func.upper(collection_mode).in_(tuple(REAL_EVIDENCE_COLLECTION_MODES)),
                 ),
             )
             base_filters = (
@@ -858,9 +857,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                 ),
                 or_(
                     collection_mode.is_(None),
-                    func.upper(collection_mode).notin_(
-                        ("FIXTURE", "MOCK", "SYNTHETIC", "DEMO", "REPLAY", "REDACTED")
-                    ),
+                    func.upper(collection_mode).in_(tuple(REAL_EVIDENCE_COLLECTION_MODES)),
                 ),
             )
             base_filters = (

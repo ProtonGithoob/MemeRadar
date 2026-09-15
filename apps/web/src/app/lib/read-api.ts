@@ -6,6 +6,8 @@
  * environment values to the browser.
  */
 
+import { runtimeEnv } from "./runtime-env";
+
 export type ReadFailureReason =
   | "NOT_CONFIGURED"
   | "UNAUTHORIZED"
@@ -2796,7 +2798,7 @@ function parsePage<T>(value: unknown, parseItem: (item: unknown) => T | null): R
 }
 
 function parseBaseUrl(): URL | null {
-  const configured = process.env.MEMERADAR_API_BASE_URL?.trim() || process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  const configured = runtimeEnv("MEMERADAR_API_BASE_URL") || runtimeEnv("NEXT_PUBLIC_API_BASE_URL");
   if (!configured) return null;
   try {
     const base = new URL(configured);
@@ -2824,9 +2826,9 @@ function failureForStatus(status: number): ReadFailureReason {
 }
 
 async function request<T>(url: string, parse: (value: unknown) => T | null): Promise<ReadResult<T>> {
-  const viewerToken = process.env.MEMERADAR_VIEWER_API_TOKEN?.trim();
+  const viewerToken = runtimeEnv("MEMERADAR_VIEWER_API_TOKEN");
   const controlToken = url.includes("/v1/control/")
-    ? process.env.MEMERADAR_ADMIN_API_TOKEN?.trim() || viewerToken
+    ? runtimeEnv("MEMERADAR_ADMIN_API_TOKEN") || viewerToken
     : viewerToken;
   const headers = controlToken ? { Authorization: `Bearer ${controlToken}` } : undefined;
   const controller = new AbortController();

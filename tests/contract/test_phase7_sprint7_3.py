@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from tests.route_helpers import app_routes
 
 from memeradar_api.main import create_app
 from memeradar_application.config import Settings
@@ -38,10 +39,12 @@ def test_control_surface_is_explicit_and_read_routes_remain_get_only() -> None:
             "/v1/control/execution-kill-switch",
             "/v1/control/runtime-settings",
     }
-    control_routes = {route.path for route in app.routes if route.path.startswith("/v1/control")}
+    control_routes = {
+        route.path for route in app_routes(app) if route.path.startswith("/v1/control")
+    }
 
     assert control_routes == expected_control
-    for route in app.routes:
+    for route in app_routes(app):
         if route.path.startswith("/v1/control"):
             assert route.methods in ({"GET"}, {"POST"})
         if route.path.startswith("/v1/") and "read" in getattr(route, "tags", []):

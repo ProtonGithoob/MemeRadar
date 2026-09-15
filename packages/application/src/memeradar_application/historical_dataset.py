@@ -23,9 +23,7 @@ HISTORICAL_REAL_EVIDENCE_CLASS = "HISTORICAL_REAL"
 MADEONSOL_REAL_EVIDENCE_CLASS = "REAL_EXTERNAL"
 EVIDENCE_ORIGIN_FIELD = "evidence_origin"
 COLLECTION_MODE_FIELD = "collection_mode"
-_NON_REAL_COLLECTION_MODES = frozenset(
-    {"FIXTURE", "MOCK", "SYNTHETIC", "DEMO", "REPLAY", "REDACTED"}
-)
+REAL_EVIDENCE_COLLECTION_MODES = frozenset({"PRODUCTION", "LIVE_SHADOW"})
 HISTORICAL_PARTITION_STRATEGY = "CHRONOLOGICAL_50_25_25"
 DEFAULT_REQUIRED_COHORTS: tuple[str, ...] = (
     "EXTREME_WINNER",
@@ -48,8 +46,9 @@ def _is_real_external_observation(item: Observation) -> bool:
     if origin != MADEONSOL_REAL_EVIDENCE_CLASS:
         return False
     mode = payload.get(COLLECTION_MODE_FIELD)
-    return not (
-        isinstance(mode, str) and mode.strip().upper() in _NON_REAL_COLLECTION_MODES
+    return mode is None or (
+        isinstance(mode, str)
+        and mode.strip().upper() in REAL_EVIDENCE_COLLECTION_MODES
     )
 
 
@@ -430,14 +429,19 @@ class MadeOnSolReadinessReport:
 
 @dataclass(frozen=True, slots=True)
 class ExternalProviderReadinessReport:
-    """Provider-neutral real-evidence inventory for optional alpha sources."""
+    """Provider-neutral real-evidence inventory for optional alpha sources.
+
+    ``unique_token_sample_count`` is a bounded token-identity proxy.  It is
+    deliberately not a claim that observations are statistically independent;
+    correlated outcome cohorts remain a future research metric.
+    """
 
     provider: str
     status: str
     reason_codes: tuple[str, ...]
     real_observation_count: int
     unique_token_count: int
-    independent_sample_count: int
+    unique_token_sample_count: int
     chain_token_counts: Mapping[str, int]
     candidate_observation_count: int
     caller_kol_observation_count: int
@@ -451,6 +455,12 @@ class ExternalProviderReadinessReport:
     error_count: int | None
     labeled_winner_count: int | None
     labeled_rug_count: int | None
+
+    @property
+    def independent_sample_count(self) -> int:
+        """Compatibility alias; this value is only a unique-token proxy."""
+
+        return self.unique_token_sample_count
 
     @classmethod
     def from_persisted_observations(
@@ -594,7 +604,7 @@ class ExternalProviderReadinessReport:
             provider=normalized_provider,
             real_observation_count=len(real),
             unique_token_count=len(token_keys),
-            independent_sample_count=len(token_keys),
+            unique_token_sample_count=len(token_keys),
             chain_token_counts={key: len(value) for key, value in chain_counts.items()},
             candidate_observation_count=count(lambda item: item.kind == "candidate.discovery"),
             caller_kol_observation_count=count(
@@ -623,6 +633,7 @@ class ExternalProviderReadinessReport:
         provider: str,
         real_observation_count: int,
         unique_token_count: int,
+        unique_token_sample_count: int | None = None,
         independent_sample_count: int | None = None,
         chain_token_counts: Mapping[str, int],
         candidate_observation_count: int,
@@ -644,6 +655,7 @@ class ExternalProviderReadinessReport:
         counts = (
             real_observation_count,
             unique_token_count,
+            unique_token_sample_count,
             independent_sample_count,
             candidate_observation_count,
             caller_kol_observation_count,
@@ -662,13 +674,21 @@ class ExternalProviderReadinessReport:
             for value in counts
         ):
             raise ValueError("readiness counts must be non-negative integers")
-        normalized_independent_sample_count = (
-            unique_token_count
-            if independent_sample_count is None
+        if (
+            unique_token_sample_count is not None
+            and independent_sample_count is not None
+            and unique_token_sample_count != independent_sample_count
+        ):
+            raise ValueError("unique token sample counts must agree")
+        normalized_unique_token_sample_count = (
+            unique_token_sample_count
+            if unique_token_sample_count is not None
             else independent_sample_count
+            if independent_sample_count is not None
+            else unique_token_count
         )
-        if normalized_independent_sample_count > unique_token_count:
-            raise ValueError("independent_sample_count cannot exceed unique_token_count")
+        if normalized_unique_token_sample_count > unique_token_count:
+            raise ValueError("unique_token_sample_count cannot exceed unique_token_count")
         normalized_chain_counts: dict[str, int] = {}
         for chain, value in chain_token_counts.items():
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
@@ -689,7 +709,7 @@ class ExternalProviderReadinessReport:
         reasons: list[str] = []
         if real_observation_count == 0:
             reasons.append(f"{normalized_provider.upper()}_REAL_OBSERVATIONS_REQUIRED")
-        if normalized_independent_sample_count < minimum_real_tokens:
+        if normalized_unique_token_sample_count < minimum_real_tokens:
             reasons.append(f"{normalized_provider.upper()}_TOKEN_SAMPLES_REQUIRED")
         if labeled_winner_count is None or labeled_rug_count is None:
             reasons.append(f"{normalized_provider.upper()}_LABELED_OUTCOMES_UNAVAILABLE")
@@ -701,7 +721,7 @@ class ExternalProviderReadinessReport:
             reason_codes=tuple(reasons),
             real_observation_count=real_observation_count,
             unique_token_count=unique_token_count,
-            independent_sample_count=normalized_independent_sample_count,
+            unique_token_sample_count=normalized_unique_token_sample_count,
             chain_token_counts=MappingProxyType(dict(sorted(normalized_chain_counts.items()))),
             candidate_observation_count=candidate_observation_count,
             caller_kol_observation_count=caller_kol_observation_count,
@@ -724,7 +744,10 @@ class ExternalProviderReadinessReport:
             "reason_codes": list(self.reason_codes),
             "real_observation_count": self.real_observation_count,
             "unique_token_count": self.unique_token_count,
-            "independent_sample_count": self.independent_sample_count,
+            "unique_token_sample_count": self.unique_token_sample_count,
+            # Compatibility for existing API clients; this is not an
+            # independence claim and will be removed with a versioned API.
+            "independent_sample_count": self.unique_token_sample_count,
             "chain_token_counts": dict(self.chain_token_counts),
             "candidate_observation_count": self.candidate_observation_count,
             "caller_kol_observation_count": self.caller_kol_observation_count,

@@ -618,7 +618,9 @@ observations are persisted as `REAL_EXTERNAL` evidence with
 `collection_mode=LIVE_SHADOW`; the shared application evidence policy keeps
 unpromoted shadow rows out of production decision projections while replay and
 research may opt in explicitly. Readiness distinguishes retained polling rows
-from unique-token independent sample units.
+from `unique_token_sample_count`, a unique-token proxy rather than a claim of
+statistical independence. Correlated outcome cohorts remain a separate
+research requirement.
 
 The adapter accepts only the audited `GET /v1/market/rank`,
 `GET /v1/token/info`, `GET /v1/token/security`,

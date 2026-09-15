@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from tests.route_helpers import app_routes
 
 from memeradar_api.main import create_app
 from memeradar_application.config import Settings
@@ -22,7 +23,7 @@ def test_openapi_schema_is_versioned_and_reproducible() -> None:
 
     assert first == second
     assert first["info"] == {"title": "MemeRadar API", "version": "0.1.0"}
-    assert "/openapi.json" in {route.path for route in app.routes}
+    assert "/openapi.json" in {route.path for route in app_routes(app)}
     assert "/health/live" in first["paths"]
     assert "/health/ready" in first["paths"]
 

@@ -33,7 +33,8 @@ EARLY_DETECTION_OUTPUT ?=
 SBOM_OUTPUT ?=
 
 .PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-css-contract frontend-lint frontend-typecheck frontend-test frontend-e2e \
-	frontend-build compose-config secret-scan migration-check integration-test verify up down migrate doctor \
+	frontend-build frontend-security-audit deterministic-release-gates prod-read-only-verify \
+	compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	start stop status \
 	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
 	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
@@ -121,6 +122,9 @@ frontend-e2e:
 frontend-build:
 	cd $(WEB_DIR) && npm run build
 
+frontend-security-audit:
+	cd $(WEB_DIR) && npm audit --omit=dev --audit-level=high
+
 compose-config:
 	$(COMPOSE) config --quiet
 
@@ -150,6 +154,16 @@ integration-test:
 	fi
 
 verify: lint typecheck test frontend-css-contract frontend-lint frontend-typecheck frontend-test compose-config secret-scan migration-check security-review sbom
+
+deterministic-release-gates: verify frontend-build frontend-security-audit release-identity
+
+prod-read-only-verify: deterministic-release-gates
+	@if [[ -z "$${MEMERADAR_TEST_DATABASE_URL:-}" ]]; then \
+		echo "BLOCKED_EXTERNAL: MEMERADAR_TEST_DATABASE_URL is required for PostgreSQL acceptance."; \
+		exit 2; \
+	fi
+	$(MAKE) integration-test
+	$(MAKE) frontend-e2e
 
 up:
 	$(COMPOSE) up -d
@@ -181,52 +195,52 @@ doctor:
 	$(PYTHON) scripts/doctor.py
 
 provider-doctor:
-	$(PYTHON) scripts/provider_doctor.py
+	$(PYTHON) -m scripts.provider_doctor
 
 helius-doctor:
-	$(PYTHON) scripts/provider_doctor.py
+	$(PYTHON) -m scripts.provider_doctor
 
 solana-rpc-doctor:
-	$(PYTHON) scripts/solana_rpc_doctor.py
+	$(PYTHON) -m scripts.solana_rpc_doctor
 
 dexscreener-doctor:
-	$(PYTHON) scripts/dexscreener_doctor.py
+	$(PYTHON) -m scripts.dexscreener_doctor
 
 free-provider-doctor:
-	$(PYTHON) scripts/free_provider_doctor.py
+	$(PYTHON) -m scripts.free_provider_doctor
 
 birdeye-doctor:
-	$(PYTHON) scripts/birdeye_doctor.py
+	$(PYTHON) -m scripts.birdeye_doctor
 
 rugcheck-doctor:
-	$(PYTHON) scripts/rugcheck_doctor.py
+	$(PYTHON) -m scripts.rugcheck_doctor
 
 social-doctor:
-	$(PYTHON) scripts/social_doctor.py
+	$(PYTHON) -m scripts.social_doctor
 
 narrative-doctor:
-	$(PYTHON) scripts/narrative_doctor.py
+	$(PYTHON) -m scripts.narrative_doctor
 
 ollama-doctor:
-	$(PYTHON) scripts/ollama_doctor.py
+	$(PYTHON) -m scripts.ollama_doctor
 
 external-wallet-doctor:
-	$(PYTHON) scripts/external_wallet_doctor.py
+	$(PYTHON) -m scripts.external_wallet_doctor
 
 telegram-doctor:
-	$(PYTHON) scripts/telegram_doctor.py
+	$(PYTHON) -m scripts.telegram_doctor
 
 stream-integrity-doctor:
-	$(PYTHON) scripts/stream_integrity_doctor.py
+	$(PYTHON) -m scripts.stream_integrity_doctor
 
 paper-trading-doctor:
-	$(PYTHON) scripts/paper_trading_doctor.py
+	$(PYTHON) -m scripts.paper_trading_doctor
 
 early-live-doctor:
-	$(PYTHON) scripts/early_live_doctor.py
+	$(PYTHON) -m scripts.early_live_doctor
 
 reliability-doctor:
-	$(PYTHON) scripts/reliability_doctor.py
+	$(PYTHON) -m scripts.reliability_doctor
 
 shadow-start:
 	bash scripts/start-shadow.sh

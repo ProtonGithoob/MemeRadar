@@ -26,7 +26,8 @@ def test_sbom_is_deterministic_and_contains_pinned_python_npm_and_image_inputs()
     refs = [component["bom-ref"] for component in components]
     assert refs == sorted(refs)
     assert len(refs) == len(set(refs))
-    assert "pkg:pypi/fastapi@0.115.6" in refs
+    assert "pkg:pypi/fastapi@0.141.1" in refs
+    assert "pkg:pypi/starlette@1.3.1" in refs
     assert "pkg:npm/@playwright/test@1.62.1" in refs
     assert "pkg:docker/python@3.12-slim" in refs
     assert "pkg:docker/node@22-alpine" in refs

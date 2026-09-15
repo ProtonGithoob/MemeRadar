@@ -39,6 +39,21 @@ Provider doctors and real historical/live-shadow evidence remain separate
 gates. Missing external access is recorded as `BLOCKED_EXTERNAL` or
 `INSUFFICIENT_SAMPLES`, never converted into release or alpha success.
 
+The Makefile keeps the existing `verify` target deterministic and exposes the
+broader closure boundary separately:
+
+```bash
+make deterministic-release-gates
+MEMERADAR_TEST_DATABASE_URL="$MEMERADAR_DATABASE_URL" make prod-read-only-verify
+```
+
+`prod-read-only-verify` requires an explicit PostgreSQL test URL and runs the
+existing integration and Playwright targets. Set
+`MEMERADAR_E2E_BASE_URL` to the tested production build for browser acceptance;
+without it, Playwright uses its existing local development-server harness.
+Provider credentials, hosted CI and managed deployment acceptance remain
+separate external gates.
+
 ## Rollback and forward fix
 
 1. Keep the execution kill switch active and preserve all four protected modes.

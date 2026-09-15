@@ -6,8 +6,36 @@ from collections.abc import Sequence
 
 from memeradar_domain import Observation
 
+PRODUCTION_COLLECTION_MODE = "PRODUCTION"
 LIVE_SHADOW_COLLECTION_MODE = "LIVE_SHADOW"
-PROMOTED_EVIDENCE_STATE = "PROMOTED"
+RECOGNIZED_COLLECTION_MODES = frozenset(
+    {
+        PRODUCTION_COLLECTION_MODE,
+        LIVE_SHADOW_COLLECTION_MODE,
+        "RESEARCH",
+        "REPLAY",
+        "FIXTURE",
+        "MOCK",
+        "SYNTHETIC",
+        "DEMO",
+        "REDACTED",
+    }
+)
+
+
+def _legacy_unclassified_observation(observation: Observation) -> bool:
+    """Keep old canonical rows usable only when they carry no trust claims."""
+
+    payload = observation.normalized_payload
+    return not any(
+        key in payload
+        for key in (
+            "evidence_origin",
+            "evidence_class",
+            "live_shadow",
+            "evidence_promotion_state",
+        )
+    )
 
 
 def is_production_evidence_eligible(observation: Observation) -> bool:
@@ -17,13 +45,13 @@ def is_production_evidence_eligible(observation: Observation) -> bool:
         raise TypeError("observation must be an Observation")
     raw_mode = observation.normalized_payload.get("collection_mode")
     if raw_mode is None:
-        return True
+        return _legacy_unclassified_observation(observation)
     if not isinstance(raw_mode, str):
         return False
-    if raw_mode.strip().upper() != LIVE_SHADOW_COLLECTION_MODE:
-        return True
-    promotion = observation.normalized_payload.get("evidence_promotion_state", "UNPROMOTED")
-    return isinstance(promotion, str) and promotion.strip().upper() == PROMOTED_EVIDENCE_STATE
+    normalized_mode = raw_mode.strip().upper()
+    if normalized_mode not in RECOGNIZED_COLLECTION_MODES:
+        return False
+    return normalized_mode == PRODUCTION_COLLECTION_MODE
 
 
 def production_observations(
@@ -51,8 +79,9 @@ def production_observations(
 
 
 __all__ = [
+    "PRODUCTION_COLLECTION_MODE",
     "LIVE_SHADOW_COLLECTION_MODE",
-    "PROMOTED_EVIDENCE_STATE",
+    "RECOGNIZED_COLLECTION_MODES",
     "is_production_evidence_eligible",
     "production_observations",
 ]

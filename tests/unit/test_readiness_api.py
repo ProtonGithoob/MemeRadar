@@ -183,6 +183,7 @@ def test_readiness_api_exposes_gmgn_real_shadow_inventory_without_promotion() ->
     assert body["provider"] == "gmgn"
     assert body["real_observation_count"] == 1
     assert body["unique_token_count"] == 1
+    assert body["unique_token_sample_count"] == 1
     assert body["independent_sample_count"] == 1
     assert body["security_risk_observation_count"] == 1
     assert body["status"] == "INSUFFICIENT_SAMPLES"

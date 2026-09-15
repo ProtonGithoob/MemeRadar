@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { runtimeEnv } from "../../../lib/runtime-env";
 
 export const dynamic = "force-dynamic";
 
 function apiBase(): URL | null {
-  const raw = process.env.MEMERADAR_API_BASE_URL?.trim();
+  const raw = runtimeEnv("MEMERADAR_API_BASE_URL");
   if (!raw) return null;
   try {
     const base = new URL(raw);
@@ -44,7 +45,7 @@ function safeResult(body: unknown): Record<string, unknown> | null {
 
 export async function GET(request: NextRequest) {
   const base = apiBase();
-  const token = process.env.MEMERADAR_VIEWER_API_TOKEN?.trim();
+  const token = runtimeEnv("MEMERADAR_VIEWER_API_TOKEN");
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (!base || !token) {
     return NextResponse.json({ detail: "server search gateway is not configured" }, { status: 503 });

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { runtimeEnv } from "../../../lib/runtime-env";
 
 export const dynamic = "force-dynamic";
 
 function apiBase(): URL | null {
-    const raw = process.env.MEMERADAR_API_BASE_URL?.trim();
+    const raw = runtimeEnv("MEMERADAR_API_BASE_URL");
     if (!raw) return null;
     try {
       const base = new URL(raw);
@@ -18,7 +19,7 @@ function apiBase(): URL | null {
 
 export async function GET(request: NextRequest) {
   const base = apiBase();
-  const token = process.env.MEMERADAR_VIEWER_API_TOKEN?.trim();
+  const token = runtimeEnv("MEMERADAR_VIEWER_API_TOKEN");
   const provider = request.nextUrl.searchParams.get("provider")?.trim() ?? "";
   if (!base || !token) return NextResponse.json({ detail: "provider doctor is not configured" }, { status: 503 });
   if (!provider || provider.length > 128 || !/^[a-zA-Z0-9_.:-]+$/.test(provider)) {

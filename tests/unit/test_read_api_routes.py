@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.route_helpers import app_routes
 
 from memeradar_api.main import create_app
 from memeradar_application.config import Settings
@@ -276,7 +277,7 @@ def test_read_surface_is_get_only_and_never_reports_execution_authority() -> Non
     response = client.post(f"/v1/candidates/{candidate_id}")
 
     assert response.status_code == 405
-    for route in client.app.routes:
+    for route in app_routes(client.app):
         if getattr(route, "path", "").startswith("/v1/") and "GET" in getattr(
             route, "methods", set()
         ):
@@ -408,6 +409,24 @@ def test_gmgn_provider_projection_reports_runtime_configuration_truthfully() -> 
     assert configured_item["credential_state"] == "CONFIGURED"
     assert configured_item["state"] == "UNKNOWN"
     assert "server-only-secret" not in configured.text
+
+    healthy = TestClient(
+        create_app(
+            Settings.from_env(
+                {
+                    "GMGN_ENABLED": "true",
+                    "GMGN_API_KEY": "server-only-secret",
+                }
+            ),
+            read_service=InMemoryReadQueryService(provider_health=(healthy_health,)),
+        )
+    ).get("/v1/providers/health")
+    healthy_item = healthy.json()["items"][0]
+    assert healthy_item["enabled"] is True
+    assert healthy_item["configured"] is True
+    assert healthy_item["credential_state"] == "CONFIGURED"
+    assert healthy_item["state"] == "HEALTHY"
+    assert "server-only-secret" not in healthy.text
 
     healthy = TestClient(
         create_app(

@@ -157,3 +157,60 @@ def test_provider_health_default_composition_exposes_uncontacted_madeonsol() -> 
     assert {item["state"] for item in items} == {"UNKNOWN"}
     assert {item["credential_state"] for item in items} == {"CONFIGURED"}
     assert "test-only-key" not in response.text
+
+
+def test_gmgn_readiness_uses_unique_tokens_for_postgres_sample_gate() -> None:
+    database_url = os.environ.get("MEMERADAR_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("MEMERADAR_TEST_DATABASE_URL is not configured")
+    asyncio.run(_exercise_gmgn_polling(database_url))
+
+
+async def _exercise_gmgn_polling(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    source_prefix = f"gmgn-polling:{uuid4()}"
+    rows = [
+        ObservationRow(
+            id=uuid4(),
+            kind="market.snapshot",
+            provider="gmgn",
+            source_id=f"{source_prefix}:{index}",
+            occurred_at=None,
+            observed_at=NOW,
+            ingested_at=NOW,
+            parser_version="gmgn-openapi-v1",
+            quality_state="FRESH",
+            normalized_payload={
+                "evidence_origin": "REAL_EXTERNAL",
+                "collection_mode": "LIVE_SHADOW",
+                "chain": "solana",
+                "token_address": "So11111111111111111111111111111111111111112",
+            },
+        )
+        for index in range(100)
+    ]
+    try:
+        async with session_factory() as session:
+            session.add_all(rows)
+            await session.commit()
+
+        report = await SqlAlchemyReadQueryService(
+            engine,
+            clock=lambda: NOW,
+        ).get_gmgn_readiness()
+
+        assert report.real_observation_count == 100
+        assert report.unique_token_count == 1
+        assert report.unique_token_sample_count == 1
+        assert report.status == "INSUFFICIENT_SAMPLES"
+    finally:
+        async with session_factory() as session:
+            await session.execute(
+                delete(ObservationRow).where(
+                    ObservationRow.provider == "gmgn",
+                    ObservationRow.source_id.like(f"{source_prefix}:%"),
+                )
+            )
+            await session.commit()
+        await engine.dispose()

@@ -80,7 +80,7 @@ test("operator intelligence routes render server-side evidence boundaries", asyn
     ["/wallets", "Smart wallets"],
     ["/providers", "Provider health"],
     ["/settings", "Settings and controls"],
-    ["/readiness", "Production readiness"],
+    ["/readiness", "Operator readiness"],
     ["/audit", "Audit explorer"]
   ] as const;
 

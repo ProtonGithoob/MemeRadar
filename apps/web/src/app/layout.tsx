@@ -10,6 +10,8 @@ export const metadata: Metadata = {
   description: "Evidence-first multichain memecoin intelligence operator console"
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function RootLayout({
   children
 }: Readonly<{

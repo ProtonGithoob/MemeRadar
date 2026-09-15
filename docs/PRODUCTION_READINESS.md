@@ -8,6 +8,33 @@ Canonical spec: `docs/superpowers/specs/2026-09-07-real-alpha-production-readine
 
 Execution plan: `docs/superpowers/plans/2026-09-07-real-alpha-production-readiness.md`
 
+## 2026-09-15 closure checkpoint
+
+`PROD_READ_ONLY` is **not accepted**. The repository-controlled closure work
+is green locally, including fail-closed evidence policy, full-chain GMGN
+shadow isolation, production configuration validation, frontend production
+build/browser journeys, disposable PostgreSQL integration, backup/restore,
+rollback, and the bounded read-only soak. The exact evidence is in the
+[closure gap matrix](PROD_READ_ONLY_CLOSURE_GAP_MATRIX_2026-09-15.md).
+
+| Area | Current evidence | Status |
+|---|---|---|
+| Deterministic engineering | `make verify`: 1330 passed, 19 skipped, 7 warnings; frontend 23 files/80 tests; lint/typecheck/build/security checks pass | PASS |
+| PostgreSQL | PostgreSQL 16.14, migration head `0011_collection_checkpoints`, 19 integration tests passed, 28 public tables | PASS locally |
+| Runtime stack | API/web/worker/PostgreSQL/Redis production-like Compose stack healthy; auth and protected modes verified | PASS locally |
+| Evidence boundary | Only explicit `PRODUCTION` evidence reaches production projections; provider payloads cannot self-promote; shadow equality contract is green | PASS |
+| Real alpha evidence | GMGN real observations 0, unique token sample units 0, winner/rug labels unavailable | `INSUFFICIENT_SAMPLES` |
+| External production acceptance | Credentialed external providers, hosted Actions execution, branch protection, managed deployment/rollback, managed backup/restore and sustained managed soak unavailable | `BLOCKED_EXTERNAL` |
+| Overall read-only release | Local evidence is not a substitute for the unavailable hosted/managed gates | `PROD_READ_ONLY_NOT_ACCEPTED` |
+
+The current deterministic SBOM contains 582 components with digest
+`sha256:e63fadcc56b9461e192ae70e9bd01ba01dc6a4e223143ab71a09aca9875933aa`.
+Earlier 581-component SBOM references in this historical document are
+historical checkpoints, not the current candidate identity. Full npm audit
+has two moderate dev-only Vitest findings (`GHSA-82fw-gwwq-j7x9`); the
+production dependency graph has zero high/critical findings. No production
+scoring weight or protected mode changed.
+
 ## Staged target
 
 | Stage | Meaning | Current |

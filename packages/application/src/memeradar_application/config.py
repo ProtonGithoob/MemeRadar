@@ -317,6 +317,32 @@ class Settings:
             values,
             ("MEMERADAR_SOLANA_BACKFILL_URL", "SOLANA_RPC_BACKFILL_URL"),
         )
+        app_env = values.get("APP_ENV", "development").strip().lower() or "development"
+        database_url = _optional_value(values, "DATABASE_URL")
+        redis_url = _optional_value(values, "REDIS_URL")
+        require_database_for_readiness = _parse_bool(
+            "REQUIRE_DATABASE_FOR_READINESS",
+            values.get("REQUIRE_DATABASE_FOR_READINESS", "false"),
+        )
+        require_redis_for_readiness = _parse_bool(
+            "REQUIRE_REDIS_FOR_READINESS",
+            values.get("REQUIRE_REDIS_FOR_READINESS", "false"),
+        )
+        if app_env == "production":
+            if database_url is None:
+                raise ValueError("DATABASE_URL is required in production")
+            if redis_url is None:
+                raise ValueError("REDIS_URL is required in production")
+            if not require_database_for_readiness:
+                raise ValueError("REQUIRE_DATABASE_FOR_READINESS must be true in production")
+            if not require_redis_for_readiness:
+                raise ValueError("REQUIRE_REDIS_FOR_READINESS must be true in production")
+            for name in ("VIEWER_API_TOKEN", "OPERATOR_API_TOKEN", "ADMIN_API_TOKEN"):
+                token = role_tokens[name]
+                if token is None:
+                    raise ValueError(f"{name} is required in production")
+                if len(token) < 32:
+                    raise ValueError(f"{name} must contain at least 32 characters in production")
         enabled_chains = _chain_list(values, "ENABLED_CHAINS")
         bnb_chain_id = _parse_int("BNB_CHAIN_ID", values.get("BNB_CHAIN_ID", "56"), 1, 2**64 - 1)
         robinhood_chain_id = _parse_int(
@@ -328,21 +354,15 @@ class Settings:
         if robinhood_chain_id != 4663:
             raise ValueError("ROBINHOOD_CHAIN_ID is fixed at 4663")
         return cls(
-            app_env=values.get("APP_ENV", "development").strip() or "development",
+            app_env=app_env,
             log_level=values.get("LOG_LEVEL", "INFO").strip().upper() or "INFO",
             api_host=values.get("API_HOST", "127.0.0.1").strip() or "127.0.0.1",
             api_port=api_port,
             worker_poll_interval_seconds=poll_interval,
-            database_url=_optional_value(values, "DATABASE_URL"),
-            redis_url=_optional_value(values, "REDIS_URL"),
-            require_database_for_readiness=_parse_bool(
-                "REQUIRE_DATABASE_FOR_READINESS",
-                values.get("REQUIRE_DATABASE_FOR_READINESS", "false"),
-            ),
-            require_redis_for_readiness=_parse_bool(
-                "REQUIRE_REDIS_FOR_READINESS",
-                values.get("REQUIRE_REDIS_FOR_READINESS", "false"),
-            ),
+            database_url=database_url,
+            redis_url=redis_url,
+            require_database_for_readiness=require_database_for_readiness,
+            require_redis_for_readiness=require_redis_for_readiness,
             readiness_timeout_seconds=readiness_timeout,
             viewer_api_token=role_tokens["VIEWER_API_TOKEN"],
             operator_api_token=role_tokens["OPERATOR_API_TOKEN"],

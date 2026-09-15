@@ -1,5 +1,7 @@
 """Free-first provider configuration defaults and compatibility aliases."""
 
+import pytest
+
 from memeradar_application.config import Settings
 
 
@@ -95,3 +97,43 @@ def test_dynamic_settings_defaults_keep_optional_x_and_website_disabled() -> Non
     assert settings.x_provider_bearer_token is None
     assert settings.website_url is None
     assert settings.website_name is None
+
+
+def _production_environment() -> dict[str, str]:
+    return {
+        "APP_ENV": "production",
+        "DATABASE_URL": "postgresql://db.example/memeradar",
+        "REDIS_URL": "redis://redis.example/0",
+        "REQUIRE_DATABASE_FOR_READINESS": "true",
+        "REQUIRE_REDIS_FOR_READINESS": "true",
+        "VIEWER_API_TOKEN": "viewer-" + "a" * 40,
+        "OPERATOR_API_TOKEN": "operator-" + "b" * 40,
+        "ADMIN_API_TOKEN": "admin-" + "c" * 40,
+    }
+
+
+def test_production_settings_require_fail_closed_dependencies_and_role_tokens() -> None:
+    with pytest.raises(ValueError, match="DATABASE_URL is required"):
+        Settings.from_env({"APP_ENV": "production"})
+
+    values = _production_environment()
+    values["REQUIRE_REDIS_FOR_READINESS"] = "false"
+    with pytest.raises(ValueError, match="REQUIRE_REDIS_FOR_READINESS must be true"):
+        Settings.from_env(values)
+
+    values = _production_environment()
+    values["ADMIN_API_TOKEN"] = ""
+    with pytest.raises(ValueError, match="ADMIN_API_TOKEN is required"):
+        Settings.from_env(values)
+
+
+def test_production_settings_accept_strong_unique_read_only_configuration() -> None:
+    settings = Settings.from_env(_production_environment())
+
+    assert settings.app_env == "production"
+    assert settings.require_database_for_readiness is True
+    assert settings.require_redis_for_readiness is True
+    assert settings.analysis_only is True
+    assert settings.paper_trading is True
+    assert settings.manual_execution is False
+    assert settings.auto_execution is False

@@ -615,7 +615,7 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .settings-state-card small { color: var(--muted); font-size: 0.62rem; line-height: 1.45; }
 .settings-config { min-width: 0; }
 .settings-config__meta { display: flex; flex-wrap: wrap; gap: 6px 16px; }
-.settings-config__meta span, .settings-config__status > span { color: var(--muted); font-size: 0.62rem; }
+.settings-config__meta span, .settings-config__status > span { color: var(--muted); font-size: 0.62rem; min-width: 0; overflow-wrap: anywhere; }
 .settings-config__meta b { color: var(--faint); font-size: 0.54rem; letter-spacing: 0.1em; margin-right: 4px; }
 .settings-config__status { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .settings-field-list { display: grid; gap: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 14px 0 0; }
@@ -676,7 +676,7 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .permission-row strong { color: var(--accent); font-size: 0.64rem; letter-spacing: 0.08em; }
 .permission-row span { color: var(--muted); font-size: 0.68rem; line-height: 1.45; }
 
-.audit-card, .config-history-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.audit-card, .config-history-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; padding: 12px 14px; }
 .audit-card__heading { align-items: flex-start; display: flex; gap: 14px; justify-content: space-between; }
 .audit-card__heading > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .audit-card__heading strong { font-size: 0.74rem; overflow-wrap: anywhere; }
@@ -690,7 +690,7 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .audit-fields ul { display: grid; gap: 5px; list-style: none; margin: 8px 0 0; padding: 0; }
 .audit-fields li { align-items: baseline; display: flex; gap: 10px; justify-content: space-between; }
 .audit-fields code { color: var(--muted); font-size: 0.6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.audit-fields li > span { color: var(--ink); font-size: 0.64rem; font-weight: 700; }
+.audit-fields li > span { color: var(--ink); font-size: 0.64rem; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
 
 .operations-summary, .operations-counter-grid { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .operations-counter-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }

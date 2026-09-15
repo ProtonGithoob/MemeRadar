@@ -162,9 +162,9 @@ def create_app(
         )
     )
     if owned_read_service is not None:
-        app.add_event_handler("shutdown", owned_read_service.aclose)
+        app.router.add_event_handler("shutdown", owned_read_service.aclose)
     elif owned_engine is not None:
-        app.add_event_handler("shutdown", owned_engine.dispose)
+        app.router.add_event_handler("shutdown", owned_engine.dispose)
     return app
 
 
