@@ -41,6 +41,8 @@ three reviewed correctness boundaries and the remaining repository-controlled
 release defects without adding a provider-specific scorer, risk engine,
 lifecycle, execution path, wallet graph or alert pipeline.
 
+Implementation commit: `5a4d5e4ec167bea162ca4f2308f800c1e0dd4ed7`.
+
 ### Root-cause fixes
 
 - Evidence policy now allow-lists recognized collection modes and admits only
@@ -103,6 +105,11 @@ API HTTP 403 for the private repository plan, and managed production
 deployment/rollback, backup/restore, sustained soak, and external-provider
 credentials are not available. These exact results are recorded in the
 [closure gap matrix](PROD_READ_ONLY_CLOSURE_GAP_MATRIX_2026-09-15.md).
+
+The hosted CI run for the exact implementation SHA was `34964417900`. Backend,
+Frontend, Compose and Secret jobs failed at startup with zero steps and no
+runner; Release candidate identity was skipped with zero steps. This is
+classified `BLOCKED_EXTERNAL`, not a local test pass or code failure.
 
 ## 2026-09-14 external alpha intelligence integration
 

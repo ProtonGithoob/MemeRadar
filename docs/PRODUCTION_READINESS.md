@@ -27,6 +27,13 @@ rollback, and the bounded read-only soak. The exact evidence is in the
 | External production acceptance | Credentialed external providers, hosted Actions execution, branch protection, managed deployment/rollback, managed backup/restore and sustained managed soak unavailable | `BLOCKED_EXTERNAL` |
 | Overall read-only release | Local evidence is not a substitute for the unavailable hosted/managed gates | `PROD_READ_ONLY_NOT_ACCEPTED` |
 
+The hosted CI run for implementation SHA
+`5a4d5e4ec167bea162ca4f2308f800c1e0dd4ed7` was `34964417900`. Backend,
+Frontend, Compose and Secret jobs failed at startup with zero steps and no
+runner; Release candidate identity was skipped with zero steps. GitHub branch
+protection independently returns HTTP 403 because this private repository
+requires GitHub Pro or public visibility.
+
 The current deterministic SBOM contains 582 components with digest
 `sha256:e63fadcc56b9461e192ae70e9bd01ba01dc6a4e223143ab71a09aca9875933aa`.
 Earlier 581-component SBOM references in this historical document are
