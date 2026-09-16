@@ -282,9 +282,12 @@ projections, and realtime messages cannot mutate decisions, controls, modes or
 execution.
 
 Sprint 8.2 keeps Radar/detail reads on the server side. `MEMERADAR_API_BASE_URL`
-is preferred for internal server-to-API fetches, while the optional
+is preferred for internal server-to-API fetches, while
 `MEMERADAR_VIEWER_API_TOKEN` is read only by the gateway and sent only as a
-Bearer header. The web bundle and rendered markup receive neither credential.
+Bearer header. The production Compose contract derives that server-side web
+credential from the API `VIEWER_API_TOKEN`, so the gateway cannot hold an
+unrecognized token that the API would reject. The web bundle and rendered
+markup receive neither credential.
 The gateway rejects malformed or unbounded records, maps timeout/auth/
 unavailable/invalid responses without reading provider error bodies, and the
 detail view renders only bounded normalized fields and allow-listed numeric
@@ -409,10 +412,27 @@ checkout does not claim a complete production vulnerability scan.
 
 The API has no ambient browser session-cookie authority: operator access uses
 server-side bearer reads and role-scoped bearer authorization, compared in
-constant time and mapped to non-secret principals. GET-only browser reads do
-not introduce CSRF mutation authority; control mutations remain explicit,
-authenticated, RBAC-checked and audit-backed. Deployment TLS, token rotation,
-rate limiting and secret-manager policy remain operational responsibilities.
+constant time and mapped to non-secret principals. The Next.js
+`/api/control/runtime-settings` gateway is intentionally read-only: it loads
+only `MEMERADAR_VIEWER_API_TOKEN`, proxies only GET, and returns 403 for POST.
+It never treats browser reachability as operator authentication and never
+loads `MEMERADAR_ADMIN_API_TOKEN`. Direct API control mutations remain
+explicit, authenticated, RBAC-checked and audit-backed; no web mutation is
+enabled until a trusted operator session boundary exists. Deployment TLS,
+token rotation, rate limiting and secret-manager policy remain operational
+responsibilities.
+
+The runtime configuration vocabulary is fail-closed: `APP_ENV` is absent only
+for local development, or explicitly `development`/`production`; typos such as
+`prod` are rejected. API role credentials are API-owned. The worker receives no
+viewer/operator/admin/execution API credentials, and the production Compose
+override requires its DB, Redis, API-role and web-viewer inputs rather than
+using local passwords or URLs. The full frontend audit currently retains the
+bounded development-only `GHSA-82fw-gwwq-j7x9` moderate Vitest finding
+(CVSS 5.9; Vitest 3.2.7 and `@vitest/mocker`, fixed by the Vitest 5.0.1 major
+line); the shipped production dependency audit has zero vulnerabilities. The
+exception owner is the MemeRadar maintainers, review/expiry is 2026-12-15,
+and the upgrade target is a dedicated Vitest 5 migration.
 
 ## Threats to test
 

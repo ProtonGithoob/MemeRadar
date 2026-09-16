@@ -33,6 +33,95 @@ execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
 
+## 2026-09-15 paused root-cause hardening checkpoint
+
+Work was intentionally paused at the operator's request after the focused
+hardening regressions, before the final full-gate, commit and push phase. The
+starting synchronized candidate remains
+`f61070faac7a1b73fe686b0ce2870d3cb11cdc09`; all sprint changes below are
+currently uncommitted.
+
+Latest checkpoint evidence:
+
+```text
+focused hardening suite: 122 passed
+Compose contract suite: 29 passed
+production-build browser: 36 passed, 0 failed, 4 skipped
+development browser: 36 passed, 0 failed, 4 skipped
+production-like stack soak: 100 iterations, 500 requests, 0 errors, 0 readiness failures
+production-like stack soak: worker liveness PASS, 0 restarts, 0 duplicate-event delta
+production-like stack soak: execution_eligible=false, protected modes exact
+fresh disposable dependency outage/recovery drill: outage degraded, recovery PASS
+disposable backup/restore: backup and restore PASS; application read path exercised
+host backup wrapper: BLOCKED_EXTERNAL (pg_dump/pg_restore unavailable on host)
+real GMGN observations: 0
+sample status: INSUFFICIENT_SAMPLES
+GMGN live validation: BLOCKED_EXTERNAL / disabled without credentials
+```
+
+Two additional root causes were found and fixed after the previous checkpoint:
+local Compose now derives the API database URL from the same
+`POSTGRES_PASSWORD` source as the Postgres service, and the production web
+container derives its server-side viewer credential from the API
+`VIEWER_API_TOKEN` so SSR reads cannot use an unrecognized token. The backup
+drill now invokes the existing SQL read service against the restored database
+instead of asserting `application_read` without exercising it.
+
+The remaining resume sequence is: rerun the full current verification matrix
+after these final edits; rebuild API/worker/web images and generate the final
+release identity; update the gap matrix and readiness documents with final
+SHAs/artifact digests; audit the diff; commit and push; then recheck
+`HEAD == origin/main`. Hosted Actions execution, branch-protection API access,
+managed secrets/hosting/backup/rollback/soak, and credentialed Helius/GMGN/
+Telegram/stream acceptance remain external blockers.
+
+## 2026-09-15 root-cause production hardening
+
+The hardening candidate starts from synchronized `f61070faac7a1b73fe686b0ce2870d3cb11cdc09`.
+It closes repository-controlled confused-deputy, environment fail-open,
+production secret fallback, worker least-privilege, provider-capability,
+evidence-isolation, CI-parity, soak-semantics, legacy-mode and release-image
+identity gaps. No production score/risk weight, protected mode, execution
+path, provider-specific scorer, duplicate lifecycle, wallet graph or alert
+pipeline was added. The implementation commit is pending final verification;
+the gap matrix records the before/after evidence.
+
+### Current evidence
+
+```text
+full Python suite: 1344 passed, 19 skipped, 7 warnings
+frontend unit suite: 24 files, 83 tests passed
+frontend browser development: 36 passed, 0 failed, 4 skipped
+frontend browser production build/container: 36 passed, 0 failed, 4 skipped
+PostgreSQL integration: 19 passed, 2 warnings on disposable PostgreSQL 16.14
+migrations: head 0011_collection_checkpoints, 27 metadata / 28 public tables
+production stack soak: 100 iterations, 500 requests, 0 errors, 0 readiness failures
+real GMGN observations: 0
+unique GMGN tokens: 0
+independent/unique-token sample units: 0
+winner labels: null
+rug labels: null
+first/last real observation: null / null
+sample status: INSUFFICIENT_SAMPLES
+GMGN live validation: BLOCKED_EXTERNAL / disabled without credentials
+```
+
+The local production-like stack was deployed with the production Compose
+override and safe local-only credentials. `/health/live`, dependency readiness,
+viewer-authenticated operations/provider/readiness views, execution lock and
+protected modes were verified. A dependency outage/recovery drill passed.
+The repository backup wrapper correctly reports `BLOCKED_EXTERNAL` because
+the host lacks `pg_dump`/`pg_restore`; the Docker-native disposable drill
+created a 70,038-byte custom dump, restored it successfully, and proved
+application reads. This is not relabeled as a wrapper PASS.
+
+Current external blockers remain hosted Actions runner/billing availability,
+GitHub branch-protection API access (HTTP 403), managed secret injection and
+deployment/rollback, managed backup scheduling/RPO/RTO, sustained managed
+soak, and credentialed Helius/GMGN/Telegram/stream acceptance. Full npm audit
+has only the documented moderate dev-only Vitest finding
+`GHSA-82fw-gwwq-j7x9`; the production graph has zero vulnerabilities.
+
 ## 2026-09-15 final PROD_READ_ONLY closure sprint
 
 The synchronized baseline was `4de20300c064ce903ecd482bd52a12ccf7a23114`

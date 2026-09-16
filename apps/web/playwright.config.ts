@@ -5,7 +5,6 @@ const externalServer = Boolean(process.env.MEMERADAR_E2E_BASE_URL);
 const executablePath = process.env.MEMERADAR_E2E_EXECUTABLE_PATH;
 const apiBase = process.env.MEMERADAR_E2E_API_BASE_URL ?? process.env.MEMERADAR_API_BASE_URL ?? "";
 const viewerToken = process.env.MEMERADAR_E2E_VIEWER_API_TOKEN ?? process.env.MEMERADAR_VIEWER_API_TOKEN ?? "";
-const adminToken = process.env.MEMERADAR_E2E_ADMIN_API_TOKEN ?? process.env.MEMERADAR_ADMIN_API_TOKEN ?? "";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -35,8 +34,7 @@ export default defineConfig({
           timeout: 120_000,
           env: {
             MEMERADAR_API_BASE_URL: apiBase,
-            MEMERADAR_VIEWER_API_TOKEN: viewerToken,
-            MEMERADAR_ADMIN_API_TOKEN: adminToken
+            MEMERADAR_VIEWER_API_TOKEN: viewerToken
           }
         }
       })

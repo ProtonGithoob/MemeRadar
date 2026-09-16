@@ -28,6 +28,18 @@ RELIABILITY_OUTPUT ?=
 SOAK_ITERATIONS ?= 1000
 SOAK_EXPECTED_RATE ?= 100
 SOAK_OUTPUT ?=
+STACK_SOAK_ITERATIONS ?= 100
+STACK_SOAK_INTERVAL_SECONDS ?= 1
+STACK_SOAK_OUTPUT ?=
+STACK_API_BASE_URL ?= http://127.0.0.1:18000
+STACK_CONTAINER_NAMES ?=
+RELEASE_IMAGE_TAG ?= memeradar-$(shell git rev-parse --short HEAD)
+RELEASE_API_IMAGE ?= memeradar-api:$(RELEASE_IMAGE_TAG)
+RELEASE_WORKER_IMAGE ?= memeradar-worker:$(RELEASE_IMAGE_TAG)
+RELEASE_WEB_IMAGE ?= memeradar-web:$(RELEASE_IMAGE_TAG)
+PRODUCTION_COMPOSE_FILE ?= infra/compose/docker-compose.prod.yml
+BACKUP_FILE ?= artifacts/memeradar-backup-restore-drill.dump
+BACKUP_RESTORE_OUTPUT ?=
 EARLY_DETECTION_ITERATIONS ?= 100
 EARLY_DETECTION_OUTPUT ?=
 SBOM_OUTPUT ?=
@@ -39,8 +51,8 @@ SBOM_OUTPUT ?=
 	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
 	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-	backtest-replay opportunity-research historical-dataset alpha-readiness calibrate-score winner-vs-rug-optimizer reliability-benchmark production-soak early-detection-benchmark early-live-doctor reliability-doctor \
-	security-review security-review-external sbom release-identity shadow-start shadow-status
+	backtest-replay opportunity-research historical-dataset alpha-readiness calibrate-score winner-vs-rug-optimizer reliability-benchmark synthetic-reliability-benchmark production-soak production-stack-smoke early-detection-benchmark early-live-doctor reliability-doctor \
+	security-review security-review-external sbom release-identity compose-prod-config production-images production-build-e2e production-dependency-drill backup-restore-drill shadow-start shadow-status
 
 
 bootstrap:
@@ -95,10 +107,35 @@ reliability-benchmark:
 	$(PYTHON) scripts/reliability_benchmark.py --iterations $(RELIABILITY_ITERATIONS) \
 		$(if $(RELIABILITY_OUTPUT),--output $(RELIABILITY_OUTPUT),)
 
+synthetic-reliability-benchmark:
+	$(MAKE) reliability-benchmark
+
 production-soak:
-	$(PYTHON) scripts/reliability_benchmark.py --production-soak \
-		--iterations $(SOAK_ITERATIONS) --expected-rate $(SOAK_EXPECTED_RATE) \
-		$(if $(SOAK_OUTPUT),--output $(SOAK_OUTPUT),)
+	MEMERADAR_STACK_API_BASE_URL="$(STACK_API_BASE_URL)" \
+	MEMERADAR_STACK_CONTAINER_NAMES="$(STACK_CONTAINER_NAMES)" \
+		$(PYTHON) scripts/production_stack_soak.py --iterations $(STACK_SOAK_ITERATIONS) \
+		--interval-seconds $(STACK_SOAK_INTERVAL_SECONDS) \
+		$(if $(STACK_SOAK_OUTPUT),--output $(STACK_SOAK_OUTPUT),)
+
+production-stack-smoke:
+	$(MAKE) production-soak STACK_SOAK_ITERATIONS=1 STACK_SOAK_INTERVAL_SECONDS=0 \
+		STACK_SOAK_OUTPUT="$(STACK_SOAK_OUTPUT)"
+
+production-build-e2e:
+	@if [[ -z "$${MEMERADAR_E2E_BASE_URL:-}" ]]; then \
+		echo "MEMERADAR_E2E_BASE_URL is required for production-build-e2e."; exit 2; \
+	fi
+	$(MAKE) frontend-e2e
+
+production-dependency-drill:
+	@set -o pipefail; \
+	trap '$(COMPOSE) start postgres redis >/dev/null 2>&1 || true' EXIT; \
+	$(COMPOSE) stop postgres redis; \
+	set +e; $(MAKE) production-stack-smoke; stopped_status=$$?; set -e; \
+	test $$stopped_status -ne 0; \
+	$(COMPOSE) start postgres redis >/dev/null; \
+	$(COMPOSE) up -d --wait api worker >/dev/null; \
+	$(MAKE) production-stack-smoke
 
 early-detection-benchmark:
 	$(PYTHON) scripts/early_detection_benchmark.py --iterations $(EARLY_DETECTION_ITERATIONS) \
@@ -128,6 +165,9 @@ frontend-security-audit:
 compose-config:
 	$(COMPOSE) config --quiet
 
+compose-prod-config:
+	docker compose -f $(COMPOSE_FILE) -f $(PRODUCTION_COMPOSE_FILE) config --quiet
+
 secret-scan:
 	$(PYTHON) scripts/secret_scan.py
 
@@ -141,7 +181,21 @@ sbom:
 	$(PYTHON) scripts/sbom.py --check $(if $(SBOM_OUTPUT),--output $(SBOM_OUTPUT),)
 
 release-identity:
-	$(PYTHON) scripts/release_identity.py $(if $(RELEASE_IDENTITY_OUTPUT),--output $(RELEASE_IDENTITY_OUTPUT),)
+	RELEASE_API_IMAGE="$(RELEASE_API_IMAGE)" \
+	RELEASE_WORKER_IMAGE="$(RELEASE_WORKER_IMAGE)" \
+	RELEASE_WEB_IMAGE="$(RELEASE_WEB_IMAGE)" \
+		$(PYTHON) scripts/release_identity.py $(if $(RELEASE_IDENTITY_OUTPUT),--output $(RELEASE_IDENTITY_OUTPUT),)
+
+production-images:
+	docker build -q -f infra/docker/api.Dockerfile -t "$(RELEASE_API_IMAGE)" .
+	docker build -q -f infra/docker/worker.Dockerfile -t "$(RELEASE_WORKER_IMAGE)" .
+	docker build -q -f infra/docker/web.Dockerfile -t "$(RELEASE_WEB_IMAGE)" .
+
+backup-restore-drill:
+	MEMERADAR_BACKUP_SOURCE_URL="$${MEMERADAR_BACKUP_SOURCE_URL:?set source URL}" \
+	MEMERADAR_BACKUP_RESTORE_URL="$${MEMERADAR_BACKUP_RESTORE_URL:?set disposable restore URL}" \
+		$(PYTHON) scripts/backup_restore_drill.py --backup-file "$(BACKUP_FILE)" \
+		$(if $(BACKUP_RESTORE_OUTPUT),--output "$(BACKUP_RESTORE_OUTPUT)",)
 
 migration-check:
 	$(PYTHON) scripts/check_migrations.py
@@ -155,7 +209,7 @@ integration-test:
 
 verify: lint typecheck test frontend-css-contract frontend-lint frontend-typecheck frontend-test compose-config secret-scan migration-check security-review sbom
 
-deterministic-release-gates: verify frontend-build frontend-security-audit release-identity
+deterministic-release-gates: verify frontend-build frontend-security-audit compose-prod-config production-images release-identity
 
 prod-read-only-verify: deterministic-release-gates
 	@if [[ -z "$${MEMERADAR_TEST_DATABASE_URL:-}" ]]; then \

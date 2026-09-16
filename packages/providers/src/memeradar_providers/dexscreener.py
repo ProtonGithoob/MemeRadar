@@ -919,6 +919,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
                             "mint_address": token.address,
                             "chain": chain.value,
                             "coverage_state": "UNKNOWN",
+                            "collection_mode": "PRODUCTION",
                             "pair_address": None,
                             "liquidity_usd": None,
                             "price_usd": None,
@@ -947,6 +948,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
                     quality_state=quality,
                     normalized_payload={
                         **self._market_payload(pair, token.address),
+                        "collection_mode": "PRODUCTION",
                         "event_time_quality": (
                             "EXACT" if pair.pair_created_at is not None else "UNKNOWN"
                         ),

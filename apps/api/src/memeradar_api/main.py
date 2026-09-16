@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.responses import Response
 
-from memeradar_application.config import Settings
+from memeradar_application.config import Settings, validate_api_runtime
 from memeradar_application.control import (
     DEFAULT_CONTROL_CONFIG,
     ControlPlanePort,
@@ -56,6 +56,7 @@ def create_app(
     operations_service: OperationsReadPort | None = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings.from_env()
+    validate_api_runtime(runtime_settings)
     configure_logging(runtime_settings.log_level)
     app = FastAPI(title="MemeRadar API", version=__version__)
     app.state.settings = runtime_settings

@@ -6,9 +6,6 @@ const hasApi = Boolean(
 const hasViewerAuth = Boolean(
   (process.env.MEMERADAR_E2E_VIEWER_API_TOKEN ?? process.env.MEMERADAR_VIEWER_API_TOKEN)?.trim()
 );
-const hasAdminAuth = Boolean(
-  (process.env.MEMERADAR_E2E_ADMIN_API_TOKEN ?? process.env.MEMERADAR_ADMIN_API_TOKEN)?.trim()
-);
 const authenticatedRead = hasApi && hasViewerAuth;
 
 async function expectProtectedShell(page: Page) {
@@ -43,11 +40,7 @@ test("settings and chain opportunity surfaces preserve evidence boundaries", asy
     await expect(page.getByRole("heading", { name: "Runtime configuration" })).toBeVisible();
     await expect(page.getByRole("tablist", { name: "Runtime setting categories" })).toBeVisible();
     await expect(page.getByRole("tab").first()).toBeVisible();
-    if (hasAdminAuth) {
-      await expect(page.getByRole("button", { name: "SAVE CHANGED SETTINGS" })).toBeVisible();
-    } else {
-      await expect(page.getByRole("button", { name: "SAVE CHANGED SETTINGS" })).toHaveCount(0);
-    }
+    await expect(page.getByRole("button", { name: "SAVE CHANGED SETTINGS" })).toHaveCount(0);
   } else {
     await expect(page.getByText(/RUNTIME SETTINGS (NOT CONFIGURED|AUTHORIZATION UNAVAILABLE|UNAVAILABLE)/)).toBeVisible();
     await expect(page.getByRole("button", { name: "SAVE CHANGED SETTINGS" })).toHaveCount(0);
@@ -114,25 +107,12 @@ test("missing server credentials remain an explicit acceptance failure state", a
   await expect(page.locator("body")).not.toContainText(/MEMERADAR_[A-Z_]+TOKEN|private_key|runtime-provider-secret/i);
 });
 
-test("authenticated admin settings mutation journey is available through server configuration", async ({ page }, testInfo) => {
-  test.skip(!hasAdminAuth || !authenticatedRead, "test-only admin and viewer credentials are not configured");
-  test.skip(testInfo.project.name !== "desktop", "run the stateful mutation once; other viewports cover the form");
+test("authenticated browser cannot obtain settings mutation authority", async ({ page }) => {
+  test.skip(!authenticatedRead, "test-only viewer credentials are not configured");
   const response = await page.goto("/settings");
   expect(response?.status()).toBe(200);
-  await expect(page.getByRole("button", { name: "SAVE CHANGED SETTINGS" })).toBeVisible();
-  await expect(page.getByLabel("Audit reason")).toBeVisible();
-  await page.getByRole("tab", { name: "ALERTS" }).click();
-  const alertLimit = page.getByLabel("ALERT MAX MESSAGES PER WINDOW");
-  const current = Number(await alertLimit.inputValue());
-  const updated = String(current >= 1000 ? current - 1 : current + 1);
-  await alertLimit.fill(updated);
-  await page.getByLabel("Audit reason").fill("browser acceptance runtime settings");
-  const mutation = page.waitForResponse((result) =>
-    result.url().endsWith("/api/control/runtime-settings") && result.request().method() === "POST"
-  );
-  await page.getByRole("button", { name: "SAVE CHANGED SETTINGS" }).click();
-  expect((await mutation).status()).toBe(200);
-  await expect(page.getByLabel("ALERT MAX MESSAGES PER WINDOW")).toHaveValue(updated);
+  await expect(page.getByRole("button", { name: "SAVE CHANGED SETTINGS" })).toHaveCount(0);
+  await expect(page.getByText("BOUNDARY", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/MEMERADAR_[A-Z_]+TOKEN|private_key|runtime-provider-secret/i);
 });
 

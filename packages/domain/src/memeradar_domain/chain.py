@@ -744,6 +744,7 @@ class NormalizedChainEvent:
         payload = dict(self.normalized_payload)
         payload.update(
             {
+                "collection_mode": "PRODUCTION",
                 "chain": chain.value,
                 "slot": self.slot,
                 "signature": self.signature,

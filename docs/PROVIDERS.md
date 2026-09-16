@@ -58,6 +58,14 @@ provider error; an unsupported capability is not silently converted into an
 unrelated provider result. Normalized observations and quotes retain provider,
 chain, token/pair identity, timestamps, freshness and provenance.
 
+Runtime capability policy is canonical across settings, composition, provider
+metadata, doctors and readiness. The default enabled chains are `solana` and
+`robinhood`; BNB is not enabled unless `BNB_RPC_URL` supplies its canonical
+read transport. Helius is an optional enhanced Solana capability over the
+public RPC and its absence does not make the minimum Solana path unhealthy.
+Disabled, unconfigured, unknown, degraded and healthy provider states remain
+distinct in operator projections.
+
 ### Research-only wallet, social and Robinhood extensions
 
 The optional `ExternalWalletEventStreamAdapter` accepts an injected

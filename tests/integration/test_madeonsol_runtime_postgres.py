@@ -109,6 +109,7 @@ async def _exercise(database_url: str, monkeypatch) -> None:
         {
             "DATABASE_URL": database_url,
             "ENABLED_CHAINS": "solana,bnb,robinhood",
+            "BNB_RPC_URL": "https://fixture.bnb.example/rpc",
             "MADEONSOL_ENABLED": "true",
             "MADEONSOL_API_KEY": "test-only-key",
             "MADEONSOL_BASE_URL": "https://madeonsol.example.test/api/v1",

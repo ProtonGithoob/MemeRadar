@@ -88,6 +88,7 @@ def test_madeonsol_shadow_uses_the_optional_generic_worker_gate() -> None:
         {
             "DATABASE_URL": "sqlite+aiosqlite:///./memeradar-test.db",
             "ENABLED_CHAINS": "solana,bnb,robinhood",
+            "BNB_RPC_URL": "https://fixture.bnb.example/rpc",
             "MADEONSOL_ENABLED": "true",
             "MADEONSOL_API_KEY": "test-only-key",
         }
@@ -101,6 +102,7 @@ def test_gmgn_shadow_requires_explicit_read_only_configuration() -> None:
         {
             "DATABASE_URL": "sqlite+aiosqlite:///./memeradar-test.db",
             "ENABLED_CHAINS": "solana,bnb",
+            "BNB_RPC_URL": "https://fixture.bnb.example/rpc",
             "GMGN_ENABLED": "true",
             "GMGN_API_KEY": "test-only-key",
         }
@@ -210,6 +212,7 @@ def test_madeonsol_shadow_worker_round_trip_uses_generic_collector(monkeypatch) 
         {
             "DATABASE_URL": "sqlite+aiosqlite:///./memeradar-test.db",
             "ENABLED_CHAINS": "solana,bnb,robinhood",
+            "BNB_RPC_URL": "https://fixture.bnb.example/rpc",
             "MADEONSOL_ENABLED": "true",
             "MADEONSOL_API_KEY": "test-only-key",
         }

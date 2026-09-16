@@ -417,6 +417,7 @@ class EvmRpcAdapter(OnChainPort):
                 "chain": self.chain.value,
                 "address": normalized_address,
                 "balance_wei": balance_wei,
+                "collection_mode": "PRODUCTION",
             },
         )
 

@@ -768,6 +768,7 @@ class HeliusRpcAdapter(OnChainPort):
                 "supply": None if metadata.supply is None else str(metadata.supply),
                 "token_extensions": metadata.extensions,
                 "token_extensions_reported": metadata.extensions_reported,
+                "collection_mode": "PRODUCTION",
             },
             token_id=metadata.token.id,
         )
@@ -786,6 +787,7 @@ class HeliusRpcAdapter(OnChainPort):
                 "owner": account.owner,
                 "lamports": account.lamports,
                 "executable": account.executable,
+                "collection_mode": "PRODUCTION",
             },
         )
 
@@ -806,6 +808,7 @@ class HeliusRpcAdapter(OnChainPort):
                 ),
                 "success": transaction.success,
                 "account_keys": transaction.account_keys,
+                "collection_mode": "PRODUCTION",
             },
         )
 

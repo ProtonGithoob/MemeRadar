@@ -26,6 +26,7 @@ The release identity records only safe metadata:
 - Alembic migration heads and metadata table count;
 - deterministic runtime configuration hash;
 - SBOM schema, component count and digest;
+- immutable API, worker and web image IDs/digests when images have been built;
 - the exact protected modes.
 
 The GitHub workflow runs the backend, frontend, Compose and secret gates on
@@ -38,6 +39,19 @@ remote-CI acceptance; local `make verify` is not a substitute.
 Provider doctors and real historical/live-shadow evidence remain separate
 gates. Missing external access is recorded as `BLOCKED_EXTERNAL` or
 `INSUFFICIENT_SAMPLES`, never converted into release or alpha success.
+
+Build and bind the deployable artifacts before a production-like release:
+
+```bash
+make compose-prod-config
+make production-images
+make release-identity RELEASE_IDENTITY_OUTPUT=artifacts/release-identity.json
+```
+
+The image identity is `BOUND` only when all three API/worker/web image
+identities are supplied or discovered from Docker; mutable tags alone are not
+release identity. Hosted CI performs the same image-build and release-identity
+handoff after deterministic backend, frontend, Compose and secret gates.
 
 The Makefile keeps the existing `verify` target deterministic and exposes the
 broader closure boundary separately:

@@ -21,7 +21,7 @@ class ProviderMetadata:
 
 _REGISTRY: dict[str, ProviderMetadata] = {
     "helius": ProviderMetadata(
-        "helius", "Helius", ("solana",), ("chain_events", "market_data"), True, True,
+        "helius", "Helius", ("solana",), ("chain_events", "market_data"), False, True,
         ("helius_api_key", "helius_rpc_url"), "UNKNOWN", "UNKNOWN", 0,
     ),
     "solana-public-rpc": ProviderMetadata(
@@ -135,6 +135,12 @@ _RUNTIME_CONFIGURATION_FIELDS = {
     "madeonsol-robinhood": ("madeonsol_enabled", "madeonsol_api_key", "madeonsol_base_url"),
     "gmgn": ("gmgn_enabled", "gmgn_api_key", "gmgn_base_url"),
 }
+_CHAIN_RUNTIME_PROVIDERS = {
+    "solana-public-rpc": ("solana", "solana_rpc_url"),
+    "evm-public-rpc:bnb": ("bnb", "bnb_rpc_url"),
+    "evm-public-rpc:robinhood": ("robinhood", "robinhood_rpc_url"),
+    "robinhood": ("robinhood", "robinhood_rpc_url"),
+}
 
 
 def provider_metadata(provider: str, capability: str) -> ProviderMetadata:
@@ -165,6 +171,32 @@ def provider_metadata_for_settings(
     """Project optional-provider metadata from canonical runtime settings."""
 
     metadata = provider_metadata(provider, capability)
+    chain_runtime = _CHAIN_RUNTIME_PROVIDERS.get(provider)
+    if chain_runtime is not None and settings is not None:
+        chain, endpoint_name = chain_runtime
+        enabled_chains = getattr(settings, "enabled_chains", ())
+        enabled = chain in enabled_chains and bool(getattr(settings, endpoint_name, None))
+        return replace(
+            metadata,
+            enabled=enabled,
+            required=metadata.required and enabled,
+            credential_state="CONFIGURED" if enabled else "DISABLED",
+            endpoint_state="CONFIGURED" if enabled else "DISABLED",
+        )
+    if provider == "helius" and settings is not None:
+        api_key = getattr(settings, "helius_api_key", None)
+        endpoint = getattr(settings, "helius_rpc_url", None)
+        if api_key or endpoint:
+            return replace(
+                metadata,
+                credential_state="CONFIGURED" if api_key else "NOT_CONFIGURED",
+                endpoint_state=(
+                    "CONFIGURED"
+                    if isinstance(endpoint, str)
+                    and endpoint.lower().startswith(("http://", "https://"))
+                    else "NOT_CONFIGURED"
+                ),
+            )
     fields = _RUNTIME_CONFIGURATION_FIELDS.get(provider)
     if fields is None or settings is None:
         return metadata

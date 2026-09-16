@@ -35,11 +35,34 @@ def test_release_identity_is_reproducible_and_binds_existing_release_inputs() ->
     }
 
 
+def test_release_identity_binds_immutable_service_artifacts() -> None:
+    identity = build_release_identity(
+        ROOT,
+        image_digests={
+            "api": "sha256:" + "a" * 64,
+            "worker": "sha256:" + "b" * 64,
+            "web": "sha256:" + "c" * 64,
+        },
+    )
+
+    assert identity["images"] == {
+        "api": {"digest": "sha256:" + "a" * 64},
+        "worker": {"digest": "sha256:" + "b" * 64},
+        "web": {"digest": "sha256:" + "c" * 64},
+    }
+
+
 def test_ci_gates_and_publishes_the_release_identity_artifact() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "release-identity" in workflow
-    assert "needs: [backend, frontend, compose, secret-scan]" in workflow
+    assert "needs: [backend, frontend, compose, secret-scan, container-build]" in workflow
+    assert "npm audit --omit=dev --audit-level=high" in workflow
+    assert "MEMERADAR_TEST_DATABASE_URL" in workflow
+    assert "postgres:16" in workflow
+    assert "scripts/check_frontend_css.py" in workflow
+    assert "npm audit --audit-level=high" in workflow
+    assert "Docker image" in workflow
     assert "scripts/release_identity.py --output artifacts/release-identity.json" in workflow
     assert "actions/upload-artifact@v4" in workflow
     assert "release-candidate" in workflow

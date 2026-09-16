@@ -15,6 +15,7 @@ from types import MappingProxyType
 from memeradar_domain import Observation
 from memeradar_domain.common import normalize_texts, require_text
 
+from .evidence_policy import LEGACY_MISSING_COLLECTION_MODE_CUTOFF
 from .opportunity_research import OpportunityResearchAnalyzer, OpportunityResearchSample
 
 HISTORICAL_DATASET_SCHEMA_VERSION = 1
@@ -46,7 +47,7 @@ def _is_real_external_observation(item: Observation) -> bool:
     if origin != MADEONSOL_REAL_EVIDENCE_CLASS:
         return False
     mode = payload.get(COLLECTION_MODE_FIELD)
-    return mode is None or (
+    return (mode is None and item.ingested_at < LEGACY_MISSING_COLLECTION_MODE_CUTOFF) or (
         isinstance(mode, str)
         and mode.strip().upper() in REAL_EVIDENCE_COLLECTION_MODES
     )

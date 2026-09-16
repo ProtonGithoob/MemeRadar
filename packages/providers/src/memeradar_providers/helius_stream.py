@@ -238,6 +238,7 @@ class HeliusObservationNormalizer:
         normalized_payload["source_id"] = source_id
         normalized_payload["normalized_kind"] = kind
         normalized_payload["activity_kind"] = _activity_kind(message)
+        normalized_payload["collection_mode"] = "PRODUCTION"
         provenance = Provenance(
             provider=HELIUS_PROVIDER,
             source_id=source_id,

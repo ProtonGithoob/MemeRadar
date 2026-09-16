@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: memeradar
       POSTGRES_USER: memeradar
-      POSTGRES_PASSWORD: memeradar_local_only
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-memeradar_local_only}
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
     volumes:
@@ -38,14 +38,20 @@ services:
       APP_ENV: ${APP_ENV:-development}
       API_HOST: 0.0.0.0
       API_PORT: "8000"
-      DATABASE_URL: ${DATABASE_URL:-postgresql://memeradar:memeradar_local_only@postgres:5432/memeradar}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://memeradar:${POSTGRES_PASSWORD:-memeradar_local_only}@postgres:5432/memeradar}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       REQUIRE_DATABASE_FOR_READINESS: ${REQUIRE_DATABASE_FOR_READINESS:-true}
       REQUIRE_REDIS_FOR_READINESS: ${REQUIRE_REDIS_FOR_READINESS:-true}
+      ENABLED_CHAINS: ${ENABLED_CHAINS:-solana,robinhood}
+      BNB_RPC_URL: ${BNB_RPC_URL:-}
+      BNB_RPC_FALLBACK_URL: ${BNB_RPC_FALLBACK_URL:-}
+      BNB_CHAIN_ID: ${BNB_CHAIN_ID:-56}
+      ROBINHOOD_RPC_URL: ${ROBINHOOD_RPC_URL:-https://rpc.mainnet.chain.robinhood.com}
+      ROBINHOOD_RPC_FALLBACK_URL: ${ROBINHOOD_RPC_FALLBACK_URL:-}
+      ROBINHOOD_CHAIN_ID: ${ROBINHOOD_CHAIN_ID:-4663}
       VIEWER_API_TOKEN: ${VIEWER_API_TOKEN:-}
       OPERATOR_API_TOKEN: ${OPERATOR_API_TOKEN:-}
       ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
-      EXECUTION_API_TOKEN: ${EXECUTION_API_TOKEN:-}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
       HELIUS_RPC_URL: ${HELIUS_RPC_URL:-}
       HELIUS_API_KEY: ${HELIUS_API_KEY:-}
@@ -116,14 +122,17 @@ services:
       dockerfile: infra/docker/worker.Dockerfile
     environment:
       APP_ENV: ${APP_ENV:-development}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://memeradar:memeradar_local_only@postgres:5432/memeradar}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://memeradar:${POSTGRES_PASSWORD:-memeradar_local_only}@postgres:5432/memeradar}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       REQUIRE_DATABASE_FOR_READINESS: ${REQUIRE_DATABASE_FOR_READINESS:-true}
       REQUIRE_REDIS_FOR_READINESS: ${REQUIRE_REDIS_FOR_READINESS:-true}
-      VIEWER_API_TOKEN: ${VIEWER_API_TOKEN:-}
-      OPERATOR_API_TOKEN: ${OPERATOR_API_TOKEN:-}
-      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
-      EXECUTION_API_TOKEN: ${EXECUTION_API_TOKEN:-}
+      ENABLED_CHAINS: ${ENABLED_CHAINS:-solana,robinhood}
+      BNB_RPC_URL: ${BNB_RPC_URL:-}
+      BNB_RPC_FALLBACK_URL: ${BNB_RPC_FALLBACK_URL:-}
+      BNB_CHAIN_ID: ${BNB_CHAIN_ID:-56}
+      ROBINHOOD_RPC_URL: ${ROBINHOOD_RPC_URL:-https://rpc.mainnet.chain.robinhood.com}
+      ROBINHOOD_RPC_FALLBACK_URL: ${ROBINHOOD_RPC_FALLBACK_URL:-}
+      ROBINHOOD_CHAIN_ID: ${ROBINHOOD_CHAIN_ID:-4663}
       SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet.solana.com}
       HELIUS_RPC_URL: ${HELIUS_RPC_URL:-}
       HELIUS_API_KEY: ${HELIUS_API_KEY:-}
@@ -184,8 +193,7 @@ services:
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_HOST_PORT:-18000}
       MEMERADAR_API_BASE_URL: ${MEMERADAR_API_BASE_URL:-http://api:8000}
-      MEMERADAR_VIEWER_API_TOKEN: ${MEMERADAR_VIEWER_API_TOKEN:-}
-      MEMERADAR_ADMIN_API_TOKEN: ${MEMERADAR_ADMIN_API_TOKEN:-}
+      MEMERADAR_VIEWER_API_TOKEN: ${MEMERADAR_VIEWER_API_TOKEN:-${VIEWER_API_TOKEN:-}}
     ports:
       - "127.0.0.1:${WEB_HOST_PORT:-13000}:3000"
     depends_on:

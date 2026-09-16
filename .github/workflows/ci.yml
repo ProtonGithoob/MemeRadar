@@ -11,8 +11,25 @@ permissions:
 
 jobs:
   backend:
-    name: Backend quality
+    name: DETERMINISTIC_RELEASE_GATES / Backend quality
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: memeradar
+          POSTGRES_USER: memeradar_ci
+          POSTGRES_PASSWORD: memeradar_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U memeradar_ci -d memeradar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://memeradar_ci:memeradar_ci_password@localhost:5432/memeradar
+      MEMERADAR_TEST_DATABASE_URL: postgresql+asyncpg://memeradar_ci:memeradar_ci_password@localhost:5432/memeradar
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -32,15 +49,21 @@ jobs:
         run: python -m mypy
       - name: Test
         run: python -m pytest -q --cov=apps --cov=packages --cov-report=term-missing
+      - name: Frontend CSS contract
+        run: python scripts/check_frontend_css.py
       - name: Migration check
         run: make migration-check PYTHON=python3
+      - name: Migration upgrade
+        run: python -m alembic -c alembic.ini upgrade head
+      - name: PostgreSQL integration acceptance
+        run: make integration-test PYTHON=python3
       - name: Keyless security review
         run: make security-review PYTHON=python3
       - name: Deterministic SBOM
         run: make sbom PYTHON=python3
 
   frontend:
-    name: Frontend quality
+    name: DETERMINISTIC_RELEASE_GATES / Frontend quality
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -62,19 +85,57 @@ jobs:
         run: npm run typecheck
       - name: Unit test
         run: npm run test
+      - name: Runtime dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Full dependency audit high/critical gate
+        run: npm audit --audit-level=high
       - name: Browser test
         run: npx playwright install --with-deps chromium && npm run test:e2e
       - name: Production build
         run: npm run build
 
   compose:
-    name: Compose contract
+    name: DETERMINISTIC_RELEASE_GATES / Compose contract
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Validate Compose configuration
         run: docker compose -f infra/compose/docker-compose.yml config --quiet
+      - name: Validate production Compose contract
+        env:
+          DATABASE_URL: postgresql://memeradar_ci:memeradar_ci_password@postgres:5432/memeradar
+          REDIS_URL: redis://redis:6379/0
+          POSTGRES_USER: memeradar_ci
+          POSTGRES_PASSWORD: memeradar_ci_password
+          VIEWER_API_TOKEN: viewer-ci-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          OPERATOR_API_TOKEN: operator-ci-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          ADMIN_API_TOKEN: admin-ci-token-cccccccccccccccccccccccccccccccc
+          MEMERADAR_API_BASE_URL: http://api:8000
+          MEMERADAR_VIEWER_API_TOKEN: web-viewer-ci-token-dddddddddddddddddddddddddddddddd
+        run: docker compose -f infra/compose/docker-compose.yml -f infra/compose/docker-compose.prod.yml config --quiet
+
+  container-build:
+    name: DETERMINISTIC_RELEASE_GATES / Docker image build
+    runs-on: ubuntu-latest
+    outputs:
+      api_digest: ${{ steps.images.outputs.api_digest }}
+      worker_digest: ${{ steps.images.outputs.worker_digest }}
+      web_digest: ${{ steps.images.outputs.web_digest }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Build API, worker and web images
+        id: images
+        env:
+          IMAGE_TAG: memeradar-ci-${{ github.sha }}
+        run: |
+          docker build -q -f infra/docker/api.Dockerfile -t memeradar-api:${IMAGE_TAG} .
+          docker build -q -f infra/docker/worker.Dockerfile -t memeradar-worker:${IMAGE_TAG} .
+          docker build -q -f infra/docker/web.Dockerfile -t memeradar-web:${IMAGE_TAG} .
+          echo "api_digest=$(docker image inspect --format '{{.Id}}' memeradar-api:${IMAGE_TAG})" >> "$GITHUB_OUTPUT"
+          echo "worker_digest=$(docker image inspect --format '{{.Id}}' memeradar-worker:${IMAGE_TAG})" >> "$GITHUB_OUTPUT"
+          echo "web_digest=$(docker image inspect --format '{{.Id}}' memeradar-web:${IMAGE_TAG})" >> "$GITHUB_OUTPUT"
 
   secret-scan:
     name: Secret scan
@@ -88,8 +149,8 @@ jobs:
         run: python3 scripts/secret_scan.py
 
   release-identity:
-    name: Release candidate identity
-    needs: [backend, frontend, compose, secret-scan]
+    name: DETERMINISTIC_RELEASE_GATES / Release candidate identity
+    needs: [backend, frontend, compose, secret-scan, container-build]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -106,6 +167,10 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r requirements.lock
       - name: Generate release identity
         run: python3 scripts/release_identity.py --output artifacts/release-identity.json
+        env:
+          RELEASE_API_IMAGE_DIGEST: ${{ needs.container-build.outputs.api_digest }}
+          RELEASE_WORKER_IMAGE_DIGEST: ${{ needs.container-build.outputs.worker_digest }}
+          RELEASE_WEB_IMAGE_DIGEST: ${{ needs.container-build.outputs.web_digest }}
       - name: Upload release identity
         uses: actions/upload-artifact@v4
         with:

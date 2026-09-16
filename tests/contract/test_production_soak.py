@@ -7,7 +7,7 @@ from scripts.reliability_benchmark import run_production_soak
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_production_soak_reports_failure_matrix_and_headroom() -> None:
+def test_synthetic_failure_matrix_remains_explicitly_synthetic() -> None:
     report = run_production_soak(iterations=8, expected_rate_per_second=1)
 
     assert report["schema_version"] == "production-soak-v1"
@@ -60,3 +60,5 @@ def test_production_soak_rejects_unbounded_inputs_and_documents_make_target() ->
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "production-soak:" in makefile
+    assert "production_stack_soak.py" in makefile
+    assert "reliability_benchmark.py --production-soak" not in makefile

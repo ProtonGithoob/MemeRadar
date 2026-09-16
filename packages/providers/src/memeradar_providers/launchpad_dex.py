@@ -481,6 +481,7 @@ class ParsedProtocolEvent:
                 "schema_version": self.schema_version,
                 "venue": self.venue.value,
                 "mint_address": self.mint_address,
+                "collection_mode": "PRODUCTION",
                 "event_time_quality": "EXACT"
                 if self.occurred_at is not None
                 else "UNKNOWN",

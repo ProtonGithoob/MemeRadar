@@ -163,6 +163,7 @@ class ExternalWalletEventStreamAdapter:
             "occurred_at_estimated": False,
             "source_layer": self._source_layer if source_layer is None else source_layer,
             "authoritative": self._authoritative,
+            "collection_mode": "PRODUCTION",
         }
         return Observation(
             kind="wallet.activity",

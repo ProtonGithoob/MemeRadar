@@ -1,12 +1,12 @@
 {
   "artifact": "historical-dataset-validation",
-  "input_dataset_digest": "sha256:3f00cde5f9b697ce832e5fc56000ccffdad57ea6d688518574b43f00c21fc9c4",
+  "input_dataset_digest": "sha256:4653443c2ce73c5a0b913c99bfc25e1fbf8d2e47bbf59a5e5380d231a7589e76",
   "input_dataset_id": "opportunity-case-studies",
   "input_dataset_version": "case-study-v1",
   "manifest": {
     "as_of": "2026-08-31T12:00:00+00:00",
     "config_hash": "config-fixture",
-    "dataset_digest": "sha256:3f00cde5f9b697ce832e5fc56000ccffdad57ea6d688518574b43f00c21fc9c4",
+    "dataset_digest": "sha256:4653443c2ce73c5a0b913c99bfc25e1fbf8d2e47bbf59a5e5380d231a7589e76",
     "dataset_id": "opportunity-case-studies",
     "dataset_version": "case-study-v1",
     "event_schema_version": 1,

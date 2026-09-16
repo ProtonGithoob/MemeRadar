@@ -386,6 +386,7 @@ class SolanaRpcAdapter(OnChainPort):
                 "executable": executable,
                 "rent_epoch": rent_epoch,
                 "data": data,
+                "collection_mode": "PRODUCTION",
             },
         )
 
@@ -423,6 +424,7 @@ class SolanaRpcAdapter(OnChainPort):
                     "block_time": None,
                     "success": None,
                     "account_keys": (),
+                    "collection_mode": "PRODUCTION",
                 },
             )
         result_mapping = _mapping(result, "transaction")
@@ -460,6 +462,7 @@ class SolanaRpcAdapter(OnChainPort):
                 "block_time": None if block_time is None else block_time.isoformat(),
                 "success": success,
                 "account_keys": account_keys,
+                "collection_mode": "PRODUCTION",
             },
         )
 
@@ -507,7 +510,11 @@ class SolanaRpcAdapter(OnChainPort):
             observed_at=observed_at,
             ingested_at=ingested_at,
             quality_state=QualityState.FRESH,
-            normalized_payload={"address": normalized_address, "signatures": tuple(entries)},
+            normalized_payload={
+                "address": normalized_address,
+                "signatures": tuple(entries),
+                "collection_mode": "PRODUCTION",
+            },
         )
 
     async def fetch_blocks(
@@ -549,6 +556,7 @@ class SolanaRpcAdapter(OnChainPort):
                 "start_slot": start_slot,
                 "end_slot": end_slot,
                 "slots": tuple(value for value in slots if value is not None),
+                "collection_mode": "PRODUCTION",
             },
         )
 
@@ -589,6 +597,7 @@ class SolanaRpcAdapter(OnChainPort):
                     "previous_blockhash": None,
                     "block_time": None,
                     "signatures": (),
+                    "collection_mode": "PRODUCTION",
                 },
             )
         result_mapping = _mapping(result, "block")
@@ -606,6 +615,7 @@ class SolanaRpcAdapter(OnChainPort):
                 "previous_blockhash": result_mapping.get("previousBlockhash"),
                 "block_time": None if block_time is None else block_time.isoformat(),
                 "signatures": result_mapping.get("signatures", ()),
+                "collection_mode": "PRODUCTION",
             },
         )
 

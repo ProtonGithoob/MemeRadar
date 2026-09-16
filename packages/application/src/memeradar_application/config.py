@@ -6,10 +6,13 @@ import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 SUPPORTED_CHAINS = ("solana", "bnb", "robinhood")
+SUPPORTED_APP_ENVS = ("development", "production")
+DEFAULT_ENABLED_CHAINS = ("solana", "robinhood")
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +145,7 @@ def _provider_choice(
 
 
 def _chain_list(environ: Mapping[str, str], name: str) -> tuple[str, ...]:
-    raw = environ.get(name, ",".join(SUPPORTED_CHAINS))
+    raw = environ.get(name, ",".join(DEFAULT_ENABLED_CHAINS))
     values = tuple(item.strip().lower() for item in raw.split(",") if item.strip())
     if not values:
         raise ValueError(f"{name} must contain at least one chain")
@@ -152,6 +155,77 @@ def _chain_list(environ: Mapping[str, str], name: str) -> tuple[str, ...]:
     if len(values) != len(set(values)):
         raise ValueError(f"{name} must not contain duplicate chains")
     return values
+
+
+def _app_environment(environ: Mapping[str, str]) -> str:
+    """Resolve an explicit, finite environment vocabulary fail-closed."""
+
+    if "APP_ENV" not in environ:
+        return "development"
+    raw = environ.get("APP_ENV")
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError("APP_ENV must be one of: development, production")
+    value = raw.strip().lower()
+    if value not in SUPPORTED_APP_ENVS:
+        choices = ", ".join(SUPPORTED_APP_ENVS)
+        raise ValueError(f"APP_ENV must be one of: {choices}")
+    return value
+
+
+def _validate_chain_transports(
+    enabled_chains: tuple[str, ...],
+    *,
+    bnb_rpc_url: str | None,
+    robinhood_rpc_url: str,
+) -> None:
+    """Reject enabled chains that have no canonical read transport."""
+
+    if "bnb" in enabled_chains and bnb_rpc_url is None:
+        raise ValueError("BNB_RPC_URL is required when bnb is enabled")
+    if "robinhood" in enabled_chains:
+        parsed = urlsplit(robinhood_rpc_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError(
+                "ROBINHOOD_RPC_URL must be a valid HTTP(S) URL when robinhood is enabled"
+            )
+
+
+def _validate_production_role_tokens(settings: Settings) -> None:
+    for name, token in (
+        ("VIEWER_API_TOKEN", settings.viewer_api_token),
+        ("OPERATOR_API_TOKEN", settings.operator_api_token),
+        ("ADMIN_API_TOKEN", settings.admin_api_token),
+    ):
+        if token is None:
+            raise ValueError(f"{name} is required in production")
+        if len(token) < 32:
+            raise ValueError(f"{name} must contain at least 32 characters in production")
+
+
+def validate_api_runtime(settings: Settings) -> None:
+    """Validate credentials owned by the API process, not shared workers."""
+
+    if not isinstance(settings, Settings):
+        raise TypeError("settings must be a Settings instance")
+    if settings.app_env == "production":
+        _validate_production_role_tokens(settings)
+
+
+def validate_worker_runtime(settings: Settings) -> None:
+    """Validate the worker boundary and reject unnecessary API credentials."""
+
+    if not isinstance(settings, Settings):
+        raise TypeError("settings must be a Settings instance")
+    if settings.app_env == "production" and any(
+        token is not None
+        for token in (
+            settings.viewer_api_token,
+            settings.operator_api_token,
+            settings.admin_api_token,
+            settings.execution_api_token,
+        )
+    ):
+        raise ValueError("worker must not receive API role tokens")
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,7 +284,7 @@ class Settings:
     narrative_api_url: str = "http://host.docker.internal:11434"
     narrative_api_key: str | None = None
     narrative_model: str | None = None
-    enabled_chains: tuple[str, ...] = SUPPORTED_CHAINS
+    enabled_chains: tuple[str, ...] = DEFAULT_ENABLED_CHAINS
     bnb_rpc_url: str | None = None
     bnb_rpc_fallback_url: str | None = None
     bnb_chain_id: int = 56
@@ -317,7 +391,7 @@ class Settings:
             values,
             ("MEMERADAR_SOLANA_BACKFILL_URL", "SOLANA_RPC_BACKFILL_URL"),
         )
-        app_env = values.get("APP_ENV", "development").strip().lower() or "development"
+        app_env = _app_environment(values)
         database_url = _optional_value(values, "DATABASE_URL")
         redis_url = _optional_value(values, "REDIS_URL")
         require_database_for_readiness = _parse_bool(
@@ -337,13 +411,18 @@ class Settings:
                 raise ValueError("REQUIRE_DATABASE_FOR_READINESS must be true in production")
             if not require_redis_for_readiness:
                 raise ValueError("REQUIRE_REDIS_FOR_READINESS must be true in production")
-            for name in ("VIEWER_API_TOKEN", "OPERATOR_API_TOKEN", "ADMIN_API_TOKEN"):
-                token = role_tokens[name]
-                if token is None:
-                    raise ValueError(f"{name} is required in production")
-                if len(token) < 32:
-                    raise ValueError(f"{name} must contain at least 32 characters in production")
         enabled_chains = _chain_list(values, "ENABLED_CHAINS")
+        bnb_rpc_url = _optional_value(values, "BNB_RPC_URL")
+        robinhood_rpc_url = _default_value(
+            values,
+            "ROBINHOOD_RPC_URL",
+            "https://rpc.mainnet.chain.robinhood.com",
+        )
+        _validate_chain_transports(
+            enabled_chains,
+            bnb_rpc_url=bnb_rpc_url,
+            robinhood_rpc_url=robinhood_rpc_url,
+        )
         bnb_chain_id = _parse_int("BNB_CHAIN_ID", values.get("BNB_CHAIN_ID", "56"), 1, 2**64 - 1)
         robinhood_chain_id = _parse_int(
             "ROBINHOOD_CHAIN_ID",
@@ -441,14 +520,10 @@ class Settings:
             narrative_api_key=legacy_narrative_key,
             narrative_model=_optional_value(values, "NARRATIVE_MODEL"),
             enabled_chains=enabled_chains,
-            bnb_rpc_url=_optional_value(values, "BNB_RPC_URL"),
+            bnb_rpc_url=bnb_rpc_url,
             bnb_rpc_fallback_url=_optional_value(values, "BNB_RPC_FALLBACK_URL"),
             bnb_chain_id=bnb_chain_id,
-            robinhood_rpc_url=_default_value(
-                values,
-                "ROBINHOOD_RPC_URL",
-                "https://rpc.mainnet.chain.robinhood.com",
-            ),
+            robinhood_rpc_url=robinhood_rpc_url,
             robinhood_rpc_fallback_url=_optional_value(values, "ROBINHOOD_RPC_FALLBACK_URL"),
             robinhood_chain_id=robinhood_chain_id,
             robinhood_sequencer_feed_url=_default_value(
@@ -1280,9 +1355,13 @@ __all__ = [
     "RuntimeSettingSpec",
     "RuntimeSettingValidationError",
     "Settings",
+    "SUPPORTED_APP_ENVS",
     "SUPPORTED_CHAINS",
+    "DEFAULT_ENABLED_CHAINS",
     "runtime_configured_state",
     "runtime_setting_spec",
     "runtime_setting_value",
+    "validate_api_runtime",
+    "validate_worker_runtime",
     "validate_runtime_setting",
 ]

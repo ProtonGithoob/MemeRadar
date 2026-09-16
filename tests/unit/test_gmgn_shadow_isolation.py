@@ -142,6 +142,13 @@ def test_legacy_unclassified_observation_without_mode_has_narrow_compatibility()
 
     assert production_observations((legacy,)) == (legacy,)
 
+    current_external = replace(
+        legacy,
+        observed_at=datetime(2026, 9, 15, 12, 0, tzinfo=UTC),
+        ingested_at=datetime(2026, 9, 15, 12, 0, tzinfo=UTC),
+    )
+    assert production_observations((current_external,)) == ()
+
 
 def test_shadow_isolation_holds_through_the_production_decision_chain() -> None:
     production = production_observation(

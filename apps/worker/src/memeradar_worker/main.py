@@ -11,7 +11,7 @@ from typing import cast
 from uuid import uuid4
 
 from memeradar_application.alert_pipeline import AlertDeliveryService, AlertPolicy
-from memeradar_application.config import Settings
+from memeradar_application.config import Settings, validate_worker_runtime
 from memeradar_application.discovery_collection import (
     CandidateDiscoveryCollector,
     DiscoveryCollectionReport,
@@ -400,6 +400,7 @@ def _install_signal_handlers(stop_event: asyncio.Event) -> None:
 
 async def run_worker_process(settings: Settings | None = None) -> None:
     runtime_settings = settings or Settings.from_env()
+    validate_worker_runtime(runtime_settings)
     stop_event = asyncio.Event()
     _install_signal_handlers(stop_event)
     await run_worker(stop_event, runtime_settings)

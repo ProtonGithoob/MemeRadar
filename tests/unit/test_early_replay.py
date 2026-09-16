@@ -220,11 +220,14 @@ def test_future_10x_changes_labels_but_not_earlier_features_score_or_entry() -> 
         evidence_refs=("quote:fixture",),
     )
 
-    past_features = EarlyFeatureEngine().compute(TOKEN_ID, NOW, (past.observation,))
+    past_features = EarlyFeatureEngine().compute(
+        TOKEN_ID, NOW, (past.observation,), include_shadow=True
+    )
     with_future_features = EarlyFeatureEngine().compute(
         TOKEN_ID,
         NOW,
         (past.observation, future.observation),
+        include_shadow=True,
     )
     assert past_features.quality_state is with_future_features.quality_state
     assert past_features.launch_age_seconds == with_future_features.launch_age_seconds

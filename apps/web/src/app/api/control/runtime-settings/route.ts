@@ -23,56 +23,23 @@ function statusForApi(status: number): number {
   return status >= 500 ? 503 : 502;
 }
 
-async function proxy(request: NextRequest, method: "GET" | "POST") {
+async function proxyRead() {
   const base = apiBase();
-  const token = (method === "POST"
-    ? runtimeEnv("MEMERADAR_ADMIN_API_TOKEN")
-    : runtimeEnv("MEMERADAR_ADMIN_API_TOKEN") || runtimeEnv("MEMERADAR_VIEWER_API_TOKEN"));
+  const token = runtimeEnv("MEMERADAR_VIEWER_API_TOKEN");
   if (!base || !token) {
     return NextResponse.json({ detail: "server control gateway is not configured" }, { status: 503 });
-  }
-
-  let body: string | undefined;
-  if (method === "POST") {
-    let raw: unknown;
-    try {
-      raw = await request.json();
-    } catch {
-      return NextResponse.json({ detail: "invalid control request" }, { status: 422 });
-    }
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      return NextResponse.json({ detail: "invalid control request" }, { status: 422 });
-    }
-    const value = raw as Record<string, unknown>;
-    const changes = value.changes;
-    const clear = value.clear;
-    const reason = value.reason;
-    const version = value.version;
-    if (
-      typeof changes !== "object" || changes === null || Array.isArray(changes) ||
-      Object.keys(changes as object).length > 64 ||
-      !Array.isArray(clear) || clear.length > 64 ||
-      !clear.every((item) => typeof item === "string") ||
-      typeof reason !== "string" || reason.trim().length === 0 || reason.length > 512 ||
-      (version !== undefined && version !== null && (typeof version !== "string" || version.length > 64))
-    ) {
-      return NextResponse.json({ detail: "invalid control request" }, { status: 422 });
-    }
-    body = JSON.stringify({ changes, clear, reason, version: version ?? null });
   }
 
   const url = new URL("/v1/control/runtime-settings", base);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 4_000);
   try {
-    const response = await fetch(url, {
-      method,
+    const response = await fetch(url.toString(), {
+      method: "GET",
       cache: "no-store",
       headers: {
-        Authorization: "Bearer " + token,
-        ...(body ? { "Content-Type": "application/json" } : {})
+        Authorization: "Bearer " + token
       },
-      body,
       signal: controller.signal
     });
     const status = response.ok ? 200 : statusForApi(response.status);
@@ -95,9 +62,13 @@ async function proxy(request: NextRequest, method: "GET" | "POST") {
 }
 
 export async function GET(request: NextRequest) {
-  return proxy(request, "GET");
+  void request;
+  return proxyRead();
 }
 
-export async function POST(request: NextRequest) {
-  return proxy(request, "POST");
+export async function POST(_request: NextRequest) {
+  return NextResponse.json(
+    { detail: "web control mutations are disabled; use the authenticated API operator boundary" },
+    { status: 403 }
+  );
 }

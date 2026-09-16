@@ -2,7 +2,11 @@
 
 import pytest
 
-from memeradar_application.config import Settings
+from memeradar_application.config import (
+    Settings,
+    validate_api_runtime,
+    validate_worker_runtime,
+)
 
 
 def test_keyless_free_first_defaults_are_valid_and_safe() -> None:
@@ -99,6 +103,16 @@ def test_dynamic_settings_defaults_keep_optional_x_and_website_disabled() -> Non
     assert settings.website_name is None
 
 
+def test_app_env_is_allow_listed_and_explicit_empty_values_fail_closed() -> None:
+    assert Settings.from_env({}).app_env == "development"
+    assert Settings.from_env({"APP_ENV": "development"}).app_env == "development"
+    assert Settings.from_env(_production_environment()).app_env == "production"
+
+    for invalid in ("", "prod", "produciton", "production1", "random"):
+        with pytest.raises(ValueError, match="APP_ENV"):
+            Settings.from_env({"APP_ENV": invalid})
+
+
 def _production_environment() -> dict[str, str]:
     return {
         "APP_ENV": "production",
@@ -123,8 +137,37 @@ def test_production_settings_require_fail_closed_dependencies_and_role_tokens() 
 
     values = _production_environment()
     values["ADMIN_API_TOKEN"] = ""
+    settings = Settings.from_env(values)
     with pytest.raises(ValueError, match="ADMIN_API_TOKEN is required"):
-        Settings.from_env(values)
+        validate_api_runtime(settings)
+
+
+def test_service_runtime_validation_scopes_api_roles_to_api_and_worker() -> None:
+    values = _production_environment()
+    for name in ("VIEWER_API_TOKEN", "OPERATOR_API_TOKEN", "ADMIN_API_TOKEN"):
+        values.pop(name)
+
+    worker_settings = Settings.from_env(values)
+    validate_worker_runtime(worker_settings)
+    with pytest.raises(ValueError, match="VIEWER_API_TOKEN is required"):
+        validate_api_runtime(worker_settings)
+
+    api_settings = Settings.from_env(_production_environment())
+    validate_api_runtime(api_settings)
+
+
+def test_bnb_requires_a_canonical_transport_when_explicitly_enabled() -> None:
+    assert "bnb" not in Settings.from_env({}).enabled_chains
+    with pytest.raises(ValueError, match="BNB_RPC_URL"):
+        Settings.from_env({"ENABLED_CHAINS": "solana,bnb"})
+
+    settings = Settings.from_env(
+        {
+            "ENABLED_CHAINS": "solana,bnb",
+            "BNB_RPC_URL": "https://bsc.example/rpc",
+        }
+    )
+    assert settings.enabled_chains == ("solana", "bnb")
 
 
 def test_production_settings_accept_strong_unique_read_only_configuration() -> None:

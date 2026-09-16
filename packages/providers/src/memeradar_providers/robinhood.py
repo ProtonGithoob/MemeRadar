@@ -296,6 +296,7 @@ class RobinhoodLaunchpadDecoder:
             "authoritative": False,
             "rpc_reconciled": False,
             "commitment": "UNKNOWN",
+            "collection_mode": "PRODUCTION",
         }
         quality = QualityState.FRESH if identity is not None else QualityState.UNKNOWN
         if identity is None:

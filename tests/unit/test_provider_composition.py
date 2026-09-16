@@ -13,6 +13,7 @@ from memeradar_application.provider_contracts import (
     MarketDataRequest,
     ProviderRequestContext,
 )
+from memeradar_application.provider_metadata import provider_metadata_for_settings
 from memeradar_providers.composition import (
     BoundedMarketDataFallback,
     BoundedNarrativeFallback,
@@ -141,6 +142,82 @@ def test_keyless_provider_bundle_builds_without_network_or_optional_credentials(
         assert bundle.market is bundle.market_data
     finally:
         asyncio.run(bundle.aclose())
+
+
+def test_helius_is_optional_enhancement_in_runtime_metadata() -> None:
+    metadata = provider_metadata_for_settings(
+        "helius", "chain_events", Settings.from_env({})
+    )
+
+    assert metadata.required is False
+    assert metadata.enabled is True
+    assert metadata.credential_state == "UNKNOWN"
+    assert metadata.endpoint_state == "UNKNOWN"
+    configured = provider_metadata_for_settings(
+        "helius",
+        "chain_events",
+        Settings.from_env(
+            {
+                "HELIUS_RPC_URL": "https://fixture.helius.example/rpc",
+                "HELIUS_API_KEY": "helius-key",
+            }
+        ),
+    )
+    assert configured.required is False
+    assert configured.enabled is True
+    assert configured.credential_state == "CONFIGURED"
+    assert configured.endpoint_state == "CONFIGURED"
+
+
+def test_runtime_metadata_matches_enabled_chain_transports() -> None:
+    default = Settings.from_env({})
+    bnb = provider_metadata_for_settings("evm-public-rpc:bnb", "chain_events", default)
+    assert bnb.enabled is False
+    assert bnb.required is False
+    assert bnb.credential_state == "DISABLED"
+    assert bnb.endpoint_state == "DISABLED"
+
+    configured = Settings.from_env(
+        {
+            "ENABLED_CHAINS": "solana,bnb",
+            "BNB_RPC_URL": "https://fixture.bnb.example/rpc",
+        }
+    )
+    bnb = provider_metadata_for_settings("evm-public-rpc:bnb", "chain_events", configured)
+    assert bnb.enabled is True
+    assert bnb.required is True
+    assert bnb.endpoint_state == "CONFIGURED"
+
+    robinhood = provider_metadata_for_settings(
+        "evm-public-rpc:robinhood", "chain_events", Settings.from_env({"ENABLED_CHAINS": "solana"})
+    )
+    assert robinhood.enabled is False
+    assert robinhood.required is False
+    assert robinhood.endpoint_state == "DISABLED"
+
+
+def test_optional_runtime_metadata_distinguishes_gmgn_states() -> None:
+    disabled = provider_metadata_for_settings("gmgn", "market_data", Settings.from_env({}))
+    assert (disabled.enabled, disabled.credential_state, disabled.endpoint_state) == (
+        False,
+        "DISABLED",
+        "DISABLED",
+    )
+    unconfigured = provider_metadata_for_settings(
+        "gmgn", "market_data", Settings.from_env({"GMGN_ENABLED": "true"})
+    )
+    assert (unconfigured.enabled, unconfigured.credential_state, unconfigured.endpoint_state) == (
+        True,
+        "NOT_CONFIGURED",
+        "CONFIGURED",
+    )
+    configured = provider_metadata_for_settings(
+        "gmgn",
+        "market_data",
+        Settings.from_env({"GMGN_ENABLED": "true", "GMGN_API_KEY": "gmgn-key"}),
+    )
+    assert configured.enabled is True
+    assert configured.credential_state == "CONFIGURED"
 
 
 def test_madeonsol_is_optional_and_not_part_of_core_chain_fallback() -> None:

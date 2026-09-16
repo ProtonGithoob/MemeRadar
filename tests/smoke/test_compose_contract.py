@@ -721,9 +721,9 @@ def test_control_api_rbac_and_kill_switch_are_packaged_and_safe():
         "VIEWER_API_TOKEN=",
         "OPERATOR_API_TOKEN=",
         "ADMIN_API_TOKEN=",
-        "EXECUTION_API_TOKEN=",
     ):
         assert name in env_example
+    assert "EXECUTION_API_TOKEN=" not in env_example
     control_source = (ROOT / "apps" / "api" / "src" / "memeradar_api" / "control.py").read_text()
     auth_source = (ROOT / "apps" / "api" / "src" / "memeradar_api" / "auth.py").read_text()
     assert "sign_transaction" not in control_source

@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
@@ -19,7 +21,9 @@ if str(ROOT) not in sys.path:
 
 from scripts.sbom import build_sbom, serialize_sbom  # noqa: E402
 
-RELEASE_IDENTITY_SCHEMA_VERSION = "release-identity-v1"
+RELEASE_IDENTITY_SCHEMA_VERSION = "release-identity-v2"
+_IMAGE_NAMES = ("api", "worker", "web")
+_IMAGE_DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 _PROTECTED_MODES = {
     "analysis_only": True,
     "paper_trading": True,
@@ -83,12 +87,67 @@ def _versions(root: Path) -> tuple[str, str]:
     return project["version"], match.group(1)
 
 
-def build_release_identity(root: Path) -> dict[str, object]:
+def _validated_image_digests(image_digests: Mapping[str, str]) -> dict[str, dict[str, str]]:
+    if set(image_digests) != set(_IMAGE_NAMES):
+        raise ValueError("image digests must identify exactly api, worker and web")
+    normalized: dict[str, dict[str, str]] = {}
+    for name in _IMAGE_NAMES:
+        digest = image_digests[name]
+        if not isinstance(digest, str) or _IMAGE_DIGEST_PATTERN.fullmatch(digest) is None:
+            raise ValueError(f"{name} image identity must be a sha256 digest")
+        normalized[name] = {"digest": digest}
+    return normalized
+
+
+def _image_identity(
+    root: Path,
+    image_digests: Mapping[str, str] | None,
+) -> tuple[str, dict[str, dict[str, str | None]]]:
+    if image_digests is not None:
+        return "BOUND", _validated_image_digests(image_digests)
+
+    digest_values = {
+        name: os.environ.get(f"RELEASE_{name.upper()}_IMAGE_DIGEST", "").strip()
+        for name in _IMAGE_NAMES
+    }
+    if any(digest_values.values()):
+        if not all(digest_values.values()):
+            raise ValueError("all RELEASE_*_IMAGE_DIGEST values are required together")
+        return "BOUND", _validated_image_digests(cast(Mapping[str, str], digest_values))
+
+    image_refs = {
+        name: os.environ.get(f"RELEASE_{name.upper()}_IMAGE", "").strip()
+        for name in _IMAGE_NAMES
+    }
+    if any(image_refs.values()):
+        if not all(image_refs.values()):
+            raise ValueError("all RELEASE_*_IMAGE values are required together")
+        discovered: dict[str, str] = {}
+        for name, image_ref in image_refs.items():
+            result = subprocess.run(
+                ["docker", "image", "inspect", "--format", "{{.Id}}", image_ref],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            discovered[name] = result.stdout.strip()
+        return "BOUND", _validated_image_digests(discovered)
+
+    return "NOT_AVAILABLE", {name: {"digest": None} for name in _IMAGE_NAMES}
+
+
+def build_release_identity(
+    root: Path,
+    *,
+    image_digests: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     """Build a stable release record without reading credentials or provider data."""
 
     normalized_root = root.resolve()
     app_version, api_version = _versions(normalized_root)
     migration = _migration_report(normalized_root)
+    image_identity_status, images = _image_identity(normalized_root, image_digests)
     sbom = build_sbom(normalized_root)
     sbom_bytes = serialize_sbom(sbom).encode("utf-8")
     components = sbom.get("components")
@@ -111,6 +170,8 @@ def build_release_identity(root: Path) -> dict[str, object]:
         "sbom_schema_version": sbom.get("schema_version"),
         "sbom_component_count": len(components),
         "sbom_digest": f"sha256:{hashlib.sha256(sbom_bytes).hexdigest()}",
+        "image_identity_status": image_identity_status,
+        "images": images,
         "protected_modes": dict(_PROTECTED_MODES),
     }
 
@@ -119,9 +180,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--output", type=Path)
+    for name in _IMAGE_NAMES:
+        parser.add_argument(f"--{name}-image-digest")
     args = parser.parse_args(argv)
     try:
-        identity = build_release_identity(args.root)
+        supplied_digests = {
+            name: getattr(args, f"{name}_image_digest")
+            for name in _IMAGE_NAMES
+        }
+        image_digests = supplied_digests if any(supplied_digests.values()) else None
+        identity = build_release_identity(args.root, image_digests=image_digests)
         encoded = json.dumps(identity, sort_keys=True, indent=2) + "\n"
         if args.output is not None:
             args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from memeradar_domain import Observation
 
@@ -21,10 +22,14 @@ RECOGNIZED_COLLECTION_MODES = frozenset(
         "REDACTED",
     }
 )
+LEGACY_MISSING_COLLECTION_MODE_CUTOFF = datetime(2026, 9, 15, tzinfo=UTC)
 
 
 def _legacy_unclassified_observation(observation: Observation) -> bool:
-    """Keep old canonical rows usable only when they carry no trust claims."""
+    """Keep pre-boundary canonical rows usable only without trust claims."""
+
+    if observation.ingested_at >= LEGACY_MISSING_COLLECTION_MODE_CUTOFF:
+        return False
 
     payload = observation.normalized_payload
     return not any(
@@ -81,6 +86,7 @@ def production_observations(
 __all__ = [
     "PRODUCTION_COLLECTION_MODE",
     "LIVE_SHADOW_COLLECTION_MODE",
+    "LEGACY_MISSING_COLLECTION_MODE_CUTOFF",
     "RECOGNIZED_COLLECTION_MODES",
     "is_production_evidence_eligible",
     "production_observations",

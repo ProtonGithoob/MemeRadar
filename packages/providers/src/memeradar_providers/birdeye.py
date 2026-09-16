@@ -188,6 +188,8 @@ class BirdeyeMarketRecord:
         object.__setattr__(self, "payload", dict(self.payload))
 
     def observation(self) -> Observation:
+        payload = dict(self.payload)
+        payload.setdefault("collection_mode", "PRODUCTION")
         provenance = Provenance(
             provider=BIRDEYE_PROVIDER,
             source_id=self.source_id,
@@ -201,7 +203,7 @@ class BirdeyeMarketRecord:
             observed_at=self.observed_at,
             ingested_at=self.ingested_at,
             quality_state=self.quality_state,
-            normalized_payload=self.payload,
+            normalized_payload=payload,
             token_id=self.token.id,
         )
 
@@ -879,6 +881,7 @@ class BirdeyeObservationResolver:
             quality = QualityState.CONFLICTED
         latest = max(values, key=lambda item: item.observed_at)
         payload = dict(latest.normalized_payload)
+        payload.setdefault("collection_mode", "PRODUCTION")
         payload["source_ids"] = tuple(item.provenance.source_id for item in values)
         payload["freshness_state"] = quality.value
         payload["freshness_ttl_seconds"] = ttl.total_seconds()

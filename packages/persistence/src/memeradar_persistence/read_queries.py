@@ -16,6 +16,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from memeradar_application.chain_opportunity import ChainOpportunitySnapshot
 from memeradar_application.creator_graph import CreatorOutcomeGraph
 from memeradar_application.event_time import event_time_quality
+from memeradar_application.evidence_policy import LEGACY_MISSING_COLLECTION_MODE_CUTOFF
 from memeradar_application.exit_engine import ExitEvaluation
 from memeradar_application.historical_dataset import (
     COLLECTION_MODE_FIELD,
@@ -736,7 +737,10 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                     ),
                 ),
                 or_(
-                    collection_mode.is_(None),
+                    and_(
+                        collection_mode.is_(None),
+                        ObservationRow.ingested_at < LEGACY_MISSING_COLLECTION_MODE_CUTOFF,
+                    ),
                     func.upper(collection_mode).in_(tuple(REAL_EVIDENCE_COLLECTION_MODES)),
                 ),
             )
@@ -856,7 +860,10 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                     ),
                 ),
                 or_(
-                    collection_mode.is_(None),
+                    and_(
+                        collection_mode.is_(None),
+                        ObservationRow.ingested_at < LEGACY_MISSING_COLLECTION_MODE_CUTOFF,
+                    ),
                     func.upper(collection_mode).in_(tuple(REAL_EVIDENCE_COLLECTION_MODES)),
                 ),
             )

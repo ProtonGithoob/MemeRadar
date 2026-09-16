@@ -2827,10 +2827,7 @@ function failureForStatus(status: number): ReadFailureReason {
 
 async function request<T>(url: string, parse: (value: unknown) => T | null): Promise<ReadResult<T>> {
   const viewerToken = runtimeEnv("MEMERADAR_VIEWER_API_TOKEN");
-  const controlToken = url.includes("/v1/control/")
-    ? runtimeEnv("MEMERADAR_ADMIN_API_TOKEN") || viewerToken
-    : viewerToken;
-  const headers = controlToken ? { Authorization: `Bearer ${controlToken}` } : undefined;
+  const headers = viewerToken ? { Authorization: `Bearer ${viewerToken}` } : undefined;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {

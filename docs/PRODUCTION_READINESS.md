@@ -8,6 +8,36 @@ Canonical spec: `docs/superpowers/specs/2026-09-07-real-alpha-production-readine
 
 Execution plan: `docs/superpowers/plans/2026-09-07-real-alpha-production-readiness.md`
 
+## 2026-09-15 root-cause hardening checkpoint
+
+The current engineering candidate is based on synchronized
+`f61070faac7a1b73fe686b0ce2870d3cb11cdc09`. This checkpoint supersedes older
+counts below. It makes the web control gateway read-only/viewer-only,
+allow-lists `APP_ENV`, requires a production Compose secret contract, removes
+API role secrets from workers, aligns optional-provider and enabled-chain
+semantics, makes hosted CI match deterministic release gates, separates the
+synthetic benchmark from the real-stack soak, bounds legacy missing-mode
+compatibility, and binds release identity to API/worker/web image IDs.
+
+| Gate | Current evidence | Status |
+|---|---|---|
+| Evidence isolation | Explicit non-production modes, malformed/unknown modes, new missing modes and provider payload `PROMOTED` claims are production-ineligible; only trusted explicit `PRODUCTION` rows enter production projections. | PASS |
+| Full shadow isolation | Baseline and baseline plus GMGN `LIVE_SHADOW` remain equal through early features, score/confidence, alpha, risk, candidate, alert, paper and execution projections. | PASS |
+| Runtime configuration | APP_ENV allow-list, production secret requirements, worker least privilege, protected modes and no-default-secret production Compose contract pass locally. | PASS |
+| Provider capability policy | Solana public RPC is the minimum path; Helius and GMGN are optional; BNB requires a configured RPC; metadata, composition, doctors and readiness agree locally. | PASS locally |
+| Deterministic release gates | Python `1344 passed, 19 skipped, 7 warnings`; frontend `24 files/83 tests`; lint, typecheck, CSS contract, build, runtime audit, migration, Compose, secret scan, security review and SBOM pass. | PASS locally |
+| PostgreSQL acceptance | Disposable PostgreSQL 16.14 integration has `19 passed, 2 warnings`; head `0011_collection_checkpoints`; 27 metadata/28 public tables; repeated polling remains one unique-token sample. | PASS locally |
+| Browser acceptance | Development and production-build/container journeys each have `36 passed, 0 failed, 4 skipped`; skips are credential/state dependent. | PASS locally |
+| Operations | Production-like API/web/worker/PostgreSQL/Redis stack is healthy; dependency outage/recovery and 100-iteration HTTP soak pass. | PASS locally |
+| Backup/restore | Docker-native disposable `pg_dump`/`pg_restore` proves restore/readability; the host wrapper remains explicitly blocked because PostgreSQL client binaries are absent. | PARTIAL / BLOCKED_EXTERNAL wrapper |
+| Managed production acceptance | Hosted Actions execution, branch protection, managed deployment/rollback, managed backups/RPO/RTO, sustained managed soak and credentialed external-provider probes are unavailable. | BLOCKED_EXTERNAL |
+| Read-only release | Local engineering evidence is strong, but managed and hosted gates are not proven. | PROD_READ_ONLY_NOT_ACCEPTED |
+
+Real GMGN data remains `0` observations, `0` unique tokens, `0` sample units,
+with no winner/rug labels and `INSUFFICIENT_SAMPLES`. No scoring weights
+changed. The exact before/after evidence is maintained in
+`docs/PROD_READ_ONLY_CLOSURE_GAP_MATRIX_2026-09-15.md`.
+
 ## 2026-09-15 closure checkpoint
 
 `PROD_READ_ONLY` is **not accepted**. The repository-controlled closure work

@@ -284,6 +284,13 @@ class ReplayEventRecord:
     def __post_init__(self) -> None:
         if not isinstance(self.observation, Observation):
             raise TypeError("observation must be an Observation")
+        replay_payload = dict(self.observation.normalized_payload)
+        replay_payload["collection_mode"] = "REPLAY"
+        object.__setattr__(
+            self,
+            "observation",
+            replace(self.observation, normalized_payload=replay_payload),
+        )
         if not isinstance(self.observation.id, UUID):
             raise TypeError("observation.id must be a UUID")
         if self.observation.token_id is None:
@@ -371,6 +378,8 @@ class ReplayEventRecord:
         occurred_at = (
             None if occurred_value is None else _parse_datetime(occurred_value, "event.occurred_at")
         )
+        replay_payload = dict(payload)
+        replay_payload["collection_mode"] = "REPLAY"
         observation = Observation(
             id=_parse_uuid(value.get("id"), "event.id"),
             candidate_id=(
@@ -385,7 +394,7 @@ class ReplayEventRecord:
             observed_at=_parse_datetime(value.get("observed_at"), "event.observed_at"),
             ingested_at=_parse_datetime(value.get("ingested_at"), "event.ingested_at"),
             quality_state=QualityState(cast(str, value.get("quality_state"))),
-            normalized_payload=cast(Mapping[str, object], payload),
+            normalized_payload=replay_payload,
         )
         result = cls(
             observation=observation,
