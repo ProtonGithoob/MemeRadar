@@ -8,6 +8,45 @@ Canonical spec: `docs/superpowers/specs/2026-09-07-real-alpha-production-readine
 
 Execution plan: `docs/superpowers/plans/2026-09-07-real-alpha-production-readiness.md`
 
+## 2026-09-16 resumed final engineering verification
+
+The paused dirty candidate was resumed without discarding any sprint work. The
+audited implementation commit is
+`769ee58f62e39e181e7464ce5057db4923b7aa05`, and it was pushed to
+`origin/main`. This closes the repository-controlled production-read-only
+engineering gaps; it does not manufacture managed deployment, hosted CI or
+real-provider evidence.
+
+| Gate | Evidence | Status |
+|---|---|---|
+| Python/backend | `make verify` exit 0; 1349 passed, 19 skipped, 7 warnings; Ruff and mypy pass. | PASS |
+| Frontend | 24 unit-test files/83 tests, lint/typecheck/build pass; runtime npm audit has zero vulnerabilities. | PASS |
+| Browser | Development checkpoint: 36 passed/0 failed/4 skipped. Current production-like container: 36 passed/0 failed/4 skipped. | PASS |
+| PostgreSQL | Disposable PostgreSQL integration 19 passed/2 warnings; migration `0011_collection_checkpoints`; 27 metadata/28 public tables. | PASS |
+| Compose/security | Compose smoke contracts 30 passed; production missing-secret expansion fails closed; secret scan and local security review pass. | PASS |
+| Runtime operations | 500-request production-like soak: zero errors/readiness failures, worker liveness PASS, zero restarts and duplicate delta; dependency recovery PASS. | PASS |
+| Backup/restore | Docker-native restore/read drill PASS; host wrapper remains blocked only by absent host `pg_dump`/`pg_restore`. | PASS / external wrapper block |
+| Release identity | Git/config/migration/SBOM/modes and local immutable API/worker/web image IDs are bound in release identity v2. | PASS locally |
+| Managed/hosted acceptance | Hosted run `35100554937` failed at startup with zero executed steps/no runner; managed deployment, rollback, backup/RPO/RTO, sustained soak and credentialed provider acceptance remain unavailable. | BLOCKED_EXTERNAL |
+
+The final local identity is:
+
+```text
+git SHA: 769ee58f62e39e181e7464ce5057db4923b7aa05
+config hash: sha256:02357dab7e94009965762ca8e9a0a811ffbe4c1acbbf5dcf3cace68a5b92e1c3
+migration head: 0011_collection_checkpoints
+SBOM: 582 components, sha256:e63fadcc56b9461e192ae70e9bd01ba01dc6a4e223143ab71a09aca9875933aa
+api image: sha256:6e5d8d68ddedff562b50fbad2ee81c7c1a2b5c0dbd829b9b6c0f6fbe9402dba5
+worker image: sha256:5e818c417389830d0dc0340aed498d64caf857fda5449e18ddd93f6917a4e21b
+web image: sha256:525d0383606e85a8b9f387524b2aa249180f42b8746ed40f92390291b40127e0
+```
+
+Real GMGN evidence remains `0` observations, `0` unique tokens/sample units,
+no winner/rug labels and `INSUFFICIENT_SAMPLES`; live validation is
+`BLOCKED_EXTERNAL`. Therefore the current classification remains
+`REPOSITORY_PROD_READ_ONLY_ENGINEERING_READY` and
+`PROD_READ_ONLY_NOT_ACCEPTED`, with no live-money or paper-auto promotion.
+
 ## 2026-09-15 root-cause hardening checkpoint
 
 The current engineering candidate is based on synchronized

@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -32,6 +32,99 @@ There is no wallet signer, live order submission, automatic execution, or
 execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
+
+## 2026-09-16 resumed final verification
+
+The saved dirty sprint candidate was resumed without reset, restore, checkout,
+clean or stash. The implementation was audited, verified and committed as
+`769ee58f62e39e181e7464ce5057db4923b7aa05` (`fix: harden production read-only
+release boundaries`). The implementation commit was pushed to `origin/main`.
+
+### Verification
+
+```text
+make verify: PASS; 1349 Python passed, 19 skipped, 7 warnings
+Ruff: PASS
+mypy: PASS (135 source files)
+frontend unit: 24 files, 83 tests passed
+frontend build: PASS
+Compose smoke/contract tests: 30 passed
+PostgreSQL integration: 19 passed, 2 warnings
+migration head: 0011_collection_checkpoints
+migration metadata tables: 27; public tables including alembic_version: 28
+development browser: 36 passed, 0 failed, 4 skipped (preserved checkpoint evidence)
+production browser: 36 passed, 0 failed, 4 skipped
+secret scan/security review: PASS
+runtime npm audit: 0 vulnerabilities
+full npm audit: 2 moderate dev-only Vitest findings, 0 high/critical
+SBOM: 582 components, sha256:e63fadcc56b9461e192ae70e9bd01ba01dc6a4e223143ab71a09aca9875933aa
+synthetic benchmark: 1000 iterations, synthetic_local, external_network=not_run
+production-like stack soak: 100 iterations, 500 requests, 0 errors, 0 readiness failures
+stack soak: worker liveness PASS, 0 restarts, 0 duplicate-event delta
+dependency outage/recovery: outage degraded as expected, recovery PASS
+Docker backup/restore: PASS; 70124-byte custom dump, restore/read verified
+host backup wrapper: BLOCKED_EXTERNAL (host pg_dump/pg_restore unavailable)
+```
+
+The production-like stack smoke and soak used the rebuilt API/worker/web
+services with viewer-authenticated reads. The web mutation gateway returned
+`403` without credentials and the read gateway returned `200` through its
+server-side viewer-only path. No browser credential or admin token was
+returned. The production browser suite independently verified the same
+read-only boundary.
+
+### Security and provider boundaries
+
+- `APP_ENV` absent defaults to development; `development` and `production` are
+  valid; `prod`, `produciton`, empty and arbitrary values are rejected.
+- Production Compose fails closed when DB, Redis, API-role or web inputs are
+  missing. Local Compose retains only its explicitly local development
+  defaults.
+- The worker receives no `VIEWER_API_TOKEN`, `OPERATOR_API_TOKEN`,
+  `ADMIN_API_TOKEN` or `EXECUTION_API_TOKEN`; API role validation is API-owned.
+- Solana public RPC is the free minimum path. Helius is optional enhancement;
+  missing Helius does not block free read-only readiness. BNB is not enabled by
+  default and explicit BNB enablement requires a canonical RPC. Robinhood uses
+  its canonical transport. GMGN remains optional, disabled by default,
+  `LIVE_SHADOW`, weight zero and non-authoritative with no execution path.
+- Real GMGN observations: `0`; unique tokens/sample units: `0`; winner/rug
+  labels: `null`; sample status: `INSUFFICIENT_SAMPLES`; live validation:
+  `BLOCKED_EXTERNAL`.
+
+### Release identity
+
+```text
+git SHA: 769ee58f62e39e181e7464ce5057db4923b7aa05
+app/API version: 0.1.0 / 0.1.0
+config hash: sha256:02357dab7e94009965762ca8e9a0a811ffbe4c1acbbf5dcf3cace68a5b92e1c3
+migration head: 0011_collection_checkpoints
+migration table count: 27 metadata tables (28 public including alembic_version)
+SBOM digest: sha256:e63fadcc56b9461e192ae70e9bd01ba01dc6a4e223143ab71a09aca9875933aa
+api image ID: sha256:6e5d8d68ddedff562b50fbad2ee81c7c1a2b5c0dbd829b9b6c0f6fbe9402dba5
+worker image ID: sha256:5e818c417389830d0dc0340aed498d64caf857fda5449e18ddd93f6917a4e21b
+web image ID: sha256:525d0383606e85a8b9f387524b2aa249180f42b8746ed40f92390291b40127e0
+registry digests: unavailable; IDs above are local immutable image identities
+```
+
+Hosted Actions run `35100554937` for the implementation SHA completed with
+all deterministic jobs failing at startup with zero executed steps/no runner;
+the release identity job was skipped with zero steps. This is
+`BLOCKED_EXTERNAL`, not local test evidence. Repository-controlled blockers are
+empty. External blockers are hosted Actions billing/runner access, branch
+protection/admin access, managed secret injection/deployment/rollback,
+managed backup scheduling/RPO/RTO, sustained managed soak, and credentialed
+Helius/GMGN/Telegram/stream acceptance.
+
+The resulting classification is:
+
+```text
+REPOSITORY_PROD_READ_ONLY_ENGINEERING_READY
+PROD_READ_ONLY_NOT_ACCEPTED
+ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION
+REAL_WORLD_ALPHA_NOT_YET_PROVEN
+NOT_READY_FOR_PROD_PAPER_AUTO
+NOT_LIVE_MONEY_READY
+```
 
 ## 2026-09-15 paused root-cause hardening checkpoint
 

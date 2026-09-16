@@ -138,3 +138,43 @@ This is caused by external acceptance gaps, not an unresolved local evidence
 isolation or test failure: hosted CI execution, branch protection, managed
 deployment/rollback, managed backup/restore, sustained managed soak, and
 credentialed external-provider acceptance are unavailable in this workspace.
+
+## 2026-09-16 resumed final candidate result
+
+The intentionally dirty checkpoint was resumed in place and the exact audited
+implementation was committed as
+`769ee58f62e39e181e7464ce5057db4923b7aa05`. No reset, restore, checkout,
+clean or stash was used. The implementation commit is the candidate used for
+the local release identity and was pushed to `origin/main`.
+
+| Requirement | Final local evidence | Result |
+| --- | --- | --- |
+| Web control gateway | Unauthenticated production-like web POST `403`; server-side viewer-only GET `200`; route regression 3 passed; browser receives no backend secret or admin authority. | PASS |
+| APP_ENV and protected modes | Absent/development/production accepted as specified; `prod`, `produciton`, empty and random values rejected; exact modes remain analysis-only/paper-only/locked. | PASS |
+| Production Compose and worker scope | Missing production DB/Redis/role/web values fail closed; supplied values render; worker receives no API role or execution token. | PASS |
+| Provider consistency | Solana public RPC is the free minimum; Helius optional; BNB requires a canonical RPC when explicitly enabled; Robinhood has a canonical transport; GMGN optional/disabled/`LIVE_SHADOW`/weight zero/non-authoritative. | PASS |
+| Deterministic quality | `make verify` exit 0: 1349 Python passed, 19 skipped, 7 warnings; frontend 24 files/83 tests; build, lint, typecheck, CSS, secret scan, security review and SBOM pass. | PASS |
+| PostgreSQL and migrations | Disposable PostgreSQL integration 19 passed, 2 warnings; head `0011_collection_checkpoints`; 27 migration metadata tables / 28 public tables. | PASS |
+| Compose/browser | Compose smoke contracts 30 passed; production browser 36 passed, 0 failed, 4 skipped; development browser checkpoint evidence 36 passed, 0 failed, 4 skipped. | PASS |
+| Dependency security | Runtime npm audit: zero vulnerabilities; full npm audit: only two documented moderate dev-only Vitest findings (`GHSA-82fw-gwwq-j7x9`), zero high/critical runtime findings. | PASS with bounded dev exception |
+| Stack reliability | Synthetic benchmark remains separate (`1000`, `synthetic_local`); production-like soak completed 100 iterations/500 requests with zero errors/readiness failures, zero restarts and zero duplicate delta; outage degraded and recovery passed. | PASS locally |
+| Backup/restore | Docker-native custom dump 70,124 bytes, digest `sha256:b49f15cf60dec66ba542663a7b4d126e01df8a33f99e970449e9f6afa9b0872b`; restore, migration head, table count, observation count and application read passed. Host wrapper is `BLOCKED_EXTERNAL` because client binaries are absent. | PASS / wrapper blocked |
+| Release identity | Release identity v2 binds Git SHA, config hash, migration head/count, SBOM digest, protected modes and local immutable API/worker/web image IDs. | PASS locally |
+| Hosted CI | Run `35100554937` for the implementation SHA completed with deterministic jobs failing at startup with zero steps/no runner; release identity was skipped with zero steps. | BLOCKED_EXTERNAL |
+
+Final local release identity fields:
+
+```text
+git SHA: 769ee58f62e39e181e7464ce5057db4923b7aa05
+config hash: sha256:02357dab7e94009965762ca8e9a0a811ffbe4c1acbbf5dcf3cace68a5b92e1c3
+migration head: 0011_collection_checkpoints
+SBOM digest: sha256:e63fadcc56b9461e192ae70e9bd01ba01dc6a4e223143ab71a09aca9875933aa
+api image: sha256:6e5d8d68ddedff562b50fbad2ee81c7c1a2b5c0dbd829b9b6c0f6fbe9402dba5
+worker image: sha256:5e818c417389830d0dc0340aed498d64caf857fda5449e18ddd93f6917a4e21b
+web image: sha256:525d0383606e85a8b9f387524b2aa249180f42b8746ed40f92390291b40127e0
+```
+
+Repository-controlled blockers: none. Managed/hosted and credentialed
+external acceptance remains unavailable, so the matrix result is
+`REPOSITORY_PROD_READ_ONLY_ENGINEERING_READY` but not
+`PROD_READ_ONLY_ACCEPTED`.
