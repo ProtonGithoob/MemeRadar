@@ -50,6 +50,28 @@ This matrix is intentionally a current-state audit, not a claim that external
 production acceptance is available. It is updated after implementation with
 the final evidence and classification.
 
+## 2026-09-16 final release-gate correctness closure
+
+The final correctness sprint started from synchronized
+`8e1600e760e1af72c8dd7726cafe3f156ed58200` and implementation commit
+`1e7aecc09019ae94a0a9d2291082e471f21847eb`. The following previously open
+repository-controlled release-gate gaps are now closed:
+
+| Requirement | Root cause | Canonical fix | Current regression/evidence | Result |
+| --- | --- | --- | --- | --- |
+| Backup target identity | URL presence did not prove a separate database. | Read-only database identity and empty-public-target preflight before dump/restore; no destructive cleanup. | Same URL, equivalent identity and non-empty target reject before `pg_restore`; Docker disposable target restores successfully. | PASS |
+| Backup failure classification | Broad CLI exception handling mislabeled restore defects as external blocks. | Explicit `PASS`, `FAIL` and `BLOCKED_EXTERNAL` result classes with redacted reasons. | Non-zero restore command is `FAIL`; absent host binaries are `BLOCKED_EXTERNAL`. | PASS |
+| Production Compose recovery | Recovery used base-only Compose and could recreate services in development mode. | One base-plus-production `PRODUCTION_COMPOSE` command for production config and recovery; recovered API/worker env inspected. | PostgreSQL-only and Redis-only recovery passes with `APP_ENV=production`, required readiness flags, exact modes and worker role-token absence. | PASS |
+| Independent dependency outages | PostgreSQL and Redis were only stopped together. | Separate bounded PostgreSQL-only and Redis-only scenarios with truthful readiness assertions. | Each dependency alone produces degraded readiness; each recovers to healthy readiness. | PASS |
+| Production browser acceptance | Production-named verification could start dev Playwright server. | Explicit production URL required; target invokes `production-build-e2e`. | Missing URL exits 2; production container suite passes 36/0/4. | PASS |
+| Strict stack acceptance | Generic soak allowed unmeasured runtime evidence. | `--strict-acceptance` requires measured runtime/liveness/restarts/memory/readiness/modes/execution state. | 100 iterations/500 requests, 0 errors, measured fields, strict failures empty; final SHA identity check passes. | PASS |
+| Reproducible local acceptance docs | Runbooks did not distinguish deterministic checks from production-like acceptance. | Release/reliability runbooks document the exact local sequence and external boundary. | Sequence includes Compose, images, production E2E, strict soak, independent recovery, backup/restore and identity. | PASS |
+| Doctor matrix | Older evidence was cited instead of current execution. | Fresh named doctor run with truthful classifications. | Solana/free-provider/paper checks pass; missing optional/external probes remain structured blocked/unconfigured. | PASS |
+
+No scoring weight, provider intelligence, lifecycle, execution path, GMGN
+weight, UI feature or protected mode changed. Repository-controlled blockers
+are empty; hosted/managed/provider acceptance remains external.
+
 ## 2026-09-15 root-cause hardening audit (before implementation)
 
 This audit was performed against synchronized `f61070faac7a1b73fe686b0ce2870d3cb11cdc09`

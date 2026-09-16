@@ -8,6 +8,37 @@ Canonical spec: `docs/superpowers/specs/2026-09-07-real-alpha-production-readine
 
 Execution plan: `docs/superpowers/plans/2026-09-07-real-alpha-production-readiness.md`
 
+## 2026-09-16 final release-gate correctness sprint
+
+The final correctness sprint started from synchronized
+`8e1600e760e1af72c8dd7726cafe3f156ed58200` and produced implementation commit
+`1e7aecc09019ae94a0a9d2291082e471f21847eb`. It closes the repository-owned
+backup target-safety, failure-classification, production Compose recovery,
+production-browser, strict-soak and local-acceptance documentation gaps. It
+does not provide hosted or managed acceptance and does not alter scoring or
+execution modes.
+
+| Gate | Current evidence | Status |
+|---|---|---|
+| Python/backend | `make verify`: 1361 passed, 19 skipped, 7 warnings; Ruff and mypy pass. | PASS |
+| Frontend | 24 unit files/83 tests, lint/typecheck/build pass; runtime audit has 0 vulnerabilities. | PASS |
+| Browser | Development and production-build/container suites each have 36 passed, 0 failed, 4 skipped. | PASS |
+| Backup/restore | Same-identity aliases and non-empty targets reject before restore; safe Docker target restores with head `0011_collection_checkpoints`, 28 tables, 2 observations and application read; restore command failure is `FAIL`. | PASS locally / host wrapper BLOCKED_EXTERNAL |
+| Dependency recovery | Base-plus-production Compose is used for both independent outage/recovery scenarios; PostgreSQL-only and Redis-only degraded readiness and recovery pass; recovered API/worker env is inspected. | PASS locally |
+| Strict stack acceptance | 100 iterations/500 requests, 0 errors/readiness failures, measured Docker runtime, worker PASS, exact modes and `execution_eligible=false`; final post-commit identity check also passes. | PASS locally |
+| Dependency/security | Production Compose missing-secret expansion fails closed; secret/security/SBOM pass; full audit retains only two moderate dev-only Vitest findings. | PASS locally |
+| Managed/hosted acceptance | Hosted runner/billing, branch protection, managed deployment/rollback/backups/soak, registry digests and credentialed external providers remain unavailable. | BLOCKED_EXTERNAL |
+
+The post-implementation local release artifact was bound to API image
+`sha256:b3bdad2a19301ef979d165062e44df340deeb1313b9beed91ff9b5165f773cc2`,
+worker image
+`sha256:34189edfbd4b937326294bea03bbf094f071aa8e1c936063c653f84a3bbf48fe`
+and web image
+`sha256:7c8525152b0fc81ca79c0f0ee3999bdc7a030ca1cec1648541c3918d67956ba2`.
+These are local Docker image IDs, not registry manifest digests. Real GMGN
+evidence remains `0` observations and `INSUFFICIENT_SAMPLES`; live validation
+is `BLOCKED_EXTERNAL`.
+
 ## 2026-09-16 resumed final engineering verification
 
 The paused dirty candidate was resumed without discarding any sprint work. The

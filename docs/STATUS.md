@@ -33,6 +33,89 @@ execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
 
+## 2026-09-16 final release-gate correctness sprint
+
+The resumed baseline was clean and synchronized at
+`8e1600e760e1af72c8dd7726cafe3f156ed58200`; the saved checkpoint documents
+were read before work began. The intentionally scoped correctness changes
+were committed as `1e7aecc09019ae94a0a9d2291082e471f21847eb`
+(`fix: close final release gate correctness gaps`). No scoring, provider
+intelligence, lifecycle, execution path, UI feature or protected mode changed.
+
+### Closed gaps
+
+- Backup/restore now resolves source and target database identity, rejects
+  aliases of the same database and any non-empty public target before
+  `pg_restore`, and distinguishes `PASS`, `FAIL` and `BLOCKED_EXTERNAL`
+  without persisting command stderr or connection URLs.
+- Production dependency recovery uses one base-plus-production Compose command,
+  tests PostgreSQL-only and Redis-only outages independently, and inspects the
+  recovered API/worker environment for production readiness flags, protected
+  modes and worker role-token absence.
+- `production-build-e2e` and `prod-read-only-verify` require an explicit
+  production-build URL; they cannot silently start the development server.
+- Strict stack acceptance requires measured container liveness, restart counts,
+  memory, worker liveness, dependency readiness, protected modes and
+  `execution_eligible=false`; optional-provider counts remain truthful when
+  unavailable.
+- Release and reliability runbooks now separate deterministic checks from
+  production-like local acceptance.
+
+### Current evidence
+
+```text
+make verify: PASS; 1361 passed, 19 skipped, 7 warnings
+focused post-commit correctness/config suite: 34 passed
+Ruff: PASS
+mypy: PASS (135 source files)
+frontend unit: 24 files, 83 tests passed
+frontend build: PASS
+development browser: 36 passed, 0 failed, 4 skipped
+production-build browser: 36 passed, 0 failed, 4 skipped
+PostgreSQL integration: 19 passed, 2 warnings
+migration head: 0011_collection_checkpoints; 27 metadata / 28 public tables
+production Compose: missing-secret expansion fails closed; supplied contract PASS
+strict stack soak: 100 iterations, 500 requests, 0 errors, 0 readiness failures
+post-commit strict identity soak: final SHA, 5 requests, 0 errors, PASS
+PostgreSQL-only and Redis-only dependency recovery: PASS
+Docker backup/restore: PASS; 69611-byte custom dump, restore/read verified
+host backup wrapper: BLOCKED_EXTERNAL (host PostgreSQL client binaries absent)
+runtime npm audit: 0 vulnerabilities
+full npm audit: 2 moderate dev-only Vitest findings; 0 high/critical
+SBOM: 582 components, sha256:e63fadcc56b9461e192ae70e9bd01ba01dc6a4e223143ab71a09aca9875933aa
+```
+
+The Docker backup artifact digest was
+`sha256:b33c0a0644537e6c424d04afb9af8e91afeed3c18077c42b33c4f802aa7d1ab8`;
+restore verification found migration head `0011_collection_checkpoints`, 28
+public tables, 2 observations and a successful application read. The strict
+100-iteration artifact digest was
+`sha256:3d1a65ba2f624d02b3eceea8c4234a4508883bd331847c9145c4864cc5b10e28`.
+
+Fresh doctor classifications were: provider and Helius
+`BLOCKED_EXTERNAL/CONFIGURATION_MISSING`; Solana public RPC `PASS/HEALTH_OK`;
+Dexscreener `BLOCKED_EXTERNAL/EXTERNAL_UNAVAILABLE` for that probe;
+free-provider aggregate `PASS/FREE_READ_ONLY_CORE_READY` with optional
+providers unconfigured; stream integrity
+`BLOCKED_EXTERNAL/CONFIGURATION_MISSING`; paper trading
+`PASS/PAPER_QUOTE_PROVIDER_READY`; reliability
+`BLOCKED_EXTERNAL/EXTERNAL_CHECK_NOT_RUN`.
+
+The post-implementation release identity was generated from the implementation
+commit with local image identity bound. Its artifact digest was
+`sha256:7c08f07d8fa9cad1a33f3eafe91b752b0022187f3b95c205a771163af356d3c8`.
+The final evidence-only documentation commit is intentionally separate; the
+final release identity is regenerated after that commit and is reported in the
+handoff.
+
+Repository-controlled blockers are empty. External blockers remain hosted
+Actions billing/runner access, branch protection/admin capability, managed
+secret injection/deployment/rollback, managed backup scheduling/RPO/RTO,
+sustained managed soak, registry manifest digests and credentialed external
+provider validation. Real GMGN observations remain `0`, unique tokens/sample
+units `0`, labels unavailable, `INSUFFICIENT_SAMPLES`, and live validation
+`BLOCKED_EXTERNAL`.
+
 ## 2026-09-16 resumed final verification
 
 The saved dirty sprint candidate was resumed without reset, restore, checkout,
