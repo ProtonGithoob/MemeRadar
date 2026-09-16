@@ -69,10 +69,35 @@ container liveness/restart counts, bounded memory samples, protected modes and
 an artifact digest. Supplying `STACK_CONTAINER_NAMES` enables the Docker
 inspect/stats portion; without it, those fields are explicitly
 `NOT_MEASURED`, not inferred. It is read-only and never starts/stops services
-or writes to the database.
-`make production-dependency-drill` performs the bounded local PostgreSQL/Redis
-stop/recovery smoke when the disposable Compose stack is available. Managed
-provider/DB/Redis/Telegram soak remains an external acceptance gate.
+or writes to the database. This generic smoke/soak is intentionally looser.
+
+For a production-read-only acceptance gate, require the measured Docker
+evidence explicitly:
+
+```bash
+MEMERADAR_STACK_VIEWER_API_TOKEN="$MEMERADAR_VIEWER_API_TOKEN" \
+  make production-stack-acceptance STACK_SOAK_ITERATIONS=100 \
+  STACK_SOAK_INTERVAL_SECONDS=1 \
+  STACK_API_BASE_URL=http://127.0.0.1:18000 \
+  STACK_CONTAINER_NAMES=compose-api-1,compose-worker-1,compose-postgres-1,compose-redis-1,compose-web-1
+```
+
+Strict acceptance fails when container runtime, worker liveness, restart
+counts, memory samples, database/Redis readiness, protected modes or
+`execution_eligible=false` are not observed. Real observation and duplicate
+metrics are either measured or labelled `UNAVAILABLE_TRUTHFUL` with a reason;
+zero optional-provider observations are not treated as an error. The
+synthetic reliability benchmark remains a separate `synthetic_local` report
+and is never called a production soak.
+
+`make production-dependency-drill` performs bounded independent scenarios
+using the base plus production Compose override for every operation. It first
+checks a healthy baseline, then stops only PostgreSQL (Redis must remain
+reachable), expects readiness `503` with database degradation, recovers
+PostgreSQL and expects readiness `200`, then repeats the same sequence with
+only Redis stopped. A combined outage is not a substitute for these two
+cases. Managed provider/DB/Redis/Telegram soak remains an external acceptance
+gate.
 
 ## Provider and stream outage
 
@@ -144,12 +169,10 @@ operator environment, not in scripts, logs or commits.
 
 ```bash
 export BACKUP_FILE=/secure/backup/location/memeradar-$(date -u +%Y%m%dT%H%M%SZ).dump
-pg_dump --format=custom --no-owner --no-acl \
-  --file "$BACKUP_FILE" "$MEMERADAR_DATABASE_URL"
-
-# Point this at a newly created, isolated restore-check database.
-pg_restore --exit-on-error --no-owner --no-acl \
-  --dbname "$MEMERADAR_RESTORE_DATABASE_URL" "$BACKUP_FILE"
+export MEMERADAR_BACKUP_SOURCE_URL="$MEMERADAR_DATABASE_URL"
+# Point this at a newly created, empty, isolated restore-check database.
+export MEMERADAR_BACKUP_RESTORE_URL="$MEMERADAR_RESTORE_DATABASE_URL"
+make backup-restore-drill BACKUP_FILE="$BACKUP_FILE"
 
 MEMERADAR_TEST_DATABASE_URL="$MEMERADAR_RESTORE_DATABASE_URL" \
   make integration-test
@@ -158,8 +181,15 @@ make migration-check
 
 Record backup timestamp, source schema head, restore target, row-count/checksum
 verification and test results in the change or incident record. Do not print
-the URLs, passwords or provider credentials. A restore drill that cannot
-connect is `BLOCKED_EXTERNAL`, not a fabricated PASS.
+the URLs, passwords or provider credentials. The repository drill first checks
+database identity and rejects source/restore aliases that resolve to the same
+database. It also rejects any restore target with existing public tables before
+`pg_restore`; it never drops a database or schema to make the target fit.
+Unavailable `pg_dump`/`pg_restore` binaries or an unreachable preflight are
+`BLOCKED_EXTERNAL`. A rejected target, restore command error or verification
+mismatch is `FAIL`, never `BLOCKED_EXTERNAL`.
+The wrapper invokes `pg_dump --format=custom` and `pg_restore --exit-on-error`
+only after those safety checks.
 
 ## Production connection boundary
 
@@ -174,8 +204,8 @@ The repository-native `make backup-restore-drill` target runs
 `scripts/backup_restore_drill.py` with source and disposable restore URLs held
 only in `MEMERADAR_BACKUP_SOURCE_URL` and `MEMERADAR_BACKUP_RESTORE_URL`. It
 creates a custom-format dump, restores only into the separately supplied
-target, verifies the migration head, public table count, critical observation
-count and an application read, and emits a redacted digest. The current
+empty target, verifies the migration head, public table count, critical
+observation count and an application read, and emits a redacted digest. The current
 disposable evidence is PostgreSQL 16.14, migration head
 `0011_collection_checkpoints`, 27 metadata tables / 28 public tables including
 `alembic_version`. This is local disposable evidence, not a managed-production

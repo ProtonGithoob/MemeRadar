@@ -206,6 +206,142 @@ def test_stack_soak_rejects_unbounded_parameters_and_documents_make_targets() ->
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "production-stack-smoke:" in makefile
+    assert "production-stack-acceptance:" in makefile
+    assert "--strict-acceptance" in makefile
     assert "production-soak:" in makefile
     assert "production_stack_soak.py" in makefile
     assert "synthetic-reliability-benchmark:" in makefile
+
+
+def _strict_request(
+    *, modes: dict[str, bool] | None = None, execution_eligible: bool | None = False
+):
+    protected_modes = {
+        "analysis_only": True,
+        "paper_trading": True,
+        "manual_execution": False,
+        "auto_execution": False,
+    } if modes is None else modes
+
+    def request(url: str, _headers: dict[str, str]) -> HttpResult:
+        if url.endswith("/health/live"):
+            return HttpResult(200, {"status": "alive"}, 1.0)
+        if url.endswith("/health/ready"):
+            return HttpResult(
+                200,
+                {
+                    "dependencies": {
+                        "database": {"required": True, "state": "reachable"},
+                        "redis": {"required": True, "state": "reachable"},
+                    }
+                },
+                1.0,
+            )
+        if "/v1/readiness" in url:
+            body: dict[str, object] = {
+                "gmgn_alpha_validation": {"real_observation_count": 0},
+                "protected_modes": protected_modes,
+            }
+            if execution_eligible is not None:
+                body["live_money"] = {"execution_eligible": execution_eligible}
+            return HttpResult(200, body, 1.0)
+        if "/v1/operations/overview" in url:
+            body = {"modes": protected_modes}
+            if execution_eligible is not None:
+                body["execution_eligible"] = execution_eligible
+            body["metrics"] = {"counters": {"duplicate_events": 0}}
+            return HttpResult(200, body, 1.0)
+        return HttpResult(200, {"items": []}, 1.0)
+
+    return request
+
+
+def _measured_snapshots():
+    snapshots = iter(
+        (
+            {
+                "api": {"status": "running", "restart_count": 0, "memory_usage_bytes": 100},
+                "worker": {
+                    "status": "running",
+                    "restart_count": 0,
+                    "memory_usage_bytes": 200,
+                },
+            },
+            {
+                "api": {"status": "running", "restart_count": 0, "memory_usage_bytes": 110},
+                "worker": {
+                    "status": "running",
+                    "restart_count": 0,
+                    "memory_usage_bytes": 210,
+                },
+            },
+        )
+    )
+    return lambda _names: next(snapshots)
+
+
+def test_strict_stack_acceptance_rejects_missing_container_measurement() -> None:
+    report = run_stack_soak(
+        "http://api.example",
+        "viewer-test-token",
+        iterations=1,
+        interval_seconds=0,
+        request=_strict_request(),
+        strict_acceptance=True,
+    )
+
+    assert report["status"] != "PASS"
+    assert "container_runtime" in report["strict_failures"]
+
+
+def test_strict_stack_acceptance_rejects_missing_protected_modes() -> None:
+    report = run_stack_soak(
+        "http://api.example",
+        "viewer-test-token",
+        iterations=1,
+        interval_seconds=0,
+        request=_strict_request(modes={}),
+        container_names=("api", "worker"),
+        container_snapshot=_measured_snapshots(),
+        strict_acceptance=True,
+    )
+
+    assert report["status"] != "PASS"
+    assert "protected_modes" in report["strict_failures"]
+
+
+def test_strict_stack_acceptance_rejects_unknown_execution_eligibility() -> None:
+    report = run_stack_soak(
+        "http://api.example",
+        "viewer-test-token",
+        iterations=1,
+        interval_seconds=0,
+        request=_strict_request(execution_eligible=None),
+        container_names=("api", "worker"),
+        container_snapshot=_measured_snapshots(),
+        strict_acceptance=True,
+    )
+
+    assert report["status"] != "PASS"
+    assert "execution_eligible" in report["strict_failures"]
+
+
+def test_strict_stack_acceptance_passes_with_measured_safe_stack() -> None:
+    report = run_stack_soak(
+        "http://api.example",
+        "viewer-test-token",
+        iterations=1,
+        interval_seconds=0,
+        request=_strict_request(),
+        container_names=("api", "worker"),
+        container_snapshot=_measured_snapshots(),
+        strict_acceptance=True,
+    )
+
+    assert report["strict_acceptance"] is True
+    assert report["strict_failures"] == []
+    assert report["dependency_readiness"] == {
+        "database": "reachable",
+        "redis": "reachable",
+    }
+    assert report["status"] == "PASS"

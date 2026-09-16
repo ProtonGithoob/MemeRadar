@@ -58,13 +58,55 @@ broader closure boundary separately:
 
 ```bash
 make deterministic-release-gates
-MEMERADAR_TEST_DATABASE_URL="$MEMERADAR_DATABASE_URL" make prod-read-only-verify
+MEMERADAR_TEST_DATABASE_URL="$MEMERADAR_DATABASE_URL" \
+MEMERADAR_E2E_BASE_URL="https://the-tested-production-build.example" \
+  make prod-read-only-verify
 ```
 
-`prod-read-only-verify` requires an explicit PostgreSQL test URL and runs the
-existing integration and Playwright targets. Set
-`MEMERADAR_E2E_BASE_URL` to the tested production build for browser acceptance;
-without it, Playwright uses its existing local development-server harness.
+`make deterministic-release-gates` is keyless/deterministic. The stricter
+`prod-read-only-verify` requires both an explicit PostgreSQL test URL and
+`MEMERADAR_E2E_BASE_URL` for an already-running production build; it fails
+closed instead of starting the development Playwright server. Keep ordinary
+`make frontend-e2e` for developer-only browser checks.
+
+## Reproducible local production-read-only acceptance
+
+Run this sequence from the exact candidate checkout with disposable database,
+Redis and browser targets. Do not put URLs, tokens or passwords in the
+repository or release artifact.
+
+```bash
+make compose-prod-config
+make production-images
+
+# Start the production Compose contract with the operator's injected values.
+docker compose -f infra/compose/docker-compose.yml \
+  -f infra/compose/docker-compose.prod.yml up -d --wait
+
+MEMERADAR_TEST_DATABASE_URL="$MEMERADAR_DATABASE_URL" \
+MEMERADAR_E2E_BASE_URL="http://127.0.0.1:13000" \
+  make prod-read-only-verify
+
+MEMERADAR_STACK_VIEWER_API_TOKEN="$MEMERADAR_VIEWER_API_TOKEN" \
+  make production-stack-acceptance \
+    STACK_API_BASE_URL=http://127.0.0.1:18000 \
+    STACK_CONTAINER_NAMES=compose-api-1,compose-worker-1,compose-postgres-1,compose-redis-1,compose-web-1
+
+make production-dependency-drill
+make backup-restore-drill
+make release-identity RELEASE_IDENTITY_OUTPUT=artifacts/release-identity.json
+```
+
+`production-stack-acceptance` is strict: it requires measured container
+liveness, restart counts, memory samples, worker liveness, database/Redis
+readiness, exact protected modes and `execution_eligible=false`. Missing
+optional-provider observations are reported as truthful unavailable evidence;
+they are not converted into synthetic growth. The dependency drill stops and
+recovers PostgreSQL and Redis independently and always uses the base plus
+production Compose override. Hosted CI, managed deployment/rollback,
+credentialed providers, managed backup scheduling and sustained managed soak
+remain separate external gates.
+
 Provider credentials, hosted CI and managed deployment acceptance remain
 separate external gates.
 

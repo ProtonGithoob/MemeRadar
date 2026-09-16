@@ -88,8 +88,26 @@ def test_production_compose_has_no_local_fallbacks_and_keeps_worker_least_privil
     assert "EXECUTION_API_TOKEN" not in api
     assert "MEMERADAR_ADMIN_API_TOKEN" not in web
     assert web["MEMERADAR_VIEWER_API_TOKEN"] == env["VIEWER_API_TOKEN"]
+    for service in (api, worker):
+        assert service["REQUIRE_DATABASE_FOR_READINESS"] == "true"
+        assert service["REQUIRE_REDIS_FOR_READINESS"] == "true"
+        assert service["ANALYSIS_ONLY"] == "true"
+        assert service["PAPER_TRADING"] == "true"
+        assert service["MANUAL_EXECUTION"] == "false"
+        assert service["AUTO_EXECUTION"] == "false"
     serialized = json.dumps(config)
     assert "memeradar_local_only" not in serialized
+
+
+def test_dependency_recovery_reuses_production_compose_contract() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    target = makefile.split("production-dependency-drill:", 1)[1].split("\n\n", 1)[0]
+    assert "$(PRODUCTION_COMPOSE)" in target
+    assert "$(COMPOSE)" not in target
+    production_compose = (ROOT / "infra" / "compose" / "docker-compose.prod.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "APP_ENV: production" in production_compose
 
 
 def test_local_compose_uses_one_postgres_password_source_for_api_and_database() -> None:

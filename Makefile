@@ -30,6 +30,7 @@ SOAK_EXPECTED_RATE ?= 100
 SOAK_OUTPUT ?=
 STACK_SOAK_ITERATIONS ?= 100
 STACK_SOAK_INTERVAL_SECONDS ?= 1
+STACK_SOAK_STRICT_ACCEPTANCE ?= 0
 STACK_SOAK_OUTPUT ?=
 STACK_API_BASE_URL ?= http://127.0.0.1:18000
 STACK_CONTAINER_NAMES ?=
@@ -38,6 +39,7 @@ RELEASE_API_IMAGE ?= memeradar-api:$(RELEASE_IMAGE_TAG)
 RELEASE_WORKER_IMAGE ?= memeradar-worker:$(RELEASE_IMAGE_TAG)
 RELEASE_WEB_IMAGE ?= memeradar-web:$(RELEASE_IMAGE_TAG)
 PRODUCTION_COMPOSE_FILE ?= infra/compose/docker-compose.prod.yml
+PRODUCTION_COMPOSE ?= docker compose -f $(COMPOSE_FILE) -f $(PRODUCTION_COMPOSE_FILE)
 BACKUP_FILE ?= artifacts/memeradar-backup-restore-drill.dump
 BACKUP_RESTORE_OUTPUT ?=
 EARLY_DETECTION_ITERATIONS ?= 100
@@ -51,7 +53,7 @@ SBOM_OUTPUT ?=
 	provider-doctor helius-doctor solana-rpc-doctor dexscreener-doctor free-provider-doctor \
 	birdeye-doctor rugcheck-doctor social-doctor narrative-doctor ollama-doctor \
 	external-wallet-doctor telegram-doctor stream-integrity-doctor paper-trading-doctor \
-	backtest-replay opportunity-research historical-dataset alpha-readiness calibrate-score winner-vs-rug-optimizer reliability-benchmark synthetic-reliability-benchmark production-soak production-stack-smoke early-detection-benchmark early-live-doctor reliability-doctor \
+	backtest-replay opportunity-research historical-dataset alpha-readiness calibrate-score winner-vs-rug-optimizer reliability-benchmark synthetic-reliability-benchmark production-soak production-stack-smoke production-stack-acceptance early-detection-benchmark early-live-doctor reliability-doctor \
 	security-review security-review-external sbom release-identity compose-prod-config production-images production-build-e2e production-dependency-drill backup-restore-drill shadow-start shadow-status
 
 
@@ -115,11 +117,15 @@ production-soak:
 	MEMERADAR_STACK_CONTAINER_NAMES="$(STACK_CONTAINER_NAMES)" \
 		$(PYTHON) scripts/production_stack_soak.py --iterations $(STACK_SOAK_ITERATIONS) \
 		--interval-seconds $(STACK_SOAK_INTERVAL_SECONDS) \
+		$(if $(filter 1 true yes,$(STACK_SOAK_STRICT_ACCEPTANCE)),--strict-acceptance,) \
 		$(if $(STACK_SOAK_OUTPUT),--output $(STACK_SOAK_OUTPUT),)
 
 production-stack-smoke:
 	$(MAKE) production-soak STACK_SOAK_ITERATIONS=1 STACK_SOAK_INTERVAL_SECONDS=0 \
 		STACK_SOAK_OUTPUT="$(STACK_SOAK_OUTPUT)"
+
+production-stack-acceptance:
+	$(MAKE) production-soak STACK_SOAK_STRICT_ACCEPTANCE=1
 
 production-build-e2e:
 	@if [[ -z "$${MEMERADAR_E2E_BASE_URL:-}" ]]; then \
@@ -128,13 +134,33 @@ production-build-e2e:
 	$(MAKE) frontend-e2e
 
 production-dependency-drill:
-	@set -o pipefail; \
-	trap '$(COMPOSE) start postgres redis >/dev/null 2>&1 || true' EXIT; \
-	$(COMPOSE) stop postgres redis; \
-	set +e; $(MAKE) production-stack-smoke; stopped_status=$$?; set -e; \
-	test $$stopped_status -ne 0; \
-	$(COMPOSE) start postgres redis >/dev/null; \
-	$(COMPOSE) up -d --wait api worker >/dev/null; \
+	@set -euo pipefail; \
+	drill_output=$$(mktemp -d); \
+	assert_production_recovery_contract() { \
+		for service in api worker; do \
+			container_id="$$($(PRODUCTION_COMPOSE) ps -q "$$service")"; \
+			test -n "$$container_id"; \
+			docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$$container_id" | \
+				$(PYTHON) -c 'import sys; env = dict(line.rstrip("\n").split("=", 1) for line in sys.stdin if "=" in line); assert env.get("APP_ENV") == "production"; assert env.get("REQUIRE_DATABASE_FOR_READINESS") == "true"; assert env.get("REQUIRE_REDIS_FOR_READINESS") == "true"; assert env.get("ANALYSIS_ONLY") == "true"; assert env.get("PAPER_TRADING") == "true"; assert env.get("MANUAL_EXECUTION") == "false"; assert env.get("AUTO_EXECUTION") == "false"; assert not any(name in env for name in ("VIEWER_API_TOKEN", "OPERATOR_API_TOKEN", "ADMIN_API_TOKEN", "EXECUTION_API_TOKEN")) if "worker" in sys.argv[1].lower() else True' "$$service"; \
+		done; \
+	}; \
+	trap '$(PRODUCTION_COMPOSE) start postgres redis >/dev/null 2>&1 || true; rm -f "$$drill_output"/*.json; rmdir "$$drill_output"' EXIT; \
+	$(MAKE) production-stack-smoke; \
+	$(PRODUCTION_COMPOSE) stop postgres; \
+	set +e; $(MAKE) production-stack-smoke STACK_SOAK_OUTPUT="$$drill_output/postgres-down.json"; postgres_down_status=$$?; set -e; \
+	test $$postgres_down_status -ne 0; \
+	$(PYTHON) -c 'import json, sys; report = json.load(open(sys.argv[1])); assert report["dependency_readiness"] == {"database": "unreachable", "redis": "reachable"}, report["dependency_readiness"]' "$$drill_output/postgres-down.json"; \
+	$(PRODUCTION_COMPOSE) start postgres >/dev/null; \
+	$(PRODUCTION_COMPOSE) up -d --wait api worker >/dev/null; \
+	assert_production_recovery_contract; \
+	$(MAKE) production-stack-smoke; \
+	$(PRODUCTION_COMPOSE) stop redis; \
+	set +e; $(MAKE) production-stack-smoke STACK_SOAK_OUTPUT="$$drill_output/redis-down.json"; redis_down_status=$$?; set -e; \
+	test $$redis_down_status -ne 0; \
+	$(PYTHON) -c 'import json, sys; report = json.load(open(sys.argv[1])); assert report["dependency_readiness"] == {"database": "reachable", "redis": "unreachable"}, report["dependency_readiness"]' "$$drill_output/redis-down.json"; \
+	$(PRODUCTION_COMPOSE) start redis >/dev/null; \
+	$(PRODUCTION_COMPOSE) up -d --wait api worker >/dev/null; \
+	assert_production_recovery_contract; \
 	$(MAKE) production-stack-smoke
 
 early-detection-benchmark:
@@ -166,7 +192,7 @@ compose-config:
 	$(COMPOSE) config --quiet
 
 compose-prod-config:
-	docker compose -f $(COMPOSE_FILE) -f $(PRODUCTION_COMPOSE_FILE) config --quiet
+	$(PRODUCTION_COMPOSE) config --quiet
 
 secret-scan:
 	$(PYTHON) scripts/secret_scan.py
@@ -213,11 +239,15 @@ deterministic-release-gates: verify frontend-build frontend-security-audit compo
 
 prod-read-only-verify: deterministic-release-gates
 	@if [[ -z "$${MEMERADAR_TEST_DATABASE_URL:-}" ]]; then \
-		echo "BLOCKED_EXTERNAL: MEMERADAR_TEST_DATABASE_URL is required for PostgreSQL acceptance."; \
+		 echo "BLOCKED_EXTERNAL: MEMERADAR_TEST_DATABASE_URL is required for PostgreSQL acceptance."; \
+		exit 2; \
+	fi
+	@if [[ -z "$${MEMERADAR_E2E_BASE_URL:-}" ]]; then \
+		echo "BLOCKED_EXTERNAL: MEMERADAR_E2E_BASE_URL must point to a production build for browser acceptance."; \
 		exit 2; \
 	fi
 	$(MAKE) integration-test
-	$(MAKE) frontend-e2e
+	$(MAKE) production-build-e2e
 
 up:
 	$(COMPOSE) up -d

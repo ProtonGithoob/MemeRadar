@@ -274,6 +274,24 @@ def _dependency_interruptions(body: object) -> dict[str, int]:
     return result
 
 
+def _dependency_readiness(body: object) -> dict[str, str]:
+    result: dict[str, str] = {}
+    if not isinstance(body, Mapping):
+        return result
+    dependencies = body.get("dependencies")
+    if not isinstance(dependencies, Mapping):
+        return result
+    for name in ("database", "redis"):
+        item = dependencies.get(name)
+        if (
+            isinstance(item, Mapping)
+            and item.get("required") is True
+            and isinstance(item.get("state"), str)
+        ):
+            result[name] = item["state"]
+    return result
+
+
 def _digest(report: Mapping[str, object]) -> str:
     encoded = json.dumps(report, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"sha256:{sha256(encoded).hexdigest()}"
@@ -289,6 +307,7 @@ def run_stack_soak(
     clock: Clock | None = None,
     container_names: Sequence[str] = (),
     container_snapshot: RuntimeSnapshotFunction | None = None,
+    strict_acceptance: bool = False,
 ) -> dict[str, object]:
     """Collect bounded HTTP/readiness evidence from an existing stack."""
 
@@ -305,6 +324,8 @@ def run_stack_soak(
             "request_count": 0,
             "error_count": 0,
             "readiness_failures": 0,
+            "strict_acceptance": strict_acceptance,
+            "strict_failures": ["viewer token is required"],
         }
         report["artifact_digest"] = _digest(report)
         return report
@@ -315,6 +336,7 @@ def run_stack_soak(
     error_count = 0
     readiness_failures = 0
     dependency_interruptions = {"database": 0, "redis": 0}
+    dependency_readiness: dict[str, str] = {}
     latencies: list[float] = []
     statuses: dict[str, int] = {}
     initial_observations: int | None = None
@@ -353,6 +375,7 @@ def run_stack_soak(
                     readiness_failures += 1
                 for dependency, amount in _dependency_interruptions(result.body).items():
                     dependency_interruptions[dependency] += amount
+                dependency_readiness.update(_dependency_readiness(result.body))
             if name == "readiness":
                 observations = _real_observation_count(result.body)
                 if observations is not None:
@@ -397,9 +420,51 @@ def run_stack_soak(
         final_container_runtime,
     )
     container_ok = container_runtime["worker_liveness"] in {"PASS", "NOT_MEASURED"}
+    strict_failures: list[str] = []
+    if strict_acceptance:
+        if not mode_ok:
+            strict_failures.append("protected_modes")
+        if not execution_ok:
+            strict_failures.append("execution_eligible")
+        if dependency_readiness != {"database": "reachable", "redis": "reachable"}:
+            strict_failures.append("dependency_readiness")
+        if container_runtime.get("measurement_method") != "docker_inspect_and_stats":
+            strict_failures.append("container_runtime")
+        else:
+            services = container_runtime.get("services")
+            memory_usage = container_runtime.get("memory_usage_bytes")
+            if (
+                not isinstance(services, Mapping)
+                or not all(
+                    isinstance(service, Mapping)
+                    and service.get("status") == "running"
+                    and isinstance(service.get("restart_count"), int)
+                    and not isinstance(service.get("restart_count"), bool)
+                    for service in services.values()
+                )
+            ):
+                strict_failures.append("container_liveness")
+            if container_runtime.get("worker_liveness") != "PASS":
+                strict_failures.append("worker_liveness")
+            if not isinstance(memory_usage, Mapping) or any(
+                not isinstance(sample, Mapping)
+                or not isinstance(sample.get("initial"), int)
+                or isinstance(sample.get("initial"), bool)
+                or not isinstance(sample.get("final"), int)
+                or isinstance(sample.get("final"), bool)
+                for sample in memory_usage.values()
+            ):
+                strict_failures.append("memory_samples")
+        if error_count or readiness_failures:
+            strict_failures.append("http_readiness")
+    strict_ok = not strict_failures
     status = (
         "PASS"
-        if error_count == 0 and mode_ok and execution_ok and container_ok
+        if error_count == 0
+        and mode_ok
+        and execution_ok
+        and container_ok
+        and (not strict_acceptance or strict_ok)
         else "DEGRADED"
     )
     duplicate_delta = (
@@ -407,6 +472,54 @@ def run_stack_soak(
         if initial_duplicate_events is None or final_duplicate_events is None
         else max(0, final_duplicate_events - initial_duplicate_events)
     )
+    persistence: dict[str, object] = {
+        "initial_real_observation_count": initial_observations,
+        "final_real_observation_count": final_observations,
+        "real_observation_delta": (
+            None
+            if initial_observations is None or final_observations is None
+            else final_observations - initial_observations
+        ),
+    }
+    duplicate_accounting: dict[str, object] = {
+        "initial_duplicate_events": initial_duplicate_events,
+        "final_duplicate_events": final_duplicate_events,
+        "duplicate_event_delta": duplicate_delta,
+        "duplicate_rate_per_request": (
+            None
+            if duplicate_delta is None
+            else round(duplicate_delta / max(request_count, 1), 6)
+        ),
+    }
+    if strict_acceptance:
+        persistence.update(
+            {
+                "measurement_status": (
+                    "MEASURED"
+                    if initial_observations is not None and final_observations is not None
+                    else "UNAVAILABLE_TRUTHFUL"
+                ),
+                "measurement_reason": (
+                    None
+                    if initial_observations is not None and final_observations is not None
+                    else "real_observation_count_not_exposed_by_stack"
+                ),
+            }
+        )
+        duplicate_accounting.update(
+            {
+                "measurement_status": (
+                    "MEASURED"
+                    if initial_duplicate_events is not None and final_duplicate_events is not None
+                    else "UNAVAILABLE_TRUTHFUL"
+                ),
+                "measurement_reason": (
+                    None
+                    if initial_duplicate_events is not None and final_duplicate_events is not None
+                    else "duplicate_event_counter_not_exposed_by_stack"
+                ),
+            }
+        )
     report = {
         "schema_version": "production-stack-soak-v1",
         "measurement_method": "production_like_http_stack",
@@ -425,28 +538,14 @@ def run_stack_soak(
             "average": round(sum(latencies) / len(latencies), 3) if latencies else None,
         },
         "dependency_interruptions": dependency_interruptions,
-        "persistence": {
-            "initial_real_observation_count": initial_observations,
-            "final_real_observation_count": final_observations,
-            "real_observation_delta": (
-                None
-                if initial_observations is None or final_observations is None
-                else final_observations - initial_observations
-            ),
-        },
-        "duplicate_accounting": {
-            "initial_duplicate_events": initial_duplicate_events,
-            "final_duplicate_events": final_duplicate_events,
-            "duplicate_event_delta": duplicate_delta,
-            "duplicate_rate_per_request": (
-                None
-                if duplicate_delta is None
-                else round(duplicate_delta / max(request_count, 1), 6)
-            ),
-        },
+        "dependency_readiness": dependency_readiness,
+        "persistence": persistence,
+        "duplicate_accounting": duplicate_accounting,
         "container_runtime": container_runtime,
         "protected_modes": observed_modes,
         "execution_eligible": execution_eligible,
+        "strict_acceptance": strict_acceptance,
+        "strict_failures": strict_failures,
         "failures": failures[:32],
         "status": status,
     }
@@ -462,6 +561,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--interval-seconds", type=float, default=1.0)
+    parser.add_argument("--strict-acceptance", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     try:
@@ -475,6 +575,7 @@ def main(argv: list[str] | None = None) -> int:
                 for name in os.environ.get("MEMERADAR_STACK_CONTAINER_NAMES", "").split(",")
                 if name.strip()
             ),
+            strict_acceptance=args.strict_acceptance,
         )
         encoded = json.dumps(report, sort_keys=True, indent=2) + "\n"
         if args.output is not None:
