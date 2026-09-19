@@ -438,15 +438,45 @@ class EarlyScorer:
         wallet_quality = (
             None if bundle is None else max(Decimal("0"), Decimal("100") - bundle * Decimal("100"))
         )
+        smart_money_score = _decimal_score(
+            _source_value(confluence, "score") if confluence is not None else None
+        )
+        raw_smart_wallets = _source_value(
+            confluence,
+            "raw_smart_wallet_count",
+        ) if confluence is not None else None
+        if raw_smart_wallets is None and confluence is not None:
+            raw_smart_wallets = _source_value(confluence, "qualified_wallet_count")
+        independent_smart_wallets = _source_value(
+            confluence,
+            "independent_smart_wallet_count",
+        ) if confluence is not None else None
+        if independent_smart_wallets is None and confluence is not None:
+            independent_smart_wallets = _source_value(confluence, "independent_wallet_count")
+        try:
+            raw_count = to_decimal(raw_smart_wallets, "raw_smart_wallet_count")
+            independent_count = to_decimal(
+                independent_smart_wallets, "independent_smart_wallet_count"
+            )
+        except (TypeError, ValueError):
+            raw_count = None
+            independent_count = None
+        if (
+            smart_money_score is not None
+            and raw_count is not None
+            and independent_count is not None
+            and raw_count > 0
+        ):
+            smart_money_score *= max(
+                Decimal("0"), min(Decimal("1"), independent_count / raw_count)
+            )
         return {
             "OrganicFlowAcceleration": organic,
             "WalletQuality": wallet_quality,
             "OnChainSafety": safety,
             "LiquidityAndSellability": liquidity,
             "LaunchMomentum": momentum,
-            "SmartMoneyConfluence": _decimal_score(
-                _source_value(confluence, "score") if confluence is not None else None
-            ),
+            "SmartMoneyConfluence": smart_money_score,
             "SocialCorroboration": _decimal_score(
                 _source_value(social, "score") if social is not None else None
             ),

@@ -101,6 +101,26 @@ def test_confidence_is_separate_and_missing_social_is_not_filled_as_safe() -> No
     assert "SOCIAL_EVIDENCE_MISSING" in result.reason_code_values
 
 
+def test_smart_money_component_uses_independent_wallets_not_raw_count() -> None:
+    snapshot = {"confidence": Decimal("1")}
+    all_independent = {
+        "score": Decimal("100"),
+        "qualified_wallet_count": 5,
+        "independent_wallet_count": 5,
+    }
+    shared_funder = {
+        "score": Decimal("100"),
+        "qualified_wallet_count": 5,
+        "independent_wallet_count": 1,
+    }
+
+    independent_result = EarlyScorer().score(snapshot, _risk(), all_independent, None)
+    shared_result = EarlyScorer().score(snapshot, _risk(), shared_funder, None)
+
+    assert independent_result.components["SmartMoneyConfluence"] == Decimal("100")
+    assert shared_result.components["SmartMoneyConfluence"] < Decimal("100")
+
+
 def test_hard_risk_blocks_early_score_and_launch_age_handoff() -> None:
     snapshot = {
         "components": {name: Decimal("100") for name in EarlyScorePolicy.component_names},
