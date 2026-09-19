@@ -4,7 +4,10 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
-from memeradar_application.early_replay import ExtremeWinnerOutcomeLabeler
+from memeradar_application.early_replay import (
+    ExtremeWinnerOutcomeLabeler,
+    ExtremeWinnerStageInput,
+)
 from memeradar_application.replay_harness import ReplayCheckpoint, ReplayEventRecord
 from memeradar_domain import Observation, Provenance, QualityState
 
@@ -259,3 +262,64 @@ def test_sellability_failure_and_high_sell_impact_do_not_count_as_executable() -
     reason_codes = {reason.code for reason in snapshot.reason_codes}
     assert "EXECUTABILITY_SELLABILITY_FAILURE" in reason_codes
     assert "EXECUTABILITY_SELL_IMPACT_TOO_HIGH" in reason_codes
+
+
+def test_stage_outcomes_are_future_only_and_include_multiple_horizons() -> None:
+    checkpoint, labeler, signal_at, provenance = _checkpoint_and_labeler()
+    stage = ExtremeWinnerStageInput(
+        stage="EARLY_WATCH",
+        checkpoint=checkpoint,
+        baseline_price=Decimal("0.001"),
+        baseline_market_cap=Decimal("10000"),
+    )
+    records = [
+        ReplayEventRecord(
+            observation=Observation(
+                id=uuid4(),
+                kind="market.snapshot",
+                token_id=checkpoint.token_id,
+                occurred_at=signal_at + timedelta(minutes=30),
+                observed_at=signal_at + timedelta(minutes=30),
+                ingested_at=signal_at + timedelta(minutes=30),
+                provenance=provenance,
+                quality_state=QualityState.FRESH,
+                normalized_payload={
+                    "price_usd": "0.002",
+                    "market_cap_usd": "20000",
+                    "liquidity_usd": "50000",
+                    "is_sellable": True,
+                    "buy_impact_bps": 100,
+                    "sell_impact_bps": 100,
+                },
+            ),
+            registry_version="v1",
+        ),
+        ReplayEventRecord(
+            observation=Observation(
+                id=uuid4(),
+                kind="market.snapshot",
+                token_id=checkpoint.token_id,
+                occurred_at=signal_at + timedelta(hours=2),
+                observed_at=signal_at + timedelta(hours=2),
+                ingested_at=signal_at + timedelta(hours=2),
+                provenance=provenance,
+                quality_state=QualityState.FRESH,
+                normalized_payload={
+                    "price_usd": "0.1",
+                    "market_cap_usd": "1000000",
+                    "liquidity_usd": "50000",
+                    "is_sellable": True,
+                    "buy_impact_bps": 100,
+                    "sell_impact_bps": 100,
+                },
+            ),
+            registry_version="v1",
+        ),
+    ]
+
+    result = labeler.evaluate_stages(records, (stage,))
+
+    assert result[0].stage == "EARLY_WATCH"
+    assert result[0].horizons["1h"].executable_multiple == Decimal("2")
+    assert result[0].horizons["6h"].executable_multiple == Decimal("100")
+    assert result[0].raw_peak_multiple == Decimal("100")

@@ -118,6 +118,10 @@ def test_early_radar_api_returns_explainable_fields_and_stays_get_only() -> None
     assert item["buy_velocity"]["1s"] == "4"
     assert item["shadow_entry_status"] == "SHADOW_FILLED"
     assert item["external_call_lead_time_ms"] == "15000"
+    assert item["venue"] == "UNKNOWN"
+    assert item["first_seen_market_cap"] is None
+    assert item["organic_momentum"] is None
+    assert item["alert_latency_ms"] is None
     assert item["execution_eligible"] is False
     assert item["auto_execution"] == "LOCKED"
     assert client.post("/v1/early-radar").status_code == 405

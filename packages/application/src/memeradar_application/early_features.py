@@ -511,9 +511,13 @@ class EarlyFeatureEngine:
             amount for observation in current if (amount := _amount(observation)) is not None
         )
         fresh_flags = tuple(
-            value
+            fresh_flag
             for observation in buys
-            if (value := _explicit_boolean(observation, ("fresh_wallet", "is_fresh_wallet")))
+            if (
+                fresh_flag := _explicit_boolean(
+                    observation, ("fresh_wallet", "is_fresh_wallet")
+                )
+            )
             is not None
         )
         smart_wallets = {
@@ -537,16 +541,16 @@ class EarlyFeatureEngine:
             is True
         }
         funders = tuple(
-            str(value)
+            str(funder)
             for observation in buys
             if (
-                value := _payload_value(
+                funder := _payload_value(
                     observation.normalized_payload,
                     ("shared_funder", "funder", "funding_wallet"),
                 )
             )
             is not _MISSING
-            and value is not None
+            and funder is not None
         )
         shared_funder_ratio = None
         if funders:
@@ -554,9 +558,13 @@ class EarlyFeatureEngine:
             shared_count = sum(count for count in funding_counts.values() if count > 1)
             shared_funder_ratio = Decimal(shared_count) / Decimal(len(funders))
         creator_flags = tuple(
-            value
+            creator_flag
             for observation in buys
-            if (value := _explicit_boolean(observation, ("creator_linked", "creator_related")))
+            if (
+                creator_flag := _explicit_boolean(
+                    observation, ("creator_linked", "creator_related")
+                )
+            )
             is not None
         )
         fresh_wallet_ratio = (
@@ -575,9 +583,11 @@ class EarlyFeatureEngine:
             is not None
         )
         wash_flags = tuple(
-            value
+            wash_flag
             for observation in current
-            if (value := _explicit_boolean(observation, ("wash_trade", "wash", "bot_trade")))
+            if (
+                wash_flag := _explicit_boolean(observation, ("wash_trade", "wash", "bot_trade"))
+            )
             is not None
         )
         circular_values = tuple(
@@ -617,7 +627,9 @@ class EarlyFeatureEngine:
             ),
             "buy_sell_volume_ratio": (
                 total_inflow / total_outflow
-                if total_inflow is not None and total_outflow not in {None, Decimal("0")}
+                if total_inflow is not None
+                and total_outflow is not None
+                and total_outflow != Decimal("0")
                 else None
             ),
             "net_buy_flow": (
@@ -699,7 +711,8 @@ class EarlyFeatureEngine:
             Decimal(len(previous_buys)) if previous_buys else None,
             duration,
         )
-        current_rate = metrics["buys_per_second"]
+        raw_current_rate = metrics["buys_per_second"]
+        current_rate = raw_current_rate if isinstance(raw_current_rate, Decimal) else None
         metrics["previous_buys_per_second"] = previous_rate
         metrics["buy_acceleration_per_second"] = (
             current_rate - previous_rate

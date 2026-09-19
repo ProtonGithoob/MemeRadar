@@ -41,6 +41,18 @@ const entry: EarlyRadarRecord = {
   executionQuality: 78,
   evidenceConfidence: 0.84,
   evidenceQualityState: "FRESH",
+  venue: "PUMPSWAP",
+  firstSeenMarketCap: 42000,
+  currentMarketCap: 68000,
+  buyerAcceleration: 0.72,
+  volumeAcceleration: 0.81,
+  liquidityAcceleration: 0.34,
+  rawSmartWalletCount: 4,
+  independentSmartWalletCount: 3,
+  organicMomentum: 76,
+  alerted: true,
+  alertLatencyMs: 240,
+  multipleSinceDiscovery: 1.62,
   evidenceRefs: ["chain:fixture"],
   reasonCodes: ["EARLY_SCORE_V1"]
 };
@@ -61,6 +73,10 @@ describe("UltraEarlyPanel", () => {
       "/tokens/22222222-2222-4222-8222-222222222222"
     );
     expect(screen.getByText("34s")).toBeInTheDocument();
+    expect(screen.getByText("PUMPSWAP")).toBeInTheDocument();
+    expect(screen.getByText("$42.0K")).toBeInTheDocument();
+    expect(screen.getByText("1.62x")).toBeInTheDocument();
+    expect(screen.getByText("YES")).toBeInTheDocument();
     expect(screen.getByText("91")).toBeInTheDocument();
     expect(screen.getByText("$12.0K")).toBeInTheDocument();
     expect(screen.getByText("125ms")).toBeInTheDocument();
@@ -97,6 +113,7 @@ describe("UltraEarlyWorkspace", () => {
     expect(screen.getByRole("button", { name: "Fresh <1m" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Entry Ready" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unknown Critical Data" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Sort launches" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "MEME" })).toBeInTheDocument();
     expect(screen.getByText(/Auto execution: LOCKED/)).toBeInTheDocument();
   });

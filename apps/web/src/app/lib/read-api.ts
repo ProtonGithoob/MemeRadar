@@ -119,6 +119,18 @@ export interface EarlyRadarRecord {
   executionQuality: number | null;
   evidenceConfidence: number | null;
   evidenceQualityState: CandidateQuality;
+  venue: string;
+  firstSeenMarketCap: number | null;
+  currentMarketCap: number | null;
+  buyerAcceleration: number | null;
+  volumeAcceleration: number | null;
+  liquidityAcceleration: number | null;
+  rawSmartWalletCount: number | null;
+  independentSmartWalletCount: number | null;
+  organicMomentum: number | null;
+  alerted: boolean | null;
+  alertLatencyMs: number | null;
+  multipleSinceDiscovery: number | null;
   evidenceRefs: string[];
   reasonCodes: string[];
   asymmetricAlpha?: AsymmetricAlphaProjectionRecord | null;
@@ -1066,6 +1078,26 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
   const executionQuality = optionalFiniteNumber(value.execution_quality, 0, 100);
   const evidenceConfidence = optionalFiniteNumber(value.evidence_confidence, 0, 1);
   const evidenceQualityState = optionalQuality(value.evidence_quality_state ?? "UNKNOWN");
+  const venue = boundedString(value.venue ?? "UNKNOWN", 64) ?? "UNKNOWN";
+  const firstSeenMarketCap = optionalFiniteNumber(value.first_seen_market_cap, 0, 1e24);
+  const currentMarketCap = optionalFiniteNumber(value.current_market_cap, 0, 1e24);
+  const buyerAcceleration = optionalFiniteNumber(value.buyer_acceleration, -1, 1);
+  const volumeAcceleration = optionalFiniteNumber(value.volume_acceleration, -1, 1);
+  const liquidityAcceleration = optionalFiniteNumber(value.liquidity_acceleration, -1, 1);
+  const rawSmartWalletCount = optionalFiniteNumber(value.raw_smart_wallet_count, 0, 1e6);
+  const independentSmartWalletCount = optionalFiniteNumber(
+    value.independent_smart_wallet_count,
+    0,
+    1e6
+  );
+  const organicMomentum = optionalFiniteNumber(value.organic_momentum, 0, 100);
+  const alerted = typeof value.alerted === "boolean" ? value.alerted : null;
+  const alertLatencyMs = optionalFiniteNumber(value.alert_latency_ms, 0, 1e12);
+  const multipleSinceDiscovery = optionalFiniteNumber(
+    value.multiple_since_discovery,
+    0,
+    1e12
+  );
   const evidenceRefs = stringArray(value.evidence_refs, 256);
   const reasonCodes = stringArray(value.reason_codes, 128);
 
@@ -1149,6 +1181,18 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
     executionQuality,
     evidenceConfidence,
     evidenceQualityState: evidenceQualityState as CandidateQuality,
+    venue,
+    firstSeenMarketCap: firstSeenMarketCap ?? null,
+    currentMarketCap: currentMarketCap ?? null,
+    buyerAcceleration: buyerAcceleration ?? null,
+    volumeAcceleration: volumeAcceleration ?? null,
+    liquidityAcceleration: liquidityAcceleration ?? null,
+    rawSmartWalletCount: rawSmartWalletCount ?? null,
+    independentSmartWalletCount: independentSmartWalletCount ?? null,
+    organicMomentum: organicMomentum ?? null,
+    alerted,
+    alertLatencyMs: alertLatencyMs ?? null,
+    multipleSinceDiscovery: multipleSinceDiscovery ?? null,
     evidenceRefs,
     reasonCodes,
     asymmetricAlpha

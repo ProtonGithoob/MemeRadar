@@ -8,7 +8,7 @@ import signal
 from collections.abc import AsyncIterable, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from memeradar_application.alert_pipeline import AlertDeliveryService, AlertPolicy
 from memeradar_application.config import Settings, validate_worker_runtime
@@ -17,7 +17,7 @@ from memeradar_application.discovery_collection import (
     DiscoveryCollectionReport,
 )
 from memeradar_application.early_alpha_alert import EarlyAlphaAlertRenderer
-from memeradar_application.early_runtime import EarlyRuntimeService
+from memeradar_application.early_runtime import EarlyRuntimeResult, EarlyRuntimeService
 from memeradar_application.early_worker import EarlyRuntimeStreamReport, EarlyRuntimeStreamWorker
 from memeradar_application.event_processing import EventDispatcher, OutboxProcessor, OutboxWorker
 from memeradar_application.historical_dataset import MADEONSOL_REAL_EVIDENCE_CLASS
@@ -27,10 +27,19 @@ from memeradar_application.provider_contracts import (
     ProviderRequestContext,
 )
 from memeradar_application.stream_integrity import (
+    CanonicalChainDecoder,
     RawChainTransaction,
     StreamIntegrityCoordinator,
 )
-from memeradar_domain import Candidate, Chain, EventEnvelope, Observation, Provenance, QualityState
+from memeradar_domain import (
+    Candidate,
+    Chain,
+    EventEnvelope,
+    NormalizedChainEvent,
+    Observation,
+    Provenance,
+    QualityState,
+)
 from memeradar_persistence import (
     SqlAlchemyAlertStore,
     SqlAlchemyOutboxStore,
@@ -71,7 +80,7 @@ async def run_worker(
             "paper_trading": settings.paper_trading,
         },
     )
-    workers: list[Awaitable[None]] = []
+    workers: list[Awaitable[object]] = []
     if _alert_delivery_is_configured(settings):
         workers.append(_run_alert_outbox(stop_event, settings, sleeper=sleeper))
     if _madeonsol_shadow_is_configured(settings):
@@ -149,16 +158,28 @@ class _BoundRuntimeRepositories:
 
     async def add(self, value: object) -> object:
         if isinstance(value, Candidate):
-            return await self._uow().candidates.add(value)
+            await self._uow().candidates.add(value)
+            return value
         if isinstance(value, Observation):
-            return await self._uow().observations.add(value)
+            await self._uow().observations.add(value)
+            return value
         raise TypeError("runtime repository received an unsupported value")
 
-    async def get(self, candidate_id):
+    async def get(self, candidate_id: UUID) -> Candidate | None:
         return await self._uow().candidates.get(candidate_id)
 
-    async def enqueue(self, event: EventEnvelope, **kwargs: object) -> object:
-        return await self._uow().outbox.enqueue(event, **kwargs)
+    async def enqueue(
+        self,
+        event: EventEnvelope,
+        *,
+        side_effect_kind: str = "domain_event",
+        available_at: datetime | None = None,
+    ) -> object:
+        return await self._uow().outbox.enqueue(
+            event,
+            side_effect_kind=side_effect_kind,
+            available_at=available_at,
+        )
 
 
 def _madeonsol_health_state(error: BaseException) -> tuple[str, bool]:
@@ -387,7 +408,7 @@ async def _run_early_alpha_shadow(
     *,
     sleeper: Sleep,
     source: AsyncIterable[RawChainTransaction] | None = None,
-    decoder: object | None = None,
+    decoder: CanonicalChainDecoder | None = None,
 ) -> EarlyRuntimeStreamReport | None:
     """Compose canonical stream integrity, early runtime and durable stores.
 
@@ -423,7 +444,11 @@ async def _run_early_alpha_shadow(
         state_store=stream_store,
     )
 
-    async def process_event(event, *, stream_gap: bool):
+    async def process_event(
+        event: NormalizedChainEvent,
+        *,
+        stream_gap: bool,
+    ) -> EarlyRuntimeResult:
         async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
             stores.bind(unit_of_work)
             try:

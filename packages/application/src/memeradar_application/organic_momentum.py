@@ -112,7 +112,7 @@ class OrganicMomentumProjection:
                 confidence=Decimal("0"),
                 quality_state=QualityState.UNKNOWN,
                 reason_codes=(ReasonCode("ORGANIC_MOMENTUM_EVIDENCE_MISSING"),),
-                evidence_refs=evidence_refs,
+                evidence_refs=tuple(evidence_refs),
             )
 
         positives: list[str] = []
@@ -210,7 +210,7 @@ class OrganicMomentumProjection:
             positive_evidence=tuple(positives),
             penalties=penalties,
             reason_codes=tuple(reasons),
-            evidence_refs=evidence_refs,
+            evidence_refs=tuple(evidence_refs),
         )
 
 

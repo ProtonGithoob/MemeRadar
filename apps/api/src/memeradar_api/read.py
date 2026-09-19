@@ -346,6 +346,18 @@ class EarlyRadarResponse(_StrictModel):
     execution_quality: Decimal | None = None
     evidence_confidence: Decimal | None = None
     evidence_quality_state: QualityState = QualityState.UNKNOWN
+    venue: str = "UNKNOWN"
+    first_seen_market_cap: Decimal | None = None
+    current_market_cap: Decimal | None = None
+    buyer_acceleration: Decimal | None = None
+    volume_acceleration: Decimal | None = None
+    liquidity_acceleration: Decimal | None = None
+    raw_smart_wallet_count: int | None = None
+    independent_smart_wallet_count: int | None = None
+    organic_momentum: Decimal | None = None
+    alerted: bool | None = None
+    alert_latency_ms: Decimal | None = None
+    multiple_since_discovery: Decimal | None = None
     evidence_refs: list[str] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list)
     execution_eligible: bool = False
@@ -931,6 +943,18 @@ def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
         execution_quality=cast(Decimal | None, value.execution_quality),
         evidence_confidence=cast(Decimal | None, value.evidence_confidence),
         evidence_quality_state=QualityState(value.evidence_quality_state),
+        venue=value.venue,
+        first_seen_market_cap=cast(Decimal | None, value.first_seen_market_cap),
+        current_market_cap=cast(Decimal | None, value.current_market_cap),
+        buyer_acceleration=cast(Decimal | None, value.buyer_acceleration),
+        volume_acceleration=cast(Decimal | None, value.volume_acceleration),
+        liquidity_acceleration=cast(Decimal | None, value.liquidity_acceleration),
+        raw_smart_wallet_count=cast(int | None, value.raw_smart_wallet_count),
+        independent_smart_wallet_count=cast(int | None, value.independent_smart_wallet_count),
+        organic_momentum=cast(Decimal | None, value.organic_momentum),
+        alerted=value.alerted,
+        alert_latency_ms=cast(Decimal | None, value.alert_latency_ms),
+        multiple_since_discovery=cast(Decimal | None, value.multiple_since_discovery),
         evidence_refs=list(value.evidence_refs),
         reason_codes=list(value.reason_codes),
         execution_eligible=False,

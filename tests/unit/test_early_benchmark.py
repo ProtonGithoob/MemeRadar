@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
 
 from memeradar_application.call_performance import CallPerformanceAnalyzer
-from memeradar_application.early_benchmark import EarlyCallBenchmark
-from memeradar_domain import ExternalCallBenchmark, Provenance, QualityState
+from memeradar_application.early_benchmark import (
+    DexScreenerBenchmarkBuilder,
+    EarlyCallBenchmark,
+)
+from memeradar_domain import ExternalCallBenchmark, Provenance, QualityState, TokenIdentity
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 CANDIDATE_ID = uuid4()
@@ -122,4 +126,77 @@ def test_invalid_candidate_and_naive_timestamps_are_rejected() -> None:
             memeradar_first_seen_at=NOW.replace(tzinfo=None),
             external_call_at=NOW + timedelta(seconds=1),
             source_id="social:alpha",
+        )
+
+
+def test_exact_mint_dexscreener_benchmark_keeps_unavailable_visibility_history_unknown() -> None:
+    token = TokenIdentity(mint_address="So11111111111111111111111111111111111111112")
+    result = DexScreenerBenchmarkBuilder().measure(
+        token,
+        stage_snapshots={
+            "DISCOVERED": {
+                "state_at": NOW.isoformat(),
+                "first_seen_age_seconds": "12",
+                "first_seen_market_cap": "10000",
+            },
+            "EARLY_WATCH": {
+                "state_at": (NOW + timedelta(minutes=1)).isoformat(),
+                "market_cap": "15000",
+            },
+        },
+        telegram={
+            "first_telegram_alert_at": NOW + timedelta(minutes=2),
+            "market_cap": "20000",
+        },
+        dexscreener_observations=(
+            {
+                "chain": "solana",
+                "mint_address": token.mint_address,
+                "event_type": "new_pair",
+                "observed_at": NOW + timedelta(minutes=3),
+                "market_cap": "25000",
+                "evidence_ref": "dex:pair-1",
+            },
+            {
+                "chain": "solana",
+                "mint_address": token.mint_address,
+                "event_type": "meaningful_volume",
+                "observed_at": NOW + timedelta(minutes=4),
+                "market_cap": "30000",
+            },
+            {
+                "chain": "solana",
+                "mint_address": token.mint_address,
+                "event_type": "trending",
+                "observed_at": NOW + timedelta(minutes=5),
+                "authoritative": False,
+            },
+        ),
+        future_executable_peak_market_cap="200000",
+    )
+
+    assert result.identity == f"solana:{token.mint_address}"
+    assert result.first_seen_market_cap == Decimal("10000")
+    assert result.early_watch_market_cap == Decimal("15000")
+    assert result.dex_first_pair_observed_mc == Decimal("25000")
+    assert result.alert_to_peak_executable_multiple == Decimal("10")
+    assert result.dex_trending_at is None
+    assert "dex_trending_at" in result.unknown_fields
+    assert "DEX_TRENDING_TIMESTAMP_UNAVAILABLE" in result.to_mapping()["reason_codes"]
+
+
+def test_dexscreener_benchmark_rejects_nonmatching_mint() -> None:
+    token = TokenIdentity(mint_address="So11111111111111111111111111111111111111112")
+
+    with pytest.raises(ValueError, match="mint"):
+        DexScreenerBenchmarkBuilder().measure(
+            token,
+            dexscreener_observations=(
+                {
+                    "chain": "solana",
+                    "mint_address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    "event_type": "new_pair",
+                    "observed_at": NOW,
+                },
+            ),
         )

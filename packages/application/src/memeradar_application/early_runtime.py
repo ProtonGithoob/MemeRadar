@@ -25,6 +25,7 @@ from memeradar_domain import (
     Provenance,
     QualityState,
     ReasonCode,
+    StateTransition,
     TokenIdentity,
 )
 from memeradar_domain.common import ensure_utc, freeze_mapping, normalize_texts, to_decimal
@@ -32,7 +33,12 @@ from memeradar_domain.common import ensure_utc, freeze_mapping, normalize_texts,
 from .alert_pipeline import AlertEventProjector
 from .early_decision import EarlyDecisionEngine, EarlyDecisionPolicy, EarlyDecisionResult
 from .early_detection import DetectionAuthority, EarlyDetectionResult, UltraEarlyDetector
-from .early_features import EARLY_RUNTIME_WINDOW_DURATIONS, EarlyFeatureEngine, EarlyFeatureSnapshot
+from .early_features import (
+    EARLY_RUNTIME_WINDOW_DURATIONS,
+    EarlyFeatureEngine,
+    EarlyFeatureSnapshot,
+    EarlyFeatureWindow,
+)
 from .early_scoring import EarlyScorer, EarlyScoreSnapshot
 from .fast_safety import FastSafetyGate, FastSafetyResult, FastSafetyStatus
 from .organic_momentum import OrganicMomentumProjection
@@ -384,13 +390,13 @@ class EarlyRuntimeService:
             "features_to_decision": decision_ms,
             "decision_to_outbox": Decimal("0"),
         }
-        for item in candidate.transitions:
-            if item.to_state in self._snapshot_states():
+        for transition_record in candidate.transitions:
+            if transition_record.to_state in self._snapshot_states():
                 intermediate = self._build_snapshot(
                     candidate=candidate,
                     detection=detection,
-                    state=item.to_state,
-                    stage_at=item.occurred_at,
+                    state=transition_record.to_state,
+                    stage_at=transition_record.occurred_at,
                     observations=tuple(bucket.values()),
                     feature_snapshot=feature_snapshot,
                     safety=safety,
@@ -508,7 +514,7 @@ class EarlyRuntimeService:
         safety: FastSafetyResult,
         feature_snapshot: EarlyFeatureSnapshot,
         stream_gap: bool,
-    ):
+    ) -> StateTransition | None:
         if candidate.state is CandidateState.RISK_REJECTED:
             return None
         if candidate.state is CandidateState.DISCOVERED:
@@ -577,7 +583,7 @@ class EarlyRuntimeService:
         )
 
     @staticmethod
-    def _preferred_window(snapshot: EarlyFeatureSnapshot):
+    def _preferred_window(snapshot: EarlyFeatureSnapshot) -> EarlyFeatureWindow:
         for label in ("1m", "30s", "2m", "5m", "10m", "15m"):
             if label in snapshot.windows:
                 return snapshot.window(label)
@@ -700,11 +706,16 @@ class EarlyRuntimeService:
                 * 1000
             )
         )
+        authority = (
+            detection.authority.value
+            if isinstance(detection.authority, DetectionAuthority)
+            else str(detection.authority)
+        )
         payload: dict[str, object] = {
             "chain": "solana",
             "mint": detection.mint_address,
             "venue": first_payload.get(
-                "venue", detection.metadata.get("venue", detection.authority.value)
+                "venue", detection.metadata.get("venue", authority)
             ),
             "chain_created_at": (
                 None if detection.launch_at is None else detection.launch_at.isoformat()
@@ -838,7 +849,7 @@ class EarlyRuntimeService:
                 "research_paper_signal": to_state is CandidateState.EARLY_WATCH,
             }
         )
-        reasons = tuple(ReasonCode(value) for value in payload.get("reason_codes", ()))
+        reasons = _reason_values(payload)
         return EventEnvelope(
             kind="CandidateStateChanged",
             aggregate_type="candidate",

@@ -38,6 +38,21 @@ EARLY_MARKET_CAP_MILESTONES: tuple[tuple[str, Decimal], ...] = (
     ("100K", Decimal("100000")),
     ("250K", Decimal("250000")),
 )
+EXTREME_OUTCOME_HORIZONS: tuple[tuple[str, timedelta], ...] = (
+    ("1h", timedelta(hours=1)),
+    ("6h", timedelta(hours=6)),
+    ("24h", timedelta(hours=24)),
+    ("72h", timedelta(hours=72)),
+    ("7d", timedelta(days=7)),
+)
+EXTREME_OUTCOME_STAGES = (
+    "FIRST_SEEN",
+    "EARLY_WATCH",
+    "STRONG_SETUP",
+    "HIGH_CONFLUENCE",
+    "ENTRY_READY",
+    "FIRST_TELEGRAM_ALERT",
+)
 _PRICE_KINDS = frozenset(
     {
         "market.snapshot",
@@ -754,6 +769,125 @@ class ExtremeWinnerOutcomeSnapshot:
     reason_codes: tuple[ReasonCode, ...] = ()
     evidence_refs: tuple[str, ...] = ()
 
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "checkpoint_id": str(self.checkpoint_id),
+            "token_id": str(self.token_id),
+            "signal_at": self.signal_at.isoformat(),
+            "hit_2x": self.hit_2x,
+            "hit_5x": self.hit_5x,
+            "hit_10x": self.hit_10x,
+            "hit_20x": self.hit_20x,
+            "hit_50x": self.hit_50x,
+            "hit_100x": self.hit_100x,
+            "time_to_2x": None if self.time_to_2x is None else str(self.time_to_2x),
+            "time_to_5x": None if self.time_to_5x is None else str(self.time_to_5x),
+            "time_to_10x": None if self.time_to_10x is None else str(self.time_to_10x),
+            "time_to_20x": None if self.time_to_20x is None else str(self.time_to_20x),
+            "time_to_50x": None if self.time_to_50x is None else str(self.time_to_50x),
+            "time_to_100x": None if self.time_to_100x is None else str(self.time_to_100x),
+            "mfe": None if self.mfe is None else str(self.mfe),
+            "mae": None if self.mae is None else str(self.mae),
+            "peak_market_cap": None if self.peak_market_cap is None else str(self.peak_market_cap),
+            "mark_multiple": None if self.mark_multiple is None else str(self.mark_multiple),
+            "executable_multiple": (
+                None if self.executable_multiple is None else str(self.executable_multiple)
+            ),
+            "executable_quality_state": self.executable_quality_state.value,
+            "rug_before_multiple": self.rug_before_multiple,
+            "quality_state": self.quality_state.value,
+            "reason_codes": [reason.code for reason in self.reason_codes],
+            "evidence_refs": list(self.evidence_refs),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ExtremeWinnerStageInput:
+    """One immutable stage checkpoint used only by future-outcome research."""
+
+    stage: str
+    checkpoint: ReplayCheckpoint
+    baseline_price: Decimal | None = None
+    baseline_market_cap: Decimal | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "stage", require_text(self.stage, "stage").upper())
+        if not isinstance(self.checkpoint, ReplayCheckpoint):
+            raise TypeError("checkpoint must be a ReplayCheckpoint")
+        if self.baseline_price is not None:
+            object.__setattr__(
+                self,
+                "baseline_price",
+                to_decimal(self.baseline_price, "baseline_price"),
+            )
+        if self.baseline_market_cap is not None:
+            object.__setattr__(
+                self,
+                "baseline_market_cap",
+                to_decimal(self.baseline_market_cap, "baseline_market_cap"),
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ExtremeWinnerStageOutcome:
+    """Future-only outcome series for one lifecycle/alert stage."""
+
+    stage: str
+    checkpoint_id: UUID
+    token_id: UUID
+    signal_at: datetime
+    horizons: Mapping[str, ExtremeWinnerOutcomeSnapshot]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "stage", require_text(self.stage, "stage").upper())
+        if not isinstance(self.checkpoint_id, UUID) or not isinstance(self.token_id, UUID):
+            raise TypeError("checkpoint_id and token_id must be UUID values")
+        object.__setattr__(self, "signal_at", ensure_utc(self.signal_at, "signal_at"))
+        normalized = dict(self.horizons)
+        if any(
+            not isinstance(value, ExtremeWinnerOutcomeSnapshot)
+            for value in normalized.values()
+        ):
+            raise TypeError("horizons must contain ExtremeWinnerOutcomeSnapshot values")
+        object.__setattr__(self, "horizons", MappingProxyType(dict(sorted(normalized.items()))))
+
+    @property
+    def raw_peak_multiple(self) -> Decimal | None:
+        values = [
+            value.mark_multiple
+            for value in self.horizons.values()
+            if value.mark_multiple is not None
+        ]
+        return max(values) if values else None
+
+    @property
+    def executable_peak_multiple(self) -> Decimal | None:
+        values = [
+            value.executable_multiple
+            for value in self.horizons.values()
+            if value.executable_multiple is not None
+        ]
+        return max(values) if values else None
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "stage": self.stage,
+            "checkpoint_id": str(self.checkpoint_id),
+            "token_id": str(self.token_id),
+            "signal_at": self.signal_at.isoformat(),
+            "raw_peak_multiple": (
+                None if self.raw_peak_multiple is None else str(self.raw_peak_multiple)
+            ),
+            "executable_peak_multiple": (
+                None
+                if self.executable_peak_multiple is None
+                else str(self.executable_peak_multiple)
+            ),
+            "horizons": {
+                name: value.to_json_dict() for name, value in self.horizons.items()
+            },
+        }
+
 
 class ExtremeWinnerOutcomeLabeler:
     """Derives extreme winner labels ensuring mark wicks are separated from executable outcomes."""
@@ -763,11 +897,23 @@ class ExtremeWinnerOutcomeLabeler:
         records: Sequence[ReplayEventRecord],
         checkpoint: ReplayCheckpoint,
         baseline_price: Decimal | None = None,
+        *,
+        baseline_market_cap: Decimal | None = None,
+        horizon: timedelta | None = None,
     ) -> ExtremeWinnerOutcomeSnapshot:
         signal_at = checkpoint.as_of
-        future = [r for r in records if r.event_at >= signal_at]
+        if horizon is not None and horizon <= timedelta(0):
+            raise ValueError("horizon must be positive")
+        future_end = None if horizon is None else signal_at + horizon
+        future = [
+            r
+            for r in records
+            if r.event_at > signal_at and (future_end is None or r.event_at <= future_end)
+        ]
 
-        base_mc = getattr(checkpoint, "market_cap_usd", None)
+        base_mc = baseline_market_cap
+        if base_mc is None:
+            base_mc = getattr(checkpoint, "market_cap_usd", None)
         base_price = baseline_price
 
         mark_max_mult: Decimal | None = None
@@ -923,11 +1069,56 @@ class ExtremeWinnerOutcomeLabeler:
             evidence_refs=tuple(dict.fromkeys(outcome_refs)),
         )
 
+    def evaluate_stages(
+        self,
+        records: Sequence[ReplayEventRecord],
+        stages: Sequence[ExtremeWinnerStageInput],
+        *,
+        horizons: Sequence[tuple[str, timedelta]] = EXTREME_OUTCOME_HORIZONS,
+    ) -> tuple[ExtremeWinnerStageOutcome, ...]:
+        """Label all stages without exposing future records to runtime scoring."""
+
+        if isinstance(stages, str | bytes | bytearray):
+            raise TypeError("stages must be a sequence")
+        normalized_horizons = tuple(horizons)
+        if not normalized_horizons:
+            raise ValueError("at least one outcome horizon is required")
+        if len({name for name, _ in normalized_horizons}) != len(normalized_horizons):
+            raise ValueError("outcome horizon names must be unique")
+        results: list[ExtremeWinnerStageOutcome] = []
+        seen_stages: set[str] = set()
+        for stage in stages:
+            if stage.stage in seen_stages:
+                raise ValueError(f"duplicate outcome stage: {stage.stage}")
+            seen_stages.add(stage.stage)
+            labels = {
+                name: self.evaluate(
+                    records,
+                    stage.checkpoint,
+                    baseline_price=stage.baseline_price,
+                    baseline_market_cap=stage.baseline_market_cap,
+                    horizon=duration,
+                )
+                for name, duration in normalized_horizons
+            }
+            results.append(
+                ExtremeWinnerStageOutcome(
+                    stage=stage.stage,
+                    checkpoint_id=stage.checkpoint.id,
+                    token_id=stage.checkpoint.token_id,
+                    signal_at=stage.checkpoint.as_of,
+                    horizons=labels,
+                )
+            )
+        return tuple(results)
+
 
 __all__ = [
     "EARLY_MARKET_CAP_MILESTONES",
     "EARLY_OUTCOME_HORIZONS",
     "EARLY_OUTCOME_VERSION",
+    "EXTREME_OUTCOME_HORIZONS",
+    "EXTREME_OUTCOME_STAGES",
     "EarlyForwardOutcomeLabeler",
     "EarlyOutcomeHorizonLabel",
     "EarlyOutcomeLabel",
@@ -935,6 +1126,8 @@ __all__ = [
     "EarlyOutcomePolicy",
     "ExtremeWinnerOutcomeLabeler",
     "ExtremeWinnerOutcomeSnapshot",
+    "ExtremeWinnerStageInput",
+    "ExtremeWinnerStageOutcome",
     "ForwardOutcomeHorizonLabel",
     "ForwardOutcomeLabel",
 ]

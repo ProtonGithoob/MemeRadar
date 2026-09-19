@@ -36,6 +36,10 @@ function displayMetric(value: number | null): string {
   return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
+function displayAlert(value: boolean | null): string {
+  return value === null ? "UNKNOWN" : value ? "YES" : "NO";
+}
+
 type PresetKey =
   | "ALL"
   | "FRESH_1M"
@@ -45,6 +49,14 @@ type PresetKey =
   | "CREATOR_RISK"
   | "BUNDLE_RISK"
   | "UNKNOWN_CRITICAL";
+
+type SortKey =
+  | "NEWEST"
+  | "ACCELERATION"
+  | "EARLY_SCORE"
+  | "SMART_WALLETS"
+  | "LOWEST_RISK"
+  | "ORGANIC_MOMENTUM";
 
 const PRESETS: Array<{ key: PresetKey; label: string; match: (entry: EarlyRadarRecord) => boolean }> = [
   { key: "ALL", label: "All", match: () => true },
@@ -77,6 +89,50 @@ const PRESETS: Array<{ key: PresetKey; label: string; match: (entry: EarlyRadarR
   }
 ];
 
+const SORTS: Array<{ key: SortKey; label: string }> = [
+  { key: "NEWEST", label: "Newest" },
+  { key: "ACCELERATION", label: "Highest acceleration" },
+  { key: "EARLY_SCORE", label: "Highest EarlyScore" },
+  { key: "SMART_WALLETS", label: "Highest smart-wallet confluence" },
+  { key: "LOWEST_RISK", label: "Lowest risk" },
+  { key: "ORGANIC_MOMENTUM", label: "Highest organic momentum" }
+];
+
+const RISK_RANK: Record<string, number> = { PASS: 0, LOW: 0, WARN: 1, MEDIUM: 1, UNKNOWN: 2, HIGH: 3, BLOCK: 4 };
+
+function descending(value: number | null): number {
+  return value ?? Number.NEGATIVE_INFINITY;
+}
+
+function sortEntries(entries: EarlyRadarRecord[], sort: SortKey): EarlyRadarRecord[] {
+  return [...entries].sort((left, right) => {
+    if (sort === "NEWEST") return Date.parse(right.firstSeenAt) - Date.parse(left.firstSeenAt);
+    if (sort === "EARLY_SCORE") return descending(right.earlyScore) - descending(left.earlyScore);
+    if (sort === "SMART_WALLETS") {
+      return descending(right.independentSmartWalletCount ?? right.smartMoneyConfluence)
+        - descending(left.independentSmartWalletCount ?? left.smartMoneyConfluence);
+    }
+    if (sort === "ORGANIC_MOMENTUM") {
+      return descending(right.organicMomentum) - descending(left.organicMomentum);
+    }
+    if (sort === "LOWEST_RISK") {
+      const rank = (entry: EarlyRadarRecord) => Math.max(
+        RISK_RANK[entry.riskDisposition] ?? 2,
+        RISK_RANK[entry.creatorRisk] ?? 2,
+        RISK_RANK[entry.bundleRisk] ?? 2,
+        RISK_RANK[entry.holderRisk] ?? 2
+      );
+      return rank(left) - rank(right);
+    }
+    const acceleration = (entry: EarlyRadarRecord) => Math.max(
+      entry.buyerAcceleration ?? Number.NEGATIVE_INFINITY,
+      entry.volumeAcceleration ?? Number.NEGATIVE_INFINITY,
+      entry.liquidityAcceleration ?? Number.NEGATIVE_INFINITY
+    );
+    return acceleration(right) - acceleration(left);
+  });
+}
+
 function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
   const displayName = entry.symbol || entry.name || "UNNAMED";
   return (
@@ -88,11 +144,21 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
         </div>
       </td>
       <td className="num">{entry.launchAgeSeconds === null ? "UNKNOWN" : formatAgeSeconds(entry.launchAgeSeconds)}</td>
+      <td><Pill label={entry.venue} tone={evidenceTone(entry.venue)} /></td>
+      <td className="num">{formatUsd(entry.firstSeenMarketCap)}</td>
+      <td className="num">{formatUsd(entry.currentMarketCap)}</td>
+      <td className="num">{formatUsd(entry.liquidityUsd)}</td>
+      <td className="dt-reasons" title={formatCompactMap(entry.uniqueBuyers, 6)}>{formatCompactMap(entry.uniqueBuyers)}</td>
+      <td className="num">{displayMetric(entry.buyerAcceleration)}</td>
+      <td className="num">{displayMetric(entry.volumeAcceleration)}</td>
+      <td className="num">{displayMetric(entry.liquidityAcceleration)}</td>
+      <td className="num">{displayMetric(entry.rawSmartWalletCount)}</td>
+      <td className="num">{displayMetric(entry.independentSmartWalletCount)}</td>
+      <td className="num">{entry.organicMomentum === null ? "UNKNOWN" : formatScore(entry.organicMomentum)}</td>
       <td className="num">{entry.earlyScore === null ? "UNKNOWN" : formatScore(entry.earlyScore)}</td>
       <td className="num">{formatConfidence(entry.earlyScoreConfidence)}</td>
       <td><Pill label={entry.earlyState} tone="info" /></td>
       <td><Pill label={entry.riskDisposition} tone={riskTone(entry.riskDisposition)} /></td>
-      <td className="num">{formatUsd(entry.liquidityUsd)}</td>
       <td className="num">{entry.priceImpactBps === null ? "UNKNOWN" : `${displayMetric(entry.priceImpactBps)}`}</td>
       <td className="dt-reasons" title={formatCompactMap(entry.buyVelocity, 6)}>{formatCompactMap(entry.buyVelocity)}</td>
       <td><Pill label={entry.creatorRisk} tone={evidenceTone(entry.creatorRisk)} /></td>
@@ -110,15 +176,20 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
       <td className="num">{formatConfidence(entry.evidenceConfidence)}</td>
       <td><Pill label={entry.evidenceQualityState} tone={evidenceTone(entry.evidenceQualityState)} /></td>
       <td className="num">{entry.firstSeenLatencyMs === null ? "UNKNOWN" : `${displayMetric(entry.firstSeenLatencyMs)}ms`}</td>
+      <td><Pill label={displayAlert(entry.alerted)} tone={entry.alerted === null ? "unknown" : entry.alerted ? "low" : "medium"} /></td>
+      <td className="num">{entry.alertLatencyMs === null ? "UNKNOWN" : `${displayMetric(entry.alertLatencyMs)}ms`}</td>
+      <td className="num">{entry.multipleSinceDiscovery === null ? "UNKNOWN" : `${displayMetric(entry.multipleSinceDiscovery)}x`}</td>
     </tr>
   );
 }
 
 const TABLE_HEAD = [
-  "Token", "Age", "Score", "Conf", "State", "Risk", "Liquidity", "Impact bps",
-  "Buy velocity", "Creator", "Bundle", "Holder", "Smart $", "Sellable", "Upside evidence",
-  "Market integrity", "Contract / deployer", "Liquidity / exit", "Exec quality", "Evidence conf",
-  "Evidence freshness", "1st-seen latency"
+  "Token", "Age", "Venue", "First seen MC", "Current MC", "Liquidity", "Buyers",
+  "Buyer accel", "Volume accel", "Liquidity accel", "Raw smart $", "Independent smart $",
+  "Organic momentum", "Score", "Conf", "State", "Risk", "Impact bps", "Buy velocity",
+  "Creator", "Bundle", "Holder", "Smart $", "Sellable", "Upside evidence", "Market integrity",
+  "Contract / deployer", "Liquidity / exit", "Exec quality", "Evidence conf", "Evidence freshness",
+  "1st-seen latency", "Alerted", "Alert latency", "Since discovery"
 ];
 
 export function UltraEarlyWorkspace({
@@ -127,6 +198,7 @@ export function UltraEarlyWorkspace({
   result: ReadResult<ReadPage<EarlyRadarRecord>>;
 }) {
   const [preset, setPreset] = useState<PresetKey>("ALL");
+  const [sort, setSort] = useState<SortKey>("NEWEST");
 
   const heading = (
     <PageHeader
@@ -171,6 +243,13 @@ export function UltraEarlyWorkspace({
         ))}
       </div>
 
+      <label>
+        <span>Sort launches</span>
+        <select aria-label="Sort launches" value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
+          {SORTS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+        </select>
+      </label>
+
       {filtered.length === 0 ? (
         <div className="read-state" role="status">
           <strong>NO ULTRA-EARLY CANDIDATES</strong>
@@ -187,7 +266,7 @@ export function UltraEarlyWorkspace({
               <tr>{TABLE_HEAD.map((head) => <th key={head} scope="col">{head}</th>)}</tr>
             </thead>
             <tbody>
-              {filtered.map((entry) => <UltraEarlyRow entry={entry} key={entry.candidateId} />)}
+              {sortEntries(filtered, sort).map((entry) => <UltraEarlyRow entry={entry} key={entry.candidateId} />)}
             </tbody>
           </table>
         </div>

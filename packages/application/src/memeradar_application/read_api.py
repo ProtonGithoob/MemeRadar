@@ -108,6 +108,15 @@ def _optional_nonnegative_decimal(
     return normalized
 
 
+def _optional_nonnegative_int(value: int | Decimal | str | None, field_name: str) -> int | None:
+    if value is None:
+        return None
+    normalized = to_decimal(value, field_name)
+    if normalized < 0 or normalized != normalized.to_integral_value():
+        raise ValueError(f"{field_name} must be a non-negative integer")
+    return int(normalized)
+
+
 def _optional_text(value: str | None, field_name: str, *, max_length: int = 128) -> str | None:
     return None if value is None else require_text(value, field_name, max_length=max_length)
 
@@ -807,6 +816,18 @@ class EarlyRadarView:
     execution_quality: Decimal | int | float | str | None = None
     evidence_confidence: Decimal | int | float | str | None = None
     evidence_quality_state: QualityState | str | None = None
+    venue: str = "UNKNOWN"
+    first_seen_market_cap: Decimal | int | float | str | None = None
+    current_market_cap: Decimal | int | float | str | None = None
+    buyer_acceleration: Decimal | int | float | str | None = None
+    volume_acceleration: Decimal | int | float | str | None = None
+    liquidity_acceleration: Decimal | int | float | str | None = None
+    raw_smart_wallet_count: int | Decimal | str | None = None
+    independent_smart_wallet_count: int | Decimal | str | None = None
+    organic_momentum: Decimal | int | float | str | None = None
+    alerted: bool | None = None
+    alert_latency_ms: Decimal | int | float | str | None = None
+    multiple_since_discovery: Decimal | int | float | str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.candidate_id, UUID) or not isinstance(self.token_id, UUID):
@@ -980,6 +1001,47 @@ class EarlyRadarView:
             if self.evidence_quality_state is None
             else QualityState(self.evidence_quality_state),
         )
+        object.__setattr__(self, "venue", require_text(self.venue, "venue", max_length=64).upper())
+        for field_name in ("first_seen_market_cap", "current_market_cap", "alert_latency_ms"):
+            object.__setattr__(
+                self,
+                field_name,
+                _optional_nonnegative_decimal(getattr(self, field_name), field_name),
+            )
+        for field_name in (
+            "buyer_acceleration",
+            "volume_acceleration",
+            "liquidity_acceleration",
+        ):
+            value = getattr(self, field_name)
+            object.__setattr__(
+                self,
+                field_name,
+                None
+                if value is None
+                else bounded_decimal(value, field_name, Decimal("-1"), Decimal("1")),
+            )
+        for field_name in ("raw_smart_wallet_count", "independent_smart_wallet_count"):
+            object.__setattr__(
+                self,
+                field_name,
+                _optional_nonnegative_int(getattr(self, field_name), field_name),
+            )
+        for field_name in ("organic_momentum", "multiple_since_discovery"):
+            value = getattr(self, field_name)
+            object.__setattr__(
+                self,
+                field_name,
+                None
+                if value is None
+                else (
+                    bounded_decimal(value, field_name, Decimal("0"), Decimal("100"))
+                    if field_name == "organic_momentum"
+                    else _optional_nonnegative_decimal(value, field_name)
+                ),
+            )
+        if self.alerted is not None and not isinstance(self.alerted, bool):
+            raise TypeError("alerted must be a boolean or None")
         object.__setattr__(
             self,
             "hard_block_reasons",
@@ -1041,6 +1103,18 @@ class EarlyRadarView:
                 "execution_quality": self.execution_quality,
                 "evidence_confidence": self.evidence_confidence,
                 "evidence_quality_state": QualityState(self.evidence_quality_state).value,
+                "venue": self.venue,
+                "first_seen_market_cap": self.first_seen_market_cap,
+                "current_market_cap": self.current_market_cap,
+                "buyer_acceleration": self.buyer_acceleration,
+                "volume_acceleration": self.volume_acceleration,
+                "liquidity_acceleration": self.liquidity_acceleration,
+                "raw_smart_wallet_count": self.raw_smart_wallet_count,
+                "independent_smart_wallet_count": self.independent_smart_wallet_count,
+                "organic_momentum": self.organic_momentum,
+                "alerted": self.alerted,
+                "alert_latency_ms": self.alert_latency_ms,
+                "multiple_since_discovery": self.multiple_since_discovery,
                 "evidence_refs": self.evidence_refs,
                 "reason_codes": self.reason_codes,
                 "execution_eligible": False,

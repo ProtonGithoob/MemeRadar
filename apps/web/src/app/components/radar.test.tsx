@@ -135,6 +135,18 @@ describe("RadarExplorer", () => {
       executionQuality: null,
       evidenceConfidence: 0.5,
       evidenceQualityState: "FRESH",
+      venue: "UNKNOWN",
+      firstSeenMarketCap: null,
+      currentMarketCap: null,
+      buyerAcceleration: null,
+      volumeAcceleration: null,
+      liquidityAcceleration: null,
+      rawSmartWalletCount: null,
+      independentSmartWalletCount: null,
+      organicMomentum: null,
+      alerted: null,
+      alertLatencyMs: null,
+      multipleSinceDiscovery: null,
       evidenceRefs: [],
       reasonCodes: []
     };
