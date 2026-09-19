@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-16
+Last updated: 2026-09-20
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -10,10 +10,10 @@ documents below.
 
 | Dimension | Current state | Evidence / constraint |
 |---|---|---|
-| System stage | `ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION` | Local engineering gates pass; external acceptance and statistical alpha validation are separate. |
-| Stack readiness | `STACK_READY` when the local Compose stack is running | API, web, Postgres and Redis contracts are verified locally. |
-| Core provider readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` | Core reads do not require Helius or Birdeye; optional enrichment is separate. |
-| Shadow collection | `NOT_ACTIVE` | No live shadow evidence is claimed from fixtures or an unavailable stack. |
+| System stage | `ENGINEERING_COMPLETE_FOR_DETERMINISTIC_EARLY_ALPHA_SHADOW` | The canonical stream-to-alert/research path is implemented and locally verified; external acceptance and statistical alpha validation are separate. |
+| Stack readiness | `STACK_OFFLINE` | The local stack contract is verified, but shadow start is blocked by Docker socket permissions in this environment. |
+| Core provider readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` (configuration) / `BLOCKED_EXTERNAL` (live network) | Core reads remain keyless where configured; live RPC/stream/Telegram checks are unavailable here. |
+| Shadow collection | `NOT_ACTIVE` (`START_FAILED`) | No live shadow evidence is claimed from fixtures or an unavailable stack. |
 | Real-world alpha | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` | Historical-real and matured live-shadow samples remain insufficient. |
 | Production readiness | `NOT_PRODUCTION_READY` | See [Production Readiness](PRODUCTION_READINESS.md). |
 | Read-only production gate | `PROD_READ_ONLY_NOT_ACCEPTED` | Local deterministic and production-like gates pass; hosted CI, branch protection, managed deployment/operations, and credentialed external acceptance remain blocked. |
@@ -32,6 +32,88 @@ There is no wallet signer, live order submission, automatic execution, or
 execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
+
+## 2026-09-20 early-alpha integration completion
+
+The approved early-alpha integration is implemented through commit `a522c99`
+(`feat: persist staged alert delivery timing`). The authoritative baseline audit
+is [EARLY_ALPHA_GAP_AUDIT.md](EARLY_ALPHA_GAP_AUDIT.md); the design and
+execution record are [the design spec](superpowers/specs/2026-09-19-early-alpha-runtime-integration-design.md),
+[the implementation plan](superpowers/plans/2026-09-19-early-alpha-runtime-integration.md),
+and [the source matrix](EARLY_ALPHA_SOURCE_MATRIX.md).
+
+### Delivered path
+
+The worker now composes canonical protocol decoding, stream cursor/gap
+handling, `UltraEarlyDetector`, fail-closed `FastSafetyGate`, the existing
+event-time `EarlyFeatureEngine`, wallet/creator/bundle evidence, organic
+momentum projection, EarlyScore/decision, lifecycle transitions, append-only
+early stage snapshots, the existing alert projector/outbox and Telegram
+delivery path. Deep research remains outside the synchronous fast path.
+Restart, duplicate, out-of-order and unresolved-gap contracts are covered by
+deterministic tests.
+
+Executable winner labels now require fresh liquidity, sellability and both
+buy/sell impact evidence. Missing or stale evidence is
+`UNKNOWN_EXECUTABILITY`; raw mark-price peaks remain separate from executable
+peaks. Stage-specific 2x/5x/10x/20x/50x/100x labels, MFE/MAE, horizon labels,
+`MissedWinnerAnalyzer`, `FalsePositiveAnalyzer`, and exact-mint benchmark
+projections are research-only and cannot enter runtime scoring.
+
+Alert payloads retain a durable `alert_timing` ledger containing decision,
+projection, queue, delivery-start and Telegram API-send timestamps plus
+derived latencies. `telegram_sent_at` is explicitly
+`SENT_TO_TELEGRAM_API`; user delivery remains `UNKNOWN` unless a provider
+offers authoritative user-delivery evidence. Existing alert dedupe and the
+existing outbox remain the only delivery path.
+
+### Verification evidence
+
+```text
+baseline make test: 1361 passed, 19 skipped, 7 warnings
+current make test: 1399 passed, 20 skipped, 7 warnings in 75.86s
+added tests over baseline: 38; no failures
+make lint: PASS
+make typecheck: PASS (140 source files)
+make verify: PASS (1399 Python tests, 20 skipped; frontend/security/schema gates pass)
+frontend unit: 83 passed
+frontend build: PASS
+frontend browser: 36 passed, 4 skipped
+integration-test: SKIPPED (MEMERADAR_TEST_DATABASE_URL missing)
+migrations: no new migration; head 0011_collection_checkpoints; 27 metadata tables
+```
+
+The report artifact is [early-alpha/report.md](../artifacts/research/early-alpha/report.md)
+with machine-readable [report.json](../artifacts/research/early-alpha/report.json).
+It currently reports `LIVE_SHADOW_INSUFFICIENT_SAMPLES`, zero live launches,
+zero matured outcomes and no real-world alpha claim. Fixture evidence is not
+mixed with live latency distributions.
+
+### Provider and shadow limits
+
+- `make doctor`: local protected-mode/configuration checks pass.
+- `make paper-trading-doctor`: `PASS`; live execution remains disabled.
+- `make provider-doctor`: `BLOCKED_EXTERNAL` (Helius configuration absent).
+- `make solana-rpc-doctor`: `BLOCKED_EXTERNAL` (public RPC unavailable; the
+  bounded probe measured 2050.615 ms before failing).
+- `make stream-integrity-doctor`: `BLOCKED_EXTERNAL` (stream/backfill URL
+  absent); no protocol source is marked authoritative without verified
+  program/discriminator identity.
+- `make telegram-doctor`: `BLOCKED_EXTERNAL` (Telegram API/bot/chat absent).
+- DexScreener and early-live network doctors timed out in this environment;
+  no historical Trending/Top Volume timestamps are inferred.
+- Shadow start reached protected-mode checks but failed before collection with
+  Docker API permission denied at `unix:///var/run/docker.sock`; status is
+  `STACK_OFFLINE` / `START_FAILED`, not a live sample.
+- Pump.fun, PumpSwap, Raydium, Meteora, Jupiter and DexScreener rows in the
+  source matrix remain `TODO_VERIFY`, `SUPPORTED_NEEDS_REVERIFY` or
+  `BLOCKED_EXTERNAL` as applicable; no unverified identity is treated as an
+  authoritative decoder.
+
+Reference examples FLEX, JUPCAT, URANUS, KMS, wildebeest and BLESS have no
+verified historical MemeRadar observation in this checkout. They remain
+`NOT OBSERVED / INSUFFICIENT HISTORICAL EVIDENCE`, are not hard-coded and are
+not scoring exceptions.
 
 ## 2026-09-16 final release-gate correctness sprint
 
