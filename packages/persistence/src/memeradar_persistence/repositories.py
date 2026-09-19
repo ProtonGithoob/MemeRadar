@@ -738,10 +738,20 @@ def _alert_identity_matches_row(alert: Alert, row: AlertRow) -> bool:
         and row.candidate_id == alert.candidate_id
         and row.position_id == alert.position_id
         and row.severity == alert.severity.value
-        and row.payload == json_safe(alert.payload)
+        and _alert_identity_payload(row.payload) == _alert_identity_payload(alert.payload)
         and row.dedupe_key == alert.dedupe_key
         and row.requested_at == alert.requested_at
     )
+
+
+def _alert_identity_payload(payload: Mapping[str, object]) -> dict[str, object]:
+    """Exclude the mutable delivery ledger from alert identity checks."""
+
+    normalized = json_safe(payload)
+    if not isinstance(normalized, dict):
+        raise TypeError("alert payload must serialize to a mapping")
+    normalized.pop("alert_timing", None)
+    return normalized
 
 
 def _alert_matches_row(alert: Alert, row: AlertRow) -> bool:
@@ -1060,6 +1070,7 @@ class AlertRepository:
         else:
             if not _alert_identity_matches_row(alert, row):
                 raise IdempotencyConflict(f"alert {alert.id} conflicts with persisted content")
+            row.payload = json_safe(alert.payload)
             row.state = alert.state.value
             row.delivered_at = alert.delivered_at
             row.attempts = alert.attempts

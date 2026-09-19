@@ -21,7 +21,7 @@ from memeradar_domain import (
     ReasonCode,
     normalize_reason_codes,
 )
-from memeradar_domain.common import ensure_utc, normalize_texts, require_text
+from memeradar_domain.common import ensure_utc, freeze_mapping, normalize_texts, require_text
 
 from .provider_contracts import (
     DeliveryReceipt,
@@ -975,6 +975,97 @@ def _payload_with_event_metadata(
     return result
 
 
+_ALERT_TIMING_KEY = "alert_timing"
+_SENT_TO_TELEGRAM_API = "SENT_TO_TELEGRAM_API"
+
+
+def _timing_sources(payload: Mapping[str, object]) -> tuple[Mapping[str, object], ...]:
+    nested = payload.get("early_alpha")
+    return (payload, nested) if isinstance(nested, Mapping) else (payload,)
+
+
+def _payload_datetime(
+    payload: Mapping[str, object],
+    key: str,
+    fallback: datetime | None = None,
+) -> datetime | None:
+    for source in _timing_sources(payload):
+        value = source.get(key)
+        if isinstance(value, datetime):
+            return ensure_utc(value, key)
+        if isinstance(value, str) and value:
+            try:
+                return ensure_utc(datetime.fromisoformat(value.replace("Z", "+00:00")), key)
+            except ValueError:
+                continue
+    return fallback
+
+
+def _duration_ms(start: datetime | None, end: datetime | None) -> int | None:
+    if start is None or end is None or end < start:
+        return None
+    return round((end - start).total_seconds() * 1000)
+
+
+def _alert_timing(
+    alert: Alert,
+    queued_clock: datetime,
+    *,
+    delivery_started_at: datetime | None = None,
+    sent_at: datetime | None = None,
+) -> dict[str, object]:
+    """Build the durable timing ledger without claiming user delivery."""
+
+    current = alert.payload.get(_ALERT_TIMING_KEY)
+    current_timing = current if isinstance(current, Mapping) else {}
+    decision_at = _payload_datetime(alert.payload, "decision_at")
+    decision_at = _payload_datetime(
+        current_timing, "decision_at", decision_at or alert.requested_at
+    )
+    projected_at = _payload_datetime(alert.payload, "alert_projected_at")
+    projected_at = _payload_datetime(
+        current_timing, "alert_projected_at", projected_at or alert.requested_at
+    )
+    queued_at = _payload_datetime(
+        current_timing,
+        "telegram_queued_at",
+        max(alert.requested_at, ensure_utc(queued_clock, "queued_clock")),
+    )
+    started_at = delivery_started_at or _payload_datetime(
+        current_timing, "telegram_delivery_started_at"
+    )
+    if started_at is not None:
+        started_at = ensure_utc(started_at, "telegram_delivery_started_at")
+    sent_timestamp = sent_at or _payload_datetime(current_timing, "telegram_sent_at")
+    if sent_timestamp is not None:
+        sent_timestamp = ensure_utc(sent_timestamp, "telegram_sent_at")
+    provider_observed_at = _payload_datetime(alert.payload, "provider_observed_at")
+    chain_created_at = _payload_datetime(alert.payload, "chain_created_at")
+    return {
+        "decision_at": None if decision_at is None else decision_at.isoformat(),
+        "alert_projected_at": None if projected_at is None else projected_at.isoformat(),
+        "telegram_queued_at": None if queued_at is None else queued_at.isoformat(),
+        "telegram_delivery_started_at": (
+            None if started_at is None else started_at.isoformat()
+        ),
+        "telegram_sent_at": None if sent_timestamp is None else sent_timestamp.isoformat(),
+        "delivered_to_user_at": None,
+        "sent_timestamp_semantics": _SENT_TO_TELEGRAM_API,
+        "decision_to_queue_ms": _duration_ms(decision_at, queued_at),
+        "queue_to_send_ms": _duration_ms(queued_at, sent_timestamp),
+        "decision_to_send_ms": _duration_ms(decision_at, sent_timestamp),
+        "provider_to_alert_ms": _duration_ms(provider_observed_at, projected_at),
+        "chain_to_alert_ms": _duration_ms(chain_created_at, projected_at),
+    }
+
+
+def _set_alert_timing(alert: Alert, timing: Mapping[str, object]) -> Alert:
+    payload = dict(alert.payload)
+    payload[_ALERT_TIMING_KEY] = dict(timing)
+    alert.payload = freeze_mapping(payload, "alert.payload")
+    return alert
+
+
 class AlertEventProjector:
     """Turn meaningful internal events into typed, explainable alert requests."""
 
@@ -1305,6 +1396,7 @@ class AlertDeliveryService:
             raise TypeError("alert must be an Alert")
         if not isinstance(context, ProviderRequestContext):
             raise TypeError("context must be a ProviderRequestContext")
+        now = ensure_utc(self._clock(), "now")
         existing = await self._store.get_by_dedupe_key(alert.dedupe_key)
         if existing is not None:
             if existing.state is AlertState.DELIVERED:
@@ -1319,6 +1411,11 @@ class AlertDeliveryService:
                 )
             alert = existing
         else:
+            alert = _set_alert_timing(alert, _alert_timing(alert, now))
+            await self._store.save(alert)
+
+        if not isinstance(alert.payload.get(_ALERT_TIMING_KEY), Mapping):
+            alert = _set_alert_timing(alert, _alert_timing(alert, now))
             await self._store.save(alert)
 
         if not self.policy.allows(alert.type):
@@ -1326,11 +1423,21 @@ class AlertDeliveryService:
             await self._store.save(alert)
             return AlertDeliveryResult(alert=alert, status=AlertDeliveryStatus.SUPPRESSED)
 
-        now = ensure_utc(self._clock(), "now")
         reservation = self.limiter.reserve(self.destination, now)
         if not reservation.allowed:
             assert reservation.retry_at is not None
             raise AlertDeliveryDeferred(reservation.retry_at)
+
+        timing_start = max(
+            now,
+            _payload_datetime(alert.payload, "alert_projected_at", alert.requested_at)
+            or alert.requested_at,
+        )
+        alert = _set_alert_timing(
+            alert,
+            _alert_timing(alert, now, delivery_started_at=timing_start),
+        )
+        await self._store.save(alert)
 
         renderer = self.renderer
         if alert.type is AlertType.EARLY_ALPHA:
@@ -1366,6 +1473,15 @@ class AlertDeliveryService:
             alert.mark_failed()
             await self._store.save(alert)
             raise
+        alert = _set_alert_timing(
+            alert,
+            _alert_timing(
+                alert,
+                now,
+                delivery_started_at=timing_start,
+                sent_at=receipt.delivered_at,
+            ),
+        )
         alert.mark_delivered(receipt.delivered_at)
         await self._store.save(alert)
         return AlertDeliveryResult(

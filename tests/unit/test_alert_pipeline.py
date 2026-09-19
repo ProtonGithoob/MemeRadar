@@ -446,6 +446,18 @@ def test_delivery_is_deduplicated_and_retries_transient_provider_failure() -> No
     assert duplicate.status is AlertDeliveryStatus.DEDUPLICATED
     assert len(notification.requests) == 2
     assert store.alerts[failed.id].state is AlertState.DELIVERED
+    timing = store.alerts[failed.id].payload["alert_timing"]
+    assert isinstance(timing, Mapping)
+    assert timing["decision_at"] == (NOW + timedelta(seconds=2)).isoformat()
+    assert timing["alert_projected_at"] == (NOW + timedelta(seconds=2)).isoformat()
+    assert timing["telegram_queued_at"] == (NOW + timedelta(seconds=2)).isoformat()
+    assert timing["telegram_delivery_started_at"] == (NOW + timedelta(seconds=2)).isoformat()
+    assert timing["telegram_sent_at"] == (NOW + timedelta(seconds=3)).isoformat()
+    assert timing["decision_to_queue_ms"] == 0
+    assert timing["queue_to_send_ms"] == 1000
+    assert timing["decision_to_send_ms"] == 1000
+    assert timing["sent_timestamp_semantics"] == "SENT_TO_TELEGRAM_API"
+    assert timing["delivered_to_user_at"] is None
 
 
 def test_delivery_defers_when_destination_rate_limit_is_exhausted() -> None:
