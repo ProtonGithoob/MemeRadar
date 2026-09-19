@@ -12,6 +12,48 @@ MINT1 = "So11111111111111111111111111111111111111112"
 MINT2 = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 
+def _checkpoint_and_labeler() -> tuple[
+    ReplayCheckpoint, ExtremeWinnerOutcomeLabeler, datetime, Provenance
+]:
+    signal_at = datetime(2026, 9, 1, 12, 0, 0, tzinfo=UTC)
+    token_id = uuid4()
+    checkpoint = ReplayCheckpoint(
+        id=uuid4(),
+        token_id=token_id,
+        candidate_id=uuid4(),
+        as_of=signal_at,
+    )
+    provenance = Provenance(
+        provider="helius", source_id=f"strict-{uuid4()}", observed_at=signal_at, parser_version="v1"
+    )
+    return checkpoint, ExtremeWinnerOutcomeLabeler(), signal_at, provenance
+
+
+def _future_record(
+    checkpoint: ReplayCheckpoint,
+    signal_at: datetime,
+    provenance: Provenance,
+    payload: dict[str, object],
+    *,
+    quality_state: QualityState = QualityState.FRESH,
+) -> ReplayEventRecord:
+    event_at = signal_at + timedelta(seconds=60)
+    return ReplayEventRecord(
+        observation=Observation(
+            id=uuid4(),
+            kind="market.snapshot",
+            token_id=checkpoint.token_id,
+            occurred_at=event_at,
+            observed_at=event_at,
+            ingested_at=event_at,
+            provenance=provenance,
+            quality_state=quality_state,
+            normalized_payload=payload,
+        ),
+        registry_version="v1",
+    )
+
+
 def test_extreme_winner_labeler_evaluates_multiples_and_executable_distinction():
     checkpoint_id = uuid4()
     token_id = uuid4()
@@ -109,3 +151,111 @@ def test_thin_liquidity_wick_does_not_create_valid_executable_extreme_winner():
     assert snap.mark_multiple == Decimal("100.0")
     assert snap.executable_multiple is None or snap.executable_multiple < Decimal("100.0")
     assert snap.hit_100x is False
+
+
+def test_missing_liquidity_is_unknown_not_executable() -> None:
+    checkpoint, labeler, signal_at, provenance = _checkpoint_and_labeler()
+    record = _future_record(
+        checkpoint,
+        signal_at,
+        provenance,
+        {
+            "price_usd": "0.01",
+            "market_cap_usd": "100000",
+            "is_sellable": True,
+            "buy_impact_bps": 100,
+            "sell_impact_bps": 100,
+        },
+    )
+
+    snapshot = labeler.evaluate([record], checkpoint, baseline_price=Decimal("0.001"))
+
+    assert snapshot.mark_multiple == Decimal("10")
+    assert snapshot.executable_multiple is None
+    assert snapshot.hit_10x is False
+    assert "UNKNOWN_EXECUTABILITY" in {reason.code for reason in snapshot.reason_codes}
+
+
+def test_missing_impact_is_unknown_not_executable() -> None:
+    checkpoint, labeler, signal_at, provenance = _checkpoint_and_labeler()
+    record = _future_record(
+        checkpoint,
+        signal_at,
+        provenance,
+        {
+            "price_usd": "0.01",
+            "market_cap_usd": "100000",
+            "liquidity_usd": "50000",
+            "is_sellable": True,
+        },
+    )
+
+    snapshot = labeler.evaluate([record], checkpoint, baseline_price=Decimal("0.001"))
+
+    assert snapshot.executable_multiple is None
+    assert snapshot.hit_10x is False
+    assert "UNKNOWN_EXECUTABILITY" in {reason.code for reason in snapshot.reason_codes}
+
+
+def test_stale_quote_is_unknown_not_executable() -> None:
+    checkpoint, labeler, signal_at, provenance = _checkpoint_and_labeler()
+    record = _future_record(
+        checkpoint,
+        signal_at,
+        provenance,
+        {
+            "price_usd": "0.01",
+            "market_cap_usd": "100000",
+            "liquidity_usd": "50000",
+            "is_sellable": True,
+            "buy_impact_bps": 100,
+            "sell_impact_bps": 100,
+        },
+        quality_state=QualityState.STALE,
+    )
+
+    snapshot = labeler.evaluate([record], checkpoint, baseline_price=Decimal("0.001"))
+
+    assert snapshot.executable_multiple is None
+    assert snapshot.hit_10x is False
+    assert "UNKNOWN_EXECUTABILITY" in {reason.code for reason in snapshot.reason_codes}
+
+
+def test_sellability_failure_and_high_sell_impact_do_not_count_as_executable() -> None:
+    checkpoint, labeler, signal_at, provenance = _checkpoint_and_labeler()
+    records = [
+        _future_record(
+            checkpoint,
+            signal_at,
+            provenance,
+            {
+                "price_usd": "0.01",
+                "market_cap_usd": "100000",
+                "liquidity_usd": "50000",
+                "is_sellable": False,
+                "buy_impact_bps": 100,
+                "sell_impact_bps": 100,
+            },
+        ),
+        _future_record(
+            checkpoint,
+            signal_at,
+            provenance,
+            {
+                "price_usd": "0.01",
+                "market_cap_usd": "100000",
+                "liquidity_usd": "50000",
+                "is_sellable": True,
+                "buy_impact_bps": 100,
+                "sell_impact_bps": 5001,
+            },
+        ),
+    ]
+
+    snapshot = labeler.evaluate(records, checkpoint, baseline_price=Decimal("0.001"))
+
+    assert snapshot.executable_multiple is None
+    assert snapshot.hit_10x is False
+    reason_codes = {reason.code for reason in snapshot.reason_codes}
+    assert "EXECUTABILITY_SELLABILITY_FAILURE" in reason_codes
+    assert "EXECUTABILITY_SELL_IMPACT_TOO_HIGH" in reason_codes

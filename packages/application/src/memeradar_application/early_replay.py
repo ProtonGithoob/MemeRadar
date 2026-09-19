@@ -138,6 +138,79 @@ def _liquidity(record: ReplayEventRecord) -> Decimal | None:
     )
 
 
+def _executability(
+    observation: object,
+    payload: Mapping[str, object],
+    liquidity: Decimal | None,
+) -> tuple[bool | None, tuple[ReasonCode, ...]]:
+    """Return strict executable evidence without promoting UNKNOWN to safe."""
+
+    reasons: list[ReasonCode] = []
+    quality = getattr(observation, "quality_state", QualityState.UNKNOWN)
+    try:
+        if QualityState(quality) is not QualityState.FRESH:
+            return None, (_reason("UNKNOWN_EXECUTABILITY", "STALE_OR_NONFRESH_QUOTE"),)
+    except (TypeError, ValueError):
+        return None, (_reason("UNKNOWN_EXECUTABILITY", "INVALID_QUOTE_QUALITY"),)
+
+    quote_quality = _payload_value(
+        payload,
+        "quote_quality_state",
+        "quote_freshness_state",
+        "quote_quality",
+    )
+    if quote_quality is not _MISSING:
+        try:
+            if QualityState(quote_quality) is not QualityState.FRESH:
+                return None, (_reason("UNKNOWN_EXECUTABILITY", "STALE_QUOTE"),)
+        except (TypeError, ValueError):
+            return None, (_reason("UNKNOWN_EXECUTABILITY", "INVALID_QUOTE_QUALITY"),)
+
+    if liquidity is None:
+        return None, (_reason("UNKNOWN_EXECUTABILITY", "LIQUIDITY_MISSING"),)
+    if liquidity < Decimal("1000"):
+        reasons.append(_reason("EXECUTABILITY_LIQUIDITY_TOO_LOW"))
+
+    sellability = _boolean(
+        _payload_value(payload, "is_sellable", "sellable", "can_sell", "sellability")
+    )
+    if sellability is None:
+        return None, (_reason("UNKNOWN_EXECUTABILITY", "SELLABILITY_MISSING"),)
+    if not sellability:
+        reasons.append(_reason("EXECUTABILITY_SELLABILITY_FAILURE"))
+
+    buy_impact = _decimal(
+        _payload_value(
+            payload,
+            "buy_impact_bps",
+            "buy_price_impact_bps",
+            "price_impact_buy_bps",
+            "impact_bps",
+            "price_impact_bps",
+        ),
+        "buy_impact",
+    )
+    sell_impact = _decimal(
+        _payload_value(
+            payload,
+            "sell_impact_bps",
+            "sell_price_impact_bps",
+            "price_impact_sell_bps",
+            "impact_bps",
+            "price_impact_bps",
+        ),
+        "sell_impact",
+    )
+    if buy_impact is None or sell_impact is None:
+        return None, (_reason("UNKNOWN_EXECUTABILITY", "IMPACT_MISSING"),)
+    if buy_impact > Decimal("1000"):
+        reasons.append(_reason("EXECUTABILITY_BUY_IMPACT_TOO_HIGH"))
+    if sell_impact > Decimal("1000"):
+        reasons.append(_reason("EXECUTABILITY_SELL_IMPACT_TOO_HIGH"))
+
+    return (not reasons), tuple(reasons)
+
+
 @dataclass(frozen=True, slots=True)
 class EarlyOutcomePolicy:
     """Versioned horizon, milestone and severe-dump labeling controls."""
@@ -674,6 +747,7 @@ class ExtremeWinnerOutcomeSnapshot:
     sellability: bool = True
     mark_multiple: Decimal | None = None
     executable_multiple: Decimal | None = None
+    executable_quality_state: QualityState = QualityState.UNKNOWN
     rug_before_multiple: bool = False
     realized_paper_multiple: Decimal | None = None
     quality_state: QualityState = QualityState.FRESH
@@ -717,6 +791,9 @@ class ExtremeWinnerOutcomeLabeler:
         t_peak: Decimal | None = None
         min_post_peak_mc: Decimal | None = None
         rug_seen = False
+        executable_unknown = False
+        outcome_reasons: list[ReasonCode] = []
+        outcome_refs: list[str] = []
 
         for r in future:
             obs = r.observation
@@ -725,9 +802,12 @@ class ExtremeWinnerOutcomeLabeler:
             price = _decimal(_payload_value(payload, "price_usd", "price"), "price", positive=True)
             mc = _market_cap(r)
             liq = _liquidity(r)
-            is_sellable = _boolean(_payload_value(payload, "is_sellable", "sellable")) is not False
-            impact_val = _payload_value(payload, "impact_bps", "price_impact_bps")
-            impact_bps = _decimal(impact_val, "impact")
+            executable, executability_reasons = _executability(obs, payload, liq)
+            if executability_reasons:
+                outcome_reasons.extend(executability_reasons)
+                outcome_refs.append(_event_reference(r))
+            if executable is None:
+                executable_unknown = True
 
             if obs.kind in _RUG_KINDS:
                 rug_seen = True
@@ -743,14 +823,7 @@ class ExtremeWinnerOutcomeLabeler:
                 if mark_max_mult is None or mult > mark_max_mult:
                     mark_max_mult = mult
 
-                # Check executable criteria: minimum liquidity, sellable, bounded impact
-                is_executable = (
-                    is_sellable
-                    and (liq is None or liq >= Decimal("1000"))
-                    and (impact_bps is None or impact_bps <= Decimal("1000"))
-                )
-
-                if is_executable:
+                if executable is True:
                     if exec_max_mult is None or mult > exec_max_mult:
                         exec_max_mult = mult
 
@@ -796,7 +869,7 @@ class ExtremeWinnerOutcomeLabeler:
                 earliest = min(past_times)
                 launch_age_ms = int(max(0.0, (signal_at - earliest).total_seconds()) * 1000)
 
-        reasons = [ReasonCode("EXTREME_WINNER_LABELED")]
+        reasons = [ReasonCode("EXTREME_WINNER_LABELED"), *outcome_reasons]
 
         return ExtremeWinnerOutcomeSnapshot(
             checkpoint_id=checkpoint.id,
@@ -841,9 +914,13 @@ class ExtremeWinnerOutcomeLabeler:
             post_peak_drawdown=post_peak_drawdown,
             mark_multiple=mark_max_mult,
             executable_multiple=exec_max_mult,
+            executable_quality_state=(
+                QualityState.UNKNOWN if executable_unknown else QualityState.FRESH
+            ),
             rug_before_multiple=rug_seen,
             quality_state=QualityState.FRESH if future else QualityState.UNKNOWN,
-            reason_codes=tuple(reasons),
+            reason_codes=normalize_reason_codes(tuple(dict.fromkeys(reasons))),
+            evidence_refs=tuple(dict.fromkeys(outcome_refs)),
         )
 
 
