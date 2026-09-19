@@ -20,7 +20,9 @@ class CandidateState(str, Enum):
     ENRICHING = "ENRICHING"
     RISK_REJECTED = "RISK_REJECTED"
     WATCH = "WATCH"
+    EARLY_WATCH = "EARLY_WATCH"
     STRONG_SETUP = "STRONG_SETUP"
+    HIGH_CONFLUENCE = "HIGH_CONFLUENCE"
     ENTRY_READY = "ENTRY_READY"
     PAPER_OPEN = "PAPER_OPEN"
     LIVE_PENDING_APPROVAL = "LIVE_PENDING_APPROVAL"
@@ -41,14 +43,41 @@ _ALLOWED_TRANSITIONS: dict[CandidateState, frozenset[CandidateState]] = {
     CandidateState.DISCOVERED: frozenset({CandidateState.ENRICHING}),
     CandidateState.ENRICHING: frozenset({CandidateState.RISK_REJECTED, CandidateState.WATCH}),
     CandidateState.RISK_REJECTED: frozenset(),
-    CandidateState.WATCH: frozenset({CandidateState.RISK_REJECTED, CandidateState.STRONG_SETUP}),
+    CandidateState.WATCH: frozenset(
+        {
+            CandidateState.RISK_REJECTED,
+            CandidateState.EARLY_WATCH,
+            CandidateState.STRONG_SETUP,
+        }
+    ),
+    CandidateState.EARLY_WATCH: frozenset(
+        {
+            CandidateState.RISK_REJECTED,
+            CandidateState.WATCH,
+            CandidateState.STRONG_SETUP,
+        }
+    ),
     CandidateState.STRONG_SETUP: frozenset(
-        {CandidateState.RISK_REJECTED, CandidateState.WATCH, CandidateState.ENTRY_READY}
+        {
+            CandidateState.RISK_REJECTED,
+            CandidateState.WATCH,
+            CandidateState.EARLY_WATCH,
+            CandidateState.HIGH_CONFLUENCE,
+            CandidateState.ENTRY_READY,
+        }
+    ),
+    CandidateState.HIGH_CONFLUENCE: frozenset(
+        {
+            CandidateState.RISK_REJECTED,
+            CandidateState.STRONG_SETUP,
+            CandidateState.ENTRY_READY,
+        }
     ),
     CandidateState.ENTRY_READY: frozenset(
         {
             CandidateState.RISK_REJECTED,
             CandidateState.STRONG_SETUP,
+            CandidateState.HIGH_CONFLUENCE,
             CandidateState.PAPER_OPEN,
             CandidateState.LIVE_PENDING_APPROVAL,
         }
@@ -130,6 +159,8 @@ class StateTransition:
 _DECISION_STATES = frozenset(
     {
         CandidateState.ENTRY_READY,
+        CandidateState.EARLY_WATCH,
+        CandidateState.HIGH_CONFLUENCE,
         CandidateState.PAPER_OPEN,
         CandidateState.LIVE_PENDING_APPROVAL,
         CandidateState.OPEN,

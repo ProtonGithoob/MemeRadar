@@ -663,6 +663,9 @@ class AlertRenderer:
             pnl = _safe_display(pnl_value)
             if pnl:
                 lines.append(f"PnL: {pnl}")
+        if alert.type is AlertType.EARLY_WATCH:
+            lines.append("NOT ENTRY_READY")
+            lines.append("RESEARCH/PAPER SIGNAL")
         for key, label in (
             ("age", "Age"),
             ("liquidity_usd", "Liquidity"),
@@ -1032,7 +1035,9 @@ class AlertEventProjector:
                 return None
             state_types = {
                 "WATCH": AlertType.NEW_WATCH,
+                "EARLY_WATCH": AlertType.EARLY_WATCH,
                 "STRONG_SETUP": AlertType.STRONG_SETUP,
+                "HIGH_CONFLUENCE": AlertType.HIGH_CONFLUENCE,
                 "ENTRY_READY": AlertType.ENTRY_READY,
             }
             alert_type = state_types.get(to_state)

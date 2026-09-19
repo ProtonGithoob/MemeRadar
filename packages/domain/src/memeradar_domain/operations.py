@@ -22,7 +22,9 @@ class AlertType(str, Enum):
     """Primary operator alert categories."""
 
     NEW_WATCH = "NEW_WATCH"
+    EARLY_WATCH = "EARLY_WATCH"
     STRONG_SETUP = "STRONG_SETUP"
+    HIGH_CONFLUENCE = "HIGH_CONFLUENCE"
     ENTRY_READY = "ENTRY_READY"
     RISK_ESCALATION = "RISK_ESCALATION"
     CREATOR_SELL = "CREATOR_SELL"
