@@ -95,3 +95,12 @@ def test_creator_linked_wallets_are_preserved_as_risk_evidence() -> None:
     assert result.status is FastSafetyStatus.BLOCK
     assert result.creator_linked_smart_wallet_count == 2
     assert "CREATOR_LINKED_ACTIVITY" in result.hard_blocks
+
+
+def test_unverified_protocol_identity_is_critical_unknown() -> None:
+    result = FastSafetyGate().evaluate(
+        {**BASE_EVIDENCE, "protocol_identity_verified": False}
+    )
+
+    assert result.status is FastSafetyStatus.UNKNOWN
+    assert "PROTOCOL_IDENTITY_UNVERIFIED" in result.critical_unknowns

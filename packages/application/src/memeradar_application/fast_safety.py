@@ -250,6 +250,16 @@ class FastSafetyGate:
                 blocks.append(reason)
                 reasons.append(ReasonCode(reason))
 
+        protocol_verified = _boolean(
+            value(
+                "protocol_identity_verified",
+                "verified_protocol_identity",
+                "canonical_protocol_verified",
+            )
+        )
+        if protocol_verified is False:
+            critical.append("PROTOCOL_IDENTITY_UNVERIFIED")
+
         liquidity = _decimal(
             value("liquidity", "liquidity_usd", "effective_liquidity"),
             "liquidity",
