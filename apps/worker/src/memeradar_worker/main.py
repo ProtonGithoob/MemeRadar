@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterable, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import uuid4
@@ -17,6 +17,8 @@ from memeradar_application.discovery_collection import (
     DiscoveryCollectionReport,
 )
 from memeradar_application.early_alpha_alert import EarlyAlphaAlertRenderer
+from memeradar_application.early_runtime import EarlyRuntimeService
+from memeradar_application.early_worker import EarlyRuntimeStreamReport, EarlyRuntimeStreamWorker
 from memeradar_application.event_processing import EventDispatcher, OutboxProcessor, OutboxWorker
 from memeradar_application.historical_dataset import MADEONSOL_REAL_EVIDENCE_CLASS
 from memeradar_application.provider_contracts import (
@@ -24,14 +26,23 @@ from memeradar_application.provider_contracts import (
     DiscoveryRequest,
     ProviderRequestContext,
 )
-from memeradar_domain import EventEnvelope, Observation, Provenance, QualityState
+from memeradar_application.stream_integrity import (
+    RawChainTransaction,
+    StreamIntegrityCoordinator,
+)
+from memeradar_domain import Candidate, Chain, EventEnvelope, Observation, Provenance, QualityState
 from memeradar_persistence import (
     SqlAlchemyAlertStore,
     SqlAlchemyOutboxStore,
+    SqlAlchemyStreamStateStore,
     SqlAlchemyUnitOfWork,
     create_database_engine,
 )
 from memeradar_providers.composition import build_provider_bundle
+from memeradar_providers.protocol_registry import (
+    DEFAULT_PROTOCOL_REGISTRY,
+    CanonicalProtocolDecoder,
+)
 from memeradar_providers.telegram import TelegramNotificationAdapter
 from memeradar_providers.transport import (
     ProviderAuthenticationError,
@@ -67,6 +78,8 @@ async def run_worker(
         workers.append(_run_madeonsol_shadow(stop_event, settings, sleeper=sleeper))
     if _gmgn_shadow_is_configured(settings):
         workers.append(_run_gmgn_shadow(stop_event, settings, sleeper=sleeper))
+    if _early_alpha_shadow_is_configured(settings):
+        workers.append(_run_early_alpha_shadow(stop_event, settings, sleeper=sleeper))
     if workers:
         await asyncio.gather(*workers)
     else:
@@ -105,6 +118,47 @@ def _gmgn_shadow_is_configured(settings: Settings) -> bool:
         and settings.gmgn_base_url.lower().startswith("https://")
         and any(chain in settings.enabled_chains for chain in ("solana", "bnb"))
     )
+
+
+def _early_alpha_shadow_is_configured(settings: Settings) -> bool:
+    """Gate the canonical stream path without claiming a provider adapter exists."""
+
+    return bool(
+        settings.database_url
+        and Chain.SOLANA.value in settings.enabled_chains
+        and (settings.solana_stream_url or settings.helius_stream_url)
+    )
+
+
+class _BoundRuntimeRepositories:
+    """Bind existing persistence repositories to one event transaction."""
+
+    def __init__(self) -> None:
+        self._unit_of_work: SqlAlchemyUnitOfWork | None = None
+
+    def bind(self, unit_of_work: SqlAlchemyUnitOfWork) -> None:
+        self._unit_of_work = unit_of_work
+
+    def clear(self) -> None:
+        self._unit_of_work = None
+
+    def _uow(self) -> SqlAlchemyUnitOfWork:
+        if self._unit_of_work is None:
+            raise RuntimeError("runtime repositories are not bound to a unit of work")
+        return self._unit_of_work
+
+    async def add(self, value: object) -> object:
+        if isinstance(value, Candidate):
+            return await self._uow().candidates.add(value)
+        if isinstance(value, Observation):
+            return await self._uow().observations.add(value)
+        raise TypeError("runtime repository received an unsupported value")
+
+    async def get(self, candidate_id):
+        return await self._uow().candidates.get(candidate_id)
+
+    async def enqueue(self, event: EventEnvelope, **kwargs: object) -> object:
+        return await self._uow().outbox.enqueue(event, **kwargs)
 
 
 def _madeonsol_health_state(error: BaseException) -> tuple[str, bool]:
@@ -325,6 +379,78 @@ async def _run_gmgn_shadow(
         checkpoint_key=None,
         sleeper=sleeper,
     )
+
+
+async def _run_early_alpha_shadow(
+    stop_event: asyncio.Event,
+    settings: Settings,
+    *,
+    sleeper: Sleep,
+    source: AsyncIterable[RawChainTransaction] | None = None,
+    decoder: object | None = None,
+) -> EarlyRuntimeStreamReport | None:
+    """Compose canonical stream integrity, early runtime and durable stores.
+
+    The production source is intentionally an injected boundary until a raw
+    transaction websocket adapter is verified.  A configured URL alone is not
+    treated as a stream or as live alpha evidence.
+    """
+
+    del sleeper
+    if source is None:
+        LOGGER.warning(
+            "early_alpha_stream_blocked_external",
+            extra={
+                "reason": "CANONICAL_RAW_STREAM_SOURCE_NOT_CONFIGURED",
+                "live_shadow": True,
+            },
+        )
+        return None
+    assert settings.database_url is not None
+    engine = create_database_engine(settings.database_url)
+    stores = _BoundRuntimeRepositories()
+    runtime = EarlyRuntimeService(
+        observation_store=stores,
+        candidate_store=stores,
+        outbox_store=stores,
+    )
+    stream_store = SqlAlchemyStreamStateStore(engine)
+    coordinator = StreamIntegrityCoordinator(
+        chain=Chain.SOLANA,
+        transport="solana-raw-stream",
+        stream_id="early-alpha-v1",
+        decoder=decoder or CanonicalProtocolDecoder(DEFAULT_PROTOCOL_REGISTRY),
+        state_store=stream_store,
+    )
+
+    async def process_event(event, *, stream_gap: bool):
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            stores.bind(unit_of_work)
+            try:
+                result = await runtime.process(event, stream_gap=stream_gap)
+                await unit_of_work.commit()
+                return result
+            finally:
+                stores.clear()
+
+    try:
+        report = await EarlyRuntimeStreamWorker(coordinator, process_event).run(
+            source,
+            stop_event=stop_event,
+        )
+        LOGGER.info(
+            "early_alpha_stream_run",
+            extra={
+                "received": report.received,
+                "processed": report.processed,
+                "duplicate_events": report.duplicate_events,
+                "conflicted_events": report.conflicted_events,
+                "gap_affected_events": report.gap_affected_events,
+            },
+        )
+        return report
+    finally:
+        await engine.dispose()
 
 
 async def _run_alert_outbox(
