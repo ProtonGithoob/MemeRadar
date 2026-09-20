@@ -444,11 +444,16 @@ DEFAULT_PROTOCOL_REGISTRY = ProtocolIdentityRegistry(
     (
         _production_entry(
             protocol="pump.fun",
-            program_id="6EF8rrecthR5Dkzon8Nwu78gNvfCKubJ14M5uBEwF6P",
+            # Current Pump public docs publish ...hRvf...; retain TODO_VERIFY
+            # until the instruction/event payload decoder is independently checked.
+            program_id="6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
             kind=ProgramKind.ANCHOR,
             instruction_name="trade",
             tag=anchor_discriminator("trade"),
-            source="official-public-pump-program-reference",
+            source=(
+                "https://github.com/pump-fun/pump-public-docs/blob/main/"
+                "docs/PUMP_PROGRAM_README.md"
+            ),
         ),
         _production_entry(
             protocol="pumpswap",
