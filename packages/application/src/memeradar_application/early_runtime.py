@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from time import perf_counter
 from typing import Protocol
@@ -21,10 +21,14 @@ from memeradar_domain import (
     CandidateState,
     EarlyDecisionState,
     EventEnvelope,
+    FeatureSnapshot,
     Observation,
     Provenance,
     QualityState,
     ReasonCode,
+    RiskAssessment,
+    RiskDisposition,
+    ScoreSnapshot,
     StateTransition,
     TokenIdentity,
 )
@@ -66,6 +70,18 @@ class EventSink(Protocol):
         side_effect_kind: str = "domain_event",
         available_at: datetime | None = None,
     ) -> object: ...
+
+
+class FeatureSnapshotSink(Protocol):
+    async def add(self, snapshot: FeatureSnapshot) -> object: ...
+
+
+class RiskAssessmentSink(Protocol):
+    async def add(self, assessment: RiskAssessment) -> object: ...
+
+
+class ScoreSnapshotSink(Protocol):
+    async def add(self, snapshot: ScoreSnapshot) -> object: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +205,50 @@ def _evidence_refs(*sources: object) -> tuple[str, ...]:
     return normalize_texts(values, "evidence_refs")
 
 
+def _runtime_risk_id(candidate_id: UUID, state: CandidateState) -> UUID:
+    return uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}risk:{candidate_id}:{state.value}")
+
+
+def _feature_values(snapshot: EarlyFeatureSnapshot) -> Mapping[str, object]:
+    return {
+        "windows": {
+            label: {
+                "duration_seconds": Decimal(str(window.duration.total_seconds())),
+                "as_of": window.as_of,
+                "metrics": window.metrics,
+                "quality_state": window.quality_state.value,
+                "reason_codes": tuple(reason.code for reason in window.reason_codes),
+                "evidence_refs": window.evidence_refs,
+            }
+            for label, window in snapshot.windows.items()
+        },
+        "quality_state": snapshot.quality_state.value,
+        "launch_age_seconds": snapshot.launch_age_seconds,
+        "reason_codes": tuple(reason.code for reason in snapshot.reason_codes),
+        "evidence_refs": snapshot.evidence_refs,
+    }
+
+
+def _feature_completeness(snapshot: EarlyFeatureSnapshot) -> Decimal:
+    if not snapshot.windows:
+        return Decimal("0")
+    populated = sum(
+        any(value is not None for value in window.metrics.values())
+        for window in snapshot.windows.values()
+    )
+    return Decimal(populated) / Decimal(len(snapshot.windows))
+
+
+def _feature_confidence(snapshot: EarlyFeatureSnapshot) -> Decimal:
+    return {
+        QualityState.FRESH: Decimal("1"),
+        QualityState.STALE: Decimal("0.5"),
+        QualityState.UNKNOWN: Decimal("0"),
+        QualityState.CONFLICTED: Decimal("0"),
+        QualityState.INVALID: Decimal("0"),
+    }[snapshot.quality_state]
+
+
 class EarlyRuntimeService:
     """Compose the fast launch path with append-only evidence and outbox ports."""
 
@@ -203,9 +263,19 @@ class EarlyRuntimeService:
         decision_policy: EarlyDecisionPolicy | None = None,
         observation_store: ObservationSink | None = None,
         candidate_store: CandidateSink | None = None,
+        feature_store: FeatureSnapshotSink | None = None,
+        risk_store: RiskAssessmentSink | None = None,
+        score_store: ScoreSnapshotSink | None = None,
         outbox_store: EventSink | None = None,
         git_revision: str = "unknown",
     ) -> None:
+        snapshot_stores = (feature_store, risk_store, score_store)
+        if any(store is not None for store in snapshot_stores) and not all(
+            store is not None for store in snapshot_stores
+        ):
+            raise ValueError(
+                "feature_store, risk_store and score_store must be configured together"
+            )
         self.detector = detector or UltraEarlyDetector()
         self.safety_gate = safety_gate or FastSafetyGate()
         self.feature_engine = feature_engine or EarlyFeatureEngine(
@@ -215,6 +285,9 @@ class EarlyRuntimeService:
         self.decision_engine = decision_engine or EarlyDecisionEngine(decision_policy)
         self.observation_store = observation_store
         self.candidate_store = candidate_store
+        self.feature_store = feature_store
+        self.risk_store = risk_store
+        self.score_store = score_store
         self.outbox_store = outbox_store
         self.git_revision = str(git_revision)
         self._observations: dict[str, dict[UUID, Observation]] = {}
@@ -372,6 +445,7 @@ class EarlyRuntimeService:
         if safety.status in {FastSafetyStatus.UNKNOWN, FastSafetyStatus.BLOCK}:
             target = CandidateState.RISK_REJECTED
         stage_at = max(checkpoint, detection.first_seen_at, candidate.state_changed_at)
+        prior_transition_keys = {item.idempotency_key for item in candidate.transitions}
         transition = self._advance_candidate(
             candidate,
             target,
@@ -382,6 +456,24 @@ class EarlyRuntimeService:
             feature_snapshot=feature_snapshot,
             stream_gap=stream_gap,
         )
+        transition_is_new = (
+            transition is not None and transition.idempotency_key not in prior_transition_keys
+        )
+        if transition_is_new and transition is not None and target in {
+            CandidateState.EARLY_WATCH,
+            CandidateState.HIGH_CONFLUENCE,
+            CandidateState.ENTRY_READY,
+        }:
+            await self._save_runtime_snapshots(
+                candidate=candidate,
+                feature_snapshot=feature_snapshot,
+                safety=safety,
+                score=score,
+                decision=decision,
+                transition=transition,
+                provider_available=provider_available,
+                stream_gap=stream_gap,
+            )
         await self._save_candidate(candidate)
         latencies = {
             "provider_to_ingestion": normalization_ms,
@@ -484,6 +576,99 @@ class EarlyRuntimeService:
             return
         await self.candidate_store.add(candidate)
 
+    async def _save_runtime_snapshots(
+        self,
+        *,
+        candidate: Candidate,
+        feature_snapshot: EarlyFeatureSnapshot,
+        safety: FastSafetyResult,
+        score: EarlyScoreSnapshot,
+        decision: EarlyDecisionResult,
+        transition: StateTransition,
+        provider_available: bool,
+        stream_gap: bool,
+    ) -> None:
+        if self.feature_store is None or self.risk_store is None or self.score_store is None:
+            return
+        if transition.score_snapshot_id is None or transition.risk_assessment_id is None:
+            raise ValueError("decision transition is missing snapshot references")
+        checkpoint = feature_snapshot.as_of
+        expires_at = checkpoint + timedelta(minutes=5)
+        provenance: list[Provenance] = []
+        for window in feature_snapshot.windows.values():
+            for source in window.provenance:
+                if source not in provenance:
+                    provenance.append(source)
+        feature = FeatureSnapshot(
+            id=uuid5(
+                NAMESPACE_URL,
+                f"{_RUNTIME_NAMESPACE}feature:{candidate.id}:{checkpoint.isoformat()}:{feature_snapshot.version}",
+            ),
+            candidate_id=candidate.id,
+            as_of=checkpoint,
+            expires_at=expires_at,
+            feature_version=feature_snapshot.version,
+            completeness=_feature_completeness(feature_snapshot),
+            confidence=_feature_confidence(feature_snapshot),
+            values=_feature_values(feature_snapshot),
+            provenance=tuple(provenance),
+            config_hash=decision.config_hash,
+            quality_state=feature_snapshot.quality_state,
+        )
+        risk_quality = (
+            QualityState.UNKNOWN
+            if not provider_available or stream_gap
+            else safety.quality_state
+        )
+        risk_reasons = _reason_values(score, decision, safety, feature_snapshot)
+        risk = RiskAssessment(
+            id=transition.risk_assessment_id,
+            candidate_id=candidate.id,
+            as_of=checkpoint,
+            expires_at=expires_at,
+            risk_version=safety.version,
+            disposition={
+                FastSafetyStatus.PASS: RiskDisposition.PASS,
+                FastSafetyStatus.CAUTION: RiskDisposition.WARN,
+                FastSafetyStatus.BLOCK: RiskDisposition.BLOCK,
+                FastSafetyStatus.UNKNOWN: RiskDisposition.UNKNOWN,
+            }[safety.status],
+            hard_blocks=safety.hard_blocks,
+            warnings=safety.noncritical_unknowns,
+            penalties=score.penalties,
+            evidence_refs=safety.evidence_refs,
+            reason_codes=risk_reasons or (ReasonCode("EARLY_RUNTIME_RISK_SNAPSHOT"),),
+            confidence=decision.confidence,
+            config_hash=decision.config_hash,
+            critical_evidence_state=risk_quality,
+        )
+        components = {
+            key: value for key, value in score.components.items() if value is not None
+        }
+        if not components:
+            raise ValueError("decision score has no observed components to persist")
+        score_projection = ScoreSnapshot(
+            id=transition.score_snapshot_id,
+            candidate_id=candidate.id,
+            as_of=checkpoint,
+            model_version=score.version,
+            strategy_name="early-alpha",
+            strategy_version=score.version,
+            alpha_score=score.score,
+            confidence=score.confidence,
+            components=components,
+            penalties=score.penalties,
+            reason_codes=score.reason_codes or (ReasonCode("EARLY_SCORE_SNAPSHOT"),),
+            feature_snapshot_id=feature.id,
+            risk_assessment_id=risk.id,
+            expires_at=expires_at,
+            config_hash=score.config_hash,
+            quality_state=score.risk_quality_state,
+        )
+        await self.feature_store.add(feature)
+        await self.risk_store.add(risk)
+        await self.score_store.add(score_projection)
+
     async def _get_or_create_candidate(self, detection: EarlyDetectionResult) -> Candidate:
         if self.candidate_store is not None:
             existing = await self.candidate_store.get(detection.candidate_id)
@@ -567,7 +752,7 @@ class EarlyRuntimeService:
                 else None
             ),
             risk_assessment_id=(
-                uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}risk:{candidate.id}:{target.value}")
+                _runtime_risk_id(candidate.id, target)
                 if target
                 in {
                     CandidateState.EARLY_WATCH,

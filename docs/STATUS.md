@@ -10,10 +10,10 @@ documents below.
 
 | Dimension | Current state | Evidence / constraint |
 |---|---|---|
-| System stage | `ENGINEERING_COMPLETE_FOR_DETERMINISTIC_EARLY_ALPHA_SHADOW` | The canonical stream-to-alert/research path is implemented and locally verified; external acceptance and statistical alpha validation are separate. |
-| Stack readiness | `STACK_OFFLINE` | The local stack contract is verified, but shadow start is blocked by Docker socket permissions in this environment. |
-| Core provider readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` (configuration) / `BLOCKED_EXTERNAL` (live network) | Core reads remain keyless where configured; live RPC/stream/Telegram checks are unavailable here. |
-| Shadow collection | `NOT_ACTIVE` (`START_FAILED`) | No live shadow evidence is claimed from fixtures or an unavailable stack. |
+| System stage | `ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION` | The canonical stream-to-alert/research path and PostgreSQL-backed restart/idempotency contracts are locally verified; external source and statistical alpha validation are separate. |
+| Stack readiness | `PASS` (`STACK_READY / DEGRADED`) | A bounded Compose run passed PostgreSQL, Redis, API liveness/readiness, worker startup, web reachability and protected-mode checks on isolated ports. |
+| Core provider readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` (HTTP core) / `BLOCKED_EXTERNAL` (launch collection) | Public Solana RPC and DexScreener HTTP doctors pass; WebSocket transport is reachable, but no verified raw-transaction source/decoder route is connected. |
+| Shadow collection | `BLOCKED_EXTERNAL` (`NOT_ACTIVE`) | The worker remains fail-closed because its raw source factory is not configured and every launchpad registry route is provisional/unverified. |
 | Real-world alpha | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` | Historical-real and matured live-shadow samples remain insufficient. |
 | Production readiness | `NOT_PRODUCTION_READY` | See [Production Readiness](PRODUCTION_READINESS.md). |
 | Read-only production gate | `PROD_READ_ONLY_NOT_ACCEPTED` | Local deterministic and production-like gates pass; hosted CI, branch protection, managed deployment/operations, and credentialed external acceptance remain blocked. |
@@ -33,12 +33,13 @@ execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
 
-## 2026-09-20 early-alpha integration completion
+## 2026-09-20 early-alpha integration and operational closure
 
-The approved early-alpha integration is implemented through commit `a522c99`
-(`feat: persist staged alert delivery timing`). The authoritative baseline audit
-is [EARLY_ALPHA_GAP_AUDIT.md](EARLY_ALPHA_GAP_AUDIT.md); the design and
-execution record are [the design spec](superpowers/specs/2026-09-19-early-alpha-runtime-integration-design.md),
+The approved early-alpha integration was implemented through commit `a522c99`
+(`feat: persist staged alert delivery timing`); this closure pass adds the
+PostgreSQL-backed runtime snapshot and restart fixes described below. The
+authoritative baseline audit is [EARLY_ALPHA_GAP_AUDIT.md](EARLY_ALPHA_GAP_AUDIT.md);
+the design and execution record are [the design spec](superpowers/specs/2026-09-19-early-alpha-runtime-integration-design.md),
 [the implementation plan](superpowers/plans/2026-09-19-early-alpha-runtime-integration.md),
 and [the source matrix](EARLY_ALPHA_SOURCE_MATRIX.md).
 
@@ -70,17 +71,18 @@ existing outbox remain the only delivery path.
 ### Verification evidence
 
 ```text
-baseline make test: 1361 passed, 19 skipped, 7 warnings
-current make test: 1399 passed, 20 skipped, 7 warnings in 75.86s
-added tests over baseline: 38; no failures
+baseline make test: 1399 passed, 20 skipped, 7 warnings
+current full make test with isolated PostgreSQL: 1419 passed, 7 warnings in 146.40s
+current DB integration: 20 passed, 2 warnings; isolated PostgreSQL migration head 0011_collection_checkpoints
+targeted post-fix unit tests: 13 passed
+make verify: PASS (Python, frontend, migration, security and SBOM gates)
 make lint: PASS
 make typecheck: PASS (140 source files)
-make verify: PASS (1399 Python tests, 20 skipped; frontend/security/schema gates pass)
-frontend unit: 83 passed
-frontend build: PASS
+frontend lint: PASS; frontend typecheck: PASS; frontend unit: 83 passed
+frontend build: PASS (Docker image build)
+migrations: PASS; head 0011_collection_checkpoints; 27 metadata tables
 frontend browser: 36 passed, 4 skipped
-integration-test: SKIPPED (MEMERADAR_TEST_DATABASE_URL missing)
-migrations: no new migration; head 0011_collection_checkpoints; 27 metadata tables
+no migration: existing head 0011_collection_checkpoints; 27 metadata tables
 ```
 
 The report artifact is [early-alpha/report.md](../artifacts/research/early-alpha/report.md)
@@ -91,20 +93,27 @@ mixed with live latency distributions.
 
 ### Provider and shadow limits
 
-- `make doctor`: local protected-mode/configuration checks pass.
-- `make paper-trading-doctor`: `PASS`; live execution remains disabled.
-- `make provider-doctor`: `BLOCKED_EXTERNAL` (Helius configuration absent).
-- `make solana-rpc-doctor`: `BLOCKED_EXTERNAL` (public RPC unavailable; the
-  bounded probe measured 2050.615 ms before failing).
-- `make stream-integrity-doctor`: `BLOCKED_EXTERNAL` (stream/backfill URL
-  absent); no protocol source is marked authoritative without verified
-  program/discriminator identity.
-- `make telegram-doctor`: `BLOCKED_EXTERNAL` (Telegram API/bot/chat absent).
-- DexScreener and early-live network doctors timed out in this environment;
-  no historical Trending/Top Volume timestamps are inferred.
-- Shadow start reached protected-mode checks but failed before collection with
-  Docker API permission denied at `unix:///var/run/docker.sock`; status is
-  `STACK_OFFLINE` / `START_FAILED`, not a live sample.
+- `make doctor`: PASS for local protected-mode/configuration checks.
+- `make paper-trading-doctor`: PASS; live execution remains disabled.
+- `make solana-rpc-doctor`: PASS, public endpoint reachable (618.896 ms health probe).
+- `make dexscreener-doctor`: PASS, exact canonical SOL mint metadata/pair route
+  parsed (344.259 ms probe).
+- `make free-provider-doctor`: PASS, `READY_FOR_FREE_READ_ONLY_SHADOW`.
+- `make early-live-doctor`: PASS for local engines and HTTP core, with
+  `UNVERIFIED_STREAM_TRANSPORT`.
+- `make stream-integrity-doctor`: `BLOCKED_EXTERNAL` / configuration missing;
+  keyless contracts PASS.
+- `make telegram-doctor`: `BLOCKED_EXTERNAL` / configuration missing; no API
+  call was attempted and no secret was printed.
+- Public WebSocket smoke: `logsSubscribe` accepted and was cancelled cleanly;
+  this is transport evidence only, not canonical launch evidence.
+- Shadow start succeeded on isolated ports 55434/56381/18001/13001 and all
+  services were healthy. The worker logged only `worker_started` because no
+  canonical raw source factory is available; collection is therefore not
+  claimed active.
+- Docker daemon is healthy (client/server 29.1.3, default context). The prior
+  socket denial was a host permission/session issue, not a daemon failure; the
+  isolated stack was run successfully without changing host privileges.
 - Pump.fun, PumpSwap, Raydium, Meteora, Jupiter and DexScreener rows in the
   source matrix remain `TODO_VERIFY`, `SUPPORTED_NEEDS_REVERIFY` or
   `BLOCKED_EXTERNAL` as applicable; no unverified identity is treated as an

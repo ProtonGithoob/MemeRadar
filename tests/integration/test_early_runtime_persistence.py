@@ -15,8 +15,11 @@ from memeradar_application.early_runtime import EarlyRuntimeService
 from memeradar_domain import Observation, Provenance, QualityState
 from memeradar_persistence import (
     DomainEventRow,
+    FeatureSnapshotRow,
     ObservationRow,
     OutboxRow,
+    RiskAssessmentRow,
+    ScoreSnapshotRow,
     SqlAlchemyUnitOfWork,
     create_database_engine,
 )
@@ -98,6 +101,9 @@ async def _exercise(database_url: str) -> None:
             service = EarlyRuntimeService(
                 observation_store=unit_of_work.observations,
                 candidate_store=unit_of_work.candidates,
+                feature_store=unit_of_work.features,
+                risk_store=unit_of_work.risks,
+                score_store=unit_of_work.scores,
                 outbox_store=unit_of_work.outbox,
             )
             first = await service.process(
@@ -112,6 +118,9 @@ async def _exercise(database_url: str) -> None:
             service = EarlyRuntimeService(
                 observation_store=unit_of_work.observations,
                 candidate_store=unit_of_work.candidates,
+                feature_store=unit_of_work.features,
+                risk_store=unit_of_work.risks,
+                score_store=unit_of_work.scores,
                 outbox_store=unit_of_work.outbox,
             )
             replay = await service.process(
@@ -137,6 +146,21 @@ async def _exercise(database_url: str) -> None:
                     OutboxRow.event_id == first.lifecycle_event.id,
                 )
             )
+            feature_count = await unit_of_work._session.scalar(
+                select(func.count(FeatureSnapshotRow.id)).where(
+                    FeatureSnapshotRow.candidate_id == first.candidate.id,
+                )
+            )
+            risk_count = await unit_of_work._session.scalar(
+                select(func.count(RiskAssessmentRow.id)).where(
+                    RiskAssessmentRow.candidate_id == first.candidate.id,
+                )
+            )
+            score_count = await unit_of_work._session.scalar(
+                select(func.count(ScoreSnapshotRow.id)).where(
+                    ScoreSnapshotRow.candidate_id == first.candidate.id,
+                )
+            )
             assert loaded is not None
             assert replay.stage_snapshot.id == first.stage_snapshot.id
             assert loaded.state.value == "EARLY_WATCH"
@@ -144,5 +168,10 @@ async def _exercise(database_url: str) -> None:
             assert snapshot_count == 4
             assert event_count == 1
             assert outbox_count == 1
+            assert feature_count == 1
+            assert risk_count == 1
+            assert score_count == 1
+            assert loaded.latest_score_id == first.score.id
+            assert loaded.latest_risk_id is not None
     finally:
         await engine.dispose()

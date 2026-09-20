@@ -90,6 +90,33 @@ _SOCIAL_CALL_NAMESPACE = "https://memeradar.local/social-call/"
 _CROSS_CHAIN_EVIDENCE_NAMESPACE = "https://memeradar.local/cross-chain-evidence/"
 
 
+def _ordered_transition_rows(
+    rows: Sequence[StateTransitionRow],
+) -> tuple[StateTransitionRow, ...]:
+    """Replay lifecycle rows by their stored edges, not UUID ordering.
+
+    Several fast-path transitions can share one event-time timestamp.  UUIDs
+    are identities, not causal sequence numbers, so rehydration follows the
+    aggregate's ``from_state`` edge and only uses time/ID to break a genuine
+    same-state tie.
+    """
+
+    remaining = list(rows)
+    ordered: list[StateTransitionRow] = []
+    current = CandidateState.DISCOVERED
+    while remaining:
+        candidates = [
+            row for row in remaining if CandidateState(row.from_state) is current
+        ]
+        if not candidates:
+            raise ValueError("persisted transition history is not sequential")
+        row = min(candidates, key=lambda item: (item.occurred_at, str(item.id)))
+        ordered.append(row)
+        remaining.remove(row)
+        current = CandidateState(row.to_state)
+    return tuple(ordered)
+
+
 def _payload_text(payload: Mapping[str, object], key: str, max_length: int) -> str | None:
     value = payload.get(key)
     return value if isinstance(value, str) and 0 < len(value) <= max_length else None
@@ -1246,12 +1273,7 @@ class CandidateRepository:
             rejection_reason=_row_reason_codes(row.rejection_reason),
             pools=pools,
         )
-        for transition_row in sorted(
-            row.transitions,
-            key=lambda item: (item.occurred_at, str(item.id)),
-        ):
-            if CandidateState(transition_row.from_state) is not candidate.state:
-                raise ValueError("persisted transition history is not sequential")
+        for transition_row in _ordered_transition_rows(row.transitions):
             applied = candidate.transition(
                 CandidateState(transition_row.to_state),
                 reason_codes=_row_reason_codes(transition_row.reason_codes),

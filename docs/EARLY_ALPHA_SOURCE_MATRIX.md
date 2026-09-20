@@ -1,7 +1,7 @@
 # Early-alpha discovery source matrix
 
-Generated from the repository's protocol registry and adapter contracts on
-2026-09-19. `TODO_VERIFY` and `SUPPORTED_NEEDS_REVERIFY` are deliberately not
+Generated from the repository's protocol registry, adapter contracts, and the
+2026-09-20 operational checks. `TODO_VERIFY` and `SUPPORTED_NEEDS_REVERIFY` are deliberately not
 authoritative production support.
 
 | Source | Program identity | Discriminator / event identity | Verification | Decoder / normalizer | Worker-connected | Fixture / contract test | Live read-only verification |
@@ -20,6 +20,13 @@ authoritative production support.
 | DexScreener new-pair / market confirmation | API identity is provider-level, not a chain launch-program identity | New-pair and market observations only | `SUPPORTED` as secondary market evidence; not a creation-time authority | Existing `DexScreenerAdapter` and market-data port | `PRESENT_BUT_NOT_CONNECTED` to the canonical raw stream; remains secondary confirmation | `tests/unit/test_dexscreener.py`, provider contract tests | Provider doctor only; historical Trending/Top Volume timestamps are `UNKNOWN` unless authoritative evidence is supplied |
 
 ## Interpretation
+
+The 2026-09-20 read-only smoke check reached
+`wss://api.mainnet-beta.solana.com`, obtained a `logsSubscribe` subscription
+for the provisional Pump.fun program reference, and unsubscribed successfully.
+This verifies WebSocket transport capability only; it does not verify the
+program identity, event discriminator, transaction enrichment, or canonical
+decoder route. No real launch event was admitted to MemeRadar.
 
 The new worker connection is real for any source that supplies a validated
 `RawChainTransaction`: the existing canonical decoder, cursor/gap store, and

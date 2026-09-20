@@ -35,10 +35,13 @@ from memeradar_domain import (
     Candidate,
     Chain,
     EventEnvelope,
+    FeatureSnapshot,
     NormalizedChainEvent,
     Observation,
     Provenance,
     QualityState,
+    RiskAssessment,
+    ScoreSnapshot,
 )
 from memeradar_persistence import (
     SqlAlchemyAlertStore,
@@ -162,6 +165,15 @@ class _BoundRuntimeRepositories:
             return value
         if isinstance(value, Observation):
             await self._uow().observations.add(value)
+            return value
+        if isinstance(value, FeatureSnapshot):
+            await self._uow().features.add(value)
+            return value
+        if isinstance(value, RiskAssessment):
+            await self._uow().risks.add(value)
+            return value
+        if isinstance(value, ScoreSnapshot):
+            await self._uow().scores.add(value)
             return value
         raise TypeError("runtime repository received an unsupported value")
 
@@ -433,6 +445,9 @@ async def _run_early_alpha_shadow(
     runtime = EarlyRuntimeService(
         observation_store=stores,
         candidate_store=stores,
+        feature_store=stores,
+        risk_store=stores,
+        score_store=stores,
         outbox_store=stores,
     )
     stream_store = SqlAlchemyStreamStateStore(engine)
