@@ -6,8 +6,8 @@ authoritative production support.
 
 | Source | Program identity | Discriminator / event identity | Verification | Decoder / normalizer | Worker-connected | Fixture / contract test | Live read-only verification |
 |---|---|---|---|---|---|---|---|
-| Solana raw transaction/log stream | Provider-specific; must provide program ID and slot | Full `(program_id, discriminator_or_tag)` key | `TODO_VERIFY` until provider payload and protocol identity are verified | `RawChainTransaction` → `CanonicalProtocolDecoder` → `NormalizedChainEvent` | `SUPPORTED_NEEDS_REVERIFY`: `StreamIntegrityCoordinator` → `EarlyRuntimeStreamWorker` | `tests/unit/test_stream_integrity.py`, `tests/unit/test_early_worker_pipeline.py` | `BLOCKED_EXTERNAL`: no verified raw-transaction websocket adapter is configured |
-| Pump.fun | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` (official public docs; registry provisional) | Anchor `trade` = `b2901ad8f1bbce82` (decoder still provisional) | `TODO_VERIFY` / `SUPPORTED_NEEDS_REVERIFY` | `PumpFunAdapter`, `CanonicalProtocolDecoder`, launchpad normalizer | Connected through the canonical injected raw-event seam; not authoritative until registry verification | `tests/unit/test_launchpad_dex.py`, `tests/unit/test_protocol_registry.py` | `BLOCKED_EXTERNAL` |
+| Solana raw transaction/log stream | Provider-specific; must provide program ID and slot | Full `(program_id, discriminator_or_tag)` key | Keyless source and transport contract implemented; live acceptance remains external | `SolanaRawTransactionSource` → `RawChainTransaction` → `StreamIntegrityCoordinator` → `CanonicalProtocolDecoder` → `NormalizedChainEvent` | Worker factory present when database + Solana are enabled; no accepted live launch yet | `tests/unit/test_solana_raw_stream.py`, `tests/unit/test_stream_integrity.py`, `tests/unit/test_early_worker_pipeline.py` | `PASS` transport/field-shape probe; `BLOCKED_EXTERNAL` launch acceptance |
+| Pump.fun | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` (current public IDL/docs) | `create` = `181ec828051c0777`; `create_v2` = `d6904cec5f8b31b4`; `buy_v2` = `b817ee6167c5d33d` | `VERIFIED` / `SUPPORTED_VERIFIED` for the listed entries; other tags remain unverified | `PumpFunAdapter`, `CanonicalProtocolDecoder`, launchpad normalizer | Keyless raw source is wired to the canonical stream path; source currently fetches launch-shaped logs only | `tests/unit/test_solana_raw_stream.py`, `tests/unit/test_launchpad_dex.py`, `tests/unit/test_protocol_registry.py` | `PASS` program/tag field-shape probe; no live launch count |
 | PumpSwap | `pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA` (registry provisional) | Anchor `swap` = `f8c69e91e17587c8` (registry provisional) | `TODO_VERIFY` / `SUPPORTED_NEEDS_REVERIFY` | `PumpSwapAdapter`, `CanonicalProtocolDecoder`, launchpad normalizer | Connected through the canonical injected raw-event seam; not authoritative until registry verification | `tests/unit/test_launchpad_dex.py`, `tests/unit/test_protocol_registry.py` | `BLOCKED_EXTERNAL` |
 | Raydium AMM v4 | `675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8` (registry provisional) | Native initialize tag `0` (registry provisional) | `TODO_VERIFY` / `SUPPORTED_NEEDS_REVERIFY` | `RaydiumAdapter`, `CanonicalProtocolDecoder`, launchpad normalizer | Connected through the canonical injected raw-event seam; not authoritative until registry verification | `tests/unit/test_launchpad_dex.py`, `tests/unit/test_protocol_registry.py` | `BLOCKED_EXTERNAL` |
 | Raydium CPMM | `CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C` (registry provisional) | Anchor `swap` = `f8c69e91e17587c8` (registry provisional) | `TODO_VERIFY` / `SUPPORTED_NEEDS_REVERIFY` | Shared `RaydiumAdapter`, `CanonicalProtocolDecoder` | Connected through the canonical injected raw-event seam; not authoritative until registry verification | `tests/unit/test_launchpad_dex.py`, `tests/unit/test_protocol_registry.py` | `BLOCKED_EXTERNAL` |
@@ -28,15 +28,14 @@ This verifies WebSocket transport capability only; it does not verify the
 program identity, event discriminator, transaction enrichment, or canonical
 decoder route. No real launch event was admitted to MemeRadar.
 
-The current Pump.fun program address and Meteora DLMM/DAMM addresses are now
-recorded from the respective public protocol documentation. This updates
-references only; no venue is promoted to `SUPPORTED_VERIFIED` without a
-verified instruction/event payload decoder and live contract evidence.
+The current Pump.fun program address and instruction tags are recorded from the
+current public IDL/instruction documentation and the listed Pump.fun entries
+have keyless full-key decoder fixtures. A finalized read-only RPC transaction
+probe also confirmed the current program identity and versioned transaction
+field shape. This does not establish live launch collection volume or alpha.
 
-The new worker connection is real for any source that supplies a validated
+The worker connection is real for any source that supplies a validated
 `RawChainTransaction`: the existing canonical decoder, cursor/gap store, and
-early runtime are one path. The external acceptance blocker is narrower: the
-repository does not currently contain a verified websocket adapter that turns a
-configured Solana/Helius URL into those raw transactions. A URL, adapter DTO,
-or provisional program reference is therefore never promoted to authoritative
-launch evidence.
+early runtime are one path. The remaining acceptance blocker is a real launch
+through that path with durable evidence. A transport response or field-shape
+probe is never reported as alpha evidence.

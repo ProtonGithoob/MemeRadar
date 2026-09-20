@@ -12,8 +12,8 @@ documents below.
 |---|---|---|
 | System stage | `ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION` | The canonical stream-to-alert/research path and PostgreSQL-backed restart/idempotency contracts are locally verified; external source and statistical alpha validation are separate. |
 | Stack readiness | `PASS` (`STACK_READY / DEGRADED`) | A bounded Compose run passed PostgreSQL, Redis, API liveness/readiness, worker startup, web reachability and protected-mode checks on isolated ports. |
-| Core provider readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` (HTTP core) / `BLOCKED_EXTERNAL` (launch collection) | Public Solana RPC and DexScreener HTTP doctors pass; WebSocket transport is reachable, but no verified raw-transaction source/decoder route is connected. |
-| Shadow collection | `BLOCKED_EXTERNAL` (`NOT_ACTIVE`) | The worker remains fail-closed because its raw source factory is not configured and every launchpad registry route is provisional/unverified. |
+| Core provider readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` (HTTP/raw transport) / `BLOCKED_EXTERNAL` (launch acceptance) | Public Solana RPC, parsed versioned transaction enrichment and WebSocket transport are available; a keyless Pump.fun raw source and verified create/create_v2 registry routes are now present, but no accepted live launch has reached durable runtime evidence. |
+| Shadow collection | `BLOCKED_EXTERNAL` (`NOT_ACCEPTED_LIVE`) | The worker now has a bounded public-RPC source factory. Live acceptance still requires a real launch to traverse source, gap/decoder checks and persistence; no alpha claim is made. |
 | Real-world alpha | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` | Historical-real and matured live-shadow samples remain insufficient. |
 | Production readiness | `NOT_PRODUCTION_READY` | See [Production Readiness](PRODUCTION_READINESS.md). |
 | Read-only production gate | `PROD_READ_ONLY_NOT_ACCEPTED` | Local deterministic and production-like gates pass; hosted CI, branch protection, managed deployment/operations, and credentialed external acceptance remain blocked. |
@@ -32,6 +32,31 @@ There is no wallet signer, live order submission, automatic execution, or
 execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
+
+## 2026-09-20 raw Solana ingestion checkpoint
+
+The keyless raw-source slice is implemented and remains analysis-only:
+
+- `SolanaRawTransactionSource` subscribes to Pump.fun logs, bounds the queue,
+  deduplicates signatures, retries transaction indexing races, resolves parsed
+  and address-table account keys, and emits the existing
+  `RawChainTransaction` contract.
+- The worker constructs that source from the standard Solana RPC adapter when
+  the database and Solana chain are enabled. Injected sources remain available
+  for replay and tests.
+- `create`, `create_v2` and `buy_v2` use exact Pump.fun full-key registry
+  entries backed by the current public IDL/instruction documentation. Creator
+  is not inferred from an account slot; the `create_v2` user account is index
+  5 and the token program is index 7.
+- A finalized public-RPC probe at slot `448814566` confirmed the current
+  parsed versioned-transaction shape, lookup-table expansion, Pump.fun program
+  identity and an exact `buy_exact_quote_in_v2` instruction tag. This is
+  transport/protocol evidence, not a launch sample.
+
+The source intentionally fetches launch-shaped notifications only. Trade-window
+collection, creator instruction-data decoding, and accepted live-shadow launch
+counts remain separate work. The protected modes remain unchanged and the
+source cannot authorize paper or live execution.
 
 ## 2026-09-20 early-alpha integration and operational closure
 
@@ -73,11 +98,14 @@ existing outbox remain the only delivery path.
 ```text
 baseline make test: 1399 passed, 20 skipped, 7 warnings
 current full make test with isolated PostgreSQL: 1419 passed, 7 warnings in 146.40s
+current `make test` after raw-source changes: 1413 passed, 20 skipped, 7 warnings in 131.96s
 current DB integration: 20 passed, 2 warnings; isolated PostgreSQL migration head 0011_collection_checkpoints
 targeted post-fix unit tests: 13 passed
 make verify: PASS (Python, frontend, migration, security and SBOM gates)
+current make verify: PASS; 1413 passed, 20 skipped, 7 warnings; frontend 83 passed; SBOM 582 components
 make lint: PASS
-make typecheck: PASS (140 source files)
+make typecheck: PASS (141 source files)
+raw Solana ingestion focused suite: 31 passed; targeted Ruff and mypy PASS
 frontend lint: PASS; frontend typecheck: PASS; frontend unit: 83 passed
 frontend build: PASS (Docker image build)
 migrations: PASS; head 0011_collection_checkpoints; 27 metadata tables
@@ -107,17 +135,16 @@ mixed with live latency distributions.
   call was attempted and no secret was printed.
 - Public WebSocket smoke: `logsSubscribe` accepted and was cancelled cleanly;
   this is transport evidence only, not canonical launch evidence.
-- Shadow start succeeded on isolated ports 55434/56381/18001/13001 and all
-  services were healthy. The worker logged only `worker_started` because no
-  canonical raw source factory is available; collection is therefore not
-  claimed active.
+- Shadow start previously succeeded on isolated ports 55434/56381/18001/13001
+  and all services were healthy. That run predates the raw source factory;
+  no new live launch collection run is claimed by this checkpoint.
 - Docker daemon is healthy (client/server 29.1.3, default context). The prior
   socket denial was a host permission/session issue, not a daemon failure; the
   isolated stack was run successfully without changing host privileges.
-- Pump.fun, PumpSwap, Raydium, Meteora, Jupiter and DexScreener rows in the
-  source matrix remain `TODO_VERIFY`, `SUPPORTED_NEEDS_REVERIFY` or
-  `BLOCKED_EXTERNAL` as applicable; no unverified identity is treated as an
-  authoritative decoder.
+- Pump.fun `create`, `create_v2` and `buy_v2` now have exact authoritative
+  registry entries; other protocol rows remain `TODO_VERIFY`,
+  `SUPPORTED_NEEDS_REVERIFY` or `BLOCKED_EXTERNAL` as applicable. No
+  unverified identity is treated as an authoritative decoder.
 
 Reference examples FLEX, JUPCAT, URANUS, KMS, wildebeest and BLESS have no
 verified historical MemeRadar observation in this checkout. They remain

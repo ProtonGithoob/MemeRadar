@@ -1,5 +1,9 @@
 # MemeRadar early-alpha operational closure
 
+> Historical pre-ingestion-slice snapshot. The current keyless raw Solana
+> source status is recorded in [STATUS.md](STATUS.md); the no-source claims
+> below describe the baseline before that implementation checkpoint.
+
 Date: 2026-09-20
 Baseline inspected: `21f1c17f5bfdc5491bf221bd7581f64a03c0e909`
 Evidence class: local engineering + bounded read-only provider checks

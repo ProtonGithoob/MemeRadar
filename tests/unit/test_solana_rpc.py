@@ -157,6 +157,40 @@ def test_standard_rpc_transaction_observation_uses_chain_timestamps() -> None:
     asyncio.run(scenario())
 
 
+def test_standard_rpc_raw_transaction_fetch_preserves_instruction_payload_and_version() -> None:
+    payload = fixture("transaction.json")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["method"] == "getTransaction"
+        assert body["params"][1] == {
+            "encoding": "jsonParsed",
+            "commitment": "confirmed",
+            "maxSupportedTransactionVersion": 1,
+        }
+        return httpx.Response(200, json=payload)
+
+    async def scenario() -> None:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter = SolanaRpcAdapter(
+            "https://fixture.solana.example",
+            client=client,
+            transport=one_shot_transport(),
+            clock=lambda: NOW,
+        )
+        try:
+            raw = await adapter.fetch_transaction_payload(SIGNATURE, context=context())
+        finally:
+            await client.aclose()
+
+        assert raw is not None
+        assert raw["slot"] == 123
+        assert "transaction" in raw
+        assert "meta" in raw
+
+    asyncio.run(scenario())
+
+
 def test_standard_rpc_supports_signature_and_block_reads_with_normalized_payloads() -> None:
     signatures_payload = fixture("signatures.json")
     blocks_payload = fixture("blocks.json")

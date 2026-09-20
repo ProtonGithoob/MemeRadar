@@ -55,6 +55,10 @@ from memeradar_providers.protocol_registry import (
     DEFAULT_PROTOCOL_REGISTRY,
     CanonicalProtocolDecoder,
 )
+from memeradar_providers.solana_raw_stream import (
+    SOLANA_PUBLIC_WEBSOCKET_URL,
+    SolanaRawTransactionSource,
+)
 from memeradar_providers.telegram import TelegramNotificationAdapter
 from memeradar_providers.transport import (
     ProviderAuthenticationError,
@@ -133,12 +137,12 @@ def _gmgn_shadow_is_configured(settings: Settings) -> bool:
 
 
 def _early_alpha_shadow_is_configured(settings: Settings) -> bool:
-    """Gate the canonical stream path without claiming a provider adapter exists."""
+    """Enable the keyless public-RPC source when the durable core is configured."""
 
     return bool(
         settings.database_url
         and Chain.SOLANA.value in settings.enabled_chains
-        and (settings.solana_stream_url or settings.helius_stream_url)
+        and settings.solana_rpc_url
     )
 
 
@@ -424,21 +428,21 @@ async def _run_early_alpha_shadow(
 ) -> EarlyRuntimeStreamReport | None:
     """Compose canonical stream integrity, early runtime and durable stores.
 
-    The production source is intentionally an injected boundary until a raw
-    transaction websocket adapter is verified.  A configured URL alone is not
-    treated as a stream or as live alpha evidence.
+    The default source is the bounded public Solana logs/getTransaction seam;
+    tests and replay callers may still inject an existing raw source.
     """
 
     del sleeper
+    generated_source: SolanaRawTransactionSource | None = None
+    provider_bundle = None
     if source is None:
-        LOGGER.warning(
-            "early_alpha_stream_blocked_external",
-            extra={
-                "reason": "CANONICAL_RAW_STREAM_SOURCE_NOT_CONFIGURED",
-                "live_shadow": True,
-            },
+        provider_bundle = build_provider_bundle(settings)
+        generated_source = SolanaRawTransactionSource(
+            provider_bundle.solana_rpc,
+            websocket_url=settings.solana_stream_url or SOLANA_PUBLIC_WEBSOCKET_URL,
+            stop_event=stop_event,
         )
-        return None
+        source = generated_source
     assert settings.database_url is not None
     engine = create_database_engine(settings.database_url)
     stores = _BoundRuntimeRepositories()
@@ -490,6 +494,10 @@ async def _run_early_alpha_shadow(
         )
         return report
     finally:
+        if generated_source is not None:
+            await generated_source.aclose()
+        if provider_bundle is not None:
+            await provider_bundle.aclose()
         await engine.dispose()
 
 

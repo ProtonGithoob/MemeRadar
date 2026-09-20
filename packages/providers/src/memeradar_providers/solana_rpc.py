@@ -401,7 +401,11 @@ class SolanaRpcAdapter(OnChainPort):
             "getTransaction",
             (
                 normalized_signature,
-                {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0},
+                {
+                    "encoding": "jsonParsed",
+                    "commitment": "confirmed",
+                    "maxSupportedTransactionVersion": 1,
+                },
             ),
             context=context,
         )
@@ -465,6 +469,48 @@ class SolanaRpcAdapter(OnChainPort):
                 "collection_mode": "PRODUCTION",
             },
         )
+
+    async def fetch_transaction_payload(
+        self,
+        signature: str,
+        *,
+        context: ProviderRequestContext,
+        commitment: str = "confirmed",
+        max_supported_transaction_version: int = 1,
+    ) -> Mapping[str, object] | None:
+        """Fetch the bounded raw RPC envelope for the WebSocket source.
+
+        ``fetch_transaction`` intentionally returns the older normalized
+        observation shape.  The raw stream needs instructions, inner
+        instructions and transaction version, so this seam preserves the
+        provider response behind the provider package without leaking HTTP
+        details into application code.
+        """
+
+        normalized_signature = require_text(signature, "signature", max_length=128)
+        if commitment not in {"processed", "confirmed", "finalized"}:
+            raise ValueError("commitment must be processed, confirmed or finalized")
+        if (
+            not isinstance(max_supported_transaction_version, int)
+            or isinstance(max_supported_transaction_version, bool)
+            or max_supported_transaction_version < 0
+        ):
+            raise ValueError("max_supported_transaction_version must be non-negative")
+        result = await self._rpc(
+            "getTransaction",
+            (
+                normalized_signature,
+                {
+                    "encoding": "jsonParsed",
+                    "commitment": commitment,
+                    "maxSupportedTransactionVersion": max_supported_transaction_version,
+                },
+            ),
+            context=context,
+        )
+        if result is None:
+            return None
+        return _mapping(result, "transaction")
 
     async def fetch_signatures_for_address(
         self,

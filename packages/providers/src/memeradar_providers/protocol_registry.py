@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Protocol, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -32,6 +32,12 @@ from .launchpad_dex import (
     PumpFunAdapter,
     PumpSwapAdapter,
     RaydiumAdapter,
+)
+from .solana_raw_stream import (
+    PUMP_FUN_BUY_V2_TAG,
+    PUMP_FUN_CREATE_TAG,
+    PUMP_FUN_CREATE_V2_TAG,
+    PUMP_FUN_PROGRAM_ID,
 )
 from .transport import ProviderSchemaError
 
@@ -436,17 +442,78 @@ def _production_entry(
     )
 
 
-# These definitions are intentionally non-authoritative until the verification
-# workflow in the extension has independently checked the current chain
-# identity and instruction layout.  They provide an auditable place for the
-# known program references without allowing them to route production evidence.
+def _verified_production_entry(
+    *,
+    protocol: str,
+    program_id: str,
+    kind: ProgramKind,
+    instruction_name: str,
+    tag: str | bytes | int,
+    sources: Sequence[str],
+    verified_at: datetime,
+) -> ProtocolRegistryEntry:
+    return ProtocolRegistryEntry(
+        protocol=protocol,
+        program_id=program_id,
+        program_kind=kind,
+        instruction_name=instruction_name,
+        discriminator_or_tag=tag,
+        supported_event_types=(instruction_name,),
+        verification_status=ProtocolVerificationStatus.VERIFIED,
+        support_status=ProtocolSupportStatus.SUPPORTED_VERIFIED,
+        sources=sources,
+        decoder_version="launchpad-dex-v2",
+        registry_version=PROTOCOL_REGISTRY_VERSION,
+        verified_at=verified_at,
+    )
+
+
+# Verified entries below have current primary documentation, derived tags,
+# keyless decoder fixtures and a live program-identity cross-check. Remaining
+# entries stay provisional and cannot route authoritative production evidence.
 DEFAULT_PROTOCOL_REGISTRY = ProtocolIdentityRegistry(
     (
+        _verified_production_entry(
+            protocol="pump.fun",
+            program_id=PUMP_FUN_PROGRAM_ID,
+            kind=ProgramKind.ANCHOR,
+            instruction_name="create",
+            tag=PUMP_FUN_CREATE_TAG,
+            sources=(
+                "https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump.json",
+                "https://github.com/pump-fun/pump-public-docs/blob/main/docs/instructions/COIN_CREATION.md",
+            ),
+            verified_at=datetime(2026, 9, 20, tzinfo=UTC),
+        ),
+        _verified_production_entry(
+            protocol="pump.fun",
+            program_id=PUMP_FUN_PROGRAM_ID,
+            kind=ProgramKind.ANCHOR,
+            instruction_name="create_v2",
+            tag=PUMP_FUN_CREATE_V2_TAG,
+            sources=(
+                "https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump.json",
+                "https://github.com/pump-fun/pump-public-docs/blob/main/docs/instructions/COIN_CREATION.md",
+            ),
+            verified_at=datetime(2026, 9, 20, tzinfo=UTC),
+        ),
+        _verified_production_entry(
+            protocol="pump.fun",
+            program_id=PUMP_FUN_PROGRAM_ID,
+            kind=ProgramKind.ANCHOR,
+            instruction_name="buy_v2",
+            tag=PUMP_FUN_BUY_V2_TAG,
+            sources=(
+                "https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump.json",
+                "https://github.com/pump-fun/pump-public-docs/blob/main/docs/instructions/BUY.md",
+            ),
+            verified_at=datetime(2026, 9, 20, tzinfo=UTC),
+        ),
         _production_entry(
             protocol="pump.fun",
             # Current Pump public docs publish ...hRvf...; retain TODO_VERIFY
             # until the instruction/event payload decoder is independently checked.
-            program_id="6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+            program_id=PUMP_FUN_PROGRAM_ID,
             kind=ProgramKind.ANCHOR,
             instruction_name="trade",
             tag=anchor_discriminator("trade"),

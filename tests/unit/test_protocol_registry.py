@@ -7,6 +7,7 @@ import pytest
 from memeradar_application.stream_integrity import RawChainTransaction
 from memeradar_domain import Chain, RecoveryState
 from memeradar_providers.protocol_registry import (
+    DEFAULT_PROTOCOL_REGISTRY,
     CanonicalProtocolDecoder,
     ProgramKind,
     ProtocolIdentityRegistry,
@@ -18,6 +19,12 @@ from memeradar_providers.protocol_registry import (
     account_discriminator,
     anchor_discriminator,
     protocol_registry_audit,
+)
+from memeradar_providers.solana_raw_stream import (
+    PUMP_FUN_BUY_V2_TAG,
+    PUMP_FUN_CREATE_TAG,
+    PUMP_FUN_CREATE_V2_TAG,
+    PUMP_FUN_PROGRAM_ID,
 )
 
 NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
@@ -110,6 +117,30 @@ def test_unverified_identity_fails_closed() -> None:
 
     with pytest.raises(UnverifiedProtocolInput, match="TODO_VERIFY"):
         registry.route(PROGRAM_A, anchor_discriminator("trade"))
+
+
+def test_real_pump_create_v2_identity_is_authoritatively_routable() -> None:
+    assert anchor_discriminator("create") == PUMP_FUN_CREATE_TAG
+    assert anchor_discriminator("create_v2") == PUMP_FUN_CREATE_V2_TAG
+    assert anchor_discriminator("buy_v2") == PUMP_FUN_BUY_V2_TAG
+
+    entry = DEFAULT_PROTOCOL_REGISTRY.route(PUMP_FUN_PROGRAM_ID, PUMP_FUN_CREATE_V2_TAG)
+
+    assert entry.authoritative is True
+    assert entry.protocol == "pump.fun"
+    assert entry.instruction_name == "create_v2"
+
+    decoder = CanonicalProtocolDecoder(DEFAULT_PROTOCOL_REGISTRY)
+    event = decoder.decode_live(
+        transaction(
+            program_id=PUMP_FUN_PROGRAM_ID,
+            discriminator=PUMP_FUN_CREATE_V2_TAG,
+            payload={"mint_address": MINT, "creator": PROGRAM_B},
+        )
+    )
+    assert event.protocol == "pump.fun"
+    assert event.event_type == "launch"
+    assert event.normalized_payload["mint_address"] == MINT
 
 
 def test_verified_identity_requires_a_date_and_supported_status() -> None:
