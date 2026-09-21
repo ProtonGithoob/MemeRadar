@@ -93,13 +93,13 @@ path was added.
 
 The reproducible report is [pumpfun-forward/report.md](../artifacts/research/pumpfun-forward/report.md)
 with machine-readable [report.json](../artifacts/research/pumpfun-forward/report.json).
-The latest live-shadow report generated at `2026-09-21T10:44:13.540325+00:00`
+The latest live-shadow report generated at `2026-09-21T10:45:55.491446+00:00`
 contains:
 
 | Measure | Evidence |
 |---|---:|
-| total launches / legacy `create` / `create_v2` | `1277 / 16 / 1261` |
-| DISCOVERED / WATCH / EARLY_WATCH | `1277 / 1274 / 0` |
+| total launches / legacy `create` / `create_v2` | `1278 / 16 / 1262` |
+| DISCOVERED / WATCH / EARLY_WATCH | `1278 / 1275 / 0` |
 | Dex first observations / MemeRadar-before-Dex leads | `124 / 121` |
 | MemeRadar→Dex lead | `N=121`, median `76.815456s`, p90 `1071.072466s`, p95 `6604.977256s`, max `9251.576703s` |
 | horizon-due outcomes | `1h=995`; `6h/24h/72h/7d=0` |
@@ -116,10 +116,10 @@ MemeRadar-observed API timestamp, not DexScreener internal listing latency.
 Outcome rows with `quality_state=UNKNOWN` are excluded from measured returns;
 therefore `OUTCOME_STATUS=INSUFFICIENT_SAMPLES`,
 `STATISTICAL_SAMPLE_SUFFICIENT=NO`, and `REAL_WORLD_ALPHA_VALIDATED=NO`.
-The latest health row records `5028` notifications, `53` raw decoded launches
-(`24` `create_v2`), p50/p90/p95 latency `226.18/548.95/44246.85ms`, one decoder
-failure, zero dropped events, `11` signature deduplications, one stream error,
-and `stream_gaps=1405`; therefore `LIVE_SHADOW_OPERATIONAL=DEGRADED` remains
+The latest health row records `1158` notifications, `3` raw decoded launches
+(`1` `create_v2`), p50/p90/p95 latency `472.466/472.466/472.466ms`, zero decoder
+failures, zero dropped events, `1` signature deduplication, no stream errors,
+and `stream_gaps=1408`; therefore `LIVE_SHADOW_OPERATIONAL=DEGRADED` remains
 explicit. The worker remained up for the post-restart verification window with
 no traceback or idempotency conflict. Telegram is `UNKNOWN` because credentials
 are not configured. Protected modes remain unchanged.
