@@ -155,6 +155,7 @@ def coordinator(
     max_retries: int = 2,
     timeout_seconds: float = 10,
     handoff: BoundedEventHandoff | None = None,
+    slot_continuity_expected: bool = True,
 ) -> StreamIntegrityCoordinator:
     return StreamIntegrityCoordinator(
         chain=Chain.SOLANA,
@@ -171,6 +172,7 @@ def coordinator(
             backfill_timeout_seconds=timeout_seconds,
         ),
         handoff=handoff,
+        slot_continuity_expected=slot_continuity_expected,
         clock=lambda: NOW + timedelta(seconds=30),
     )
 
@@ -220,6 +222,21 @@ def test_missing_range_is_explicit_and_contiguous_progress_stops_before_it() -> 
     assert cursor.last_contiguous_slot == 100
     assert metrics.snapshot()["gaps_detected"] == 1
     assert metrics.snapshot()["slots_missing"] == 3
+
+
+def test_program_scoped_stream_does_not_infer_missing_events_from_slot_jumps() -> None:
+    store = InMemoryStreamStateStore()
+    decoder = FixtureDecoder()
+    service = coordinator(store, decoder, slot_continuity_expected=False)
+
+    run(service.ingest_live(raw(100)))
+    run(service.ingest_live(raw(104)))
+
+    assert run(store.list_gaps()) == ()
+    cursor = run(store.load_cursor(Chain.SOLANA, "fixture-live", "stream-1"))
+    assert cursor is not None
+    assert cursor.last_observed_slot == 104
+    assert cursor.last_contiguous_slot == 104
 
 
 def test_overlapping_live_gap_detections_merge_deterministically() -> None:

@@ -288,6 +288,7 @@ async def run_acceptance(
         stream_id="pumpfun-live-acceptance-v1",
         decoder=CanonicalProtocolDecoder(DEFAULT_PROTOCOL_REGISTRY),
         state_store=SqlAlchemyStreamStateStore(engine),
+        slot_continuity_expected=False,
     )
     current_raw: RawChainTransaction | None = None
     first: dict[str, object] = {}

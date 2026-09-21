@@ -478,6 +478,9 @@ async def _run_early_alpha_shadow(
         stream_id="early-alpha-v1",
         decoder=decoder or CanonicalProtocolDecoder(DEFAULT_PROTOCOL_REGISTRY),
         state_store=stream_store,
+        # logsSubscribe is program-scoped and the source only emits launch
+        # transactions. A slot jump is not evidence of a missing Pump.fun event.
+        slot_continuity_expected=False,
     )
     health_task: asyncio.Task[None] | None = None
     if generated_source is not None:
@@ -485,7 +488,6 @@ async def _run_early_alpha_shadow(
             _run_solana_ingestion_health(
                 stop_event,
                 engine,
-                stream_store,
                 generated_source,
             ),
             name="solana-ingestion-health",
@@ -536,7 +538,6 @@ async def _run_early_alpha_shadow(
 async def _run_solana_ingestion_health(
     stop_event: asyncio.Event,
     engine: AsyncEngine,
-    stream_store: SqlAlchemyStreamStateStore,
     source: SolanaRawTransactionSource,
 ) -> None:
     """Persist bounded raw-stream counters without coupling them to scoring."""
@@ -544,18 +545,42 @@ async def _run_solana_ingestion_health(
     while not stop_event.is_set():
         observed_at = datetime.now(UTC)
         metrics = source.health_snapshot(now=observed_at)
-        gaps = await stream_store.list_gaps()
-        source_gaps = metrics.get("stream_gaps", 0)
-        metrics["stream_gaps"] = max(
-            source_gaps if isinstance(source_gaps, int) else 0,
-            len(gaps),
-        )
         payload = {
             **metrics,
             "provider": "pump.fun.solana-raw-stream",
             "capability": "pumpfun_launch_ingestion",
             "collection_mode": "LIVE_SHADOW",
-            "health_schema_version": "pumpfun-ingestion-health-v1",
+            "health_schema_version": "pumpfun-ingestion-health-v2",
+            "stream_scope": "program_mentioned_logs_subscription",
+            "stream_gap_semantics": "EXPLICIT_RELEVANT_EVENT_GAP_ONLY",
+            "metric_definitions": {
+                "notifications_received": (
+                    "Valid logsNotification messages received from the program-mentioned subscription "
+                    "during this source process lifetime."
+                ),
+                "events_received": (
+                    "Program-scoped logs notifications accepted for launch classification; it is "
+                    "equal to notifications_received for this source."
+                ),
+                "raw_events_emitted": (
+                    "Known Pump.fun instructions emitted after one successful transaction fetch and "
+                    "canonical instruction parsing."
+                ),
+                "transactions_fetched": (
+                    "Successful getTransaction responses for launch-shaped notifications only."
+                ),
+                "stream_gaps": (
+                    "Explicit relevant-event recovery gaps only; never inferred from global slot jumps "
+                    "on this program-filtered stream."
+                ),
+                "dropped_events": (
+                    "Raw events rejected because the bounded handoff/queue could not accept them; "
+                    "backpressure is not counted as a drop."
+                ),
+                "signatures_deduplicated": (
+                    "Repeated signatures suppressed by the source signature cache during this process."
+                ),
+            },
         }
         async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
             await unit_of_work.observations.add(

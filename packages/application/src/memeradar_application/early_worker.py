@@ -7,7 +7,7 @@ from collections.abc import AsyncIterable
 from dataclasses import dataclass
 from typing import Protocol
 
-from memeradar_domain import NormalizedChainEvent, StreamGapStatus
+from memeradar_domain import NormalizedChainEvent
 
 from .early_runtime import EarlyRuntimeResult
 from .stream_integrity import (
@@ -82,13 +82,11 @@ class EarlyRuntimeStreamWorker:
             if result.status is EventAppendStatus.CONFLICTED:
                 conflicted_events += 1
                 continue
-            gaps = await self.coordinator.state_store.list_gaps()
+            gaps = await self.coordinator.active_gaps()
             stream_gap = any(
                 gap.chain is self.coordinator.chain
                 and gap.transport == self.coordinator.transport
                 and gap.stream_id == self.coordinator.stream_id
-                and gap.status
-                not in {StreamGapStatus.VERIFIED, StreamGapStatus.SUPERSEDED}
                 for gap in gaps
             )
             if stream_gap:

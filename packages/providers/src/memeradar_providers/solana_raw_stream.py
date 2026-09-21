@@ -447,6 +447,13 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
             "queue_depth_max": 0,
             "dropped_events": 0,
             "stream_reconnects": 0,
+            "subscription_disconnects": 0,
+            "slot_discontinuities": 0,
+            "recovery_required": 0,
+            "recovery_succeeded": 0,
+            "recovery_failed": 0,
+            "confirmed_event_loss": 0,
+            "unknown_loss": 0,
             "stream_errors": 0,
         }
 
@@ -482,6 +489,8 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
     async def _run(self) -> None:
         if websockets is None:  # pragma: no cover
             raise ProviderUnavailableError("websockets dependency is unavailable")
+        subscribed = False
+        recovery_pending = False
         while not self._stop_event.is_set() and not self._closed:
             try:
                 self.metrics["stream_reconnects"] += 1
@@ -510,6 +519,10 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                     if not isinstance(subscription, int):
                         raise ProviderSchemaError("logsSubscribe did not return a subscription id")
                     self._subscription = subscription
+                    if recovery_pending:
+                        self.metrics["recovery_succeeded"] += 1
+                        recovery_pending = False
+                    subscribed = True
                     while not self._stop_event.is_set() and not self._closed:
                         try:
                             raw = await asyncio.wait_for(websocket.recv(), 30)
@@ -550,6 +563,9 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                         self.metrics["transactions_fetched"] += 1
                         if transaction is None:
                             self.metrics["transactions_unavailable"] += 1
+                            self.metrics["recovery_required"] += 1
+                            self.metrics["recovery_failed"] += 1
+                            self.metrics["unknown_loss"] += 1
                             continue
                         try:
                             events = map_transaction_to_raw_events(
@@ -593,6 +609,12 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                     + _WEBSOCKET_ERROR_TYPES,
                 ):
                     raise
+                if subscribed:
+                    self.metrics["subscription_disconnects"] += 1
+                    self.metrics["recovery_required"] += 1
+                    self.metrics["unknown_loss"] += 1
+                    recovery_pending = True
+                    subscribed = False
                 self.metrics["stream_errors"] += 1
                 if self._stop_event.is_set() or self._closed:
                     return

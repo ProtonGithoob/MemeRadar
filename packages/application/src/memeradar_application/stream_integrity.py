@@ -1008,6 +1008,7 @@ class StreamIntegrityCoordinator:
         telemetry: StreamTelemetry | None = None,
         policy: StreamIntegrityPolicy | None = None,
         handoff: BoundedEventHandoff | None = None,
+        slot_continuity_expected: bool = True,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self.chain = _chain(chain)
@@ -1019,6 +1020,9 @@ class StreamIntegrityCoordinator:
         self.telemetry = telemetry or StreamMetrics()
         self.policy = policy or StreamIntegrityPolicy()
         self.handoff = handoff
+        if not isinstance(slot_continuity_expected, bool):
+            raise TypeError("slot_continuity_expected must be a boolean")
+        self.slot_continuity_expected = slot_continuity_expected
         self.clock = clock
 
     async def _cursor(self) -> ChainCursor | None:
@@ -1072,12 +1076,11 @@ class StreamIntegrityCoordinator:
     async def _reconcile_observed_slot(self, slot: int) -> None:
         """Remove a durably observed live slot from any explicit missing ranges."""
 
-        for gap in await self.state_store.list_gaps():
+        for gap in await self._active_gaps():
             if (
                 gap.chain is not self.chain
                 or gap.transport != self.transport
                 or gap.stream_id != self.stream_id
-                or gap.status in {StreamGapStatus.VERIFIED, StreamGapStatus.SUPERSEDED}
                 or not gap.from_slot <= slot <= gap.to_slot
             ):
                 continue
@@ -1158,7 +1161,17 @@ class StreamIntegrityCoordinator:
             gap
             for gap in gaps
             if gap.status not in {StreamGapStatus.VERIFIED, StreamGapStatus.SUPERSEDED}
+            and (
+                self.slot_continuity_expected
+                or gap.detection_method
+                not in {"SLOT_DISCONTINUITY", "RESUME_BOUNDARY", "LIVE_SLOT_RECONCILIATION"}
+            )
         )
+
+    async def active_gaps(self) -> tuple[StreamGap, ...]:
+        """Return unresolved gaps whose detection semantics apply to this stream."""
+
+        return await self._active_gaps()
 
     async def _save_cursor_after_event(
         self,
@@ -1205,7 +1218,7 @@ class StreamIntegrityCoordinator:
         if not isinstance(transaction, RawChainTransaction):
             raise TypeError("transaction must be a RawChainTransaction")
         cursor = await self._cursor()
-        if cursor is not None:
+        if cursor is not None and self.slot_continuity_expected:
             gap = GapDetector.detect_slot_discontinuity(
                 previous_slot=cursor.last_observed_slot,
                 current_slot=transaction.slot,
