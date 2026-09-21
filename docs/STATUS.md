@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -12,8 +12,8 @@ documents below.
 |---|---|---|
 | System stage | `ENGINEERING_READY_FOR_REAL_DATA_ALPHA_VALIDATION` | The canonical stream-to-alert/research path and PostgreSQL-backed restart/idempotency contracts are locally verified; external source and statistical alpha validation are separate. |
 | Stack readiness | `PASS` (`STACK_READY / DEGRADED`) | A bounded Compose run passed PostgreSQL, Redis, API liveness/readiness, worker startup, web reachability and protected-mode checks on isolated ports. |
-| Core provider readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` (HTTP/raw transport) / `BLOCKED_EXTERNAL` (launch acceptance) | Public Solana RPC, parsed versioned transaction enrichment and WebSocket transport are available; a keyless Pump.fun raw source and verified create/create_v2 registry routes are now present, but no accepted live launch has reached durable runtime evidence. |
-| Shadow collection | `BLOCKED_EXTERNAL` (`NOT_ACCEPTED_LIVE`) | The worker now has a bounded public-RPC source factory. Live acceptance still requires a real launch to traverse source, gap/decoder checks and persistence; no alpha claim is made. |
+| Core provider readiness | `READY_FOR_FREE_READ_ONLY_SHADOW` / `PASS` (bounded Pump.fun launch acceptance) | Public Solana RPC/WebSocket, pinned IDL-driven create/create_v2 decoding, canonical routing and PostgreSQL-backed discovery persistence are proven on one real launch. |
+| Shadow collection | `PASS` (bounded acceptance; not a statistical sample) | One real `create_v2` traversed raw transport, stream integrity, canonical decode, normalized launch and `DISCOVERED` persistence. No threshold or alpha claim is made. |
 | Real-world alpha | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` | Historical-real and matured live-shadow samples remain insufficient. |
 | Production readiness | `NOT_PRODUCTION_READY` | See [Production Readiness](PRODUCTION_READINESS.md). |
 | Read-only production gate | `PROD_READ_ONLY_NOT_ACCEPTED` | Local deterministic and production-like gates pass; hosted CI, branch protection, managed deployment/operations, and credentialed external acceptance remain blocked. |
@@ -32,6 +32,53 @@ There is no wallet signer, live order submission, automatic execution, or
 execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
+
+## 2026-09-21 Pump.fun launch decoding and first live acceptance
+
+The local decoder is pinned to the exact public-docs revision used for the
+checked-in schema: [`pump.json`](https://github.com/pump-fun/pump-public-docs/blob/81091419e4457566469d4e2a27f64ed84d42419c/idl/pump.json),
+revision `81091419e4457566469d4e2a27f64ed84d42419c`, SHA-256
+`ffe966c42f1af41652ee753fe2f1e3f7cd4077d7e6f49faf3138959c8b56064b`, local
+schema `pumpfun-idl-schema-v1`. The official [`COIN_CREATION.md`](https://github.com/pump-fun/pump-public-docs/blob/81091419e4457566469d4e2a27f64ed84d42419c/docs/instructions/COIN_CREATION.md)
+account layout is preserved: `create_v2` mint `0`, user `5`, token program
+`7`; creator is decoded from instruction data only. Pin mismatches fail closed
+as `PROTOCOL_DRIFT_DETECTED`.
+
+The bounded acceptance runner composed the existing public raw source, stream
+integrity coordinator, canonical decoder, early runtime and SQL persistence.
+It observed and persisted this first real launch:
+
+| Field | Evidence |
+|---|---|
+| signature | `3kAL4U6up2aEC3Xx9DvGzSDwP4Sdis1BEqJ4X5L61RJzuDqpUeJ8WNWUu6SWK3q6uT6mrHHeKBSkGrhSDhw23aQK` |
+| slot | `448986608` |
+| program ID | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` |
+| discriminator | `d6904cec5f8b31b4` |
+| instruction | `create_v2` / canonical `launch` |
+| mint | `9vRzjUmVLv894UwsBkCtmbFFLUPwUC3p8bU7RgL7pump` |
+| creator | `7BKBVk2zfH2hcbXGEeJufPTT3FvYcdf89yHEFpyTBCop` |
+| user | `7BKBVk2zfH2hcbXGEeJufPTT3FvYcdf89yHEFpyTBCop` |
+| name / symbol | `Pump` / `PUMP` |
+| provider observed | `2026-09-21T07:22:51.918948+00:00` |
+| MemeRadar ingested | `2026-09-21T07:22:52.503712+00:00` |
+| MemeRadar `DISCOVERED` | `2026-09-21T07:22:51.918948+00:00` |
+
+Acceptance gates: `RawChainTransaction=PASS`, `canonical decode=PASS`,
+`normalized launch=PASS`, `DISCOVERED persisted=PASS`, and
+`LIVE_SHADOW_OPERATIONAL=PASS`. An immediate exact-mint DexScreener lookup
+was attempted; no pair was known yet, so
+`DexScreener_first_successful_observation_at=UNKNOWN` and the benchmark retains
+that null/UNKNOWN state. The launch did not produce `EARLY_WATCH`; thresholds
+were unchanged. `REAL_WORLD_ALPHA_VALIDATED=NO`.
+
+Evidence artifact: `artifacts/research/pumpfun-live/20260921T073000Z.json`
+(local research output, intentionally not committed).
+
+Verification for this checkpoint: focused Pump.fun/stream/runtime/persistence
+suite `73 passed`; full `make test` `1429 passed, 20 skipped, 7 warnings`;
+`make typecheck` passed for 142 source files; full Ruff passed; opt-in
+PostgreSQL stream/runtime integration `2 passed`; rebuilt Compose stack and
+`make status` `PASS` with all five services healthy.
 
 ## 2026-09-20 raw Solana ingestion checkpoint
 
@@ -53,10 +100,9 @@ The keyless raw-source slice is implemented and remains analysis-only:
   identity and an exact `buy_exact_quote_in_v2` instruction tag. This is
   transport/protocol evidence, not a launch sample.
 
-The source intentionally fetches launch-shaped notifications only. Trade-window
-collection, creator instruction-data decoding, and accepted live-shadow launch
-counts remain separate work. The protected modes remain unchanged and the
-source cannot authorize paper or live execution.
+The 2026-09-20 checkpoint above predates the pinned local IDL decoder and the
+accepted launch evidence recorded on 2026-09-21. The protected modes remain
+unchanged and the source cannot authorize paper or live execution.
 
 ## 2026-09-20 early-alpha integration and operational closure
 
@@ -141,8 +187,8 @@ mixed with live latency distributions.
 - Docker daemon is healthy (client/server 29.1.3, default context). The prior
   socket denial was a host permission/session issue, not a daemon failure; the
   isolated stack was run successfully without changing host privileges.
-- Pump.fun `create`, `create_v2` and `buy_v2` now have exact authoritative
-  registry entries; other protocol rows remain `TODO_VERIFY`,
+- Pump.fun `create`, `create_v2`, buy/sell variants and migration now have
+  exact pinned registry entries; other protocol rows remain `TODO_VERIFY`,
   `SUPPORTED_NEEDS_REVERIFY` or `BLOCKED_EXTERNAL` as applicable. No
   unverified identity is treated as an authoritative decoder.
 
