@@ -86,6 +86,12 @@ def forward_observation_source_id(mint: str, offset_seconds: int) -> str:
     return f"pumpfun-forward:dexscreener:{require_text(mint, 'mint')}:{offset_seconds}"
 
 
+def dex_horizon_source_id(mint: str) -> str:
+    """Return the durable terminal identity for an exhausted exact-mint poll horizon."""
+
+    return f"pumpfun-forward:dexscreener:{require_text(mint, 'mint')}:terminal"
+
+
 def early_reevaluation_source_id(mint: str, offset_seconds: int) -> str:
     """Return the durable idempotency key for one bounded lifecycle reevaluation."""
 
@@ -105,6 +111,7 @@ __all__ = [
     "EARLY_REEVALUATION_OFFSETS_SECONDS",
     "MARKET_SNAPSHOT_OFFSETS_SECONDS",
     "PUMPFUN_FORWARD_VERSION",
+    "dex_horizon_source_id",
     "early_reevaluation_source_id",
     "forward_observation_source_id",
     "lead_seconds",

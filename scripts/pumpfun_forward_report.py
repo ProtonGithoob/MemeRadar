@@ -41,6 +41,12 @@ RESEARCH_KINDS = (
 )
 
 
+def _telegram_configured() -> bool:
+    """Report only presence/absence; never print credential values."""
+
+    return bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
+
+
 async def _load_rows(engine: AsyncEngine) -> list[dict[str, object]]:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
@@ -86,7 +92,7 @@ async def _report(database_url: str) -> dict[str, object]:
     engine = create_database_engine(database_url)
     try:
         rows = await _load_rows(engine)
-        return build_forward_report(rows)
+        return build_forward_report(rows, telegram_configured=_telegram_configured())
     finally:
         await engine.dispose()
 
@@ -127,11 +133,11 @@ def main() -> int:
         if not isinstance(loaded, list) or not all(isinstance(row, Mapping) for row in loaded):
             raise ValueError("input must be a JSON array of objects")
         rows = loaded
-        report = build_forward_report(rows)
+        report = build_forward_report(rows, telegram_configured=_telegram_configured())
     elif args.database_url:
         report = asyncio.run(_report(args.database_url))
     else:
-        report = build_forward_report(())
+        report = build_forward_report((), telegram_configured=_telegram_configured())
         report["status"] = "DATABASE_NOT_CONFIGURED"
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "report.json").write_text(

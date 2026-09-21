@@ -85,7 +85,10 @@ def test_unknown_dex_and_unmatured_outcomes_stay_explicit() -> None:
     assert report["MATURED_1H"] == 0
     assert report["2X_COUNT"] == 0
     assert report["MISSED_10X"] == 0
-    assert report["OUTCOME_STATUS"] == "INSUFFICIENT_SAMPLES"
+    assert report["OUTCOME_STATUS"] == "INSUFFICIENT_EVIDENCE"
+    assert report["ELIGIBLE_MATURED_COUNT"] == 0
+    assert report["OUTCOME_EVIDENCE_AVAILABLE_COUNT"] == 0
+    assert report["OUTCOME_EVIDENCE_UNKNOWN_COUNT"] == 0
 
 
 def test_report_surfaces_stream_gaps_as_degraded_shadow_operation() -> None:
@@ -128,3 +131,59 @@ def test_report_uses_persisted_discovered_snapshot_for_lead_time() -> None:
     )
     assert report["MEMERADAR_DEX_LEAD"]["N"] == 1
     assert report["MEMERADAR_DEX_LEAD"]["median"] == 5.0
+
+
+def test_report_distinguishes_terminal_dex_polling_and_unknown_outcomes() -> None:
+    report = build_forward_report(
+        [
+            {
+                "kind": "chain.event",
+                "mint": "mint-a",
+                "event_type": "launch",
+                "discovered_at": "2026-01-01T00:00:00+00:00",
+            },
+            {
+                "kind": "chain.event",
+                "mint": "mint-b",
+                "event_type": "launch",
+                "discovered_at": "2026-01-01T00:00:00+00:00",
+            },
+            {
+                "kind": "research.dex_forward",
+                "mint": "mint-a",
+                "pair_found": False,
+                "poll_terminal": True,
+                "poll_status": "HORIZON_EXHAUSTED",
+            },
+            {
+                "kind": "research.outcome",
+                "mint": "mint-a",
+                "horizon": "1h",
+                "matured": True,
+                "quality_state": "UNKNOWN",
+            },
+            {
+                "kind": "research.outcome",
+                "mint": "mint-b",
+                "horizon": "1h",
+                "matured": True,
+                "quality_state": "FRESH",
+                "executable_peak_multiple": 2,
+            },
+        ],
+        generated_at="2026-01-02T00:00:00+00:00",
+    )
+
+    assert report["DEX_TRACKER_STATUS_COUNTS"] == {
+        "HORIZON_EXHAUSTED": 1,
+        "NOT_SCHEDULED": 1,
+    }
+    assert report["OUTCOME_STATUS"] == "MEASURED"
+    assert report["ELIGIBLE_MATURED_COUNT"] == 2
+    assert report["OUTCOME_EVIDENCE_AVAILABLE_COUNT"] == 1
+    assert report["OUTCOME_EVIDENCE_UNKNOWN_COUNT"] == 1
+    assert report["OUTCOME_MULTIPLE_STATS"]["2X"] == {
+        "hit_count": 1,
+        "eligible_count": 2,
+        "unknown_count": 1,
+    }

@@ -42,6 +42,7 @@ from memeradar_application.pumpfun_forward import (
     DEX_FIRST_OBSERVATION_OFFSETS_SECONDS,
     MARKET_SNAPSHOT_OFFSETS_SECONDS,
     PUMPFUN_FORWARD_VERSION,
+    dex_horizon_source_id,
     forward_observation_source_id,
     lead_seconds,
     offset_label,
@@ -51,7 +52,7 @@ from memeradar_application.replay_harness import ReplayCheckpoint, ReplayEventRe
 from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
 from memeradar_domain.common import ensure_utc
 from memeradar_persistence import ObservationRow, SqlAlchemyUnitOfWork
-from memeradar_providers.transport import ProviderError
+from memeradar_providers.transport import ProviderError, ProviderRateLimitedError
 
 Clock = Callable[[], datetime]
 Sleep = Callable[[float], Awaitable[None]]
@@ -270,6 +271,14 @@ def _forward_payload(
 ) -> dict[str, object]:
     market_payload = {} if market is None else dict(market.normalized_payload)
     pair_found = market is not None and market_payload.get("pair_address") is not None
+    if pair_found:
+        poll_status = "PAIR_FOUND"
+    elif isinstance(error, ProviderRateLimitedError):
+        poll_status = "RATE_LIMITED"
+    elif error is not None:
+        poll_status = "REQUEST_FAILED"
+    else:
+        poll_status = "NO_PAIR_YET"
     first = first_observed_at or (query_at if pair_found else None)
     payload: dict[str, object] = {
         "mint": record.mint,
@@ -292,6 +301,8 @@ def _forward_payload(
         "dex_query_offset_seconds": offset_seconds,
         "dex_query_label": offset_label(offset_seconds),
         "pair_found": pair_found,
+        "poll_status": poll_status,
+        "poll_terminal": False,
         "pair_address": market_payload.get("pair_address"),
         "pair_created_at": market_payload.get("pair_created_at"),
         "price": market_payload.get("price_usd", market_payload.get("price")),
@@ -402,6 +413,22 @@ def _pair_first(rows: Sequence[ObservationRow], mint: str) -> datetime | None:
     ]
     valid = [value for value in values if value is not None]
     return min(valid) if valid else None
+
+
+def _dex_horizon_exhausted(
+    discovered_at: datetime,
+    existing: set[str],
+    mint: str,
+    now: datetime,
+) -> bool:
+    due_offsets = tuple(
+        offset
+        for offset in DEX_FIRST_OBSERVATION_OFFSETS_SECONDS
+        if poll_is_due(discovered_at, offset, now)
+    )
+    return bool(due_offsets) and all(
+        forward_observation_source_id(mint, offset) in existing for offset in due_offsets
+    )
 
 
 async def _query_market(
@@ -916,6 +943,42 @@ class PumpFunForwardEvidenceCollector:
                     )
                     existing.add(forward_observation_source_id(record.mint, first_offset))
                     existing.add(snapshot.provenance.source_id)
+                elif _dex_horizon_exhausted(
+                    record.discovered_at,
+                    existing,
+                    record.mint,
+                    query_now,
+                ):
+                    terminal_source = dex_horizon_source_id(record.mint)
+                    if terminal_source not in existing:
+                        terminal_payload = _forward_payload(
+                            record,
+                            query_at=query_now,
+                            offset_seconds=DEX_FIRST_OBSERVATION_OFFSETS_SECONDS[-1],
+                            market=None,
+                            error=None,
+                            first_observed_at=None,
+                        )
+                        terminal_payload.update(
+                            {
+                                "poll_status": "HORIZON_EXHAUSTED",
+                                "poll_terminal": True,
+                                "dex_query_offset_seconds": None,
+                                "dex_query_label": None,
+                                "terminal_at": query_now.isoformat(),
+                            }
+                        )
+                        record_observations.append(
+                            _research_observation(
+                                kind="research.dex_forward",
+                                source_id=terminal_source,
+                                query_at=query_now,
+                                payload=terminal_payload,
+                                quality_state=QualityState.UNKNOWN,
+                                record=record,
+                            )
+                        )
+                        existing.add(terminal_source)
             market_offset = _next_due_offset(
                 record.discovered_at,
                 MARKET_SNAPSHOT_OFFSETS_SECONDS,

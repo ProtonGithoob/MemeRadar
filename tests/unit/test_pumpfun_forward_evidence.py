@@ -134,7 +134,12 @@ def test_no_pair_is_persisted_as_unknown_and_second_cycle_is_idempotent() -> Non
             )
         assert counts[0] > 0
         assert final_count == 0
-        assert len(rows) == 12
+        assert len(rows) == 13
+        assert sum(row.normalized_payload["poll_terminal"] is True for row in rows) == 1
+        assert (
+            sum(row.normalized_payload["poll_status"] == "HORIZON_EXHAUSTED" for row in rows)
+            == 1
+        )
         assert all(row.normalized_payload["pair_found"] is False for row in rows)
         assert all(row.quality_state == QualityState.UNKNOWN.value for row in rows)
         await engine.dispose()
