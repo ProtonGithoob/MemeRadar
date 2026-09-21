@@ -15,6 +15,7 @@ from memeradar_providers.transport import ProviderSchemaError
 from memeradar_worker.forward_evidence import (
     LaunchRecord,
     PumpFunForwardEvidenceCollector,
+    _launch_records,
     is_pumpfun_launch,
     unknown_market_snapshot,
 )
@@ -27,6 +28,17 @@ NOW = datetime(2026, 9, 21, 8, 0, tzinfo=UTC)
 def test_launch_filter_keeps_create_v2_and_rejects_trades() -> None:
     assert is_pumpfun_launch({"kind": "chain.event", "event_type": "create_v2"})
     assert not is_pumpfun_launch({"kind": "chain.event", "event_type": "buy_v2"})
+
+
+def test_forward_scheduler_orders_launches_oldest_first() -> None:
+    older = _launch_row(NOW - timedelta(days=2))
+    newer = _launch_row(NOW - timedelta(days=1))
+    older.normalized_payload = {**older.normalized_payload, "mint_address": "older-mint"}
+    newer.normalized_payload = {**newer.normalized_payload, "mint_address": "newer-mint"}
+
+    records = _launch_records((newer, older))
+
+    assert [record.mint for record in records] == ["older-mint", "newer-mint"]
 
 
 def test_unknown_market_snapshot_never_fabricates_pair_values() -> None:

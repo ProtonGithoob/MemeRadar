@@ -864,7 +864,9 @@ class PumpFunForwardEvidenceCollector:
     async def collect_once(self, *, now: datetime | None = None) -> int:
         query_now = ensure_utc(now or self.clock(), "now")
         rows = await _load_rows(self.engine)
-        records = tuple(reversed(_launch_records(rows)))
+        # Process the oldest due records first so a live stream cannot starve
+        # historical mints while the bounded cycle catches up.
+        records = _launch_records(rows)
         existing = _existing_sources(rows)
         persisted = 0
         processed_records = 0
