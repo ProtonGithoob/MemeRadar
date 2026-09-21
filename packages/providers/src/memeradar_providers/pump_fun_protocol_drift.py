@@ -5,13 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .pump_fun_idl import (
+    PUMP_FUN_IDL_RAW_SOURCE,
+    PUMP_FUN_IDL_SOURCE,
+)
+from .pump_fun_idl import (
     PUMP_FUN_IDL_REVISION as PINNED_REVISION,
 )
 from .pump_fun_idl import (
     PUMP_FUN_IDL_SHA256 as IDL_SHA256,
-)
-from .pump_fun_idl import (
-    PUMP_FUN_IDL_SOURCE,
 )
 from .pump_fun_idl import (
     PUMP_FUN_LOCAL_SCHEMA_VERSION as LOCAL_SCHEMA_VERSION,
@@ -35,6 +36,7 @@ def compare_upstream(
         "status": "PROTOCOL_DRIFT_DETECTED" if drift else "PASS",
         "production_decoder_action": "UNCHANGED",
         "upstream_source": PUMP_FUN_IDL_SOURCE,
+        "upstream_raw_source": PUMP_FUN_IDL_RAW_SOURCE,
         "pinned_revision": PINNED_REVISION,
         "pinned_idl_sha256": IDL_SHA256,
         "local_schema_version": LOCAL_SCHEMA_VERSION,

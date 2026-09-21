@@ -16,6 +16,10 @@ PUMP_FUN_IDL_SOURCE = (
     "https://github.com/pump-fun/pump-public-docs/blob/"
     f"{PUMP_FUN_IDL_REVISION}/idl/pump.json"
 )
+PUMP_FUN_IDL_RAW_SOURCE = (
+    "https://raw.githubusercontent.com/pump-fun/pump-public-docs/"
+    f"{PUMP_FUN_IDL_REVISION}/idl/pump.json"
+)
 PUMP_FUN_CREATION_DOC_SOURCE = (
     "https://github.com/pump-fun/pump-public-docs/blob/"
     f"{PUMP_FUN_IDL_REVISION}/docs/instructions/COIN_CREATION.md"
@@ -250,6 +254,7 @@ def decode_pump_fun_instruction(
         "quote_mint": quote_mint,
         "quote_mint_semantics": quote_semantics,
         "idl_source": PUMP_FUN_IDL_SOURCE,
+        "idl_raw_source": PUMP_FUN_IDL_RAW_SOURCE,
         "idl_revision": PUMP_FUN_IDL_REVISION,
         "idl_sha256": PUMP_FUN_IDL_SHA256,
         "local_schema_version": PUMP_FUN_LOCAL_SCHEMA_VERSION,
@@ -270,6 +275,7 @@ __all__ = [
     "PUMP_FUN_CREATE_V2_REMAINING_ACCOUNT_NAMES",
     "PUMP_FUN_CREATION_DOC_SOURCE",
     "PUMP_FUN_IDL_REVISION",
+    "PUMP_FUN_IDL_RAW_SOURCE",
     "PUMP_FUN_IDL_SHA256",
     "PUMP_FUN_IDL_SOURCE",
     "PUMP_FUN_LOCAL_SCHEMA_VERSION",

@@ -21,7 +21,10 @@ for source_root in (
 ):
     sys.path.insert(0, str(source_root))
 
-from memeradar_providers.pump_fun_idl import PUMP_FUN_IDL_SOURCE
+from memeradar_providers.pump_fun_idl import (
+    PUMP_FUN_IDL_RAW_SOURCE,
+    PUMP_FUN_IDL_SOURCE,
+)
 from memeradar_providers.pump_fun_protocol_drift import (
     IDL_SHA256,
     LOCAL_SCHEMA_VERSION,
@@ -45,7 +48,7 @@ def _upstream_revision() -> str:
 
 
 def _upstream_sha256() -> str:
-    with urlopen(PUMP_FUN_IDL_SOURCE, timeout=20) as response:  # noqa: S310 - pinned public source.
+    with urlopen(PUMP_FUN_IDL_RAW_SOURCE, timeout=20) as response:  # noqa: S310 - pinned public source.
         return hashlib.sha256(response.read()).hexdigest()
 
 
@@ -66,6 +69,7 @@ def main() -> int:
             {
                 "upstream_repository": UPSTREAM_REPOSITORY,
                 "checked_source": PUMP_FUN_IDL_SOURCE,
+                "checked_raw_source": PUMP_FUN_IDL_RAW_SOURCE,
             }
         )
         print(json.dumps(result, sort_keys=True))
@@ -82,6 +86,7 @@ def main() -> int:
                     "pinned_idl_sha256": IDL_SHA256,
                     "local_schema_version": LOCAL_SCHEMA_VERSION,
                     "upstream_source": PUMP_FUN_IDL_SOURCE,
+                    "upstream_raw_source": PUMP_FUN_IDL_RAW_SOURCE,
                 },
                 sort_keys=True,
             )

@@ -93,7 +93,7 @@ path was added.
 
 The reproducible report is [pumpfun-forward/report.md](../artifacts/research/pumpfun-forward/report.md)
 with machine-readable [report.json](../artifacts/research/pumpfun-forward/report.json).
-The latest live-shadow report generated at `2026-09-21T10:39:09.592181+00:00`
+The latest live-shadow report generated at `2026-09-21T10:44:13.540325+00:00`
 contains:
 
 | Measure | Evidence |
@@ -124,12 +124,12 @@ explicit. The worker remained up for the post-restart verification window with
 no traceback or idempotency conflict. Telegram is `UNKNOWN` because credentials
 are not configured. Protected modes remain unchanged.
 
-The non-destructive upstream check observed the pinned revision but a different
-current IDL SHA-256 (`d4c6747963e86f5889a87e765d46152ae2db169fea790921816771ee9de17397`)
-and reported `PROTOCOL_DRIFT_DETECTED`; the production decoder stayed pinned
-to revision `81091419e4457566469d4e2a27f64ed84d42419c`, SHA-256
+The non-destructive upstream check now hashes the pinned commit's raw IDL URL
+and returns `PASS`: revision
+`81091419e4457566469d4e2a27f64ed84d42419c`, SHA-256
 `ffe966c42f1af41652ee753fe2f1e3f7cd4077d7e6f49faf3138959c8b56064b`, schema
-`pumpfun-idl-schema-v1`. No automatic promotion occurred.
+`pumpfun-idl-schema-v1`. A changed revision/hash/schema is covered by the
+negative test and reports `PROTOCOL_DRIFT_DETECTED` without promotion.
 
 Verification: full `make test` `1440 passed, 21 skipped, 7 warnings`;
 `make lint` PASS; `make typecheck` PASS for 146 source files; focused forward
