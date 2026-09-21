@@ -927,6 +927,37 @@ async def _run_solana_ingestion_health(
                     "Repeated signatures suppressed by the source signature cache during "
                     "this process."
                 ),
+                "transactions_unavailable": (
+                    "Launch-shaped notifications whose bounded getTransaction attempts "
+                    "returned no transaction."
+                ),
+                "get_transaction_retries": (
+                    "Additional bounded getTransaction attempts after an unavailable or "
+                    "rate-limited response."
+                ),
+                "rate_limit_responses": (
+                    "HTTP/RPC 429 responses observed by the source transport."
+                ),
+                "decoder_failures": (
+                    "Fetched launch transactions rejected by the canonical parser/decoder."
+                ),
+                "subscription_disconnects": (
+                    "Established WebSocket subscriptions that terminated and required "
+                    "recovery."
+                ),
+                "stream_reconnects": (
+                    "WebSocket connection attempts, including the initial subscription."
+                ),
+                "queue_depth": "Raw events currently waiting for canonical ingestion.",
+                "queue_depth_max": (
+                    "Maximum raw-event queue depth observed during this source process."
+                ),
+                "latency_p50_ms": "P50 provider-observed to ingested launch latency.",
+                "latency_p90_ms": "P90 provider-observed to ingested launch latency.",
+                "latency_p95_ms": "P95 provider-observed to ingested launch latency.",
+                "launches_per_hour": (
+                    "Decoded Pump.fun create/create_v2 events observed in the rolling hour."
+                ),
             },
         }
         async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
