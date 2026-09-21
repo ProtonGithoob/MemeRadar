@@ -28,10 +28,14 @@ from memeradar_providers.pump_fun_idl import (
     PUMP_FUN_LOCAL_SCHEMA_VERSION,
 )
 from memeradar_providers.solana_raw_stream import (
+    PUMP_FUN_BUY_EXACT_QUOTE_IN_V2_TAG,
+    PUMP_FUN_BUY_TAG,
     PUMP_FUN_BUY_V2_TAG,
     PUMP_FUN_CREATE_TAG,
     PUMP_FUN_CREATE_V2_TAG,
     PUMP_FUN_PROGRAM_ID,
+    PUMP_FUN_SELL_TAG,
+    PUMP_FUN_SELL_V2_TAG,
 )
 
 NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
@@ -148,6 +152,30 @@ def test_real_pump_create_v2_identity_is_authoritatively_routable() -> None:
     assert event.protocol == "pump.fun"
     assert event.event_type == "launch"
     assert event.normalized_payload["mint_address"] == MINT
+
+
+def test_real_pump_trade_identities_are_authoritative_and_not_launches() -> None:
+    decoder = CanonicalProtocolDecoder(DEFAULT_PROTOCOL_REGISTRY)
+    trades = (
+        ("buy", PUMP_FUN_BUY_TAG),
+        ("buy_v2", PUMP_FUN_BUY_V2_TAG),
+        ("buy_exact_quote_in_v2", PUMP_FUN_BUY_EXACT_QUOTE_IN_V2_TAG),
+        ("sell", PUMP_FUN_SELL_TAG),
+        ("sell_v2", PUMP_FUN_SELL_V2_TAG),
+    )
+
+    for instruction_name, tag in trades:
+        entry = DEFAULT_PROTOCOL_REGISTRY.route(PUMP_FUN_PROGRAM_ID, tag)
+        event = decoder.decode_live(
+            transaction(
+                program_id=PUMP_FUN_PROGRAM_ID,
+                discriminator=tag,
+                payload={"mint_address": MINT},
+            )
+        )
+        assert entry.instruction_name == instruction_name
+        assert event.event_type == "trade"
+        assert event.normalized_payload["protocol_event_type"] == "trade"
 
 
 def test_verified_pump_entries_store_the_exact_idl_pin() -> None:

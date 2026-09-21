@@ -6,6 +6,7 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import and_, or_, select
@@ -544,6 +545,52 @@ class ObservationRepository:
 
     async def add(self, observation: Observation) -> ObservationRow:
         mapped = observation_to_row(observation)
+        get = getattr(self._session, "get", None)
+        existing_by_id: ObservationRow | None = None
+        if callable(get):
+            existing_by_id = cast(ObservationRow | None, await get(ObservationRow, mapped.id))
+        if existing_by_id is not None:
+            if _observation_row_matches(existing_by_id, mapped):
+                return existing_by_id
+            if (
+                existing_by_id.kind == mapped.kind == "chain.event"
+                and existing_by_id.provider == "chain.integrity"
+                and existing_by_id.token_id == mapped.token_id
+                and existing_by_id.occurred_at == mapped.occurred_at
+                and existing_by_id.parser_version == mapped.parser_version
+                and existing_by_id.quality_state == mapped.quality_state
+                and all(
+                    existing_by_id.normalized_payload.get(key)
+                    == mapped.normalized_payload.get(key)
+                    for key in (
+                        set(existing_by_id.normalized_payload)
+                        & set(mapped.normalized_payload)
+                        - {
+                            "collection_mode",
+                            "chain",
+                            "slot",
+                            "signature",
+                            "event_index",
+                            "program_id",
+                            "discriminator_or_tag",
+                            "protocol",
+                            "event_type",
+                            "source_transport",
+                            "commitment",
+                            "recovery_state",
+                            "parser_version",
+                            "registry_version",
+                            "event_schema_version",
+                        }
+                    )
+                )
+            ):
+                return existing_by_id
+            raise IdempotencyConflict(
+                "observation ID conflicts with persisted content: "
+                f"id={mapped.id} existing_kind={existing_by_id.kind} "
+                f"mapped_kind={mapped.kind} existing_provider={existing_by_id.provider}"
+            )
         row = await self._session.scalar(
             select(ObservationRow).where(
                 ObservationRow.provider == mapped.provider,

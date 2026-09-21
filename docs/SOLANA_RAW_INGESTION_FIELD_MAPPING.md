@@ -67,9 +67,10 @@ semantics explicitly.
    `(program_id, discriminator_or_tag)` key and rejects unverified registry
    entries. A real transaction can prove transport and field availability
    while still correctly failing closed as `UNVERIFIED_PROTOCOL`.
-4. Current Pump.fun registry coverage contains a provisional `trade` route;
-   a genuine launch requires authoritative `create` identity and payload
-   decoding. No ticker/name may substitute for an exact mint.
+4. Pump.fun `create`, `create_v2`, buy/sell variants and migration tags route
+   only through the checked-in IDL pin. A genuine launch requires the
+   authoritative create identity and payload decoding; no ticker/name may
+   substitute for an exact mint.
 
 ## Implemented source boundary
 
@@ -83,15 +84,33 @@ path.
 
 The bounded Pump.fun account mappings currently used are:
 
-| Instruction | Mint account | User account | Creator |
-|---|---:|---:|---|
-| `create` | 0 | 7 | not inferred from accounts; remains in instruction data |
-| `create_v2` | 0 | 5 | not inferred from accounts; remains in instruction data |
-| legacy `buy` / `sell` | 2 | 6 | not inferred |
-| `buy_v2` / `buy_exact_quote_in_v2` / `sell_v2` | 1 | 13 | not inferred |
+| Instruction | Mint account | User account | Token program account | Creator |
+|---|---:|---:|---:|---|
+| `create` | 0 | 7 | 9 | decoded from the instruction data |
+| `create_v2` | 0 | 5 | 7 | decoded from the instruction data |
+| legacy `buy` / `sell` | 2 | 6 | not mapped | not applicable |
+| `buy_v2` / `buy_exact_quote_in_v2` / `sell_v2` | 1 | 13 | not mapped | not applicable |
 
-This keeps creator evidence `UNKNOWN` until a versioned instruction-data decoder
-is added; the token-program account must never be mislabeled as a creator.
+The `create` and `create_v2` fields are decoded from the pinned local schema,
+including name, symbol, URI, creator, mayhem mode, quote semantics and the
+holder-reward flag where present. `create_v2` uses the official optional
+remaining-account layout: quote mint at index 16, associated quote bonding
+curve at 17 and quote token program at 18; missing or wrapped-SOL quote data
+remains explicit SOL semantics. The token-program account is never mislabeled
+as a creator.
+
+## Pump.fun decoder pin
+
+The local decoder uses no GitHub request at runtime:
+
+- IDL source: [`pump.json`](https://github.com/pump-fun/pump-public-docs/blob/81091419e4457566469d4e2a27f64ed84d42419c/idl/pump.json)
+- Creation docs: [`COIN_CREATION.md`](https://github.com/pump-fun/pump-public-docs/blob/81091419e4457566469d4e2a27f64ed84d42419c/docs/instructions/COIN_CREATION.md)
+- upstream revision: `81091419e4457566469d4e2a27f64ed84d42419c`
+- IDL SHA-256: `ffe966c42f1af41652ee753fe2f1e3f7cd4077d7e6f49faf3138959c8b56064b`
+- local schema version: `pumpfun-idl-schema-v1`
+
+Any mismatch is reported as `PROTOCOL_DRIFT_DETECTED` and is rejected before
+authoritative canonical routing.
 
 On 2026-09-20 a read-only finalized RPC probe fetched transaction
 [`Vipr2GGwM9HfD8KJRwLGvcNXZ6AuCXeAERbDRrs2mQaocSVHC6WPsoSA9Bhjqt7NsRW1YZ7rLLUeZvPeRhypHsW`](https://explorer.solana.com/tx/Vipr2GGwM9HfD8KJRwLGvcNXZ6AuCXeAERbDRrs2mQaocSVHC6WPsoSA9Bhjqt7NsRW1YZ7rLLUeZvPeRhypHsW)

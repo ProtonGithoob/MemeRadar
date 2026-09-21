@@ -34,6 +34,7 @@ from .models import (
     ObservationRow,
     StreamGapRow,
     StreamVerificationRow,
+    TokenRow,
 )
 from .serialization import (
     json_safe,
@@ -73,6 +74,45 @@ def _event_materially_equal(first: NormalizedChainEvent, second: NormalizedChain
         and first.parser_version == second.parser_version
         and first.registry_version == second.registry_version
     )
+
+
+async def _ensure_event_token(session: AsyncSession, event: NormalizedChainEvent) -> None:
+    """Create the FK target for a canonical event before its observation row."""
+
+    if event.token_id is None:
+        return
+    payload = event.normalized_payload
+    mint = payload.get("mint_address", payload.get("mint"))
+    if not isinstance(mint, str) or not mint:
+        return
+    chain = cast(Chain, event.chain).value
+    token_program = payload.get("token_program")
+    if not isinstance(token_program, str) or not token_program:
+        token_program = "spl-token" if chain == Chain.SOLANA.value else "erc20"
+    row = await session.get(TokenRow, event.token_id)
+    if row is None:
+        row = await session.scalar(
+            select(TokenRow).where(
+                TokenRow.chain == chain,
+                TokenRow.mint_address == mint,
+            )
+        )
+        if row is not None and row.id != event.token_id:
+            raise ValueError("event token identity is already bound to another token")
+    if row is None:
+        session.add(
+            TokenRow(
+                id=event.token_id,
+                chain=chain,
+                mint_address=mint,
+                token_program=token_program,
+                first_seen_at=event.occurred_at,
+            )
+        )
+        await session.flush()
+        return
+    if row.chain != chain or row.mint_address != mint:
+        raise ValueError("event token identity does not match persisted chain or address")
 
 
 def _event_to_row(event: NormalizedChainEvent, *, row_id: UUID | None = None) -> ObservationRow:
@@ -477,6 +517,7 @@ class SqlAlchemyStreamStateStore:
                 )
             )
             if row is None:
+                await _ensure_event_token(session, event)
                 session.add(_event_to_row(event))
                 return EventAppendResult(EventAppendStatus.APPENDED, event=event)
             current = _event_from_row(row)

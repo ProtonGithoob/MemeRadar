@@ -43,10 +43,15 @@ from .pump_fun_idl import (
     pump_fun_protocol_pin_status,
 )
 from .solana_raw_stream import (
+    PUMP_FUN_BUY_EXACT_QUOTE_IN_V2_TAG,
+    PUMP_FUN_BUY_TAG,
     PUMP_FUN_BUY_V2_TAG,
     PUMP_FUN_CREATE_TAG,
     PUMP_FUN_CREATE_V2_TAG,
+    PUMP_FUN_MIGRATE_TAG,
     PUMP_FUN_PROGRAM_ID,
+    PUMP_FUN_SELL_TAG,
+    PUMP_FUN_SELL_V2_TAG,
 )
 from .transport import ProviderSchemaError
 
@@ -527,59 +532,39 @@ def _verified_production_entry(
     )
 
 
+def _verified_pump_fun_entry(
+    *, instruction_name: str, tag: str | bytes | int
+) -> ProtocolRegistryEntry:
+    return _verified_production_entry(
+        protocol="pump.fun",
+        program_id=PUMP_FUN_PROGRAM_ID,
+        kind=ProgramKind.ANCHOR,
+        instruction_name=instruction_name,
+        tag=tag,
+        sources=(PUMP_FUN_IDL_SOURCE, PUMP_FUN_CREATION_DOC_SOURCE),
+        verified_at=datetime(2026, 9, 20, tzinfo=UTC),
+        upstream_source=PUMP_FUN_IDL_SOURCE,
+        upstream_revision=PUMP_FUN_IDL_REVISION,
+        idl_sha256=PUMP_FUN_IDL_SHA256,
+        local_schema_version=PUMP_FUN_LOCAL_SCHEMA_VERSION,
+    )
+
+
 # Verified entries below have current primary documentation, derived tags,
 # keyless decoder fixtures and a live program-identity cross-check. Remaining
 # entries stay provisional and cannot route authoritative production evidence.
 DEFAULT_PROTOCOL_REGISTRY = ProtocolIdentityRegistry(
     (
-        _verified_production_entry(
-            protocol="pump.fun",
-            program_id=PUMP_FUN_PROGRAM_ID,
-            kind=ProgramKind.ANCHOR,
-            instruction_name="create",
-            tag=PUMP_FUN_CREATE_TAG,
-            sources=(
-                PUMP_FUN_IDL_SOURCE,
-                PUMP_FUN_CREATION_DOC_SOURCE,
-            ),
-            verified_at=datetime(2026, 9, 20, tzinfo=UTC),
-            upstream_source=PUMP_FUN_IDL_SOURCE,
-            upstream_revision=PUMP_FUN_IDL_REVISION,
-            idl_sha256=PUMP_FUN_IDL_SHA256,
-            local_schema_version=PUMP_FUN_LOCAL_SCHEMA_VERSION,
+        _verified_pump_fun_entry(instruction_name="create", tag=PUMP_FUN_CREATE_TAG),
+        _verified_pump_fun_entry(instruction_name="create_v2", tag=PUMP_FUN_CREATE_V2_TAG),
+        _verified_pump_fun_entry(instruction_name="buy", tag=PUMP_FUN_BUY_TAG),
+        _verified_pump_fun_entry(instruction_name="buy_v2", tag=PUMP_FUN_BUY_V2_TAG),
+        _verified_pump_fun_entry(
+            instruction_name="buy_exact_quote_in_v2", tag=PUMP_FUN_BUY_EXACT_QUOTE_IN_V2_TAG
         ),
-        _verified_production_entry(
-            protocol="pump.fun",
-            program_id=PUMP_FUN_PROGRAM_ID,
-            kind=ProgramKind.ANCHOR,
-            instruction_name="create_v2",
-            tag=PUMP_FUN_CREATE_V2_TAG,
-            sources=(
-                PUMP_FUN_IDL_SOURCE,
-                PUMP_FUN_CREATION_DOC_SOURCE,
-            ),
-            verified_at=datetime(2026, 9, 20, tzinfo=UTC),
-            upstream_source=PUMP_FUN_IDL_SOURCE,
-            upstream_revision=PUMP_FUN_IDL_REVISION,
-            idl_sha256=PUMP_FUN_IDL_SHA256,
-            local_schema_version=PUMP_FUN_LOCAL_SCHEMA_VERSION,
-        ),
-        _verified_production_entry(
-            protocol="pump.fun",
-            program_id=PUMP_FUN_PROGRAM_ID,
-            kind=ProgramKind.ANCHOR,
-            instruction_name="buy_v2",
-            tag=PUMP_FUN_BUY_V2_TAG,
-            sources=(
-                PUMP_FUN_IDL_SOURCE,
-                PUMP_FUN_CREATION_DOC_SOURCE,
-            ),
-            verified_at=datetime(2026, 9, 20, tzinfo=UTC),
-            upstream_source=PUMP_FUN_IDL_SOURCE,
-            upstream_revision=PUMP_FUN_IDL_REVISION,
-            idl_sha256=PUMP_FUN_IDL_SHA256,
-            local_schema_version=PUMP_FUN_LOCAL_SCHEMA_VERSION,
-        ),
+        _verified_pump_fun_entry(instruction_name="sell", tag=PUMP_FUN_SELL_TAG),
+        _verified_pump_fun_entry(instruction_name="sell_v2", tag=PUMP_FUN_SELL_V2_TAG),
+        _verified_pump_fun_entry(instruction_name="migrate", tag=PUMP_FUN_MIGRATE_TAG),
         _production_entry(
             protocol="pump.fun",
             # Current Pump public docs publish ...hRvf...; retain TODO_VERIFY

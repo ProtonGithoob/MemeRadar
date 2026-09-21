@@ -347,6 +347,7 @@ class EarlyRuntimeService:
         normalization_ms = Decimal(str((perf_counter() - detection_started) * 1000))
         mint_key = detection.mint_address
         bucket = self._observations.setdefault(mint_key, {})
+        candidate = await self._get_or_create_candidate(detection)
         incoming = list(observations)
         if event_observation is None:
             event_observation = _observation_for_event(event, detection.token_id)
@@ -358,7 +359,6 @@ class EarlyRuntimeService:
             bucket[item.id] = item
             await self._save_observation(item)
 
-        candidate = await self._get_or_create_candidate(detection)
         if not candidate.transitions:
             discovered_snapshot = self._build_snapshot(
                 candidate=candidate,
