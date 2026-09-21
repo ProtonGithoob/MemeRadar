@@ -24,6 +24,12 @@ from memeradar_domain import Chain, CommitmentState
 from memeradar_domain.common import ensure_ordered_timestamps, ensure_utc, require_text
 from memeradar_domain.identities import require_solana_address
 
+from .pump_fun_idl import (
+    PUMP_FUN_CREATE_TAG,
+    PUMP_FUN_CREATE_V2_TAG,
+    PUMP_FUN_PROGRAM_ID,
+    decode_pump_fun_instruction,
+)
 from .solana_rpc import SolanaRpcAdapter
 from .transport import (
     ProviderError,
@@ -45,9 +51,6 @@ Sleeper = Callable[[float], Any]
 
 SOLANA_RAW_TRANSPORT = "solana-public-rpc"
 SOLANA_PUBLIC_WEBSOCKET_URL = "wss://api.mainnet-beta.solana.com"
-PUMP_FUN_PROGRAM_ID = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
-PUMP_FUN_CREATE_TAG = bytes.fromhex("181ec828051c0777")
-PUMP_FUN_CREATE_V2_TAG = bytes.fromhex("d6904cec5f8b31b4")
 PUMP_FUN_BUY_TAG = bytes.fromhex("66063d1201daebea")
 PUMP_FUN_BUY_V2_TAG = bytes.fromhex("b817ee6167c5d33d")
 PUMP_FUN_BUY_EXACT_QUOTE_IN_V2_TAG = bytes.fromhex("c2ab1c46684d5b2f")
@@ -224,6 +227,7 @@ def _instruction_payload(
     name: str,
     accounts: tuple[str, ...],
     data: str,
+    decoded_data: bytes,
     notification: SolanaLogsNotification,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
@@ -235,14 +239,16 @@ def _instruction_payload(
         "slot": notification.slot,
         "logs": notification.logs,
         "transaction_error": notification.error,
+        "instruction_type": name,
+        "protocol_event_type": (
+            "launch" if name in _CREATE_NAMES else "trade" if name in _TRADE_NAMES else name
+        ),
     }
     if name in _CREATE_NAMES:
-        if not accounts:
-            raise ProviderSchemaError("Pump.fun create instruction had no mint account")
-        payload["mint_address"] = accounts[0]
-        user_index = 5 if name == "create_v2" else 7
-        if len(accounts) > user_index:
-            payload["user"] = accounts[user_index]
+        try:
+            payload.update(decode_pump_fun_instruction(name, decoded_data, accounts))
+        except (TypeError, ValueError) as exc:
+            raise ProviderSchemaError(f"Pump.fun {name} IDL decode failed: {exc}") from exc
     elif name in _TRADE_NAMES:
         # Legacy buy/sell place mint at index 2; v2 buy places it at index 1.
         mint_index = 1 if name in {"buy_v2", "buy_exact_quote_in_v2"} else 2
@@ -359,6 +365,7 @@ def map_transaction_to_raw_events(
             name=name,
             accounts=accounts,
             data=cast(str, instruction.get("data")),
+            decoded_data=decoded,
             notification=notification,
         )
         payload.update(

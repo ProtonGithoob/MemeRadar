@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import struct
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -24,6 +25,7 @@ SIGNATURE = "5" * 88
 MINT = "DDvnac6RRxdcKWPpumhJ1HJTz3vGVkLD8fFGcVNCpump"
 USER = "2J2rtMBRLxAbFkSLgrsuSNN8N5KMTJVaRTdnGfbZ5Vjw"
 TOKEN_2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+CREATOR = "11111111111111111111111111111111"
 
 
 def _base58_encode(value: bytes) -> str:
@@ -34,6 +36,20 @@ def _base58_encode(value: bytes) -> str:
         number, remainder = divmod(number, 58)
         encoded = alphabet[remainder] + encoded
     return "1" * (len(value) - len(value.lstrip(b"\0"))) + (encoded or "")
+
+
+def _base58_decode(value: str) -> bytes:
+    alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    number = 0
+    for char in value:
+        number = number * 58 + alphabet.index(char)
+    decoded = number.to_bytes((number.bit_length() + 7) // 8, "big") if number else b""
+    return b"\0" * (len(value) - len(value.lstrip("1"))) + decoded
+
+
+def _borsh_string(value: str) -> bytes:
+    encoded = value.encode()
+    return struct.pack("<I", len(encoded)) + encoded
 
 
 def _notification() -> dict[str, object]:
@@ -75,7 +91,16 @@ def _transaction() -> dict[str, object]:
                     {
                         "programId": PUMP_FUN_PROGRAM_ID,
                         "accounts": accounts,
-                        "data": _base58_encode(PUMP_FUN_CREATE_V2_TAG + b"\x00" * 32),
+                        "data": _base58_encode(
+                            PUMP_FUN_CREATE_V2_TAG
+                            + _borsh_string("Live Coin")
+                            + _borsh_string("LIVE")
+                            + _borsh_string("https://example.test/live.json")
+                            + _base58_decode(CREATOR)
+                            + b"\x01\x00"
+                            + struct.pack("<Q", 125)
+                            + b"\x01"
+                        ),
                     }
                 ],
             }
@@ -122,7 +147,18 @@ def test_transaction_mapping_produces_raw_pump_launch_event() -> None:
     assert event.payload["user"] == USER
     assert event.payload["signature"] == SIGNATURE
     assert event.payload["slot"] == 448780651
-    assert "creator" not in event.payload
+    assert event.payload["instruction_type"] == "create_v2"
+    assert event.payload["protocol_event_type"] == "launch"
+    assert event.payload["creator"] == CREATOR
+    assert event.payload["token_program"] == TOKEN_2022
+    assert event.payload["name"] == "Live Coin"
+    assert event.payload["symbol"] == "LIVE"
+    assert event.payload["uri"] == "https://example.test/live.json"
+    assert event.payload["is_mayhem_mode"] is True
+    assert event.payload["is_holder_reward"] is True
+    assert event.payload["quote_mint_semantics"] == "SOL"
+    assert event.payload["idl_revision"]
+    assert event.payload["idl_sha256"]
     assert event.occurred_at == datetime.fromtimestamp(1789920360, UTC)
     assert event.commitment is CommitmentState.CONFIRMED
 
@@ -133,12 +169,24 @@ def test_transaction_mapping_resolves_versioned_lookup_table_accounts() -> None:
     )
     transaction = _transaction()
     message = transaction["transaction"]["message"]  # type: ignore[index]
-    message["accountKeys"] = [MINT, USER]  # type: ignore[index]
+    account_values = [item["pubkey"] for item in message["accountKeys"]]  # type: ignore[index]
+    message["accountKeys"] = [  # type: ignore[index]
+        {"pubkey": value} for value in account_values
+    ]
     message["instructions"] = [  # type: ignore[index]
         {
-            "programIdIndex": 2,
-            "accounts": [0, 1],
-            "data": _base58_encode(PUMP_FUN_CREATE_V2_TAG + b"\0" * 32),
+            "programIdIndex": len(account_values),
+            "accounts": list(range(len(account_values))),
+            "data": _base58_encode(
+            PUMP_FUN_CREATE_V2_TAG
+            + _borsh_string("Live Coin")
+            + _borsh_string("LIVE")
+            + _borsh_string("https://example.test/live.json")
+            + _base58_decode(CREATOR)
+            + b"\x01\x00"
+            + struct.pack("<Q", 125)
+            + b"\x01"
+        ),
         }
     ]
     transaction["meta"]["loadedAddresses"] = {  # type: ignore[index]

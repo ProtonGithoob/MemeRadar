@@ -20,6 +20,13 @@ from memeradar_providers.protocol_registry import (
     anchor_discriminator,
     protocol_registry_audit,
 )
+from memeradar_providers.pump_fun_idl import (
+    PUMP_FUN_CREATION_DOC_SOURCE,
+    PUMP_FUN_IDL_REVISION,
+    PUMP_FUN_IDL_SHA256,
+    PUMP_FUN_IDL_SOURCE,
+    PUMP_FUN_LOCAL_SCHEMA_VERSION,
+)
 from memeradar_providers.solana_raw_stream import (
     PUMP_FUN_BUY_V2_TAG,
     PUMP_FUN_CREATE_TAG,
@@ -141,6 +148,38 @@ def test_real_pump_create_v2_identity_is_authoritatively_routable() -> None:
     assert event.protocol == "pump.fun"
     assert event.event_type == "launch"
     assert event.normalized_payload["mint_address"] == MINT
+
+
+def test_verified_pump_entries_store_the_exact_idl_pin() -> None:
+    entry = DEFAULT_PROTOCOL_REGISTRY.route(PUMP_FUN_PROGRAM_ID, PUMP_FUN_CREATE_V2_TAG)
+
+    assert entry.upstream_revision == PUMP_FUN_IDL_REVISION
+    assert entry.idl_sha256 == PUMP_FUN_IDL_SHA256
+    assert entry.local_schema_version == PUMP_FUN_LOCAL_SCHEMA_VERSION
+    assert entry.sources == (PUMP_FUN_IDL_SOURCE, PUMP_FUN_CREATION_DOC_SOURCE)
+
+
+def test_pumpfun_pin_drift_fails_closed_before_canonical_decode() -> None:
+    drifted = ProtocolRegistryEntry(
+        protocol="pump.fun",
+        program_id=PUMP_FUN_PROGRAM_ID,
+        program_kind=ProgramKind.ANCHOR,
+        instruction_name="create_v2",
+        discriminator_or_tag=PUMP_FUN_CREATE_V2_TAG,
+        supported_event_types=("create_v2",),
+        verification_status=ProtocolVerificationStatus.VERIFIED,
+        support_status=ProtocolSupportStatus.SUPPORTED_VERIFIED,
+        sources=(PUMP_FUN_IDL_SOURCE, PUMP_FUN_CREATION_DOC_SOURCE),
+        decoder_version="pumpfun-idl-v1",
+        registry_version="protocol-registry-v1",
+        verified_at=NOW,
+        upstream_revision="0" * 40,
+        idl_sha256=PUMP_FUN_IDL_SHA256,
+        local_schema_version=PUMP_FUN_LOCAL_SCHEMA_VERSION,
+    )
+
+    with pytest.raises(UnverifiedProtocolInput, match="PROTOCOL_DRIFT_DETECTED"):
+        ProtocolIdentityRegistry((drifted,)).route(PUMP_FUN_PROGRAM_ID, PUMP_FUN_CREATE_V2_TAG)
 
 
 def test_verified_identity_requires_a_date_and_supported_status() -> None:

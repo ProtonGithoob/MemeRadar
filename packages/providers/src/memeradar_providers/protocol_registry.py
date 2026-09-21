@@ -33,6 +33,15 @@ from .launchpad_dex import (
     PumpSwapAdapter,
     RaydiumAdapter,
 )
+from .pump_fun_idl import (
+    PUMP_FUN_CREATION_DOC_SOURCE,
+    PUMP_FUN_IDL_REVISION,
+    PUMP_FUN_IDL_SHA256,
+    PUMP_FUN_IDL_SOURCE,
+    PUMP_FUN_LOCAL_SCHEMA_VERSION,
+    PUMP_FUN_PROTOCOL_DRIFT_DETECTED,
+    pump_fun_protocol_pin_status,
+)
 from .solana_raw_stream import (
     PUMP_FUN_BUY_V2_TAG,
     PUMP_FUN_CREATE_TAG,
@@ -75,6 +84,10 @@ class UnknownProtocolInput(UnsupportedProtocolInput):
 
 class UnverifiedProtocolInput(UnsupportedProtocolInput):
     reason_code = "UNVERIFIED_PROTOCOL_INPUT"
+
+
+class ProtocolDriftDetected(UnverifiedProtocolInput):
+    reason_code = PUMP_FUN_PROTOCOL_DRIFT_DETECTED
 
 
 def _tag(value: str | bytes | int) -> str:
@@ -130,6 +143,10 @@ class ProtocolRegistryEntry:
     registry_version: str = PROTOCOL_REGISTRY_VERSION
     verified_at: datetime | None = None
     account_discriminators: Sequence[str | bytes] = ()
+    upstream_source: str | None = None
+    upstream_revision: str | None = None
+    idl_sha256: str | None = None
+    local_schema_version: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -184,6 +201,19 @@ class ProtocolRegistryEntry:
                 raise ValueError("verified protocol identities require sources")
             if self.support_status is not ProtocolSupportStatus.SUPPORTED_VERIFIED:
                 raise ValueError("verified protocol identities require supported verification")
+        for field_name in (
+            "upstream_source",
+            "upstream_revision",
+            "idl_sha256",
+            "local_schema_version",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    require_text(value, field_name, max_length=512),
+                )
         normalized_accounts: list[str] = []
         for discriminator in self.account_discriminators:
             value = _tag(discriminator)
@@ -204,6 +234,25 @@ class ProtocolRegistryEntry:
         return (
             self.verification_status is ProtocolVerificationStatus.VERIFIED
             and self.support_status is ProtocolSupportStatus.SUPPORTED_VERIFIED
+        )
+
+    @property
+    def protocol_pin_status(self) -> str:
+        if self.protocol != "pump.fun":
+            return "OK"
+        if any(
+            value is None
+            for value in (
+                self.upstream_revision,
+                self.idl_sha256,
+                self.local_schema_version,
+            )
+        ):
+            return PUMP_FUN_PROTOCOL_DRIFT_DETECTED
+        return pump_fun_protocol_pin_status(
+            upstream_revision=cast(str, self.upstream_revision),
+            idl_sha256=cast(str, self.idl_sha256),
+            local_schema_version=cast(str, self.local_schema_version),
         )
 
 
@@ -275,6 +324,8 @@ class ProtocolIdentityRegistry:
                 "protocol identity is not authoritative: "
                 f"{cast(ProtocolVerificationStatus, entry.verification_status).value}"
             )
+        if entry.protocol_pin_status != "OK":
+            raise ProtocolDriftDetected(PUMP_FUN_PROTOCOL_DRIFT_DETECTED)
         return entry
 
     def find(
@@ -451,6 +502,10 @@ def _verified_production_entry(
     tag: str | bytes | int,
     sources: Sequence[str],
     verified_at: datetime,
+    upstream_source: str | None = None,
+    upstream_revision: str | None = None,
+    idl_sha256: str | None = None,
+    local_schema_version: str | None = None,
 ) -> ProtocolRegistryEntry:
     return ProtocolRegistryEntry(
         protocol=protocol,
@@ -462,9 +517,13 @@ def _verified_production_entry(
         verification_status=ProtocolVerificationStatus.VERIFIED,
         support_status=ProtocolSupportStatus.SUPPORTED_VERIFIED,
         sources=sources,
-        decoder_version="launchpad-dex-v2",
+        decoder_version="pumpfun-idl-v1" if protocol == "pump.fun" else "launchpad-dex-v2",
         registry_version=PROTOCOL_REGISTRY_VERSION,
         verified_at=verified_at,
+        upstream_source=upstream_source,
+        upstream_revision=upstream_revision,
+        idl_sha256=idl_sha256,
+        local_schema_version=local_schema_version,
     )
 
 
@@ -480,10 +539,14 @@ DEFAULT_PROTOCOL_REGISTRY = ProtocolIdentityRegistry(
             instruction_name="create",
             tag=PUMP_FUN_CREATE_TAG,
             sources=(
-                "https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump.json",
-                "https://github.com/pump-fun/pump-public-docs/blob/main/docs/instructions/COIN_CREATION.md",
+                PUMP_FUN_IDL_SOURCE,
+                PUMP_FUN_CREATION_DOC_SOURCE,
             ),
             verified_at=datetime(2026, 9, 20, tzinfo=UTC),
+            upstream_source=PUMP_FUN_IDL_SOURCE,
+            upstream_revision=PUMP_FUN_IDL_REVISION,
+            idl_sha256=PUMP_FUN_IDL_SHA256,
+            local_schema_version=PUMP_FUN_LOCAL_SCHEMA_VERSION,
         ),
         _verified_production_entry(
             protocol="pump.fun",
@@ -492,10 +555,14 @@ DEFAULT_PROTOCOL_REGISTRY = ProtocolIdentityRegistry(
             instruction_name="create_v2",
             tag=PUMP_FUN_CREATE_V2_TAG,
             sources=(
-                "https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump.json",
-                "https://github.com/pump-fun/pump-public-docs/blob/main/docs/instructions/COIN_CREATION.md",
+                PUMP_FUN_IDL_SOURCE,
+                PUMP_FUN_CREATION_DOC_SOURCE,
             ),
             verified_at=datetime(2026, 9, 20, tzinfo=UTC),
+            upstream_source=PUMP_FUN_IDL_SOURCE,
+            upstream_revision=PUMP_FUN_IDL_REVISION,
+            idl_sha256=PUMP_FUN_IDL_SHA256,
+            local_schema_version=PUMP_FUN_LOCAL_SCHEMA_VERSION,
         ),
         _verified_production_entry(
             protocol="pump.fun",
@@ -504,10 +571,14 @@ DEFAULT_PROTOCOL_REGISTRY = ProtocolIdentityRegistry(
             instruction_name="buy_v2",
             tag=PUMP_FUN_BUY_V2_TAG,
             sources=(
-                "https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump.json",
-                "https://github.com/pump-fun/pump-public-docs/blob/main/docs/instructions/BUY.md",
+                PUMP_FUN_IDL_SOURCE,
+                PUMP_FUN_CREATION_DOC_SOURCE,
             ),
             verified_at=datetime(2026, 9, 20, tzinfo=UTC),
+            upstream_source=PUMP_FUN_IDL_SOURCE,
+            upstream_revision=PUMP_FUN_IDL_REVISION,
+            idl_sha256=PUMP_FUN_IDL_SHA256,
+            local_schema_version=PUMP_FUN_LOCAL_SCHEMA_VERSION,
         ),
         _production_entry(
             protocol="pump.fun",
@@ -600,6 +671,14 @@ class CanonicalProtocolDecoder:
         # protocol-shaped payload without importing this provider package.
         payload["protocol_identity_verified"] = True
         payload["protocol_registry_version"] = entry.registry_version
+        if entry.upstream_source is not None:
+            payload["upstream_source"] = entry.upstream_source
+        if entry.upstream_revision is not None:
+            payload["upstream_revision"] = entry.upstream_revision
+        if entry.idl_sha256 is not None:
+            payload["idl_sha256"] = entry.idl_sha256
+        if entry.local_schema_version is not None:
+            payload["local_schema_version"] = entry.local_schema_version
         adapter = self._adapters.get(entry.protocol)
         normalized_event_type = entry.instruction_name
         if adapter is not None:
@@ -703,6 +782,7 @@ __all__ = [
     "ProgramKind",
     "ProtocolCoverageAudit",
     "ProtocolIdentityRegistry",
+    "ProtocolDriftDetected",
     "ProtocolRegistryEntry",
     "ProtocolSupportStatus",
     "ProtocolVerificationStatus",

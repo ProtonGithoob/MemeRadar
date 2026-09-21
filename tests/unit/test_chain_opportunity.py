@@ -314,6 +314,46 @@ def test_chain_opportunity_does_not_turn_missing_launch_outcomes_into_zero() -> 
     assert snapshot.successful_launch_ratio_5m is None
 
 
+def test_chain_opportunity_counts_create_launches_but_not_pump_trades() -> None:
+    events = (
+        observation(
+            "pump-create-v2",
+            "launch",
+            NOW - timedelta(seconds=2),
+            chain="solana",
+            instruction_type="create_v2",
+        ),
+        observation(
+            "pump-buy-v2",
+            "trade",
+            NOW - timedelta(seconds=1),
+            chain="solana",
+            instruction_type="buy_v2",
+            wallet_address="So11111111111111111111111111111111111111112",
+            quote_volume="10",
+        ),
+        observation(
+            "pump-sell",
+            "trade",
+            NOW - timedelta(seconds=1),
+            chain="solana",
+            instruction_type="sell",
+            wallet_address="So11111111111111111111111111111111111111112",
+            quote_volume="5",
+        ),
+    )
+
+    snapshot = ChainOpportunityAnalyzer().build(
+        "solana",
+        observations=events,
+        as_of=NOW,
+        config_hash="fixture-opportunity-v1",
+    )
+
+    assert snapshot.transaction_count_5m == 2
+    assert snapshot.launchpad_launch_count_5m == 1
+
+
 def test_chain_opportunity_source_diversity_uses_current_window_evidence() -> None:
     current = observation(
         "current-trade",
