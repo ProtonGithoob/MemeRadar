@@ -117,6 +117,7 @@ services:
       start_period: 10s
 
   worker:
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: infra/docker/worker.Dockerfile
