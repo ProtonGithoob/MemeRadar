@@ -430,8 +430,13 @@ class EarlyRuntimeService:
         )
         decision_ms = Decimal(str((perf_counter() - decision_started) * 1000))
         target = _stage_for_decision(decision)
-        if safety.status in {FastSafetyStatus.UNKNOWN, FastSafetyStatus.BLOCK}:
+        if safety.status is FastSafetyStatus.BLOCK:
             target = CandidateState.RISK_REJECTED
+        elif safety.status is FastSafetyStatus.UNKNOWN:
+            # Missing early evidence is not a safe pass, but it is also not a
+            # terminal rejection. The bounded scheduler can reevaluate this
+            # WATCH candidate when market/safety evidence becomes available.
+            target = CandidateState.WATCH
         initial_latencies = {
             "provider_to_ingestion": normalization_ms,
             "normalization_to_fast_safety": safety_ms,

@@ -36,6 +36,7 @@ MARKET_SNAPSHOT_OFFSETS_SECONDS = (
     259200,
     604800,
 )
+EARLY_REEVALUATION_OFFSETS_SECONDS = (30, 60, 120, 300, 600, 900)
 
 
 def offset_label(offset_seconds: int) -> str:
@@ -85,6 +86,14 @@ def forward_observation_source_id(mint: str, offset_seconds: int) -> str:
     return f"pumpfun-forward:dexscreener:{require_text(mint, 'mint')}:{offset_seconds}"
 
 
+def early_reevaluation_source_id(mint: str, offset_seconds: int) -> str:
+    """Return the durable idempotency key for one bounded lifecycle reevaluation."""
+
+    if offset_seconds < 0:
+        raise ValueError("offset_seconds must be non-negative")
+    return f"pumpfun-forward:early-reevaluation:{require_text(mint, 'mint')}:{offset_seconds}"
+
+
 def utc_now() -> datetime:
     """Patchable clock seam for small worker tests."""
 
@@ -93,8 +102,10 @@ def utc_now() -> datetime:
 
 __all__ = [
     "DEX_FIRST_OBSERVATION_OFFSETS_SECONDS",
+    "EARLY_REEVALUATION_OFFSETS_SECONDS",
     "MARKET_SNAPSHOT_OFFSETS_SECONDS",
     "PUMPFUN_FORWARD_VERSION",
+    "early_reevaluation_source_id",
     "forward_observation_source_id",
     "lead_seconds",
     "offset_label",

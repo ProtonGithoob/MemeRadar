@@ -305,3 +305,21 @@ def test_manipulated_launch_is_rejected_without_entry_alert() -> None:
     assert result.alert is not None
     assert result.alert.type.value == "RISK_ESCALATION"
     assert result.decision.entry_ready is False
+
+
+def test_unknown_launch_remains_watch_for_bounded_later_reevaluation() -> None:
+    service = EarlyRuntimeService()
+    first = observation("sig-unknown", NOW)
+
+    result = run(
+        service.process(
+            first,
+            observations=(first,),
+            score_components=components("80"),
+        )
+    )
+
+    assert result.safety.status.value == "UNKNOWN"
+    assert result.stage.value == "WATCH"
+    assert result.candidate.state.value == "WATCH"
+    assert result.alert is None

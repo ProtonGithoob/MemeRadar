@@ -2,7 +2,9 @@ from datetime import UTC, datetime, timedelta
 
 from memeradar_application.pumpfun_forward import (
     DEX_FIRST_OBSERVATION_OFFSETS_SECONDS,
+    EARLY_REEVALUATION_OFFSETS_SECONDS,
     MARKET_SNAPSHOT_OFFSETS_SECONDS,
+    early_reevaluation_source_id,
     forward_observation_source_id,
     lead_seconds,
     offset_label,
@@ -43,6 +45,7 @@ def test_forward_schedule_is_bounded_and_contains_required_milestones() -> None:
     assert offset_label(30) == "30s"
     assert offset_label(3600) == "1h"
     assert len(set(DEX_FIRST_OBSERVATION_OFFSETS_SECONDS)) == 12
+    assert EARLY_REEVALUATION_OFFSETS_SECONDS == (30, 60, 120, 300, 600, 900)
 
 
 def test_due_poll_and_lead_use_memeradar_observation_time() -> None:
@@ -61,3 +64,6 @@ def test_source_identity_is_deterministic_per_mint_and_offset() -> None:
     )
     assert forward_observation_source_id(mint, 30) == forward_observation_source_id(mint, 30)
     assert forward_observation_source_id(mint, 30) != forward_observation_source_id(mint, 60)
+    assert early_reevaluation_source_id(mint, 60) == (
+        "pumpfun-forward:early-reevaluation:9vRzjUmVLv894UwsBkCtmbFFLUPwUC3p8bU7RgL7pump:60"
+    )

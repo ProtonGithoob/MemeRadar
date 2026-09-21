@@ -66,6 +66,7 @@ _RESEARCH_KINDS = (
     "research.missed_winner",
     "research.false_positive",
     "research.funnel_transition",
+    "research.early_reevaluation",
 )
 _MINT_KEYS = ("mint", "mint_address", "address")
 _OUTCOME_TARGETS = (2, 5, 10, 20, 50, 100)

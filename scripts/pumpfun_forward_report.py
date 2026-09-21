@@ -36,6 +36,7 @@ RESEARCH_KINDS = (
     "research.outcome",
     "research.false_positive",
     "research.funnel_transition",
+    "research.early_reevaluation",
     "provider.ingestion_health",
 )
 
