@@ -236,6 +236,7 @@ def build_forward_report(
             stage = str(_value(row, "stage", "UNKNOWN")).upper()
             false_positive_counts[stage] += 1
 
+    launch_mints = set(launches)
     for mint, rows_for_mint in dex_rows.items():
         if any(_bool(_value(row, "pair_found")) for row in rows_for_mint):
             stages.setdefault(mint, set())
@@ -276,7 +277,7 @@ def build_forward_report(
         ] += 1
 
     lifecycle_reason_counts: dict[str, int] = defaultdict(int)
-    lifecycle_feature_counts: dict[str, int] = defaultdict(int)
+    lifecycle_feature_mints: dict[str, set[str]] = defaultdict(set)
     for mint in launches:
         candidate_watch_rows = watch_rows_by_mint.get(mint, ())
         if not candidate_watch_rows:
@@ -285,15 +286,18 @@ def build_forward_report(
         for row in candidate_watch_rows:
             codes.update(_reason_codes(row))
             if _value(row, "liquidity") is None:
-                lifecycle_feature_counts["NO_LIQUIDITY"] += 1
+                lifecycle_feature_mints["NO_LIQUIDITY"].add(mint)
             if _value(row, "market_cap") is None and _value(row, "liquidity") is None:
-                lifecycle_feature_counts["NO_MARKET_DATA"] += 1
+                lifecycle_feature_mints["NO_MARKET_DATA"].add(mint)
             if _value(row, "sellability") is None:
-                lifecycle_feature_counts["SELLABILITY_UNKNOWN"] += 1
+                lifecycle_feature_mints["SELLABILITY_UNKNOWN"].add(mint)
             if str(_value(row, "safety_status", "UNKNOWN")).upper() == "UNKNOWN":
-                lifecycle_feature_counts["CRITICAL_UNKNOWN"] += 1
+                lifecycle_feature_mints["CRITICAL_UNKNOWN"].add(mint)
         for code in codes:
             lifecycle_reason_counts[code] += 1
+    lifecycle_feature_counts = {
+        name: len(mints) for name, mints in lifecycle_feature_mints.items()
+    }
 
     reeval_by_offset: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     reeval_by_mint: dict[str, set[int]] = defaultdict(set)
@@ -332,7 +336,16 @@ def build_forward_report(
         else:
             reeval_schedule_counts["PARTIAL_OR_FAILED"] += 1
 
-    watch_rows = [row for rows_for_mint in watch_rows_by_mint.values() for row in rows_for_mint]
+    watch_rows = [
+        min(
+            rows_for_mint,
+            key=lambda row: _timestamp(_value(row, "state_at"))
+            or _timestamp(_value(row, "observed_at"))
+            or datetime.max.replace(tzinfo=UTC),
+        )
+        for mint, rows_for_mint in watch_rows_by_mint.items()
+        if mint in launch_mints
+    ]
     reeval_distributions = {
         "EarlyScore": _numeric_summary(reevaluation_rows, "early_score"),
         "confidence": _numeric_summary(reevaluation_rows, "confidence"),
@@ -353,7 +366,6 @@ def build_forward_report(
     }
 
     matured_by_horizon: dict[str, int] = defaultdict(int)
-    launch_mints = set(launches)
     target_mints: dict[str, set[str]] = {
         target: set() for target in ("2X", "5X", "10X", "20X", "50X", "100X")
     }
@@ -436,7 +448,7 @@ def build_forward_report(
         "EARLY_LIFECYCLE_REJECTION_DISTRIBUTION": {
             "reason_counts": dict(sorted(lifecycle_reason_counts.items())),
             "feature_availability_counts": dict(sorted(lifecycle_feature_counts.items())),
-            "WATCH_CANDIDATE_COUNT": len(watch_rows_by_mint),
+            "WATCH_CANDIDATE_COUNT": len(watch_rows),
         },
         "EARLY_LIFECYCLE_DISTRIBUTIONS": {
             "initial_watch": initial_distributions,
@@ -519,9 +531,6 @@ def build_forward_report(
                     if label == expected
                 )
                 for expected in ("30s", "1m", "2m", "5m", "10m", "15m")
-            )
-            and not any(
-                counts.get("FAILED", 0) > 0 for counts in reeval_by_offset.values()
             )
             else "INSUFFICIENT_EVIDENCE"
         ),
