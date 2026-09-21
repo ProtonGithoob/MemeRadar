@@ -6,9 +6,12 @@ import asyncio
 import logging
 import signal
 from collections.abc import AsyncIterable, Awaitable, Callable
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
+
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from memeradar_application.alert_pipeline import AlertDeliveryService, AlertPolicy
 from memeradar_application.config import Settings, validate_worker_runtime
@@ -68,6 +71,8 @@ from memeradar_providers.transport import (
     ProviderUnavailableError,
 )
 
+from .forward_evidence import PumpFunForwardEvidenceCollector
+
 LOGGER = logging.getLogger(__name__)
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -96,6 +101,8 @@ async def run_worker(
         workers.append(_run_gmgn_shadow(stop_event, settings, sleeper=sleeper))
     if _early_alpha_shadow_is_configured(settings):
         workers.append(_run_early_alpha_shadow(stop_event, settings, sleeper=sleeper))
+    if _pumpfun_forward_is_configured(settings):
+        workers.append(_run_pumpfun_forward_evidence(stop_event, settings, sleeper=sleeper))
     if workers:
         await asyncio.gather(*workers)
     else:
@@ -143,6 +150,16 @@ def _early_alpha_shadow_is_configured(settings: Settings) -> bool:
         settings.database_url
         and Chain.SOLANA.value in settings.enabled_chains
         and settings.solana_rpc_url
+    )
+
+
+def _pumpfun_forward_is_configured(settings: Settings) -> bool:
+    """Use the same database/network boundary as the accepted launch stream."""
+
+    return bool(
+        settings.database_url
+        and Chain.SOLANA.value in settings.enabled_chains
+        and settings.dexscreener_api_url
     )
 
 
@@ -462,6 +479,17 @@ async def _run_early_alpha_shadow(
         decoder=decoder or CanonicalProtocolDecoder(DEFAULT_PROTOCOL_REGISTRY),
         state_store=stream_store,
     )
+    health_task: asyncio.Task[None] | None = None
+    if generated_source is not None:
+        health_task = asyncio.create_task(
+            _run_solana_ingestion_health(
+                stop_event,
+                engine,
+                stream_store,
+                generated_source,
+            ),
+            name="solana-ingestion-health",
+        )
 
     async def process_event(
         event: NormalizedChainEvent,
@@ -494,11 +522,95 @@ async def _run_early_alpha_shadow(
         )
         return report
     finally:
+        if health_task is not None:
+            health_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await health_task
         if generated_source is not None:
             await generated_source.aclose()
         if provider_bundle is not None:
             await provider_bundle.aclose()
         await engine.dispose()
+
+
+async def _run_solana_ingestion_health(
+    stop_event: asyncio.Event,
+    engine: AsyncEngine,
+    stream_store: SqlAlchemyStreamStateStore,
+    source: SolanaRawTransactionSource,
+) -> None:
+    """Persist bounded raw-stream counters without coupling them to scoring."""
+
+    while not stop_event.is_set():
+        observed_at = datetime.now(UTC)
+        metrics = source.health_snapshot(now=observed_at)
+        gaps = await stream_store.list_gaps()
+        source_gaps = metrics.get("stream_gaps", 0)
+        metrics["stream_gaps"] = max(
+            source_gaps if isinstance(source_gaps, int) else 0,
+            len(gaps),
+        )
+        payload = {
+            **metrics,
+            "provider": "pump.fun.solana-raw-stream",
+            "capability": "pumpfun_launch_ingestion",
+            "collection_mode": "LIVE_SHADOW",
+            "health_schema_version": "pumpfun-ingestion-health-v1",
+        }
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            await unit_of_work.observations.add(
+                Observation(
+                    kind="provider.ingestion_health",
+                    provenance=Provenance(
+                        provider="pump.fun.solana-raw-stream",
+                        source_id=f"solana-ingestion-health:{observed_at.isoformat()}",
+                        observed_at=observed_at,
+                        parser_version="pumpfun-ingestion-health-v1",
+                    ),
+                    occurred_at=observed_at,
+                    observed_at=observed_at,
+                    ingested_at=observed_at,
+                    quality_state=QualityState.FRESH,
+                    normalized_payload=payload,
+                )
+            )
+            await unit_of_work.commit()
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=30.0)
+        except TimeoutError:
+            continue
+
+
+async def _run_pumpfun_forward_evidence(
+    stop_event: asyncio.Event,
+    settings: Settings,
+    *,
+    sleeper: Sleep,
+) -> None:
+    """Run one bounded exact-mint research scheduler beside live ingestion."""
+
+    assert settings.database_url is not None
+    engine = None
+    bundle = None
+    try:
+        engine = create_database_engine(settings.database_url)
+        bundle = build_provider_bundle(settings)
+        collector = PumpFunForwardEvidenceCollector(engine, bundle.dexscreener)
+        await collector.run(
+            stop_event,
+            poll_interval_seconds=settings.worker_poll_interval_seconds,
+            sleeper=sleeper,
+        )
+    except Exception as error:  # noqa: BLE001 - research collection is optional.
+        LOGGER.warning(
+            "pumpfun_forward_setup_failed",
+            extra={"error_class": type(error).__name__},
+        )
+    finally:
+        if bundle is not None:
+            await bundle.aclose()
+        if engine is not None:
+            await engine.dispose()
 
 
 async def _run_alert_outbox(

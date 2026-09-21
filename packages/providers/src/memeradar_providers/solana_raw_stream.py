@@ -33,6 +33,7 @@ from .pump_fun_idl import (
 from .solana_rpc import SolanaRpcAdapter
 from .transport import (
     ProviderError,
+    ProviderRateLimitedError,
     ProviderSchemaError,
     ProviderUnavailableError,
 )
@@ -428,12 +429,23 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         self._closed = False
         self._subscription: int | None = None
         self._last_slot: int | None = None
+        self._latency_samples_ms: deque[float] = deque(maxlen=10_000)
+        self._launch_observed_at: deque[datetime] = deque(maxlen=10_000)
         self.metrics: dict[str, int] = {
             "notifications_received": 0,
+            "events_received": 0,
             "signatures_deduplicated": 0,
             "transactions_fetched": 0,
             "transactions_unavailable": 0,
             "raw_events_emitted": 0,
+            "create_observed": 0,
+            "create_v2_observed": 0,
+            "get_transaction_retries": 0,
+            "rate_limit_responses": 0,
+            "decoder_failures": 0,
+            "stream_gaps": 0,
+            "queue_depth_max": 0,
+            "dropped_events": 0,
             "stream_reconnects": 0,
             "stream_errors": 0,
         }
@@ -510,6 +522,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                             commitment=self.commitment,
                         )
                         self.metrics["notifications_received"] += 1
+                        self.metrics["events_received"] += 1
                         self._last_slot = max(
                             self._last_slot or notification.slot,
                             notification.slot,
@@ -538,15 +551,33 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                         if transaction is None:
                             self.metrics["transactions_unavailable"] += 1
                             continue
-                        events = map_transaction_to_raw_events(
-                            transaction,
-                            notification,
-                            ingested_at=ensure_utc(self._clock(), "ingested_at"),
-                            program_id=self.program_id,
-                        )
+                        try:
+                            events = map_transaction_to_raw_events(
+                                transaction,
+                                notification,
+                                ingested_at=ensure_utc(self._clock(), "ingested_at"),
+                                program_id=self.program_id,
+                            )
+                        except (ProviderSchemaError, ValueError):
+                            self.metrics["decoder_failures"] += 1
+                            continue
                         for event in events:
                             await self._queue.put(event)
                             self.metrics["raw_events_emitted"] += 1
+                            self.metrics["queue_depth_max"] = max(
+                                self.metrics["queue_depth_max"], self._queue.qsize()
+                            )
+                            event_type = event.payload.get("instruction_type")
+                            if event_type == "create":
+                                self.metrics["create_observed"] += 1
+                            elif event_type == "create_v2":
+                                self.metrics["create_v2_observed"] += 1
+                            latency_ms = (
+                                event.ingested_at - event.observed_at
+                            ).total_seconds() * 1000
+                            if latency_ms >= 0:
+                                self._latency_samples_ms.append(latency_ms)
+                            self._launch_observed_at.append(event.observed_at)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -577,16 +608,49 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         # ponytail: three short retries cover the normal indexing race; a
         # durable fetch queue belongs in a separately measured backfill worker.
         for attempt in range(3):
-            transaction = await self.rpc.fetch_transaction_payload(
-                signature,
-                context=context,
-                commitment=commitment,
-            )
+            try:
+                transaction = await self.rpc.fetch_transaction_payload(
+                    signature,
+                    context=context,
+                    commitment=commitment,
+                )
+            except ProviderRateLimitedError:
+                self.metrics["rate_limit_responses"] += 1
+                if attempt >= 2:
+                    raise
+                self.metrics["get_transaction_retries"] += 1
+                await asyncio.sleep(0.25 * (attempt + 1) + (random.random() * 0.1))
+                continue
             if transaction is not None:
                 return transaction
             if attempt < 2:
+                self.metrics["get_transaction_retries"] += 1
                 await asyncio.sleep(0.25 * (attempt + 1) + (random.random() * 0.1))
         return None
+
+    def health_snapshot(self, *, now: datetime | None = None) -> dict[str, object]:
+        """Return safe bounded stream counters for durable health evidence."""
+
+        checked_at = ensure_utc(now or self._clock(), "now")
+        launch_window_start = checked_at - timedelta(hours=1)
+        while self._launch_observed_at and self._launch_observed_at[0] < launch_window_start:
+            self._launch_observed_at.popleft()
+        ordered = sorted(self._latency_samples_ms)
+
+        def percentile(value: float) -> float | None:
+            if not ordered:
+                return None
+            return ordered[min(len(ordered) - 1, round((len(ordered) - 1) * value))]
+
+        return {
+            **self.metrics,
+            "launches_per_hour": len(self._launch_observed_at),
+            "latency_p50_ms": percentile(0.50),
+            "latency_p90_ms": percentile(0.90),
+            "latency_p95_ms": percentile(0.95),
+            "queue_depth": self._queue.qsize(),
+            "last_slot": self._last_slot,
+        }
 
     def _is_launch_notification(self, notification: SolanaLogsNotification) -> bool:
         # ponytail: fetch only launch-shaped logs on the public endpoint.  This

@@ -64,12 +64,11 @@ It observed and persisted this first real launch:
 | MemeRadar `DISCOVERED` | `2026-09-21T07:22:51.918948+00:00` |
 
 Acceptance gates: `RawChainTransaction=PASS`, `canonical decode=PASS`,
-`normalized launch=PASS`, `DISCOVERED persisted=PASS`, and
-`LIVE_SHADOW_OPERATIONAL=PASS`. An immediate exact-mint DexScreener lookup
-was attempted; no pair was known yet, so
-`DexScreener_first_successful_observation_at=UNKNOWN` and the benchmark retains
-that null/UNKNOWN state. The launch did not produce `EARLY_WATCH`; thresholds
-were unchanged. `REAL_WORLD_ALPHA_VALIDATED=NO`.
+`normalized launch=PASS`, and `DISCOVERED persisted=PASS`. An immediate
+exact-mint DexScreener lookup was attempted with no pair known at that time;
+the later forward tracker records the first successful observation in the
+forward-evidence section below. The launch did not produce `EARLY_WATCH`;
+thresholds were unchanged. `REAL_WORLD_ALPHA_VALIDATED=NO`.
 
 Evidence artifact: `artifacts/research/pumpfun-live/20260921T073000Z.json`
 (local research output, intentionally not committed).
@@ -79,6 +78,63 @@ suite `73 passed`; full `make test` `1429 passed, 20 skipped, 7 warnings`;
 `make typecheck` passed for 142 source files; full Ruff passed; opt-in
 PostgreSQL stream/runtime integration `2 passed`; rebuilt Compose stack and
 `make status` `PASS` with all five services healthy.
+
+## 2026-09-21 Pump.fun forward alpha evidence collection
+
+The accepted canonical Pump.fun launch stream now feeds one bounded,
+restart-safe forward research scheduler. It persists every verified
+`create`/`create_v2` launch projection, exact-mint DexScreener polls at
+`0s, 5s, 10s, 20s, 30s, 60s, 120s, 300s, 600s, 1200s, 1800s, 3600s`, market
+snapshots through 7d, horizon-gated outcome rows, creator-history evidence,
+missed-winner/false-positive projections, funnel transitions, Telegram timing,
+and raw-stream health. The scheduler uses the existing worker and generic
+observation repository; no detector, migration, score threshold, or execution
+path was added.
+
+The reproducible report is [pumpfun-forward/report.md](../artifacts/research/pumpfun-forward/report.md)
+with machine-readable [report.json](../artifacts/research/pumpfun-forward/report.json).
+The latest live-shadow report generated at `2026-09-21T10:39:09.592181+00:00`
+contains:
+
+| Measure | Evidence |
+|---|---:|
+| total launches / legacy `create` / `create_v2` | `1277 / 16 / 1261` |
+| DISCOVERED / WATCH / EARLY_WATCH | `1277 / 1274 / 0` |
+| Dex first observations / MemeRadar-before-Dex leads | `124 / 121` |
+| MemeRadar→Dex lead | `N=121`, median `76.815456s`, p90 `1071.072466s`, p95 `6604.977256s`, max `9251.576703s` |
+| horizon-due outcomes | `1h=995`; `6h/24h/72h/7d=0` |
+| measured executable winner labels | `0` at `2x/5x/10x/20x/50x/100x` |
+| missed winners / false positives | `0 / {}` |
+
+The accepted real launch remains fully evidenced: raw transaction, canonical
+decode, normalized launch, and `DISCOVERED` persistence all PASS. Its immediate
+DexScreener query at discovery had no pair; the first successful exact-mint
+forward observation was later persisted at
+`2026-09-21T09:57:03.495651+00:00` with lead `9251.576703s`. This is a
+MemeRadar-observed API timestamp, not DexScreener internal listing latency.
+
+Outcome rows with `quality_state=UNKNOWN` are excluded from measured returns;
+therefore `OUTCOME_STATUS=INSUFFICIENT_SAMPLES`,
+`STATISTICAL_SAMPLE_SUFFICIENT=NO`, and `REAL_WORLD_ALPHA_VALIDATED=NO`.
+The latest health row records `5028` notifications, `53` raw decoded launches
+(`24` `create_v2`), p50/p90/p95 latency `226.18/548.95/44246.85ms`, one decoder
+failure, zero dropped events, `11` signature deduplications, one stream error,
+and `stream_gaps=1405`; therefore `LIVE_SHADOW_OPERATIONAL=DEGRADED` remains
+explicit. The worker remained up for the post-restart verification window with
+no traceback or idempotency conflict. Telegram is `UNKNOWN` because credentials
+are not configured. Protected modes remain unchanged.
+
+The non-destructive upstream check observed the pinned revision but a different
+current IDL SHA-256 (`d4c6747963e86f5889a87e765d46152ae2db169fea790921816771ee9de17397`)
+and reported `PROTOCOL_DRIFT_DETECTED`; the production decoder stayed pinned
+to revision `81091419e4457566469d4e2a27f64ed84d42419c`, SHA-256
+`ffe966c42f1af41652ee753fe2f1e3f7cd4077d7e6f49faf3138959c8b56064b`, schema
+`pumpfun-idl-schema-v1`. No automatic promotion occurred.
+
+Verification: full `make test` `1440 passed, 21 skipped, 7 warnings`;
+`make lint` PASS; `make typecheck` PASS for 146 source files; focused forward
+suite `11 passed, 1 skipped`; rebuilt Compose stack and protected-mode checks
+PASS. No scoring thresholds or live execution settings changed.
 
 ## 2026-09-20 raw Solana ingestion checkpoint
 

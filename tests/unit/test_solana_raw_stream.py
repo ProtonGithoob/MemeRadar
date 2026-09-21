@@ -374,6 +374,13 @@ def test_source_reconnects_restores_subscription_and_emits_raw_event(monkeypatch
         assert fetch_commitments == ["confirmed"]
         assert len(sessions[0].sent) == 1
         assert len(sessions[1].sent) == 1
+        health = source.health_snapshot(now=NOW + timedelta(seconds=10))
+        assert health["events_received"] == 1
+        assert health["create_v2_observed"] == 1
+        assert health["get_transaction_retries"] == 0
+        assert health["decoder_failures"] == 0
+        assert health["dropped_events"] == 0
+        assert "latency_p95_ms" in health
         await source.aclose()
 
     asyncio.run(scenario())

@@ -138,6 +138,14 @@ def test_synthetic_launch_reaches_early_watch_and_projects_immutable_stage_alert
     assert result.stage_snapshot.normalized_payload["state"] == "EARLY_WATCH"
     assert result.stage_snapshot.normalized_payload["chain"] == "solana"
     assert result.stage_snapshot.normalized_payload["mint"] == MINT
+    discovered = next(
+        row
+        for row in observations.rows.values()
+        if row.normalized_payload.get("state") == "DISCOVERED"
+    )
+    assert discovered.normalized_payload["early_score"] is not None
+    assert discovered.normalized_payload["safety_status"] == "PASS"
+    assert discovered.normalized_payload["score_version"] is not None
     assert result.lifecycle_event is not None
     assert result.lifecycle_event.kind == "CandidateStateChanged"
     assert result.alert is not None

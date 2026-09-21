@@ -168,9 +168,9 @@ async def _exercise(database_url: str) -> None:
             assert snapshot_count == 4
             assert event_count == 1
             assert outbox_count == 1
-            assert feature_count == 1
-            assert risk_count == 1
-            assert score_count == 1
+            assert feature_count == 2
+            assert risk_count == 2
+            assert score_count == 2
             assert loaded.latest_score_id == first.score.id
             assert loaded.latest_risk_id is not None
     finally:

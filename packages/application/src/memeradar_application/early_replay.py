@@ -57,6 +57,7 @@ _PRICE_KINDS = frozenset(
     {
         "market.snapshot",
         "market.market_data",
+        "market.market_snapshot",
         "market.observation",
         "market.quote",
         "market.price",

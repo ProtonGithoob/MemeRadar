@@ -7,6 +7,8 @@ existing modules and ports.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -50,6 +52,7 @@ from .organic_momentum import OrganicMomentumProjection
 EARLY_RUNTIME_VERSION = "early-runtime-v1"
 EARLY_STAGE_SNAPSHOT_KIND = "early.stage_snapshot"
 _RUNTIME_NAMESPACE = "https://memeradar.local/early-runtime/"
+_SNAPSHOT_IDENTITY_VERSION = "snapshot-v2"
 
 
 class ObservationSink(Protocol):
@@ -359,21 +362,6 @@ class EarlyRuntimeService:
             bucket[item.id] = item
             await self._save_observation(item)
 
-        if not candidate.transitions:
-            discovered_snapshot = self._build_snapshot(
-                candidate=candidate,
-                detection=detection,
-                state=CandidateState.DISCOVERED,
-                stage_at=detection.first_seen_at,
-                observations=tuple(bucket.values()),
-                feature_snapshot=None,
-                safety=None,
-                organic=None,
-                score=None,
-                decision=None,
-                latencies_ms={"provider_to_ingestion": normalization_ms},
-            )
-            await self._save_observation(discovered_snapshot)
         checkpoint = self._checkpoint(mint_key, as_of, bucket, detection)
         feature_started = perf_counter()
         feature_snapshot = self.feature_engine.compute(
@@ -444,6 +432,40 @@ class EarlyRuntimeService:
         target = _stage_for_decision(decision)
         if safety.status in {FastSafetyStatus.UNKNOWN, FastSafetyStatus.BLOCK}:
             target = CandidateState.RISK_REJECTED
+        initial_latencies = {
+            "provider_to_ingestion": normalization_ms,
+            "normalization_to_fast_safety": safety_ms,
+            "fast_safety_to_features": feature_ms,
+            "features_to_decision": decision_ms,
+            "decision_to_outbox": Decimal("0"),
+        }
+        if not candidate.transitions:
+            discovered_snapshot = self._build_snapshot(
+                candidate=candidate,
+                detection=detection,
+                state=CandidateState.DISCOVERED,
+                stage_at=detection.first_seen_at,
+                observations=tuple(bucket.values()),
+                feature_snapshot=feature_snapshot,
+                safety=safety,
+                organic=organic,
+                score=score,
+                decision=decision,
+                latencies_ms=initial_latencies,
+                initial=True,
+            )
+            await self._save_observation(discovered_snapshot)
+            await self._save_runtime_snapshots(
+                candidate=candidate,
+                feature_snapshot=feature_snapshot,
+                safety=safety,
+                score=score,
+                decision=decision,
+                transition=None,
+                provider_available=provider_available,
+                stream_gap=stream_gap,
+                initial=True,
+            )
         stage_at = max(checkpoint, detection.first_seen_at, candidate.state_changed_at)
         prior_transition_keys = {item.idempotency_key for item in candidate.transitions}
         transition = self._advance_candidate(
@@ -584,14 +606,22 @@ class EarlyRuntimeService:
         safety: FastSafetyResult,
         score: EarlyScoreSnapshot,
         decision: EarlyDecisionResult,
-        transition: StateTransition,
+        transition: StateTransition | None,
         provider_available: bool,
         stream_gap: bool,
+        initial: bool = False,
     ) -> None:
         if self.feature_store is None or self.risk_store is None or self.score_store is None:
             return
-        if transition.score_snapshot_id is None or transition.risk_assessment_id is None:
-            raise ValueError("decision transition is missing snapshot references")
+        if transition is None:
+            checkpoint_key = f"initial:{candidate.id}:{feature_snapshot.as_of.isoformat()}"
+            score_snapshot_id = uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}score:{checkpoint_key}")
+            risk_assessment_id = uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}risk:{checkpoint_key}")
+        else:
+            if transition.score_snapshot_id is None or transition.risk_assessment_id is None:
+                raise ValueError("decision transition is missing snapshot references")
+            score_snapshot_id = transition.score_snapshot_id
+            risk_assessment_id = transition.risk_assessment_id
         checkpoint = feature_snapshot.as_of
         expires_at = checkpoint + timedelta(minutes=5)
         provenance: list[Provenance] = []
@@ -622,7 +652,7 @@ class EarlyRuntimeService:
         )
         risk_reasons = _reason_values(score, decision, safety, feature_snapshot)
         risk = RiskAssessment(
-            id=transition.risk_assessment_id,
+            id=risk_assessment_id,
             candidate_id=candidate.id,
             as_of=checkpoint,
             expires_at=expires_at,
@@ -646,9 +676,11 @@ class EarlyRuntimeService:
             key: value for key, value in score.components.items() if value is not None
         }
         if not components:
-            raise ValueError("decision score has no observed components to persist")
+            if not initial:
+                raise ValueError("decision score has no observed components to persist")
+            components = {"observed_component_count": Decimal("0")}
         score_projection = ScoreSnapshot(
-            id=transition.score_snapshot_id,
+            id=score_snapshot_id,
             candidate_id=candidate.id,
             as_of=checkpoint,
             model_version=score.version,
@@ -867,6 +899,7 @@ class EarlyRuntimeService:
         score: EarlyScoreSnapshot | None,
         decision: EarlyDecisionResult | None,
         latencies_ms: Mapping[str, Decimal],
+        initial: bool = False,
     ) -> Observation:
         key = (candidate.id, state)
         existing = self._snapshots.get(key)
@@ -899,6 +932,19 @@ class EarlyRuntimeService:
         payload: dict[str, object] = {
             "chain": "solana",
             "mint": detection.mint_address,
+            "signature": first_payload.get("signature"),
+            "slot": first_payload.get("slot"),
+            "instruction_type": first_payload.get(
+                "instruction_type", first_payload.get("event_type")
+            ),
+            "creator": first_payload.get("creator"),
+            "user": first_payload.get("user"),
+            "name": first_payload.get("name"),
+            "symbol": first_payload.get("symbol"),
+            "uri": first_payload.get("uri"),
+            "is_mayhem_mode": first_payload.get("is_mayhem_mode"),
+            "quote_mint_semantics": first_payload.get("quote_mint_semantics"),
+            "is_holder_reward": first_payload.get("is_holder_reward"),
             "venue": first_payload.get(
                 "venue", detection.metadata.get("venue", authority)
             ),
@@ -908,6 +954,8 @@ class EarlyRuntimeService:
             "provider_observed_at": detection.first_observed_at.isoformat(),
             "memeradar_ingested_at": detection.timing.first_ingested_at.isoformat(),
             "first_seen_at": detection.first_seen_at.isoformat(),
+            "discovered_at": detection.first_seen_at.isoformat(),
+            "chain_occurred_at": launch_at.isoformat(),
             "first_seen_age_seconds": age,
             "first_seen_market_cap": first_payload.get(
                 "market_cap_usd", first_payload.get("market_cap")
@@ -974,11 +1022,17 @@ class EarlyRuntimeService:
             "runtime_version": EARLY_RUNTIME_VERSION,
             "git_revision": self.git_revision,
             "latencies_ms": {
-                "provider_to_ingestion": provider_to_ingestion,
-                "normalization_to_fast_safety": "UNKNOWN",
-                "fast_safety_to_features": "UNKNOWN",
-                "features_to_decision": "UNKNOWN",
-                "decision_to_outbox": "UNKNOWN",
+                "provider_to_ingestion": latencies_ms.get(
+                    "provider_to_ingestion", provider_to_ingestion
+                ),
+                "normalization_to_fast_safety": latencies_ms.get(
+                    "normalization_to_fast_safety", "UNKNOWN"
+                ),
+                "fast_safety_to_features": latencies_ms.get(
+                    "fast_safety_to_features", "UNKNOWN"
+                ),
+                "features_to_decision": latencies_ms.get("features_to_decision", "UNKNOWN"),
+                "decision_to_outbox": latencies_ms.get("decision_to_outbox", "UNKNOWN"),
             },
             "execution_eligible": False,
             "analysis_only": True,
@@ -989,23 +1043,46 @@ class EarlyRuntimeService:
         if state is not CandidateState.DISCOVERED:
             payload[f"{state.value.lower()}_at"] = stage_at.isoformat()
             payload[f"{state.value.lower()}_market_cap"] = payload["market_cap"]
+        snapshot_quality_state = (
+            QualityState.UNKNOWN
+            if safety is not None and safety.quality_state is not QualityState.FRESH
+            else detection.quality_state
+        )
+        fingerprint_material = {
+            "payload": payload,
+            "quality_state": snapshot_quality_state.value,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                fingerprint_material,
+                sort_keys=True,
+                default=str,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        snapshot_identity = (
+            f"{candidate.id}:{state.value}:{_SNAPSHOT_IDENTITY_VERSION}:{fingerprint}"
+        )
+        source_identity = (
+            f"early-stage:{candidate.id}:{state.value}:"
+            f"{_SNAPSHOT_IDENTITY_VERSION}:{fingerprint}"
+        )
+        if initial:
+            snapshot_identity += ":initial"
+            source_identity += ":initial"
         snapshot = Observation(
-            id=uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}snapshot:{candidate.id}:{state.value}"),
+            id=uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}snapshot:{snapshot_identity}"),
             kind=EARLY_STAGE_SNAPSHOT_KIND,
             provenance=Provenance(
                 provider="memeradar.early-runtime",
-                source_id=f"early-stage:{candidate.id}:{state.value}",
+                source_id=source_identity,
                 observed_at=stage_at,
                 parser_version=EARLY_RUNTIME_VERSION,
             ),
             occurred_at=stage_at,
             observed_at=stage_at,
             ingested_at=stage_at,
-            quality_state=(
-                QualityState.UNKNOWN
-                if safety is not None and safety.quality_state is not QualityState.FRESH
-                else detection.quality_state
-            ),
+            quality_state=snapshot_quality_state,
             normalized_payload=payload,
             candidate_id=candidate.id,
             token_id=candidate.token_id,
