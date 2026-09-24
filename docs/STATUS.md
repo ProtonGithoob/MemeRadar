@@ -66,6 +66,28 @@ chat configuration are absent. The requested `.codex/CURRENT_TASK.md` and
 host-mounted read-only; the plan, ledger, and reports are durable in the
 repository's writable tree.
 
+## 2026-09-24 real-acceptance continuation checkpoint
+
+The first unresolved runtime gate remains `BLOCKED_EXTERNAL`. Compose still
+cannot access `/var/run/docker.sock`, no PostgreSQL URL or local PostgreSQL
+server is available, and the bounded public Solana WebSocket probe recorded
+transport errors/reconnects with zero notifications. The existing Solana HTTP
+RPC doctor remains `PASS`; this is not stream-continuity acceptance. A
+bounded Jupiter quote probe timed out, and the supplied local Telegram
+credentials could not complete the health call after the canonical API URL was
+supplied in-process. No Telegram message was sent.
+
+The local acceptance seam was tightened without changing canonical Pump.fun
+routing: `ProtocolCertificationRecord` and
+`DEFAULT_PROTOCOL_CERTIFICATION_REGISTRY` now expose the required chain,
+deployment, bytecode, interface, event, sample, timestamp, normalized-output,
+version, source, and status fields. Decoder-only identities remain
+`TODO_VERIFY`; no deployment is promoted by documentation or fixtures. The
+existing asymmetric projection now carries `DataQualityConfidence`, derived
+from its existing evidence coverage/freshness contract and kept separate from
+AlphaIgnitionScore, SafetyConfidence, and OpportunityConfidence. Protected
+modes remain unchanged.
+
 ## 2026-09-24 autonomous implementation checkpoint
 
 The first requested live acceptance step was attempted through the existing

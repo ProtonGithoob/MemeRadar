@@ -77,6 +77,18 @@ class ProtocolSupportStatus(str, Enum):
     NOT_SUPPORTED_OUT_OF_SCOPE = "NOT_SUPPORTED_OUT_OF_SCOPE"
 
 
+class ProtocolCertificationStatus(str, Enum):
+    """Deployment certification state; stronger than decoder identity pinning."""
+
+    UNVERIFIED = "UNVERIFIED"
+    TODO_VERIFY = "TODO_VERIFY"
+    VERIFIED_READ_ONLY = "VERIFIED_READ_ONLY"
+    VERIFIED_QUOTE = "VERIFIED_QUOTE"
+    VERIFIED_PAPER = "VERIFIED_PAPER"
+    DEPRECATED = "DEPRECATED"
+    PROTOCOL_DRIFT = "PROTOCOL_DRIFT"
+
+
 class UnsupportedProtocolInput(ValueError):
     """Base fail-closed error for unknown or non-authoritative routing."""
 
@@ -259,6 +271,168 @@ class ProtocolRegistryEntry:
             idl_sha256=cast(str, self.idl_sha256),
             local_schema_version=cast(str, self.local_schema_version),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ProtocolCertificationRecord:
+    """Machine-readable evidence record for one protocol deployment."""
+
+    provider: str
+    protocol: str
+    chain_id: str | int
+    contract_address: str | None = None
+    runtime_bytecode_hash: str | None = None
+    contract_interface_identity: str | None = None
+    event_signatures: Sequence[str] = ()
+    known_block: int | None = None
+    known_transaction: str | None = None
+    decoded_sample_event: Mapping[str, object] | None = None
+    provider_timestamp: datetime | None = None
+    normalized_output: Mapping[str, object] | None = None
+    protocol_version: str | None = None
+    last_verified_at: datetime | None = None
+    status: ProtocolCertificationStatus | str = ProtocolCertificationStatus.TODO_VERIFY
+    evidence_sources: Sequence[str] = ()
+    contract_applicable: bool = True
+    registry_version: str = "protocol-certification-v1"
+
+    def __post_init__(self) -> None:
+        for field_name in ("provider", "protocol"):
+            object.__setattr__(
+                self,
+                field_name,
+                require_text(getattr(self, field_name), field_name, max_length=128),
+            )
+        if isinstance(self.chain_id, bool) or not isinstance(self.chain_id, str | int):
+            raise TypeError("chain_id must be text or an integer")
+        if isinstance(self.chain_id, int) and self.chain_id < 0:
+            raise ValueError("chain_id must not be negative")
+        if isinstance(self.chain_id, str):
+            object.__setattr__(
+                self,
+                "chain_id",
+                require_text(self.chain_id, "chain_id", max_length=128),
+            )
+        if self.contract_address is not None:
+            object.__setattr__(
+                self,
+                "contract_address",
+                require_text(self.contract_address, "contract_address", max_length=128),
+            )
+        for field_name in ("runtime_bytecode_hash", "contract_interface_identity"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    require_text(value, field_name, max_length=512),
+                )
+        object.__setattr__(
+            self,
+            "event_signatures",
+            _text_tuple(self.event_signatures, "event_signatures", 512),
+        )
+        if self.known_block is not None:
+            if isinstance(self.known_block, bool) or not isinstance(self.known_block, int):
+                raise TypeError("known_block must be an integer")
+            if self.known_block < 0:
+                raise ValueError("known_block must not be negative")
+        for field_name in ("known_transaction", "protocol_version", "registry_version"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    require_text(value, field_name, max_length=512),
+                )
+        for field_name in ("decoded_sample_event", "normalized_output"):
+            value = getattr(self, field_name)
+            if value is not None:
+                if not isinstance(value, Mapping):
+                    raise TypeError(f"{field_name} must be a mapping")
+                object.__setattr__(self, field_name, freeze_mapping(value, field_name))
+        for field_name in ("provider_timestamp", "last_verified_at"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(self, field_name, ensure_utc(value, field_name))
+        object.__setattr__(self, "status", ProtocolCertificationStatus(self.status))
+        object.__setattr__(
+            self,
+            "evidence_sources",
+            _text_tuple(self.evidence_sources, "evidence_sources", 512),
+        )
+        if not isinstance(self.contract_applicable, bool):
+            raise TypeError("contract_applicable must be boolean")
+        if self.status in {
+            ProtocolCertificationStatus.VERIFIED_READ_ONLY,
+            ProtocolCertificationStatus.VERIFIED_QUOTE,
+            ProtocolCertificationStatus.VERIFIED_PAPER,
+        }:
+            missing = self.missing_evidence
+            if missing:
+                raise ValueError("verified certificate requires " + ", ".join(missing))
+
+    @property
+    def missing_evidence(self) -> tuple[str, ...]:
+        required = [
+            "contract_interface_identity",
+            "event_signatures",
+            "known_block",
+            "known_transaction",
+            "decoded_sample_event",
+            "provider_timestamp",
+            "normalized_output",
+            "protocol_version",
+            "last_verified_at",
+        ]
+        if self.contract_applicable:
+            required[0:0] = ["contract_address", "runtime_bytecode_hash"]
+        return tuple(
+            field_name
+            for field_name in required
+            if (
+                getattr(self, field_name) is None
+                or getattr(self, field_name) == ()
+                or getattr(self, field_name) == {}
+            )
+        )
+
+    @property
+    def complete(self) -> bool:
+        return not self.missing_evidence
+
+    def to_mapping(self) -> Mapping[str, object]:
+        """Return JSON-compatible evidence without exposing mutable internals."""
+
+        def plain(value: object) -> object:
+            if isinstance(value, Mapping):
+                return {str(key): plain(item) for key, item in value.items()}
+            if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+                return [plain(item) for item in value]
+            if isinstance(value, datetime):
+                return value.isoformat()
+            return value
+
+        return {
+            "provider": self.provider,
+            "protocol": self.protocol,
+            "chain_id": self.chain_id,
+            "contract_address": self.contract_address,
+            "runtime_bytecode_hash": self.runtime_bytecode_hash,
+            "contract_interface_identity": self.contract_interface_identity,
+            "event_signatures": list(self.event_signatures),
+            "known_block": self.known_block,
+            "known_transaction": self.known_transaction,
+            "decoded_sample_event": plain(self.decoded_sample_event),
+            "provider_timestamp": plain(self.provider_timestamp),
+            "normalized_output": plain(self.normalized_output),
+            "protocol_version": self.protocol_version,
+            "last_verified_at": plain(self.last_verified_at),
+            "status": cast(ProtocolCertificationStatus, self.status).value,
+            "evidence_sources": list(self.evidence_sources),
+            "contract_applicable": self.contract_applicable,
+            "registry_version": self.registry_version,
+        }
 
 
 def _text_tuple(values: Sequence[str], field_name: str, max_length: int) -> tuple[str, ...]:
@@ -614,6 +788,72 @@ DEFAULT_PROTOCOL_REGISTRY = ProtocolIdentityRegistry(
 )
 
 
+def protocol_certification_registry(
+    registry: ProtocolIdentityRegistry | None = None,
+) -> tuple[ProtocolCertificationRecord, ...]:
+    """Project registered identities and EVM candidates into strict certificates.
+
+    Decoder identity and fixture coverage are deliberately insufficient for a
+    deployment certificate.  Until live bytecode, a known transaction, a
+    decoded sample and normalized output are supplied, the projection remains
+    ``TODO_VERIFY`` even when the canonical decoder can route the identity.
+    """
+
+    active = registry or DEFAULT_PROTOCOL_REGISTRY
+    grouped: dict[tuple[str, str], list[ProtocolRegistryEntry]] = {}
+    for entry in active.entries:
+        grouped.setdefault((entry.protocol, entry.program_id), []).append(entry)
+    records: list[ProtocolCertificationRecord] = []
+    for (protocol, program_id), entries in sorted(grouped.items()):
+        first = entries[0]
+        records.append(
+            ProtocolCertificationRecord(
+                provider="solana-rpc",
+                protocol=protocol,
+                chain_id="solana:mainnet-beta",
+                contract_address=program_id,
+                contract_interface_identity=ProgramKind(first.program_kind).value,
+                event_signatures=tuple(
+                    sorted({cast(str, entry.discriminator_or_tag) for entry in entries})
+                ),
+                protocol_version=first.decoder_version,
+                last_verified_at=max(
+                    (entry.verified_at for entry in entries if entry.verified_at is not None),
+                    default=None,
+                ),
+                status=ProtocolCertificationStatus.TODO_VERIFY,
+                evidence_sources=tuple(
+                    sorted({source for entry in entries for source in entry.sources})
+                ),
+            )
+        )
+
+    # EVM candidates are intentionally imported lazily to keep the Solana
+    # identity module independent of the EVM parser module at import time.
+    from .evm_protocols import EVM_PROTOCOL_CANDIDATES
+
+    for deployment in EVM_PROTOCOL_CANDIDATES:
+        records.append(
+            ProtocolCertificationRecord(
+                provider="evm-rpc",
+                protocol=deployment.protocol,
+                chain_id=str(deployment.chain_id),
+                contract_address=deployment.contract_address,
+                runtime_bytecode_hash=deployment.runtime_code_hash,
+                event_signatures=tuple(deployment.event_topics.values()),
+                known_transaction=deployment.sample_transaction,
+                status=ProtocolCertificationStatus.TODO_VERIFY,
+                evidence_sources=(deployment.verification_source,)
+                if deployment.verification_source is not None
+                else (),
+            )
+        )
+    return tuple(records)
+
+
+DEFAULT_PROTOCOL_CERTIFICATION_REGISTRY = protocol_certification_registry()
+
+
 class CanonicalProtocolDecoder:
     """Decode one raw transaction path for live, backfill and replay modes."""
 
@@ -763,7 +1003,10 @@ def _token_id_from_payload(payload: Mapping[str, object]) -> UUID | None:
 
 __all__ = [
     "CanonicalProtocolDecoder",
+    "DEFAULT_PROTOCOL_CERTIFICATION_REGISTRY",
     "DEFAULT_PROTOCOL_REGISTRY",
+    "ProtocolCertificationRecord",
+    "ProtocolCertificationStatus",
     "ProgramKind",
     "ProtocolCoverageAudit",
     "ProtocolIdentityRegistry",
@@ -778,5 +1021,6 @@ __all__ = [
     "account_discriminator",
     "anchor_discriminator",
     "native_tag",
+    "protocol_certification_registry",
     "protocol_registry_audit",
 ]

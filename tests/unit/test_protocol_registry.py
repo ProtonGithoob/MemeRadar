@@ -10,6 +10,8 @@ from memeradar_providers.protocol_registry import (
     DEFAULT_PROTOCOL_REGISTRY,
     CanonicalProtocolDecoder,
     ProgramKind,
+    ProtocolCertificationRecord,
+    ProtocolCertificationStatus,
     ProtocolIdentityRegistry,
     ProtocolRegistryEntry,
     ProtocolSupportStatus,
@@ -18,6 +20,7 @@ from memeradar_providers.protocol_registry import (
     UnverifiedProtocolInput,
     account_discriminator,
     anchor_discriminator,
+    protocol_certification_registry,
     protocol_registry_audit,
 )
 from memeradar_providers.pump_fun_idl import (
@@ -213,6 +216,40 @@ def test_pumpfun_pin_drift_fails_closed_before_canonical_decode() -> None:
 def test_verified_identity_requires_a_date_and_supported_status() -> None:
     with pytest.raises(ValueError, match="verified_at"):
         entry(verified_at=None)
+
+
+def test_live_certificate_requires_all_deployment_evidence() -> None:
+    with pytest.raises(ValueError, match="runtime_bytecode_hash"):
+        ProtocolCertificationRecord(
+            provider="solana-rpc",
+            protocol="fixture.protocol",
+            chain_id="solana:mainnet-beta",
+            contract_address=PROGRAM_A,
+            contract_interface_identity="anchor",
+            event_signatures=("trade",),
+            known_block=100,
+            known_transaction="fixture-signature",
+            decoded_sample_event={"event_type": "trade"},
+            provider_timestamp=NOW,
+            normalized_output={"event_type": "trade"},
+            protocol_version="fixture-v1",
+            last_verified_at=NOW,
+            status=ProtocolCertificationStatus.VERIFIED_READ_ONLY,
+        )
+
+
+def test_certificate_projection_is_machine_readable_and_does_not_promote_decoder_only_ids() -> None:
+    records = protocol_certification_registry()
+    pump_fun = [record for record in records if record.protocol == "pump.fun"]
+
+    assert pump_fun
+    assert all(record.status is ProtocolCertificationStatus.TODO_VERIFY for record in pump_fun)
+    mapping = pump_fun[0].to_mapping()
+    assert mapping["chain_id"] == "solana:mainnet-beta"
+    assert mapping["contract_address"] == PUMP_FUN_PROGRAM_ID
+    assert mapping["runtime_bytecode_hash"] is None
+    assert mapping["known_transaction"] is None
+    assert mapping["status"] == "TODO_VERIFY"
 
 
 def test_native_tag_is_distinct_from_anchor_discriminator() -> None:

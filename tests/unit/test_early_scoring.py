@@ -167,8 +167,10 @@ def test_alpha_ignition_is_separate_from_safety_and_opportunity_confidence() -> 
 
     assert projection.AlphaIgnitionScore > projection.SafetyConfidence
     assert projection.OpportunityConfidence == Decimal("88")
+    assert projection.DataQualityConfidence == Decimal("88")
     assert projection.execution_quality == Decimal("60")
     assert projection.to_mapping()["execution_eligible"] is False
+    assert projection.to_mapping()["DataQualityConfidence"] == Decimal("88")
 
 
 def test_policy_rejects_unsafe_modes_and_preserves_config_identity() -> None:

@@ -530,6 +530,7 @@ class AsymmetricAlphaProjection:
     alpha_ignition_score: Decimal = Decimal("0")
     safety_confidence: Decimal = Decimal("0")
     opportunity_confidence: Decimal = Decimal("0")
+    data_quality_confidence: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
         eq_bounded = bounded_decimal(
@@ -570,6 +571,7 @@ class AsymmetricAlphaProjection:
             "alpha_ignition_score",
             "safety_confidence",
             "opportunity_confidence",
+            "data_quality_confidence",
         ):
             object.__setattr__(
                 self,
@@ -594,15 +596,21 @@ class AsymmetricAlphaProjection:
     def OpportunityConfidence(self) -> Decimal:
         return self.opportunity_confidence
 
+    @property
+    def DataQualityConfidence(self) -> Decimal:
+        return self.data_quality_confidence
+
     def to_mapping(self) -> Mapping[str, object]:
         return freeze_mapping(
             {
                 "AlphaIgnitionScore": self.alpha_ignition_score,
                 "SafetyConfidence": self.safety_confidence,
                 "OpportunityConfidence": self.opportunity_confidence,
+                "DataQualityConfidence": self.data_quality_confidence,
                 "alpha_ignition_score": self.alpha_ignition_score,
                 "safety_confidence": self.safety_confidence,
                 "opportunity_confidence": self.opportunity_confidence,
+                "data_quality_confidence": self.data_quality_confidence,
                 "early_quality_score": self.early_quality_score,
                 "upside_evidence_score": self.upside_evidence_score,
                 "rug_dump_risk": self.rug_dump_risk,
@@ -653,6 +661,11 @@ def build_asymmetric_alpha_projection(
             + (Decimal("100") - rug_risk) * Decimal("0.40")
         ) * snapshot.confidence
     opportunity_confidence = Decimal("100") * snapshot.confidence
+    # Reuse the existing evidence coverage/confidence contract.  This is a
+    # separate projection for telemetry completeness, not a second score.
+    data_quality_confidence = Decimal("100") * snapshot.confidence
+    if snapshot.risk_quality_state is not QualityState.FRESH:
+        data_quality_confidence = Decimal("0")
 
     reasons = list(snapshot.reason_codes) + [
         ReasonCode("ASYMMETRIC_ALPHA_PROJECTED"),
@@ -680,6 +693,7 @@ def build_asymmetric_alpha_projection(
         alpha_ignition_score=alpha_ignition_score,
         safety_confidence=safety_confidence,
         opportunity_confidence=opportunity_confidence,
+        data_quality_confidence=data_quality_confidence,
     )
 
 

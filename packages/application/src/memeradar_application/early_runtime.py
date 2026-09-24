@@ -1021,6 +1021,9 @@ class EarlyRuntimeService:
             "OpportunityConfidence": (
                 None if alpha_projection is None else alpha_projection.opportunity_confidence
             ),
+            "DataQualityConfidence": (
+                None if alpha_projection is None else alpha_projection.data_quality_confidence
+            ),
             "alpha_ignition_score": (
                 None if alpha_projection is None else alpha_projection.alpha_ignition_score
             ),
@@ -1029,6 +1032,9 @@ class EarlyRuntimeService:
             ),
             "opportunity_confidence": (
                 None if alpha_projection is None else alpha_projection.opportunity_confidence
+            ),
+            "data_quality_confidence": (
+                None if alpha_projection is None else alpha_projection.data_quality_confidence
             ),
             "paper_eligible": None if decision is None else decision.entry_ready,
             "execution_status": (

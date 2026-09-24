@@ -157,6 +157,7 @@ _CHANGE_FIELDS = (
     ("AlphaIgnitionScore", "AlphaIgnitionScore"),
     ("SafetyConfidence", "SafetyConfidence"),
     ("OpportunityConfidence", "OpportunityConfidence"),
+    ("DataQualityConfidence", "DataQualityConfidence"),
 )
 
 _SNAPSHOT_ALIASES: dict[str, tuple[str, ...]] = {
@@ -180,6 +181,7 @@ _SNAPSHOT_ALIASES: dict[str, tuple[str, ...]] = {
     "AlphaIgnitionScore": ("AlphaIgnitionScore", "alpha_ignition_score"),
     "SafetyConfidence": ("SafetyConfidence", "safety_confidence"),
     "OpportunityConfidence": ("OpportunityConfidence", "opportunity_confidence"),
+    "DataQualityConfidence": ("DataQualityConfidence", "data_quality_confidence"),
 }
 
 _ALLOWED_EVIDENCE_KEYS = frozenset(
@@ -255,6 +257,7 @@ _ALLOWED_EVIDENCE_KEYS = frozenset(
         "AlphaIgnitionScore",
         "SafetyConfidence",
         "OpportunityConfidence",
+        "DataQualityConfidence",
         "execution_status",
         "provider_confidence",
         "message_state",
@@ -582,6 +585,7 @@ class EarlyAlphaAlertRenderer(AlertRenderer):
             ("AlphaIgnitionScore", "AlphaIgnitionScore"),
             ("SafetyConfidence", "SafetyConfidence"),
             ("OpportunityConfidence", "OpportunityConfidence"),
+            ("DataQualityConfidence", "DataQualityConfidence"),
             ("Execution", "execution_status"),
             ("Provider confidence", "provider_confidence"),
         ):

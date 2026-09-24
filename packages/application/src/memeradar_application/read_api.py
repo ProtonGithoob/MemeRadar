@@ -1126,6 +1126,7 @@ class EarlyRadarView:
                         "rug_dump_risk": self.asymmetric_alpha.rug_dump_risk,
                         "execution_quality": self.asymmetric_alpha.execution_quality,
                         "evidence_confidence": self.asymmetric_alpha.evidence_confidence,
+                        "data_quality_confidence": self.asymmetric_alpha.data_quality_confidence,
                         "launch_age_ms": self.asymmetric_alpha.launch_age_ms,
                         "market_cap_at_decision": self.asymmetric_alpha.market_cap_at_decision,
                         "reason_codes": [str(r) for r in self.asymmetric_alpha.reason_codes],
