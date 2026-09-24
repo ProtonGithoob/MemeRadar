@@ -36,10 +36,12 @@ from memeradar_application.provider_routing import (
 from memeradar_domain import Chain, TokenIdentity
 
 from .birdeye import BirdeyeRestAdapter
+from .blockscout import BlockscoutAdapter
 from .dexscreener import DexScreenerAdapter
 from .evm_rpc import EvmRpcAdapter
 from .gmgn import GmgnAdapter
 from .helius import HeliusRpcAdapter
+from .jupiter import JupiterAdapter
 from .madeonsol_robinhood import MadeOnSolRobinhoodAdapter
 from .narrative import (
     DisabledNarrativeAdapter,
@@ -219,6 +221,8 @@ class ProviderBundle:
     solana_rpc: SolanaRpcAdapter
     bnb_rpc: EvmRpcAdapter | None
     robinhood_rpc: EvmRpcAdapter | None
+    evm_rpcs: Mapping[str, EvmRpcAdapter]
+    blockscout: BlockscoutAdapter | None
     madeonsol: MadeOnSolRobinhoodAdapter | None
     gmgn: GmgnAdapter | None
     robinhood_launchpad_reconciler: RobinhoodLaunchpadReconciler | None
@@ -229,6 +233,7 @@ class ProviderBundle:
     dexscreener: DexScreenerAdapter
     market_data: MarketDataPort
     quote: QuotePort
+    jupiter: JupiterAdapter | None
     birdeye: BirdeyeRestAdapter | None
     rugcheck: RiskDataPort | None
     social_metadata: SocialMetadataPort | None
@@ -282,16 +287,19 @@ class ProviderBundle:
             self.solana_rpc,
             self.bnb_rpc,
             self.robinhood_rpc,
+            self.blockscout,
             self.madeonsol,
             self.gmgn,
             self.helius,
             self.dexscreener,
+            self.jupiter,
             self.birdeye,
             self.rugcheck,
             self.social_metadata,
             self.social_analytics,
             self.narrative,
             self.telegram,
+            *self.evm_rpcs.values(),
         ):
             if provider is None or id(provider) in seen:
                 continue
@@ -353,6 +361,9 @@ def build_provider_bundle(
     )
     external_wallet_configured = external_wallet_port is not None
     custom_quote_configured = custom_quote_port is not None
+    jupiter_configured = (
+        settings.paper_quote_provider == "jupiter" and _configured(settings.paper_quote_url)
+    )
     telegram_configured = (
         _configured(settings.telegram_api_url)
         and _configured(settings.telegram_bot_token)
@@ -367,6 +378,7 @@ def build_provider_bundle(
         external_narrative_configured=external_narrative_configured,
         external_wallet_configured=external_wallet_configured,
         custom_quote_configured=custom_quote_configured,
+        jupiter_configured=jupiter_configured,
         telegram_configured=telegram_configured,
         market_data_provider=settings.market_data_provider,
         paper_quote_provider=settings.paper_quote_provider,
@@ -405,6 +417,37 @@ def build_provider_bundle(
         )
         if Chain.ROBINHOOD.value in settings.enabled_chains
         and _configured(settings.robinhood_rpc_url)
+        else None
+    )
+    evm_rpcs: dict[str, EvmRpcAdapter] = {}
+    for evm_chain, url, setting_chain_id in (
+        (Chain.BASE, settings.base_rpc_url, 8_453),
+        (Chain.ETHEREUM, settings.ethereum_rpc_url, 1),
+        (Chain.ARBITRUM, settings.arbitrum_rpc_url, 42_161),
+        (Chain.AVALANCHE, settings.avalanche_rpc_url, 43_114),
+        (Chain.POLYGON, settings.polygon_rpc_url, 137),
+        (Chain.UNICHAIN, settings.unichain_rpc_url, 130),
+    ):
+        if evm_chain.value not in settings.enabled_chains or not _configured(url):
+            continue
+        evm_rpcs[evm_chain.value] = EvmRpcAdapter(
+            evm_chain,
+            cast(str, url),
+            expected_chain_id=setting_chain_id,
+            client=client,
+            transport=transport,
+            clock=clock,
+        )
+    blockscout = (
+        BlockscoutAdapter(
+            Chain.ROBINHOOD,
+            cast(str, settings.robinhood_blockscout_api_url),
+            client=client,
+            transport=transport,
+            clock=clock,
+        )
+        if _configured(settings.robinhood_blockscout_api_url)
+        and Chain.ROBINHOOD.value in settings.enabled_chains
         else None
     )
     madeonsol = (
@@ -458,6 +501,7 @@ def build_provider_bundle(
         chain_routes[Chain.BNB.value] = bnb_rpc
     if robinhood_rpc is not None:
         chain_routes[Chain.ROBINHOOD.value] = robinhood_rpc
+    chain_routes.update(evm_rpcs)
 
     dexscreener = DexScreenerAdapter(
         settings.dexscreener_api_url,
@@ -491,6 +535,18 @@ def build_provider_bundle(
         else BoundedMarketDataFallback(market_providers)
     )
 
+    jupiter = (
+        JupiterAdapter(
+            cast(str, settings.paper_quote_url),
+            api_key=settings.paper_quote_api_key,
+            client=client,
+            transport=transport,
+            clock=clock,
+        )
+        if jupiter_configured
+        else None
+    )
+
     # The existing Birdeye adapter is intentionally not cast to QuotePort: it
     # exposes market snapshots, while DexScreener is the normalized reference
     # quote implementation. Legacy URL/key variables remain available for a
@@ -501,6 +557,9 @@ def build_provider_bundle(
             quote_providers.append(custom_quote_port)
         else:
             quote_providers.append(_UnavailableQuotePort())
+    elif settings.paper_quote_provider == "jupiter":
+        quote_providers.append(jupiter or _UnavailableQuotePort())
+        quote_providers.append(dexscreener)
     else:
         quote_providers.append(dexscreener)
         if custom_quote_port is not None:
@@ -575,6 +634,9 @@ def build_provider_bundle(
     optional_statuses = {
         "bnb_rpc": "CONFIGURED" if bnb_rpc is not None else "UNCONFIGURED_OPTIONAL",
         "robinhood_rpc": ("CONFIGURED" if robinhood_rpc is not None else "UNCONFIGURED_OPTIONAL"),
+        "robinhood_blockscout": (
+            "CONFIGURED" if blockscout is not None else "UNCONFIGURED_OPTIONAL"
+        ),
         "madeonsol": (
             "CONFIGURED"
             if madeonsol is not None
@@ -617,6 +679,7 @@ def build_provider_bundle(
             else "UNCONFIGURED_OPTIONAL"
         ),
         "telegram": "CONFIGURED" if telegram is not None else "UNCONFIGURED_OPTIONAL",
+        "jupiter": "CONFIGURED" if jupiter is not None else "UNCONFIGURED_OPTIONAL",
     }
 
     return ProviderBundle(
@@ -625,6 +688,8 @@ def build_provider_bundle(
         solana_rpc=solana_rpc,
         bnb_rpc=bnb_rpc,
         robinhood_rpc=robinhood_rpc,
+        evm_rpcs=evm_rpcs,
+        blockscout=blockscout,
         madeonsol=madeonsol,
         gmgn=gmgn,
         robinhood_launchpad_reconciler=(
@@ -641,6 +706,7 @@ def build_provider_bundle(
         dexscreener=dexscreener,
         market_data=market_data,
         quote=quote,
+        jupiter=jupiter,
         birdeye=birdeye,
         rugcheck=rugcheck,
         social_metadata=social_metadata,

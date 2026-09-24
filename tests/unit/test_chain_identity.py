@@ -63,3 +63,17 @@ def test_evm_pool_identity_reuses_the_same_chain_address_validator() -> None:
 def test_solana_identity_still_rejects_evm_addresses() -> None:
     with pytest.raises(ValueError, match="base58"):
         TokenIdentity(mint_address=EVM_ADDRESS, chain=Chain.SOLANA)
+
+
+def test_architecture_chain_identities_cover_disabled_evm_and_sui_seams() -> None:
+    assert Chain.BASE.is_evm is True
+    assert Chain.ETHEREUM.is_evm is True
+    assert Chain.ARBITRUM.is_evm is True
+    assert Chain.AVALANCHE.is_evm is True
+    assert Chain.POLYGON.is_evm is True
+    assert Chain.UNICHAIN.is_evm is True
+    assert TokenIdentity(mint_address=EVM_ADDRESS, chain=Chain.BASE).chain is Chain.BASE
+    assert TokenIdentity(mint_address=EVM_ADDRESS, chain=Chain.ETHEREUM).canonical_id == (
+        f"ethereum:{EVM_ADDRESS_NORMALIZED}"
+    )
+    assert require_chain_address("0x1", Chain.SUI) == "0x" + "0" * 63 + "1"

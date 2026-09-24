@@ -54,6 +54,32 @@ def test_provider_compatibility_aliases_and_explicit_choices_are_normalized() ->
     assert settings.paper_quote_provider == "dexscreener"
 
 
+def test_config_can_select_the_reviewed_jupiter_quote_adapter() -> None:
+    settings = Settings.from_env(
+        {
+            "PAPER_QUOTE_PROVIDER": "JUPITER",
+            "JUPITER_API_BASE_URL": "https://api.jup.ag/swap/v2",
+        }
+    )
+    assert settings.paper_quote_provider == "jupiter"
+    assert settings.paper_quote_url == "https://api.jup.ag/swap/v2"
+
+
+def test_disabled_evm_chains_require_explicit_rpc_when_enabled() -> None:
+    settings = Settings.from_env(
+        {
+            "ENABLED_CHAINS": "solana,base,ethereum",
+            "BASE_RPC_URL": "https://base.example/rpc",
+            "ETHEREUM_RPC_URL": "https://ethereum.example/rpc",
+        }
+    )
+    assert settings.enabled_chains == ("solana", "base", "ethereum")
+    assert settings.base_rpc_url == "https://base.example/rpc"
+    assert settings.ethereum_rpc_url == "https://ethereum.example/rpc"
+    with pytest.raises(ValueError, match="BASE_RPC_URL is required"):
+        Settings.from_env({"ENABLED_CHAINS": "solana,base"})
+
+
 def test_legacy_narrative_configuration_selects_external_provider_without_selector() -> None:
     settings = Settings.from_env(
         {

@@ -15,7 +15,13 @@ from memeradar_application.provider_contracts import (
 )
 from memeradar_domain import Chain, TokenIdentity
 from memeradar_providers.chainlink import ChainlinkFeedConfig, ChainlinkReferencePriceAdapter
-from memeradar_providers.evm_rpc import EVM_CHAIN_IDS, EvmRpcAdapter
+from memeradar_providers.evm_chains import EVM_CHAIN_DESCRIPTORS, BaseChainAdapter
+from memeradar_providers.evm_rpc import (
+    EVM_CHAIN_IDS,
+    ROBINHOOD_MAINNET_CHAIN_ID,
+    ROBINHOOD_TESTNET_CHAIN_ID,
+    EvmRpcAdapter,
+)
 from memeradar_providers.transport import (
     ProviderRateLimitedError,
     ProviderSchemaError,
@@ -69,6 +75,75 @@ def test_robinhood_rpc_verifies_eth_chain_id_without_write_methods() -> None:
             assert adapter.chain_id == 4663
             assert not hasattr(adapter, "send_transaction")
             assert EVM_CHAIN_IDS[Chain.ROBINHOOD] == 4663
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_generic_evm_rpc_accepts_disabled_architecture_chain_identity() -> None:
+    adapter = EvmRpcAdapter(Chain.BASE, "https://fixture.base.example")
+    assert adapter.chain is Chain.BASE
+    assert adapter._expected_chain_id == 8453
+
+
+def test_robinhood_network_identity_keeps_mainnet_and_testnet_distinct() -> None:
+    assert ROBINHOOD_MAINNET_CHAIN_ID == 4663
+    assert ROBINHOOD_TESTNET_CHAIN_ID == 46630
+    assert EVM_CHAIN_IDS[Chain.ROBINHOOD] == ROBINHOOD_MAINNET_CHAIN_ID
+
+
+def test_named_chain_adapters_reuse_shared_rpc_and_stay_read_only() -> None:
+    adapter = BaseChainAdapter("https://fixture.base.example")
+    assert adapter.chain is Chain.BASE
+    assert adapter.descriptor == EVM_CHAIN_DESCRIPTORS[Chain.BASE]
+    assert not hasattr(adapter, "send_transaction")
+
+
+def test_evm_rpc_reads_logs_and_runtime_bytecode_without_write_capability() -> None:
+    calls: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body["method"])
+        if body["method"] == "eth_getLogs":
+            assert body["params"] == [
+                {
+                    "address": [ROBINHOOD_ADDRESS],
+                    "topics": ["0x" + "12" * 32],
+                    "fromBlock": "0x10",
+                    "toBlock": "0x12",
+                }
+            ]
+            return httpx.Response(
+                200,
+                json={"jsonrpc": "2.0", "id": 1, "result": [{"address": ROBINHOOD_ADDRESS}]},
+            )
+        return httpx.Response(
+            200,
+            json={"jsonrpc": "2.0", "id": 1, "result": "0x6000"},
+        )
+
+    async def scenario() -> None:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter = EvmRpcAdapter(
+            Chain.ROBINHOOD,
+            "https://fixture.robinhood.example",
+            client=client,
+            transport=transport(),
+            clock=lambda: NOW,
+        )
+        try:
+            logs = await adapter.fetch_logs(
+                addresses=(ROBINHOOD_ADDRESS,),
+                topics=("0x" + "12" * 32,),
+                from_block=16,
+                to_block=18,
+                context=context(),
+            )
+            assert logs[0]["address"] == ROBINHOOD_ADDRESS
+            assert await adapter.fetch_code(ROBINHOOD_ADDRESS, context=context()) == "0x6000"
+            assert calls == ["eth_getLogs", "eth_getCode"]
         finally:
             await client.aclose()
 

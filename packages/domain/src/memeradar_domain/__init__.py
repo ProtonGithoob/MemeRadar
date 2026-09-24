@@ -53,6 +53,7 @@ from .identities import (
     require_chain_address,
     require_evm_address,
     require_solana_address,
+    require_sui_address,
 )
 from .lifecycle import (
     Candidate,
@@ -160,6 +161,7 @@ __all__ = [
     "normalize_https_url",
     "require_chain_address",
     "require_evm_address",
+    "require_sui_address",
     "normalize_reason_codes",
     "require_solana_address",
 ]

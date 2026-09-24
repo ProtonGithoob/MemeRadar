@@ -99,11 +99,14 @@ class ChainFeeReservePolicy:
             normalized = normalize_chain(chain)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"unsupported chain for fee reserve: {chain!r}") from exc
-        return {
+        reserves = {
             Chain.SOLANA: self.solana,
             Chain.BNB: self.bnb,
             Chain.ROBINHOOD: self.robinhood,
-        }[normalized]
+        }
+        if normalized not in reserves:
+            raise ValueError(f"unsupported chain for fee reserve: {normalized.value!r}")
+        return reserves[normalized]
 
 
 @dataclass(frozen=True, slots=True)

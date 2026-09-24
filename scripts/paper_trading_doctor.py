@@ -152,6 +152,13 @@ def run_doctor(environ: Mapping[str, str] | None = None) -> DoctorReport:
             report["status"] = "DEGRADED"
             report["reason"] = "BIRDEYE_QUOTE_ADAPTER_UNAVAILABLE"
             report["external_network"] = "not_checked"
+        elif (
+            settings.paper_quote_provider == "jupiter"
+            and configuration["quote_url"] != "present"
+        ):
+            report["status"] = "BLOCKED_EXTERNAL"
+            report["reason"] = "JUPITER_QUOTE_ADAPTER_NOT_CONFIGURED"
+            report["external_network"] = "not_checked"
     report["modes"] = {
         "analysis_only": settings.analysis_only,
         "paper_trading": settings.paper_trading,

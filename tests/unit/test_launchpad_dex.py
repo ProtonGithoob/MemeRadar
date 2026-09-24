@@ -1,10 +1,13 @@
 """Unit contracts for protocol-local launchpad and DEX event parsing."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 
-from memeradar_application.provider_contracts import ProviderRequestContext
+from memeradar_application.provider_contracts import ProviderRequestContext, QuoteRequest
+from memeradar_domain import QualityState
 from memeradar_providers.launchpad_dex import (
     LAUNCHPAD_PARSER_VERSION,
     PROTOCOL_EVENT_SCHEMA_VERSION,
@@ -24,6 +27,7 @@ NOW = datetime(2026, 8, 27, 11, 0, tzinfo=UTC)
 MINT = "So11111111111111111111111111111111111111112"
 POOL = "11111111111111111111111111111111"
 QUOTE = "So11111111111111111111111111111111111111112"
+QUOTE_POOL = "Vote111111111111111111111111111111111111111"
 SIGNATURE = "1" * 88
 
 
@@ -33,6 +37,56 @@ def context() -> ProviderRequestContext:
         requested_at=NOW,
         deadline_at=NOW + timedelta(seconds=10),
     )
+
+
+def test_raydium_pool_parser_and_cpmm_quote_keep_liquidity_evidence_explicit() -> None:
+    adapter = RaydiumAdapter()
+    pool = adapter.parse_pool(
+        {
+            "pool_address": POOL,
+            "base_mint": MINT,
+            "quote_mint": QUOTE_POOL,
+            "pool_type": "CPMM",
+            "executable_liquidity": True,
+            "base_reserve": "1000",
+            "quote_reserve": "2000",
+            "fee_bps": 25,
+            "created_at": "2026-08-27T10:59:58Z",
+        },
+        context(),
+    )
+    assert pool.pool_type == "CPMM"
+    assert pool.quality_state is QualityState.FRESH
+    quote = asyncio.run(
+        adapter.quote(
+            QuoteRequest(
+                context=context(),
+                input_mint=MINT,
+                output_mint=QUOTE_POOL,
+                amount=Decimal("100"),
+                slippage_bps=100,
+            ),
+            pool=pool,
+        )
+    )
+    assert quote.output_amount > Decimal("0")
+    assert quote.price_impact_bps > Decimal("0")
+    assert POOL in quote.route
+
+
+def test_raydium_unknown_executable_liquidity_does_not_produce_a_fresh_quote() -> None:
+    pool = RaydiumAdapter().parse_pool(
+        {
+            "pool_address": POOL,
+            "base_mint": MINT,
+            "quote_mint": QUOTE_POOL,
+            "pool_type": "CLMM",
+            "base_reserve": "0",
+            "quote_reserve": "0",
+        },
+        context(),
+    )
+    assert pool.quality_state is QualityState.UNKNOWN
 
 
 @pytest.mark.parametrize(

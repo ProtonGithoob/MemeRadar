@@ -1,4 +1,4 @@
-"""Shared read-only EVM JSON-RPC adapter for BNB and Robinhood Chain."""
+"""Shared read-only EVM JSON-RPC adapter for supported EVM chains."""
 
 from __future__ import annotations
 
@@ -44,7 +44,18 @@ from .transport import (
 
 Clock = Callable[[], datetime]
 EVM_RPC_PARSER_VERSION = "evm-rpc-v1"
-EVM_CHAIN_IDS: Mapping[Chain, int] = {Chain.BNB: 56, Chain.ROBINHOOD: 4663}
+ROBINHOOD_MAINNET_CHAIN_ID = 4_663
+ROBINHOOD_TESTNET_CHAIN_ID = 46_630
+EVM_CHAIN_IDS: Mapping[Chain, int] = {
+    Chain.ETHEREUM: 1,
+    Chain.BNB: 56,
+    Chain.POLYGON: 137,
+    Chain.AVALANCHE: 43_114,
+    Chain.ARBITRUM: 42_161,
+    Chain.BASE: 8_453,
+    Chain.UNICHAIN: 130,
+    Chain.ROBINHOOD: ROBINHOOD_MAINNET_CHAIN_ID,
+}
 EVM_CHAIN_ID_BY_NAME = {chain.value: value for chain, value in EVM_CHAIN_IDS.items()}
 _CREDENTIAL_QUERY_KEYS = {
     "api_key",
@@ -77,6 +88,21 @@ def _hex_int(value: object, field: str) -> int:
         return int(normalized, 16 if _EVM_HEX_INT.fullmatch(normalized) else 10)
     except ValueError as exc:
         raise ProviderSchemaError(f"provider {field} was invalid") from exc
+
+
+def _block_tag(value: int | str, field: str) -> str:
+    if isinstance(value, bool) or not isinstance(value, int | str):
+        raise TypeError(f"{field} must be an integer or block tag")
+    if isinstance(value, int):
+        if value < 0:
+            raise ValueError(f"{field} must not be negative")
+        return hex(value)
+    normalized = value.strip().lower()
+    if normalized in {"latest", "pending", "safe", "finalized", "earliest"}:
+        return normalized
+    if _EVM_HEX_INT.fullmatch(normalized) is not None:
+        return normalized
+    raise ValueError(f"{field} must be a supported block tag")
 
 
 class EvmRpcHealthStatus(str, Enum):
@@ -310,6 +336,75 @@ class EvmRpcAdapter(OnChainPort):
             context=context,
         )
 
+    async def fetch_logs(
+        self,
+        *,
+        addresses: Sequence[str],
+        topics: Sequence[str] = (),
+        from_block: int | str = "latest",
+        to_block: int | str = "latest",
+        context: ProviderRequestContext,
+    ) -> tuple[Mapping[str, object], ...]:
+        """Read canonical logs for verified protocol adapters."""
+
+        normalized_addresses = tuple(
+            require_chain_address(value, self.chain, "address") for value in addresses
+        )
+        if not normalized_addresses:
+            raise ValueError("addresses must not be empty")
+        normalized_topics = tuple(require_text(value, "topic", max_length=66) for value in topics)
+        if any(
+            re.fullmatch(r"0x[0-9a-f]{64}", value.lower()) is None
+            for value in normalized_topics
+        ):
+            raise ValueError("topics must be 32-byte hex topics")
+        topic_filter: list[object] = (
+            []
+            if not normalized_topics
+            else [normalized_topics[0]]
+            if len(normalized_topics) == 1
+            else [list(normalized_topics)]
+        )
+        result = await self._rpc(
+            "eth_getLogs",
+            (
+                {
+                    "address": list(normalized_addresses),
+                    "topics": topic_filter,
+                    "fromBlock": _block_tag(from_block, "from_block"),
+                    "toBlock": _block_tag(to_block, "to_block"),
+                },
+            ),
+            context=context,
+        )
+        if not isinstance(result, Sequence) or isinstance(result, str | bytes | bytearray):
+            raise ProviderSchemaError("provider logs result was invalid")
+        logs: list[Mapping[str, object]] = []
+        for item in result:
+            if not isinstance(item, Mapping):
+                raise ProviderSchemaError("provider log entry was invalid")
+            logs.append(dict(item))
+        return tuple(logs)
+
+    async def fetch_code(
+        self,
+        address: str,
+        *,
+        block_tag: int | str = "latest",
+        context: ProviderRequestContext,
+    ) -> str:
+        """Read runtime bytecode for deployment identity verification."""
+
+        normalized_address = require_chain_address(address, self.chain, "address")
+        result = await self._rpc(
+            "eth_getCode",
+            (normalized_address, _block_tag(block_tag, "block_tag")),
+            context=context,
+        )
+        if not isinstance(result, str) or re.fullmatch(r"0x[0-9a-fA-F]*", result) is None:
+            raise ProviderSchemaError("provider runtime bytecode was invalid")
+        return result.lower()
+
     async def fetch_transaction_receipt(
         self,
         transaction_hash: str,
@@ -444,6 +539,8 @@ __all__ = [
     "EVM_CHAIN_IDS",
     "EVM_CHAIN_ID_BY_NAME",
     "EVM_RPC_PARSER_VERSION",
+    "ROBINHOOD_MAINNET_CHAIN_ID",
+    "ROBINHOOD_TESTNET_CHAIN_ID",
     "EvmRpcAdapter",
     "EvmRpcHealthStatus",
 ]

@@ -8,20 +8,34 @@ import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from enum import Enum
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from memeradar_application.provider_contracts import (
     DiscoveryCandidate,
     ProviderRequestContext,
+    QuoteRequest,
+    QuoteSnapshot,
 )
-from memeradar_domain import Observation, PoolIdentity, Provenance, QualityState, TokenIdentity
+from memeradar_domain import (
+    Chain,
+    Freshness,
+    Observation,
+    PoolIdentity,
+    PriceSemantics,
+    Provenance,
+    QualityState,
+    TokenIdentity,
+    normalize_chain,
+)
 from memeradar_domain.common import (
     ensure_ordered_timestamps,
     ensure_utc,
     freeze_mapping,
     require_text,
+    to_decimal,
 )
 from memeradar_domain.identities import require_solana_address
 
@@ -735,11 +749,186 @@ class PumpSwapAdapter(LaunchpadDexAdapter):
         super().__init__(ProtocolVenue.PUMP_SWAP)
 
 
+@dataclass(frozen=True, slots=True)
+class RaydiumPoolSnapshot:
+    """Normalized CPMM/CLMM pool evidence from a read-only account read."""
+
+    pool_address: str
+    base_mint: str
+    quote_mint: str
+    pool_type: str
+    executable_liquidity: bool
+    base_reserve: Decimal | int | float | str
+    quote_reserve: Decimal | int | float | str
+    fee_bps: Decimal | int | float | str = Decimal("0")
+    created_at: datetime | None = None
+    observed_at: datetime | None = None
+    quality_state: QualityState = QualityState.UNKNOWN
+    provenance: Provenance | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "pool_address", require_solana_address(self.pool_address, "pool_address")
+        )
+        object.__setattr__(
+            self, "base_mint", require_solana_address(self.base_mint, "base_mint")
+        )
+        object.__setattr__(
+            self, "quote_mint", require_solana_address(self.quote_mint, "quote_mint")
+        )
+        if self.base_mint == self.quote_mint:
+            raise ValueError("base_mint and quote_mint must differ")
+        pool_type = require_text(self.pool_type, "pool_type", max_length=16).upper()
+        if pool_type not in {"CPMM", "CLMM"}:
+            raise ValueError("pool_type must be CPMM or CLMM")
+        object.__setattr__(self, "pool_type", pool_type)
+        if not isinstance(self.executable_liquidity, bool):
+            raise TypeError("executable_liquidity must be a boolean")
+        for field_name in ("base_reserve", "quote_reserve", "fee_bps"):
+            value = to_decimal(getattr(self, field_name), field_name)
+            if value < 0:
+                raise ValueError(f"{field_name} must not be negative")
+            object.__setattr__(self, field_name, value)
+        if to_decimal(self.fee_bps, "fee_bps") > Decimal("1000"):
+            raise ValueError("fee_bps must not exceed 1000")
+        if self.created_at is not None:
+            object.__setattr__(self, "created_at", ensure_utc(self.created_at, "created_at"))
+        if self.observed_at is not None:
+            object.__setattr__(self, "observed_at", ensure_utc(self.observed_at, "observed_at"))
+        object.__setattr__(self, "quality_state", QualityState(self.quality_state))
+        if self.provenance is not None and not isinstance(self.provenance, Provenance):
+            raise TypeError("provenance must be a Provenance or None")
+
+
 class RaydiumAdapter(LaunchpadDexAdapter):
-    """Raydium AMM/CLMM event adapter."""
+    """Raydium AMM/CLMM event and bounded read-only quote adapter."""
 
     def __init__(self) -> None:
         super().__init__(ProtocolVenue.RAYDIUM)
+
+    def parse_pool(
+        self,
+        message: object,
+        context: ProviderRequestContext,
+    ) -> RaydiumPoolSnapshot:
+        if not isinstance(message, Mapping):
+            raise ProviderSchemaError("Raydium pool must be an object")
+        pool_address = _field(message, "pool_address", "pool", "amm_id", "ammId")
+        base_mint = _field(message, "base_mint", "baseMint", "token_mint", "mint")
+        quote_mint = _field(message, "quote_mint", "quoteMint", "quote")
+        if not all(isinstance(value, str) for value in (pool_address, base_mint, quote_mint)):
+            raise ProviderSchemaError("Raydium pool identity is incomplete")
+        assert isinstance(pool_address, str)
+        assert isinstance(base_mint, str)
+        assert isinstance(quote_mint, str)
+        observed_at = ensure_utc(context.requested_at, "observed_at")
+        created_at = _optional_timestamp(message, "created_at", "createdAt", "block_time")
+        executable_liquidity = message.get("executable_liquidity", False)
+        if not isinstance(executable_liquidity, bool):
+            raise ProviderSchemaError("Raydium executable_liquidity must be a boolean")
+        try:
+            provenance = Provenance(
+                provider="raydium",
+                source_id=f"raydium-pool:{pool_address}",
+                observed_at=observed_at,
+                parser_version="raydium-pool-v1",
+                raw_payload_hash=(
+                    "sha256:"
+                    + hashlib.sha256(
+                        json.dumps(dict(message), sort_keys=True, default=str).encode()
+                    ).hexdigest()
+                ),
+            )
+            return RaydiumPoolSnapshot(
+                pool_address=pool_address,
+                base_mint=base_mint,
+                quote_mint=quote_mint,
+                pool_type=str(message.get("pool_type", message.get("poolType", "CPMM"))),
+                executable_liquidity=executable_liquidity,
+                base_reserve=message.get("base_reserve", message.get("baseReserve", 0)),
+                quote_reserve=message.get("quote_reserve", message.get("quoteReserve", 0)),
+                fee_bps=message.get("fee_bps", message.get("feeBps", 0)),
+                created_at=created_at,
+                observed_at=observed_at,
+                quality_state=(
+                    QualityState.FRESH
+                    if executable_liquidity
+                    and to_decimal(
+                        message.get("base_reserve", message.get("baseReserve", 0)),
+                        "base_reserve",
+                    )
+                    > 0
+                    and to_decimal(
+                        message.get("quote_reserve", message.get("quoteReserve", 0)),
+                        "quote_reserve",
+                    )
+                    > 0
+                    else QualityState.UNKNOWN
+                ),
+                provenance=provenance,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ProviderSchemaError("Raydium pool failed normalization") from exc
+
+    async def quote(
+        self,
+        request: QuoteRequest,
+        *,
+        pool: RaydiumPoolSnapshot,
+    ) -> QuoteSnapshot:
+        if not isinstance(request, QuoteRequest):
+            raise TypeError("request must be a QuoteRequest")
+        if not isinstance(pool, RaydiumPoolSnapshot):
+            raise TypeError("pool must be a RaydiumPoolSnapshot")
+        if normalize_chain(request.chain) is not Chain.SOLANA:
+            raise ValueError("Raydium requires a Solana quote request")
+        input_is_base = request.input_mint == pool.base_mint
+        input_is_quote = request.input_mint == pool.quote_mint
+        if not (input_is_base or input_is_quote):
+            raise ValueError("input_mint is not in the Raydium pool")
+        expected_output = pool.quote_mint if input_is_base else pool.base_mint
+        if request.output_mint != expected_output:
+            raise ValueError("output_mint does not match the Raydium pool")
+        reserve_in = to_decimal(
+            pool.base_reserve if input_is_base else pool.quote_reserve,
+            "reserve_in",
+        )
+        reserve_out = to_decimal(
+            pool.quote_reserve if input_is_base else pool.base_reserve,
+            "reserve_out",
+        )
+        if reserve_in <= 0 or reserve_out <= 0:
+            raise ProviderSchemaError("Raydium pool reserves are not executable")
+        amount = to_decimal(request.amount, "amount")
+        fee_multiplier = Decimal("1") - to_decimal(pool.fee_bps, "fee_bps") / Decimal("10000")
+        effective_amount = amount * fee_multiplier
+        output_amount = reserve_out * effective_amount / (reserve_in + effective_amount)
+        mid_rate = reserve_out / reserve_in
+        execution_rate = output_amount / amount
+        impact = max(Decimal("0"), (Decimal("1") - execution_rate / mid_rate) * Decimal("10000"))
+        observed_at = pool.observed_at or ensure_utc(request.context.requested_at, "observed_at")
+        return QuoteSnapshot(
+            provenance=pool.provenance
+            or Provenance(
+                provider="raydium",
+                source_id=f"raydium-pool:{pool.pool_address}",
+                observed_at=observed_at,
+                parser_version="raydium-pool-v1",
+            ),
+            input_mint=request.input_mint,
+            output_mint=request.output_mint,
+            input_amount=amount,
+            output_amount=output_amount,
+            price_impact_bps=impact,
+            route=("raydium", pool.pool_type, pool.pool_address),
+            freshness=Freshness(
+                as_of=observed_at,
+                expires_at=observed_at + timedelta(seconds=15),
+                quality_state=pool.quality_state,
+            ),
+            price_semantics=PriceSemantics.EXECUTION_QUOTE,
+            chain="solana",
+        )
 
 
 class MeteoraAdapter(LaunchpadDexAdapter):
@@ -887,5 +1076,6 @@ __all__ = [
     "PumpFunAdapter",
     "PumpSwapAdapter",
     "RaydiumAdapter",
+    "RaydiumPoolSnapshot",
     "RICH_LAUNCHPAD_PARSER_VERSION",
 ]

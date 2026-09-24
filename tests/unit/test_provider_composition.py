@@ -144,6 +144,52 @@ def test_keyless_provider_bundle_builds_without_network_or_optional_credentials(
         asyncio.run(bundle.aclose())
 
 
+def test_jupiter_quote_selection_uses_bounded_fallback_to_dexscreener() -> None:
+    settings = Settings.from_env(
+        {
+            "PAPER_QUOTE_PROVIDER": "jupiter",
+            "JUPITER_API_BASE_URL": "https://api.jup.ag/swap/v2",
+        }
+    )
+    bundle = build_provider_bundle(settings)
+    try:
+        assert bundle.jupiter is not None
+        assert bundle.route_plan.quote.providers == ("jupiter", "dexscreener")
+        assert bundle.quote.provider_name == "fallback:jupiter-swap-v2,dexscreener"
+    finally:
+        asyncio.run(bundle.aclose())
+
+
+def test_optional_robinhood_blockscout_enrichment_is_composed_without_trade_authority() -> None:
+    settings = Settings.from_env(
+        {"ROBINHOOD_BLOCKSCOUT_API_URL": "https://blockscout.robinhood.example"}
+    )
+    bundle = build_provider_bundle(settings)
+    try:
+        assert bundle.blockscout is not None
+        assert bundle.blockscout.provider_name == "blockscout:robinhood"
+        assert "execution" not in bundle.blockscout.capabilities
+    finally:
+        asyncio.run(bundle.aclose())
+
+
+def test_enabled_base_and_ethereum_use_the_shared_evm_rpc_composition() -> None:
+    settings = Settings.from_env(
+        {
+            "ENABLED_CHAINS": "solana,base,ethereum",
+            "BASE_RPC_URL": "https://base.example/rpc",
+            "ETHEREUM_RPC_URL": "https://ethereum.example/rpc",
+        }
+    )
+    bundle = build_provider_bundle(settings)
+    try:
+        assert bundle.evm_rpcs["base"].chain.value == "base"
+        assert bundle.evm_rpcs["ethereum"].chain.value == "ethereum"
+        assert bundle.chain_routes["base"] is bundle.evm_rpcs["base"]
+    finally:
+        asyncio.run(bundle.aclose())
+
+
 def test_helius_is_optional_enhancement_in_runtime_metadata() -> None:
     metadata = provider_metadata_for_settings(
         "helius", "chain_events", Settings.from_env({})
@@ -194,6 +240,17 @@ def test_runtime_metadata_matches_enabled_chain_transports() -> None:
     assert robinhood.enabled is False
     assert robinhood.required is False
     assert robinhood.endpoint_state == "DISABLED"
+
+    base = provider_metadata_for_settings(
+        "evm-public-rpc:base",
+        "chain_events",
+        Settings.from_env(
+            {"ENABLED_CHAINS": "solana,base", "BASE_RPC_URL": "https://fixture.base.example/rpc"}
+        ),
+    )
+    assert base.enabled is True
+    assert base.required is False
+    assert base.endpoint_state == "CONFIGURED"
 
 
 def test_optional_runtime_metadata_distinguishes_gmgn_states() -> None:

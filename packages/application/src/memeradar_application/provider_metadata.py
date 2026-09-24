@@ -33,7 +33,12 @@ _REGISTRY: dict[str, ProviderMetadata] = {
         ("birdeye_api_key",), "UNKNOWN", "UNKNOWN", 0,
     ),
     "dexscreener": ProviderMetadata(
-        "dexscreener", "Dexscreener", ("solana", "bnb", "robinhood"), ("market_data",), False, True,
+        "dexscreener", "Dexscreener",
+        (
+            "solana", "bnb", "robinhood", "base", "ethereum", "arbitrum", "avalanche",
+            "polygon", "unichain",
+        ),
+        ("market_data",), False, True,
         ("dexscreener_base_url",), "NOT_REQUIRED", "UNKNOWN", 0,
     ),
     "goplus": ProviderMetadata(
@@ -104,6 +109,39 @@ _REGISTRY: dict[str, ProviderMetadata] = {
         True, True,
         ("robinhood_rpc_url",), "NOT_REQUIRED", "UNKNOWN", 1,
     ),
+    "evm-public-rpc:base": ProviderMetadata(
+        "evm-public-rpc:base", "Base public RPC", ("base",), ("chain_events",),
+        False, False, ("base_rpc_url",), "NOT_REQUIRED", "UNKNOWN", 1,
+    ),
+    "evm-public-rpc:ethereum": ProviderMetadata(
+        "evm-public-rpc:ethereum", "Ethereum public RPC", ("ethereum",), ("chain_events",),
+        False, False, ("ethereum_rpc_url",), "NOT_REQUIRED", "UNKNOWN", 1,
+    ),
+    "evm-public-rpc:arbitrum": ProviderMetadata(
+        "evm-public-rpc:arbitrum", "Arbitrum public RPC", ("arbitrum",), ("chain_events",),
+        False, False, ("arbitrum_rpc_url",), "NOT_REQUIRED", "UNKNOWN", 1,
+    ),
+    "evm-public-rpc:avalanche": ProviderMetadata(
+        "evm-public-rpc:avalanche", "Avalanche public RPC", ("avalanche",), ("chain_events",),
+        False, False, ("avalanche_rpc_url",), "NOT_REQUIRED", "UNKNOWN", 1,
+    ),
+    "evm-public-rpc:polygon": ProviderMetadata(
+        "evm-public-rpc:polygon", "Polygon public RPC", ("polygon",), ("chain_events",),
+        False, False, ("polygon_rpc_url",), "NOT_REQUIRED", "UNKNOWN", 1,
+    ),
+    "evm-public-rpc:unichain": ProviderMetadata(
+        "evm-public-rpc:unichain", "Unichain public RPC", ("unichain",), ("chain_events",),
+        False, False, ("unichain_rpc_url",), "NOT_REQUIRED", "UNKNOWN", 1,
+    ),
+    "jupiter-swap-v2": ProviderMetadata(
+        "jupiter-swap-v2", "Jupiter Swap API V2", ("solana",), ("quote", "sell_route_check"),
+        False, False, ("paper_quote_url", "paper_quote_api_key"), "OPTIONAL", "UNKNOWN", 0,
+    ),
+    "blockscout:robinhood": ProviderMetadata(
+        "blockscout:robinhood", "Robinhood Blockscout", ("robinhood",),
+        ("contract_metadata", "transaction_history", "token_transfers"), False, False,
+        ("robinhood_blockscout_api_url",), "OPTIONAL", "UNKNOWN", 2,
+    ),
     "telegram": ProviderMetadata(
         "telegram", "Telegram", (), ("alert_delivery",), False, True,
         ("telegram_bot_token", "telegram_chat_id"), "UNKNOWN", "UNKNOWN", 0,
@@ -139,6 +177,12 @@ _CHAIN_RUNTIME_PROVIDERS = {
     "solana-public-rpc": ("solana", "solana_rpc_url"),
     "evm-public-rpc:bnb": ("bnb", "bnb_rpc_url"),
     "evm-public-rpc:robinhood": ("robinhood", "robinhood_rpc_url"),
+    "evm-public-rpc:base": ("base", "base_rpc_url"),
+    "evm-public-rpc:ethereum": ("ethereum", "ethereum_rpc_url"),
+    "evm-public-rpc:arbitrum": ("arbitrum", "arbitrum_rpc_url"),
+    "evm-public-rpc:avalanche": ("avalanche", "avalanche_rpc_url"),
+    "evm-public-rpc:polygon": ("polygon", "polygon_rpc_url"),
+    "evm-public-rpc:unichain": ("unichain", "unichain_rpc_url"),
     "robinhood": ("robinhood", "robinhood_rpc_url"),
 }
 

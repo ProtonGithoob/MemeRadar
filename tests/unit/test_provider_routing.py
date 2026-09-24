@@ -216,6 +216,14 @@ def test_free_first_route_plan_keeps_optional_enrichment_out_of_core_routes() ->
     assert plan.alerts.providers == ("telegram",)
 
 
+def test_free_first_route_plan_orders_jupiter_before_reference_market_quote() -> None:
+    plan = build_free_first_route_plan(
+        paper_quote_provider="jupiter",
+        jupiter_configured=True,
+    )
+    assert plan.quote.providers == ("jupiter", "dexscreener")
+
+
 def test_free_first_route_plan_can_explicitly_disable_optional_narrative_and_metadata() -> None:
     plan = build_free_first_route_plan(
         social_metadata_provider="disabled",

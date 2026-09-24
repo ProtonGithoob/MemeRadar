@@ -10,7 +10,17 @@ from urllib.parse import urlsplit
 
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 FALSE_VALUES = frozenset({"0", "false", "no", "off"})
-SUPPORTED_CHAINS = ("solana", "bnb", "robinhood")
+SUPPORTED_CHAINS = (
+    "solana",
+    "bnb",
+    "robinhood",
+    "base",
+    "ethereum",
+    "arbitrum",
+    "avalanche",
+    "polygon",
+    "unichain",
+)
 SUPPORTED_APP_ENVS = ("development", "production")
 DEFAULT_ENABLED_CHAINS = ("solana", "robinhood")
 
@@ -177,6 +187,7 @@ def _validate_chain_transports(
     *,
     bnb_rpc_url: str | None,
     robinhood_rpc_url: str,
+    additional_rpc_urls: Mapping[str, str | None] | None = None,
 ) -> None:
     """Reject enabled chains that have no canonical read transport."""
 
@@ -188,6 +199,9 @@ def _validate_chain_transports(
             raise ValueError(
                 "ROBINHOOD_RPC_URL must be a valid HTTP(S) URL when robinhood is enabled"
             )
+    for chain, rpc_url in (additional_rpc_urls or {}).items():
+        if chain in enabled_chains and not rpc_url:
+            raise ValueError(f"{chain.upper()}_RPC_URL is required when {chain} is enabled")
 
 
 def _validate_production_role_tokens(settings: Settings) -> None:
@@ -288,6 +302,12 @@ class Settings:
     bnb_rpc_url: str | None = None
     bnb_rpc_fallback_url: str | None = None
     bnb_chain_id: int = 56
+    base_rpc_url: str | None = None
+    ethereum_rpc_url: str | None = None
+    arbitrum_rpc_url: str | None = None
+    avalanche_rpc_url: str | None = None
+    polygon_rpc_url: str | None = None
+    unichain_rpc_url: str | None = None
     robinhood_rpc_url: str = "https://rpc.mainnet.chain.robinhood.com"
     robinhood_rpc_fallback_url: str | None = None
     robinhood_chain_id: int = 4663
@@ -422,6 +442,14 @@ class Settings:
             enabled_chains,
             bnb_rpc_url=bnb_rpc_url,
             robinhood_rpc_url=robinhood_rpc_url,
+            additional_rpc_urls={
+                "base": _optional_value(values, "BASE_RPC_URL"),
+                "ethereum": _optional_value(values, "ETHEREUM_RPC_URL"),
+                "arbitrum": _optional_value(values, "ARBITRUM_RPC_URL"),
+                "avalanche": _optional_value(values, "AVALANCHE_RPC_URL"),
+                "polygon": _optional_value(values, "POLYGON_RPC_URL"),
+                "unichain": _optional_value(values, "UNICHAIN_RPC_URL"),
+            },
         )
         bnb_chain_id = _parse_int("BNB_CHAIN_ID", values.get("BNB_CHAIN_ID", "56"), 1, 2**64 - 1)
         robinhood_chain_id = _parse_int(
@@ -486,7 +514,7 @@ class Settings:
                 values,
                 "PAPER_QUOTE_PROVIDER",
                 "dexscreener",
-                frozenset({"custom", "dexscreener", "birdeye"}),
+                frozenset({"custom", "dexscreener", "birdeye", "jupiter"}),
             ),
             paper_quote_url=_first_optional_value(
                 values,
@@ -523,6 +551,12 @@ class Settings:
             bnb_rpc_url=bnb_rpc_url,
             bnb_rpc_fallback_url=_optional_value(values, "BNB_RPC_FALLBACK_URL"),
             bnb_chain_id=bnb_chain_id,
+            base_rpc_url=_optional_value(values, "BASE_RPC_URL"),
+            ethereum_rpc_url=_optional_value(values, "ETHEREUM_RPC_URL"),
+            arbitrum_rpc_url=_optional_value(values, "ARBITRUM_RPC_URL"),
+            avalanche_rpc_url=_optional_value(values, "AVALANCHE_RPC_URL"),
+            polygon_rpc_url=_optional_value(values, "POLYGON_RPC_URL"),
+            unichain_rpc_url=_optional_value(values, "UNICHAIN_RPC_URL"),
             robinhood_rpc_url=robinhood_rpc_url,
             robinhood_rpc_fallback_url=_optional_value(values, "ROBINHOOD_RPC_FALLBACK_URL"),
             robinhood_chain_id=robinhood_chain_id,
@@ -810,7 +844,7 @@ RUNTIME_SETTING_SPECS: tuple[RuntimeSettingSpec, ...] = (
         "RESTART_REQUIRED",
         group="providers",
         default="dexscreener",
-        allowed=("custom", "dexscreener", "birdeye"),
+        allowed=("custom", "dexscreener", "birdeye", "jupiter"),
         description="Paper quote provider.",
     ),
     _spec(
@@ -890,6 +924,54 @@ RUNTIME_SETTING_SPECS: tuple[RuntimeSettingSpec, ...] = (
         minimum=1,
         maximum=2**64 - 1,
         description="BNB Chain ID.",
+    ),
+    _spec(
+        "base_rpc_url",
+        "base",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Base Chain JSON-RPC endpoint; disabled unless selected in ENABLED_CHAINS.",
+    ),
+    _spec(
+        "ethereum_rpc_url",
+        "ethereum",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Ethereum JSON-RPC endpoint; disabled unless selected in ENABLED_CHAINS.",
+    ),
+    _spec(
+        "arbitrum_rpc_url",
+        "arbitrum",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Arbitrum JSON-RPC endpoint; disabled unless selected in ENABLED_CHAINS.",
+    ),
+    _spec(
+        "avalanche_rpc_url",
+        "avalanche",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Avalanche C-Chain RPC endpoint; disabled unless selected in ENABLED_CHAINS.",
+    ),
+    _spec(
+        "polygon_rpc_url",
+        "polygon",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Polygon RPC endpoint; disabled unless selected in ENABLED_CHAINS.",
+    ),
+    _spec(
+        "unichain_rpc_url",
+        "unichain",
+        "string",
+        "RESTART_REQUIRED",
+        group="chains",
+        description="Unichain RPC endpoint; disabled unless selected in ENABLED_CHAINS.",
     ),
     _spec(
         "robinhood_rpc_url",

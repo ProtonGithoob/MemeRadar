@@ -17,12 +17,28 @@ class Chain(str, Enum):
     SOLANA = "solana"
     BNB = "bnb"
     ROBINHOOD = "robinhood"
+    BASE = "base"
+    ETHEREUM = "ethereum"
+    ARBITRUM = "arbitrum"
+    AVALANCHE = "avalanche"
+    POLYGON = "polygon"
+    UNICHAIN = "unichain"
+    SUI = "sui"
 
     @property
     def is_evm(self) -> bool:
         """Return whether this chain uses the shared EVM address format."""
 
-        return self in {Chain.BNB, Chain.ROBINHOOD}
+        return self in {
+            Chain.BNB,
+            Chain.ROBINHOOD,
+            Chain.BASE,
+            Chain.ETHEREUM,
+            Chain.ARBITRUM,
+            Chain.AVALANCHE,
+            Chain.POLYGON,
+            Chain.UNICHAIN,
+        }
 
 
 # The implementation uses one enum for compatibility with the existing public
@@ -54,6 +70,7 @@ def require_solana_address(value: str, field: str = "address") -> str:
 
 
 _EVM_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_SUI_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{1,64}$")
 
 
 def require_evm_address(value: str, field: str = "address") -> str:
@@ -63,6 +80,15 @@ def require_evm_address(value: str, field: str = "address") -> str:
     if not _EVM_ADDRESS.fullmatch(normalized):
         raise ValueError(f"{field} must be a canonical EVM address")
     return normalized.lower()
+
+
+def require_sui_address(value: str, field: str = "address") -> str:
+    """Require and canonicalize a Sui object/address hex identity."""
+
+    normalized = require_text(value, field, max_length=66).lower()
+    if _SUI_ADDRESS.fullmatch(normalized) is None:
+        raise ValueError(f"{field} must be a canonical Sui hex address")
+    return "0x" + normalized[2:].rjust(64, "0")
 
 
 def normalize_chain(value: Chain | str, field: str = "chain") -> Chain:
@@ -85,6 +111,8 @@ def require_chain_address(
     normalized_chain = normalize_chain(chain)
     if normalized_chain is Chain.SOLANA:
         return require_solana_address(value, field)
+    if normalized_chain is Chain.SUI:
+        return require_sui_address(value, field)
     return require_evm_address(value, field)
 
 

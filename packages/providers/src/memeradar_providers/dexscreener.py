@@ -67,11 +67,23 @@ DEXSCREENER_CHAIN_BY_DOMAIN: Mapping[Chain, str] = {
     Chain.SOLANA: "solana",
     Chain.BNB: "bsc",
     Chain.ROBINHOOD: "robinhood",
+    Chain.BASE: "base",
+    Chain.ETHEREUM: "ethereum",
+    Chain.ARBITRUM: "arbitrum",
+    Chain.AVALANCHE: "avalanche",
+    Chain.POLYGON: "polygon",
+    Chain.UNICHAIN: "unichain",
 }
 _DEXSCREENER_CHAIN_ALIASES: Mapping[Chain, frozenset[str]] = {
     Chain.SOLANA: frozenset({"solana"}),
     Chain.BNB: frozenset({"bnb", "bsc", "binance-smart-chain"}),
     Chain.ROBINHOOD: frozenset({"robinhood", "robinhood-chain"}),
+    Chain.BASE: frozenset({"base"}),
+    Chain.ETHEREUM: frozenset({"ethereum", "eth"}),
+    Chain.ARBITRUM: frozenset({"arbitrum", "arbitrum-one"}),
+    Chain.AVALANCHE: frozenset({"avalanche", "avalanche-c"}),
+    Chain.POLYGON: frozenset({"polygon", "matic"}),
+    Chain.UNICHAIN: frozenset({"unichain"}),
 }
 _CREDENTIAL_QUERY_KEYS = {
     "api_key",

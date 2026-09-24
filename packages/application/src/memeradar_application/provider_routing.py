@@ -102,6 +102,7 @@ def build_free_first_route_plan(
     external_narrative_configured: bool = False,
     external_wallet_configured: bool = False,
     custom_quote_configured: bool = False,
+    jupiter_configured: bool = False,
     telegram_configured: bool = False,
     market_data_provider: str = "dexscreener",
     paper_quote_provider: str = "dexscreener",
@@ -120,6 +121,7 @@ def build_free_first_route_plan(
         ("external_narrative_configured", external_narrative_configured),
         ("external_wallet_configured", external_wallet_configured),
         ("custom_quote_configured", custom_quote_configured),
+        ("jupiter_configured", jupiter_configured),
         ("telegram_configured", telegram_configured),
     ):
         if not isinstance(value, bool):
@@ -142,7 +144,7 @@ def build_free_first_route_plan(
     selected_quote = choice(
         paper_quote_provider,
         "paper_quote_provider",
-        frozenset({"custom", "dexscreener", "birdeye"}),
+        frozenset({"custom", "dexscreener", "birdeye", "jupiter"}),
     )
     choice(
         wallet_intelligence_provider,
@@ -178,6 +180,8 @@ def build_free_first_route_plan(
     quote_providers: tuple[str, ...]
     if selected_quote == "custom":
         quote_providers = ("custom", "dexscreener") if custom_quote_configured else ("custom",)
+    elif selected_quote == "jupiter":
+        quote_providers = ("jupiter", "dexscreener")
     elif selected_quote == "birdeye" and birdeye_configured:
         # Birdeye's existing adapter is market-data only; it is not treated as
         # a QuotePort until a dedicated normalized quote adapter exists.
