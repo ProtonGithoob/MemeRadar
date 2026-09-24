@@ -55,12 +55,12 @@
 
 **Interfaces:** Consumes existing `RawChainTransaction`, `BackfillRequest`, `ChainBackfillPort`, and `StreamStateStore`; produces durable `gap_started_at`, `gap_resolved_at`, missed-slot range, provider/connection/reconnect data, backfill status, recovered/unrecoverable event counts, plus bounded Solana finalized-slot backfill using the existing decoder.
 
-- [ ] Reproduce and classify the reported gap counter by transport, stream id, slot-continuity mode, reconnects, queue saturation, throttling, cursor state, and enrichment latency before editing code.
-- [ ] Write failing tests for diagnostic persistence, unresolved no-event recovery, and program-scoped slot-skip behavior.
-- [ ] Add the smallest compatible domain/ORM/migration fields and state transitions; preserve legacy fields and existing idempotency keys.
-- [ ] Add bounded `getBlocks`/`getBlock` finalized reads behind the existing Solana RPC adapter and feed returned transactions through the canonical decoder only.
-- [ ] Wire safe automatic recovery for explicit reconnect/known ranges; leave gaps unresolved when provider data cannot prove continuity.
-- [ ] Run focused tests, full tests, and a bounded local doctor/acceptance run; record before/after evidence without claiming external recovery.
+- [x] Reproduce and classify the reported gap counter by transport, stream id, slot-continuity mode, reconnects, queue saturation, throttling, cursor state, and enrichment latency before editing code.
+- [x] Write failing tests for diagnostic persistence, unresolved no-event recovery, and program-scoped slot-skip behavior.
+- [x] Add the smallest compatible domain/ORM/migration fields and state transitions; preserve legacy fields and existing idempotency keys.
+- [x] Add bounded `getBlocks`/`getBlock` finalized reads behind the existing Solana RPC adapter and feed returned transactions through the canonical decoder only.
+- [x] Wire safe automatic recovery for explicit reconnect/known ranges; leave gaps unresolved when provider data cannot prove continuity.
+- [x] Run focused tests, full tests, and a bounded local doctor/acceptance run; record before/after evidence without claiming external recovery.
 
 ### Task 3: Solana read-only protocol coverage
 
@@ -71,11 +71,11 @@
 
 **Interfaces:** Consumes canonical Solana normalized events and existing quote/provider ports; produces capability-scoped Raydium/PumpSwap pool observations and Jupiter Swap API V2 quote/order parsing, with source/provenance and no signing.
 
-- [ ] Inspect existing Raydium/PumpSwap/protocol registry and current configuration before writing adapters.
-- [ ] Write failing fixture tests for pool identity, liquidity/reserve/tick normalization, Jupiter route/impact/output/sell-route parsing, timeout/rate-limit behavior, and provider fallback ordering.
-- [ ] Implement only the missing read-only parsing/transport behavior through existing provider transport and capability metadata.
-- [ ] Keep Helius optional and ensure its absence does not disable Pump.fun discovery.
-- [ ] Verify protected modes and run focused/full checks.
+- [x] Inspect existing Raydium/PumpSwap/protocol registry and current configuration before writing adapters.
+- [x] Write failing fixture tests for pool identity, liquidity/reserve/tick normalization, Jupiter route/impact/output/sell-route parsing, timeout/rate-limit behavior, and provider fallback ordering.
+- [x] Implement only the missing read-only parsing/transport behavior through existing provider transport and capability metadata.
+- [x] Keep Helius optional and ensure its absence does not disable Pump.fun discovery.
+- [x] Verify protected modes and run focused/full checks.
 
 ### Task 4: Generic EVM read-only chain and protocol seams
 
@@ -86,11 +86,11 @@
 
 **Interfaces:** Consumes existing generic EVM RPC/log/quote/security ports; produces disabled-by-default read-only adapters for Robinhood (4663), BNB (56), Base, Ethereum, and architecture-only Arbitrum/Avalanche/Polygon/Unichain plus a non-EVM Sui seam.
 
-- [ ] Write fixture-first tests before implementation; use no unverified deployment address as authoritative.
-- [ ] Reuse the generic EVM adapter for chain identity and logs; implement Four.meme lifecycle and Pancake pool normalization only where ABI/event identity is locally verified or explicitly marked `TODO_VERIFY`.
-- [ ] Add Base/Uniswap/Aerodrome and Ethereum/Uniswap read-only discovery seams, Blockscout enrichment, and provider-neutral EVM sellability evidence without signing.
-- [ ] Keep Robinhood protocol candidates disabled until chain/address/bytecode/event/sample-transaction verification exists.
-- [ ] Run provider contract tests and ensure default enabled chains remain unchanged.
+- [x] Write fixture-first tests before implementation; use no unverified deployment address as authoritative.
+- [x] Reuse the generic EVM adapter for chain identity and logs; implement Four.meme lifecycle and Pancake pool normalization only where ABI/event identity is locally verified or explicitly marked `TODO_VERIFY`.
+- [x] Add Base/Uniswap/Aerodrome and Ethereum/Uniswap read-only discovery seams, Blockscout enrichment, and provider-neutral EVM sellability evidence without signing.
+- [x] Keep Robinhood protocol candidates disabled until chain/address/bytecode/event/sample-transaction verification exists.
+- [x] Run provider contract tests and ensure default enabled chains remain unchanged.
 
 ### Task 5: Read-only API/MCP operator surface
 
@@ -101,10 +101,10 @@
 
 **Interfaces:** Consumes application/API read services; produces the requested read-only opportunity, evidence, health, outcome, replay, ablation, Telegram, position, and paper-performance tools. No MCP tool may submit, sign, mutate, or duplicate domain logic.
 
-- [ ] Inventory existing routes/services and write failing read-only boundary tests.
-- [ ] Add only missing normalized endpoints and a thin stdio/JSON-RPC MCP wrapper over those services.
-- [ ] Reject unknown/mutating tool names and prove no execution dependency is imported.
-- [ ] Run focused and full checks.
+- [x] Inventory existing routes/services and write failing read-only boundary tests.
+- [x] Add a thin stdio/JSON-RPC MCP wrapper over existing read routes; leave unavailable research projections explicit.
+- [x] Reject unknown/mutating tool names and prove no execution dependency is imported.
+- [x] Run focused checks; full checks remain in Task 6.
 
 ### Task 6: Integration records and final verification
 
@@ -112,7 +112,7 @@
 - Create/update: `docs/reports/external-repo-license-matrix.md`, `docs/reports/external-integration-matrix.md`, `docs/STATUS.md`, `.codex/CURRENT_TASK.md`, `.codex/VERIFICATION.md`
 - Test/verify: repository lint, typecheck, tests, verify, coverage report
 
-- [ ] Record each requested upstream repo’s locally verified license/commit status; mark unavailable external verification instead of inventing it.
-- [ ] Record exact per-chain capability status, real DB counts, stream-gap evidence, telemetry percentiles, recall/FPR/FNR/ablation and provider disagreements.
-- [ ] Run `git diff --check`, `make lint`, `make typecheck`, `make test`, and `make verify`; record coverage percentage and delta from the 79% baseline when available.
+- [x] Record each requested upstream repo’s locally verified license/commit status; mark unavailable external verification instead of inventing it.
+- [x] Record exact per-chain capability status, real DB counts, stream-gap evidence, telemetry percentiles, recall/FPR/FNR/ablation and provider disagreements, preserving `NOT_MEASURED`/`INSUFFICIENT_SAMPLES` where external evidence is absent.
+- [x] Run `git diff --check`, `make lint`, `make typecheck`, `make test`, and `make verify`; record coverage percentage and delta from the 79% baseline when available.
 - [ ] Perform a separate whole-branch self-review, commit coherent local phases, and leave protected modes unchanged.

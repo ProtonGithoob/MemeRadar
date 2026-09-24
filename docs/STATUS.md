@@ -33,6 +33,39 @@ execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
 
+## 2026-09-24 multi-chain validation checkpoint
+
+The local implementation checkpoint is recorded in
+[`multichain-alpha-validation-2026-09-24.md`](reports/multichain-alpha-validation-2026-09-24.md).
+The repository now has read-only, provider-independent seams for the generic
+EVM chains, Robinhood Chain identity `4663`, BNB/Four.meme/Pancake lifecycle
+normalization, Base/Uniswap/Aerodrome candidates, Ethereum/Uniswap identity,
+optional Blockscout enrichment, provider-neutral EVM sell simulation,
+Raydium pool/quote normalization, Jupiter Swap API V2 quote/order reads, and
+a thin read-only `memeradar-mcp` operator surface. No protocol deployment is
+authoritative until chain, address, runtime bytecode, event identity, and a
+sample transaction are verified; current candidates remain `TODO_VERIFY`.
+
+The current local quality gate is green: `make verify` passed with backend
+tests `1492 passed, 21 skipped, 7 warnings`, total coverage `79%` (delta `0`
+from the prior `79%` baseline), frontend tests `83 passed`, migration head
+`0012_stream_gap_diagnostics`, security review `PASS`, and SBOM `PASS` for
+`582` components. Keyless free-provider readiness is `PASS`; the paper
+contract doctor is `PASS`. The full evidence table, capability matrix, and
+remaining external blockers are in the report linked above.
+
+Database-backed forward-shadow acceptance is still `BLOCKED_EXTERNAL`: the
+repository Compose stack cannot access the host Docker socket in this
+session, no `DATABASE_URL` is configured, and no PostgreSQL row/restart proof
+was collected. The real post-fix stream-gap count is therefore
+`NOT_MEASURED`; the legacy `1408` counter is documented as a superseded
+scope-mismatch measurement, not silently reported as a current loss count.
+Telegram real-send latency is also `NOT_MEASURED` because bot credentials and
+chat configuration are absent. The requested `.codex/CURRENT_TASK.md` and
+`.codex/VERIFICATION.md` files remain unwritable because `.codex/` is
+host-mounted read-only; the plan, ledger, and reports are durable in the
+repository's writable tree.
+
 ## 2026-09-24 autonomous implementation checkpoint
 
 The first requested live acceptance step was attempted through the existing
