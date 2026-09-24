@@ -115,4 +115,4 @@
 - [x] Record each requested upstream repo’s locally verified license/commit status; mark unavailable external verification instead of inventing it.
 - [x] Record exact per-chain capability status, real DB counts, stream-gap evidence, telemetry percentiles, recall/FPR/FNR/ablation and provider disagreements, preserving `NOT_MEASURED`/`INSUFFICIENT_SAMPLES` where external evidence is absent.
 - [x] Run `git diff --check`, `make lint`, `make typecheck`, `make test`, and `make verify`; record coverage percentage and delta from the 79% baseline when available.
-- [ ] Perform a separate whole-branch self-review, commit coherent local phases, and leave protected modes unchanged.
+- [x] Perform a separate whole-branch self-review, commit coherent local phases, and leave protected modes unchanged.
