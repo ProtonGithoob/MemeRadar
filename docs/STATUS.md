@@ -46,7 +46,7 @@ a thin read-only `memeradar-mcp` operator surface. No protocol deployment is
 authoritative until chain, address, runtime bytecode, event identity, and a
 sample transaction are verified; current candidates remain `TODO_VERIFY`.
 
-The current local quality gate is green: `make verify` passed with backend
+The prior clean local quality gate was green: `make verify` passed with backend
 tests `1492 passed, 21 skipped, 7 warnings`, total coverage `79%` (delta `0`
 from the prior `79%` baseline), frontend tests `83 passed`, migration head
 `0012_stream_gap_diagnostics`, security review `PASS`, and SBOM `PASS` for
@@ -60,13 +60,15 @@ session, no `DATABASE_URL` is configured, and no PostgreSQL row/restart proof
 was collected. The real post-fix stream-gap count is therefore
 `NOT_MEASURED`; the legacy `1408` counter is documented as a superseded
 scope-mismatch measurement, not silently reported as a current loss count.
-Telegram real-send latency is also `NOT_MEASURED` because bot credentials and
-chat configuration are absent. The requested `.codex/CURRENT_TASK.md` and
+Telegram real-send latency is also `NOT_MEASURED`: the process has no bot/API
+configuration and the supplied local credential probe timed out. The requested `.codex/CURRENT_TASK.md` and
 `.codex/VERIFICATION.md` files remain unwritable because `.codex/` is
 host-mounted read-only; the plan, ledger, and reports are durable in the
 repository's writable tree.
 
 ## 2026-09-24 real-acceptance continuation checkpoint
+
+Full evidence: [`real-multichain-acceptance-2026-09-24.md`](reports/real-multichain-acceptance-2026-09-24.md).
 
 The first unresolved runtime gate remains `BLOCKED_EXTERNAL`. Compose still
 cannot access `/var/run/docker.sock`, no PostgreSQL URL or local PostgreSQL
