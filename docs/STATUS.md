@@ -33,6 +33,32 @@ execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
 
+## 2026-09-24 autonomous implementation checkpoint
+
+The first requested live acceptance step was attempted through the existing
+Compose stack. Compose syntax and the migration graph pass, but the host
+Docker socket is not accessible in this session:
+`permission denied while trying to connect to the Docker API at
+unix:///var/run/docker.sock`. The development environment has no configured
+`DATABASE_URL`, so PostgreSQL row/restart evidence could not be collected.
+
+The exact result is recorded in
+[`forward-shadow-live-acceptance-2026-09-24.md`](reports/forward-shadow-live-acceptance-2026-09-24.md).
+This is `BLOCKED_EXTERNAL` for the runtime only; local implementation and
+contract verification continue. The requested `.codex` checkpoint files are
+still unavailable because `.codex/` is host-mounted read-only; the active
+plan and ledger are in
+[`docs/superpowers/plans/2026-09-24-multichain-alpha-validation.md`](superpowers/plans/2026-09-24-multichain-alpha-validation.md)
+and `.superpowers/sdd/`.
+
+The first stream-gap root-cause pass is recorded in
+[`stream-gap-root-cause-2026-09-24.md`](reports/stream-gap-root-cause-2026-09-24.md).
+The prior `1408` value was traced to the superseded health scope that merged
+global/sparse-slot gaps into Pump.fun launch health. Current program-scoped
+health does not infer slot gaps; explicit reconnect markers are persisted and
+bounded finalized-slot recovery uses the canonical decoder. Real unresolved
+gap counts remain unverified until the blocked Compose acceptance can run.
+
 ## 2026-09-24 autonomous audit checkpoint
 
 The required repository audit is complete at local HEAD `c29b84c`. The gap

@@ -69,6 +69,7 @@ from memeradar_providers.protocol_registry import (
 from memeradar_providers.solana_raw_stream import (
     SOLANA_PUBLIC_WEBSOCKET_URL,
     SolanaRawTransactionSource,
+    SolanaRpcBackfillAdapter,
 )
 from memeradar_providers.telegram import TelegramNotificationAdapter
 from memeradar_providers.transport import (
@@ -485,6 +486,12 @@ async def _run_early_alpha_shadow(
         stream_id="early-alpha-v1",
         decoder=decoder or CanonicalProtocolDecoder(DEFAULT_PROTOCOL_REGISTRY),
         state_store=stream_store,
+        backfill_port=(
+            SolanaRpcBackfillAdapter(provider_bundle.solana_rpc)
+            if provider_bundle is not None
+            else None
+        ),
+        provider_id="solana-public-rpc",
         # logsSubscribe is program-scoped and the source only emits launch
         # transactions. A slot jump is not evidence of a missing Pump.fun event.
         slot_continuity_expected=False,
@@ -968,7 +975,7 @@ async def _run_solana_ingestion_health(
                         provider="pump.fun.solana-raw-stream",
                         source_id=f"solana-ingestion-health:{observed_at.isoformat()}",
                         observed_at=observed_at,
-                        parser_version="pumpfun-ingestion-health-v1",
+                        parser_version="pumpfun-ingestion-health-v2",
                     ),
                     occurred_at=observed_at,
                     observed_at=observed_at,

@@ -4,16 +4,19 @@ import asyncio
 import json
 import struct
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
 from memeradar_application.provider_contracts import ProviderRequestContext
+from memeradar_application.stream_integrity import BackfillRequest
 from memeradar_domain import CommitmentState
 from memeradar_providers import solana_raw_stream
 from memeradar_providers.solana_raw_stream import (
     PUMP_FUN_CREATE_V2_TAG,
     PUMP_FUN_PROGRAM_ID,
     SolanaRawTransactionSource,
+    SolanaRpcBackfillAdapter,
     map_transaction_to_raw_events,
     parse_logs_notification,
 )
@@ -161,6 +164,48 @@ def test_transaction_mapping_produces_raw_pump_launch_event() -> None:
     assert event.payload["idl_sha256"]
     assert event.occurred_at == datetime.fromtimestamp(1789920360, UTC)
     assert event.commitment is CommitmentState.CONFIRMED
+
+
+def test_solana_rpc_backfill_uses_the_same_pump_decoder_as_live_ingest() -> None:
+    rpc = SolanaRpcAdapter("https://fixture.solana.example")
+    transaction = _transaction()
+    transaction["transaction"]["signatures"] = [SIGNATURE]  # type: ignore[index]
+    transaction["meta"]["logMessages"].insert(  # type: ignore[index]
+        0, f"Program {PUMP_FUN_PROGRAM_ID} invoke [1]"
+    )
+    block_time = datetime.fromtimestamp(transaction["blockTime"], UTC)  # type: ignore[arg-type]
+
+    async def fetch_blocks(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            normalized_payload={"slots": (448780651,)},
+            observed_at=NOW,
+        )
+
+    async def fetch_block(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        assert _kwargs["include_transactions"] is True
+        return SimpleNamespace(
+            normalized_payload={"slot": 448780651, "transactions": (transaction,)},
+            observed_at=NOW,
+            occurred_at=block_time,
+        )
+
+    rpc.fetch_blocks = fetch_blocks  # type: ignore[method-assign]
+    rpc.fetch_block = fetch_block  # type: ignore[method-assign]
+
+    async def scenario() -> object:
+        return await SolanaRpcBackfillAdapter(rpc).fetch(
+            BackfillRequest(
+                chain="solana",
+                stream_id="fixture-stream",
+                from_slot=448780651,
+                to_slot=448780651,
+            )
+        )
+
+    result = asyncio.run(scenario())
+    assert result.produced_slots == (448780651,)
+    assert len(result.transactions) == 1
+    assert result.transactions[0].payload["event_type"] == "create_v2"
 
 
 def test_transaction_mapping_resolves_versioned_lookup_table_accounts() -> None:
@@ -369,6 +414,8 @@ def test_source_reconnects_restores_subscription_and_emits_raw_event(monkeypatch
         source.rpc.fetch_transaction_payload = fetch  # type: ignore[method-assign]
         event = await source.__anext__()
         assert event.payload["event_type"] == "create_v2"
+        assert event.connection_id == "solana-ws-2"
+        assert event.reconnect_reason == "ConnectionError"
         assert source.metrics["stream_reconnects"] >= 2
         assert connections.calls == 2
         assert fetch_commitments == ["confirmed"]

@@ -45,6 +45,8 @@ def raw(
     transport: str = "fixture-live",
     payload: dict[str, object] | None = None,
     commitment: CommitmentState = CommitmentState.PROCESSED_UNCONFIRMED,
+    connection_id: str | None = None,
+    reconnect_reason: str | None = None,
 ) -> RawChainTransaction:
     occurred_at = NOW + timedelta(seconds=slot)
     return RawChainTransaction(
@@ -60,6 +62,8 @@ def raw(
         ingested_at=occurred_at + timedelta(milliseconds=2),
         transport=transport,
         commitment=commitment,
+        connection_id=connection_id,
+        reconnect_reason=reconnect_reason,
     )
 
 
@@ -239,6 +243,30 @@ def test_program_scoped_stream_does_not_infer_missing_events_from_slot_jumps() -
     assert cursor.last_contiguous_slot == 104
 
 
+def test_program_scoped_stream_records_only_explicit_reconnect_gaps() -> None:
+    store = InMemoryStreamStateStore()
+    decoder = FixtureDecoder()
+    service = coordinator(store, decoder, slot_continuity_expected=False)
+
+    run(service.ingest_live(raw(100, connection_id="ws-1")))
+    run(
+        service.ingest_live(
+            raw(
+                104,
+                connection_id="ws-2",
+                reconnect_reason="websocket_timeout",
+            )
+        )
+    )
+
+    gaps = run(store.list_gaps())
+    assert len(gaps) == 1
+    assert gaps[0].detection_method == "RECONNECT_BOUNDARY"
+    assert gaps[0].provider == "fixture-live"
+    assert gaps[0].connection_id == "ws-2"
+    assert gaps[0].reconnect_reason == "websocket_timeout"
+
+
 def test_overlapping_live_gap_detections_merge_deterministically() -> None:
     store = InMemoryStreamStateStore()
     decoder = FixtureDecoder()
@@ -416,6 +444,38 @@ def test_timeout_and_rate_limit_are_bounded_and_leave_gap_resumable() -> None:
     assert metrics.snapshot()["backfill_retries"] == 1
     assert metrics.snapshot()["rate_limit_events"] == 1
     assert metrics.snapshot()["recovery_failures"] == 1
+    assert persisted_gap.events_unrecoverable is None
+
+
+def test_failed_recovery_records_provider_connection_diagnostics() -> None:
+    store = InMemoryStreamStateStore()
+    decoder = FixtureDecoder()
+    backfill = FixtureBackfill(errors=(BackfillTimeoutError(),))
+    service = StreamIntegrityCoordinator(
+        chain=Chain.SOLANA,
+        transport="fixture-live",
+        stream_id="stream-1",
+        decoder=decoder,
+        state_store=store,
+        backfill_port=backfill,
+        policy=StreamIntegrityPolicy(max_backfill_retries=0, retry_delay_seconds=0),
+        clock=lambda: NOW + timedelta(seconds=30),
+        provider_id="solana-rpc",
+        connection_id="ws-17",
+        reconnect_reason="websocket_timeout",
+    )
+
+    run(service.ingest_live(raw(100)))
+    run(service.ingest_live(raw(103)))
+    gap = run(store.list_gaps())[0]
+
+    assert gap.provider == "solana-rpc"
+    assert gap.connection_id == "ws-17"
+    assert gap.reconnect_reason == "websocket_timeout"
+    result = run(service.recover_gap(gap.id))
+
+    assert result.gap.backfill_status == "FAILED"
+    assert result.gap.gap_resolved_at is None
 
 
 def test_bounded_handoff_exposes_saturation_instead_of_dropping() -> None:

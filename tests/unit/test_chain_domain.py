@@ -124,6 +124,40 @@ def test_cursor_advances_monotonically_and_preserves_finality_order() -> None:
     assert regressed.commitment is CommitmentState.CONFIRMED
 
 
+def test_stream_gap_exposes_durable_diagnostics_and_resolution_timestamp() -> None:
+    gap = StreamGap(
+        chain=Chain.SOLANA,
+        transport="fixture-live",
+        stream_id="stream-1",
+        from_slot=101,
+        to_slot=103,
+        detected_at=NOW,
+        detection_method="RECONNECT_BOUNDARY",
+        connection_id="ws-17",
+        reconnect_reason="websocket_timeout",
+        events_unrecoverable=None,
+    )
+
+    assert gap.gap_started_at == NOW
+    assert gap.missed_slot_start == 101
+    assert gap.missed_slot_end == 103
+    assert gap.provider == "fixture-live"
+    assert gap.backfill_status == "OPEN"
+    assert gap.events_recovered == 0
+    assert gap.events_unrecoverable is None
+
+    resolved = (
+        gap.transition(StreamGapStatus.RECOVERING)
+        .transition(StreamGapStatus.RECOVERED)
+        .transition(StreamGapStatus.VERIFIED)
+    )
+
+    assert resolved.gap_resolved_at is not None
+    assert resolved.backfill_status == "VERIFIED"
+    assert resolved.connection_id == "ws-17"
+    assert resolved.reconnect_reason == "websocket_timeout"
+
+
 def test_cursor_rejects_contiguous_progress_across_an_open_gap() -> None:
     cursor = ChainCursor(
         chain=Chain.SOLANA,

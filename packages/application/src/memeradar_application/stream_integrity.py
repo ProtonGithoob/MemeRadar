@@ -129,6 +129,8 @@ class RawChainTransaction:
     event_schema_version: int = 1
     token_id: UUID | None = None
     candidate_id: UUID | None = None
+    connection_id: str | None = None
+    reconnect_reason: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "chain", _chain(self.chain))
@@ -170,6 +172,14 @@ class RawChainTransaction:
             raise TypeError("token_id must be a UUID")
         if self.candidate_id is not None and not isinstance(self.candidate_id, UUID):
             raise TypeError("candidate_id must be a UUID")
+        for field_name in ("connection_id", "reconnect_reason"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    require_text(value, field_name, max_length=256),
+                )
 
     @property
     def canonical_identity(self) -> str:
@@ -703,6 +713,10 @@ class GapDetector:
         transport: str,
         stream_id: str,
         detected_at: datetime,
+        provider: str | None = None,
+        connection_id: str | None = None,
+        reconnect_reason: str | None = None,
+        detection_method: str = "SLOT_DISCONTINUITY",
     ) -> StreamGap | None:
         previous = _slot(previous_slot, "previous_slot")
         current = _slot(current_slot, "current_slot")
@@ -715,7 +729,10 @@ class GapDetector:
             from_slot=previous + 1,
             to_slot=current - 1,
             detected_at=detected_at,
-            detection_method="SLOT_DISCONTINUITY",
+            detection_method=detection_method,
+            provider_id=provider,
+            connection_id=connection_id,
+            reconnect_reason=reconnect_reason,
         )
 
     @staticmethod
@@ -727,6 +744,9 @@ class GapDetector:
         transport: str,
         stream_id: str,
         detected_at: datetime,
+        provider: str | None = None,
+        connection_id: str | None = None,
+        reconnect_reason: str | None = None,
     ) -> StreamGap | None:
         gap = GapDetector.detect_slot_discontinuity(
             previous_slot=last_confirmed_slot,
@@ -735,6 +755,9 @@ class GapDetector:
             transport=transport,
             stream_id=stream_id,
             detected_at=detected_at,
+            provider=provider,
+            connection_id=connection_id,
+            reconnect_reason=reconnect_reason,
         )
         if gap is None:
             return None
@@ -1009,6 +1032,9 @@ class StreamIntegrityCoordinator:
         policy: StreamIntegrityPolicy | None = None,
         handoff: BoundedEventHandoff | None = None,
         slot_continuity_expected: bool = True,
+        provider_id: str | None = None,
+        connection_id: str | None = None,
+        reconnect_reason: str | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self.chain = _chain(chain)
@@ -1023,6 +1049,21 @@ class StreamIntegrityCoordinator:
         if not isinstance(slot_continuity_expected, bool):
             raise TypeError("slot_continuity_expected must be a boolean")
         self.slot_continuity_expected = slot_continuity_expected
+        self.provider_id = (
+            require_text(provider_id, "provider_id", max_length=128)
+            if provider_id is not None
+            else self.transport
+        )
+        self.connection_id = (
+            require_text(connection_id, "connection_id", max_length=256)
+            if connection_id is not None
+            else None
+        )
+        self.reconnect_reason = (
+            require_text(reconnect_reason, "reconnect_reason", max_length=256)
+            if reconnect_reason is not None
+            else None
+        )
         self.clock = clock
 
     async def _cursor(self) -> ChainCursor | None:
@@ -1173,6 +1214,16 @@ class StreamIntegrityCoordinator:
 
         return await self._active_gaps()
 
+    async def recover_active_gaps(self) -> tuple[GapRecoveryResult, ...]:
+        """Boundedly reconcile active gaps when a backfill port is configured."""
+
+        if self.backfill_port is None:
+            return ()
+        results: list[GapRecoveryResult] = []
+        for gap in await self._active_gaps():
+            results.append(await self.recover_gap(gap.id))
+        return tuple(results)
+
     async def _save_cursor_after_event(
         self,
         cursor: ChainCursor | None,
@@ -1218,7 +1269,9 @@ class StreamIntegrityCoordinator:
         if not isinstance(transaction, RawChainTransaction):
             raise TypeError("transaction must be a RawChainTransaction")
         cursor = await self._cursor()
-        if cursor is not None and self.slot_continuity_expected:
+        if cursor is not None and (
+            self.slot_continuity_expected or transaction.reconnect_reason is not None
+        ):
             gap = GapDetector.detect_slot_discontinuity(
                 previous_slot=cursor.last_observed_slot,
                 current_slot=transaction.slot,
@@ -1226,6 +1279,14 @@ class StreamIntegrityCoordinator:
                 transport=self.transport,
                 stream_id=self.stream_id,
                 detected_at=max(transaction.observed_at, self.clock()),
+                provider=self.provider_id,
+                connection_id=transaction.connection_id or self.connection_id,
+                reconnect_reason=transaction.reconnect_reason or self.reconnect_reason,
+                detection_method=(
+                    "RECONNECT_BOUNDARY"
+                    if transaction.reconnect_reason is not None
+                    else "SLOT_DISCONTINUITY"
+                ),
             )
             if gap is not None:
                 await self._record_gap(gap)
@@ -1510,6 +1571,7 @@ class StreamIntegrityCoordinator:
                 recovered_event_count=len(decoded),
                 verified_event_count=len(decoded),
                 last_error_class=None,
+                events_unrecoverable=0,
             )
             verified_output: list[NormalizedChainEvent] = []
             recovered_ids = {event.canonical_identity for event in recovered_for_update}
@@ -1540,6 +1602,11 @@ class StreamIntegrityCoordinator:
                 attempt_count=attempts,
                 recovered_event_count=len(decoded),
                 verified_event_count=0,
+                events_unrecoverable=(
+                    len(verification.missing_event_ids)
+                    if verification.missing_event_ids
+                    else None
+                ),
             )
             self.telemetry.increment("verification_conflicts")
             self.telemetry.increment("decoder_conflicts", len(conflict_ids))
@@ -1550,6 +1617,11 @@ class StreamIntegrityCoordinator:
                 attempt_count=attempts,
                 recovered_event_count=len(decoded),
                 verified_event_count=0,
+                events_unrecoverable=(
+                    len(verification.missing_event_ids)
+                    if verification.missing_event_ids
+                    else None
+                ),
             )
             self.telemetry.increment("verification_incomplete")
         await self.state_store.save_gap(verified_gap)

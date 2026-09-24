@@ -7,7 +7,7 @@ from collections.abc import AsyncIterable
 from dataclasses import dataclass
 from typing import Protocol
 
-from memeradar_domain import NormalizedChainEvent
+from memeradar_domain import NormalizedChainEvent, StreamGapStatus
 
 from .early_runtime import EarlyRuntimeResult
 from .stream_integrity import (
@@ -79,6 +79,16 @@ class EarlyRuntimeStreamWorker:
             received += 1
             result = await self.coordinator.ingest_live(transaction)
             last_slot = transaction.slot if last_slot is None else max(last_slot, transaction.slot)
+            for recovery in await self.coordinator.recover_active_gaps():
+                for recovered_event in recovery.events:
+                    recovery_gap = recovery.gap.status is not StreamGapStatus.VERIFIED
+                    recovery_result = await self.processor(
+                        recovered_event,
+                        stream_gap=recovery_gap,
+                    )
+                    processed += 1
+                    if recovery_result.duplicate:
+                        duplicate_events += 1
             if result.status is EventAppendStatus.CONFLICTED:
                 conflicted_events += 1
                 continue

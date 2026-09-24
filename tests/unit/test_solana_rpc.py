@@ -236,6 +236,33 @@ def test_standard_rpc_supports_signature_and_block_reads_with_normalized_payload
     asyncio.run(scenario())
 
 
+def test_standard_rpc_can_fetch_full_block_transactions_for_bounded_backfill() -> None:
+    block_payload = fixture("block.json")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["method"] == "getBlock"
+        assert body["params"][1]["transactionDetails"] == "full"
+        return httpx.Response(200, json=block_payload)
+
+    async def scenario() -> None:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter = SolanaRpcAdapter(
+            "https://fixture.solana.example",
+            client=client,
+            transport=one_shot_transport(),
+            clock=lambda: NOW,
+        )
+        try:
+            block = await adapter.fetch_block(123, context=context(), include_transactions=True)
+        finally:
+            await client.aclose()
+
+        assert block.normalized_payload["transactions"] == ()
+
+    asyncio.run(scenario())
+
+
 def test_standard_rpc_preserves_unknown_for_not_found_transaction_and_block() -> None:
     calls = 0
 

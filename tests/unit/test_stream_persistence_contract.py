@@ -44,6 +44,18 @@ def test_stream_integrity_tables_and_observation_chain_metadata_are_declared() -
     assert ChainCursorRow.__tablename__ == "chain_cursors"
     assert StreamGapRow.__tablename__ == "stream_gaps"
     assert StreamVerificationRow.__tablename__ == "stream_verifications"
+    assert {
+        "gap_started_at",
+        "gap_resolved_at",
+        "missed_slot_start",
+        "missed_slot_end",
+        "provider",
+        "connection_id",
+        "reconnect_reason",
+        "backfill_status",
+        "events_recovered",
+        "events_unrecoverable",
+    } <= {column.name for column in tables["stream_gaps"].columns}
 
 
 def test_stream_integrity_identity_constraints_and_indexes_are_explicit() -> None:
@@ -79,3 +91,26 @@ def test_stream_integrity_migration_is_reversible_and_follows_control_plane() ->
     assert 'op.drop_table("stream_verifications")' in migration
     assert 'op.drop_table("stream_gaps")' in migration
     assert 'op.drop_table("chain_cursors")' in migration
+
+
+def test_stream_gap_diagnostics_migration_is_present_and_reversible() -> None:
+    migration = (
+        ROOT / "infra" / "alembic" / "versions" / "0012_stream_gap_diagnostics.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'revision: str = "0012_stream_gap_diagnostics"' in migration
+    assert 'down_revision: str | None = "0011_collection_checkpoints"' in migration
+    for column in (
+        "gap_started_at",
+        "gap_resolved_at",
+        "missed_slot_start",
+        "missed_slot_end",
+        "provider",
+        "connection_id",
+        "reconnect_reason",
+        "backfill_status",
+        "events_recovered",
+        "events_unrecoverable",
+    ):
+        assert f'"{column}"' in migration
+    assert 'op.drop_column("stream_gaps", name)' in migration

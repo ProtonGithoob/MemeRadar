@@ -1,12 +1,15 @@
 """Canonical stream-to-early-runtime worker contracts."""
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from memeradar_application.early_worker import EarlyRuntimeStreamWorker
 from memeradar_application.stream_integrity import (
+    BackfillResult,
     InMemoryStreamStateStore,
+    RawChainBlock,
     RawChainTransaction,
     StreamIntegrityCoordinator,
 )
@@ -72,8 +75,12 @@ class Decoder:
         )
 
     def decode_backfill(self, transaction, *, backfill_source, recovery_at):
-        del backfill_source, recovery_at
-        return self.decode_live(transaction)
+        return replace(
+            self.decode_live(transaction),
+            recovery_state=RecoveryState.RECOVERED_UNVERIFIED,
+            backfill_source=backfill_source,
+            recovery_at=recovery_at,
+        )
 
     def decode_replay(self, transaction):
         return self.decode_live(transaction)
@@ -83,13 +90,17 @@ def run(coro):
     return asyncio.run(coro)
 
 
-def coordinator(store: InMemoryStreamStateStore) -> StreamIntegrityCoordinator:
+def coordinator(
+    store: InMemoryStreamStateStore,
+    backfill: object | None = None,
+) -> StreamIntegrityCoordinator:
     return StreamIntegrityCoordinator(
         chain=Chain.SOLANA,
         transport="fixture-live",
         stream_id="early-runtime",
         decoder=Decoder(),
         state_store=store,
+        backfill_port=backfill,
         clock=lambda: NOW + timedelta(minutes=1),
     )
 
@@ -109,6 +120,26 @@ class Processor:
         duplicate = event.signature in self.seen
         self.seen.add(event.signature)
         return SimpleNamespace(duplicate=duplicate)
+
+
+class Backfill:
+    async def fetch(self, request: object) -> BackfillResult:
+        assert hasattr(request, "from_slot")
+        return BackfillResult(
+            request=request,
+            produced_slots=(101,),
+            blocks=(
+                RawChainBlock(
+                    slot=101,
+                    produced=True,
+                    transactions=(raw(101),),
+                    transport="fixture-rpc",
+                    fetched_at=NOW + timedelta(minutes=2),
+                ),
+            ),
+            source="fixture-rpc",
+            completed_at=NOW + timedelta(minutes=2),
+        )
 
 
 def test_worker_routes_canonical_events_and_keeps_duplicate_runtime_idempotency() -> None:
@@ -141,6 +172,19 @@ def test_worker_preserves_open_gap_and_marks_downstream_evidence_unknown_path() 
     assert cursor is not None
     assert cursor.last_observed_slot == 102
     assert cursor.last_contiguous_slot == 100
+
+
+def test_worker_automatically_recovers_bounded_open_gaps_before_runtime_projection() -> None:
+    store = InMemoryStreamStateStore()
+    processor = Processor()
+    worker = EarlyRuntimeStreamWorker(coordinator(store, Backfill()), processor)
+
+    report = run(worker.run(source(raw(100), raw(102))))
+
+    gaps = run(store.list_gaps())
+    assert report.gap_affected_events == 0
+    assert gaps[0].status.value == "VERIFIED"
+    assert processor.events[-1][1] is False
 
 
 def test_restart_reuses_durable_stream_cursor_without_losing_event_time_order() -> None:

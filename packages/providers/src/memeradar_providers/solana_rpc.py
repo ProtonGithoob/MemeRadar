@@ -611,9 +611,12 @@ class SolanaRpcAdapter(OnChainPort):
         slot: int,
         *,
         context: ProviderRequestContext,
+        include_transactions: bool = False,
     ) -> Observation:
         if not isinstance(slot, int) or isinstance(slot, bool) or slot < 0:
             raise ValueError("slot must be a non-negative integer")
+        if not isinstance(include_transactions, bool):
+            raise TypeError("include_transactions must be a boolean")
         result = await self._rpc(
             "getBlock",
             (
@@ -621,7 +624,7 @@ class SolanaRpcAdapter(OnChainPort):
                 {
                     "commitment": "finalized",
                     "encoding": "jsonParsed",
-                    "transactionDetails": "signatures",
+                    "transactionDetails": "full" if include_transactions else "signatures",
                     "rewards": False,
                     "maxSupportedTransactionVersion": 0,
                 },
@@ -643,11 +646,17 @@ class SolanaRpcAdapter(OnChainPort):
                     "previous_blockhash": None,
                     "block_time": None,
                     "signatures": (),
+                    "transactions": () if include_transactions else None,
                     "collection_mode": "PRODUCTION",
                 },
             )
         result_mapping = _mapping(result, "block")
         block_time = _timestamp(result_mapping.get("blockTime", _MISSING), "blockTime")
+        raw_transactions = result_mapping.get("transactions", ())
+        if not isinstance(raw_transactions, Sequence) or isinstance(
+            raw_transactions, str | bytes | bytearray
+        ):
+            raise ProviderSchemaError("block transactions were invalid")
         return Observation(
             kind="onchain.block",
             provenance=self._provenance(f"getBlock:{slot}", observed_at, result),
@@ -661,6 +670,7 @@ class SolanaRpcAdapter(OnChainPort):
                 "previous_blockhash": result_mapping.get("previousBlockhash"),
                 "block_time": None if block_time is None else block_time.isoformat(),
                 "signatures": result_mapping.get("signatures", ()),
+                "transactions": tuple(raw_transactions) if include_transactions else None,
                 "collection_mode": "PRODUCTION",
             },
         )

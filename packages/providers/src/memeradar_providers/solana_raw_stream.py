@@ -19,7 +19,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from memeradar_application.provider_contracts import ProviderRequestContext
-from memeradar_application.stream_integrity import RawChainTransaction
+from memeradar_application.stream_integrity import (
+    BackfillRequest,
+    BackfillResult,
+    BackfillUnavailableError,
+    RawChainBlock,
+    RawChainTransaction,
+)
 from memeradar_domain import Chain, CommitmentState
 from memeradar_domain.common import ensure_ordered_timestamps, ensure_utc, require_text
 from memeradar_domain.identities import require_solana_address
@@ -277,6 +283,8 @@ def map_transaction_to_raw_events(
     ingested_at: datetime,
     program_id: str = PUMP_FUN_PROGRAM_ID,
     transport: str = SOLANA_RAW_TRANSPORT,
+    connection_id: str | None = None,
+    reconnect_reason: str | None = None,
 ) -> tuple[RawChainTransaction, ...]:
     """Map one fetched RPC transaction to verified-candidate raw events.
 
@@ -393,9 +401,119 @@ def map_transaction_to_raw_events(
                 transport=transport,
                 commitment=notification.commitment,
                 event_schema_version=2,
+                connection_id=connection_id,
+                reconnect_reason=reconnect_reason,
             )
         )
     return tuple(events)
+
+
+class SolanaRpcBackfillAdapter:
+    """Bounded finalized-slot backfill using the same Pump.fun raw decoder."""
+
+    def __init__(self, rpc: SolanaRpcAdapter) -> None:
+        if not isinstance(rpc, SolanaRpcAdapter):
+            raise TypeError("rpc must be a SolanaRpcAdapter")
+        self.rpc = rpc
+
+    async def fetch(self, request: BackfillRequest) -> BackfillResult:
+        if request.chain is not Chain.SOLANA:
+            raise BackfillUnavailableError("Solana backfill received a non-Solana request")
+        requested_at = datetime.now(UTC)
+        context = ProviderRequestContext(
+            correlation_id=f"solana-backfill:{request.stream_id}:{request.from_slot}:{request.to_slot}",
+            requested_at=requested_at,
+            deadline_at=requested_at + timedelta(seconds=request.timeout_seconds),
+        )
+        block_observation = await self.rpc.fetch_blocks(
+            request.from_slot,
+            request.to_slot,
+            context=context,
+        )
+        raw_slots = block_observation.normalized_payload.get("slots", ())
+        if not isinstance(raw_slots, Sequence) or isinstance(raw_slots, str | bytes | bytearray):
+            raise BackfillUnavailableError("getBlocks returned an invalid slot set")
+        produced_slots = tuple(sorted({int(slot) for slot in raw_slots}))
+        if any(slot < request.from_slot or slot > request.to_slot for slot in produced_slots):
+            raise BackfillUnavailableError("getBlocks returned a slot outside the request")
+        produced = set(produced_slots)
+        blocks: list[RawChainBlock] = []
+        for slot in range(request.from_slot, request.to_slot + 1):
+            if slot not in produced:
+                blocks.append(
+                    RawChainBlock(
+                        slot=slot,
+                        produced=False,
+                        transport="solana-rpc-backfill",
+                    )
+                )
+                continue
+            block = await self.rpc.fetch_block(slot, context=context, include_transactions=True)
+            if block.occurred_at is None:
+                raise BackfillUnavailableError(f"getBlock returned no block time for slot {slot}")
+            raw_transactions = block.normalized_payload.get("transactions", ())
+            if not isinstance(raw_transactions, Sequence) or isinstance(
+                raw_transactions, str | bytes | bytearray
+            ):
+                raise BackfillUnavailableError("getBlock returned an invalid transaction set")
+            decoded: list[RawChainTransaction] = []
+            for raw_transaction in raw_transactions:
+                transaction = _mapping(raw_transaction, "backfill transaction")
+                transaction_meta = _mapping(transaction.get("meta"), "backfill transaction meta")
+                raw_logs = transaction_meta.get("logMessages", ())
+                if not isinstance(raw_logs, Sequence) or isinstance(
+                    raw_logs, str | bytes | bytearray
+                ):
+                    raise BackfillUnavailableError("backfill transaction logs were invalid")
+                logs = tuple(value for value in raw_logs if isinstance(value, str))
+                if not any(f"Program {PUMP_FUN_PROGRAM_ID}" in value for value in logs):
+                    continue
+                transaction_body = _mapping(transaction.get("transaction"), "backfill transaction")
+                raw_signatures = transaction_body.get("signatures", ())
+                if not isinstance(raw_signatures, Sequence) or isinstance(
+                    raw_signatures, str | bytes | bytearray
+                ) or not raw_signatures or not isinstance(raw_signatures[0], str):
+                    raise BackfillUnavailableError("backfill transaction signature was invalid")
+                transaction_payload = dict(transaction)
+                transaction_payload["slot"] = slot
+                transaction_payload["blockTime"] = int(block.occurred_at.timestamp())
+                notification = SolanaLogsNotification(
+                    slot=slot,
+                    signature=raw_signatures[0],
+                    error=transaction_meta.get("err"),
+                    logs=logs,
+                    commitment=CommitmentState.FINALIZED,
+                    observed_at=block.observed_at,
+                )
+                try:
+                    decoded.extend(
+                        map_transaction_to_raw_events(
+                            transaction_payload,
+                            notification,
+                            ingested_at=max(block.observed_at, requested_at),
+                            transport="solana-rpc-backfill",
+                        )
+                    )
+                except (ProviderSchemaError, ValueError) as exc:
+                    raise BackfillUnavailableError(
+                        f"canonical backfill decode failed for slot {slot}"
+                    ) from exc
+            blocks.append(
+                RawChainBlock(
+                    slot=slot,
+                    produced=True,
+                    transactions=tuple(decoded),
+                    transport="solana-rpc-backfill",
+                    fetched_at=block.observed_at,
+                )
+            )
+        return BackfillResult(
+            request=request,
+            produced_slots=produced_slots,
+            blocks=tuple(blocks),
+            source="solana-rpc-backfill",
+            completed_at=max(requested_at, block_observation.observed_at),
+        )
 
 
 class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
@@ -428,6 +546,9 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         self._task: asyncio.Task[None] | None = None
         self._closed = False
         self._subscription: int | None = None
+        self._connection_sequence = 0
+        self._connection_id: str | None = None
+        self._pending_reconnect_reason: str | None = None
         self._last_slot: int | None = None
         self._latency_samples_ms: deque[float] = deque(maxlen=10_000)
         self._launch_observed_at: deque[datetime] = deque(maxlen=10_000)
@@ -494,6 +615,9 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         while not self._stop_event.is_set() and not self._closed:
             try:
                 self.metrics["stream_reconnects"] += 1
+                self._connection_sequence += 1
+                self._connection_id = f"solana-ws-{self._connection_sequence}"
+                reconnect_reason = self._pending_reconnect_reason
                 async with websockets.connect(
                     self.websocket_url,
                     open_timeout=10,
@@ -573,6 +697,8 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                                 notification,
                                 ingested_at=ensure_utc(self._clock(), "ingested_at"),
                                 program_id=self.program_id,
+                                connection_id=self._connection_id,
+                                reconnect_reason=reconnect_reason,
                             )
                         except (ProviderSchemaError, ValueError):
                             self.metrics["decoder_failures"] += 1
@@ -594,6 +720,8 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                             if latency_ms >= 0:
                                 self._latency_samples_ms.append(latency_ms)
                             self._launch_observed_at.append(event.observed_at)
+                        if events and reconnect_reason is not None:
+                            self._pending_reconnect_reason = None
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -614,6 +742,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                     self.metrics["recovery_required"] += 1
                     self.metrics["unknown_loss"] += 1
                     recovery_pending = True
+                    self._pending_reconnect_reason = type(exc).__name__
                     subscribed = False
                 self.metrics["stream_errors"] += 1
                 if self._stop_event.is_set() or self._closed:
@@ -714,6 +843,7 @@ __all__ = [
     "PUMP_FUN_SELL_V2_TAG",
     "SOLANA_PUBLIC_WEBSOCKET_URL",
     "SOLANA_RAW_TRANSPORT",
+    "SolanaRpcBackfillAdapter",
     "SolanaLogsNotification",
     "SolanaRawTransactionSource",
     "map_transaction_to_raw_events",

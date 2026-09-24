@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -259,6 +259,11 @@ class StreamGap:
     verified_event_count: int = 0
     merged_gap_ids: tuple[UUID, ...] = ()
     id: UUID = field(default_factory=uuid4)
+    gap_resolved_at: datetime | None = None
+    provider_id: str | None = None
+    connection_id: str | None = None
+    reconnect_reason: str | None = None
+    events_unrecoverable: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "chain", _chain(self.chain))
@@ -269,6 +274,12 @@ class StreamGap:
         if self.from_slot > self.to_slot:
             raise ValueError("from_slot must not exceed to_slot")
         object.__setattr__(self, "detected_at", ensure_utc(self.detected_at, "detected_at"))
+        if self.gap_resolved_at is not None:
+            object.__setattr__(
+                self,
+                "gap_resolved_at",
+                ensure_utc(self.gap_resolved_at, "gap_resolved_at"),
+            )
         object.__setattr__(
             self,
             "detection_method",
@@ -289,6 +300,20 @@ class StreamGap:
                 "last_error_class",
                 require_text(self.last_error_class, "last_error_class", max_length=128),
             )
+        for field_name in ("provider_id", "connection_id", "reconnect_reason"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    require_text(value, field_name, max_length=256),
+                )
+        if self.events_unrecoverable is not None:
+            object.__setattr__(
+                self,
+                "events_unrecoverable",
+                _non_negative_int(self.events_unrecoverable, "events_unrecoverable"),
+            )
         if not isinstance(self.id, UUID):
             raise TypeError("id must be a UUID")
         members = list(self.merged_gap_ids)
@@ -303,6 +328,42 @@ class StreamGap:
         """Return the inclusive number of slots in the gap."""
 
         return self.to_slot - self.from_slot + 1
+
+    @property
+    def gap_started_at(self) -> datetime:
+        """Return the durable start timestamp using the legacy detected field."""
+
+        return self.detected_at
+
+    @property
+    def missed_slot_start(self) -> int:
+        """Return the canonical lower bound of the missed range."""
+
+        return self.from_slot
+
+    @property
+    def missed_slot_end(self) -> int:
+        """Return the canonical upper bound of the missed range."""
+
+        return self.to_slot
+
+    @property
+    def provider(self) -> str:
+        """Return the provider identity carried by this stream gap."""
+
+        return self.provider_id or self.transport
+
+    @property
+    def backfill_status(self) -> str:
+        """Expose the persisted recovery status with the extension name."""
+
+        return cast(StreamGapStatus, self.status).value
+
+    @property
+    def events_recovered(self) -> int:
+        """Expose the recovered-event count with the extension name."""
+
+        return self.recovered_event_count
 
     @property
     def is_resolved(self) -> bool:
@@ -367,6 +428,22 @@ class StreamGap:
             verified_event_count=max(self.verified_event_count, other.verified_event_count),
             merged_gap_ids=members,
             id=uuid5(NAMESPACE_URL, identity),
+            gap_resolved_at=max(
+                value
+                for value in (self.gap_resolved_at, other.gap_resolved_at)
+                if value is not None
+            )
+            if self.gap_resolved_at is not None or other.gap_resolved_at is not None
+            else None,
+            provider_id=self.provider_id or other.provider_id,
+            connection_id=self.connection_id or other.connection_id,
+            reconnect_reason=self.reconnect_reason or other.reconnect_reason,
+            events_unrecoverable=(
+                max(self.events_unrecoverable, other.events_unrecoverable)
+                if self.events_unrecoverable is not None
+                and other.events_unrecoverable is not None
+                else None
+            ),
         )
 
     def transition(
@@ -402,7 +479,15 @@ class StreamGap:
         normalized_error = self.last_error_class
         if error_class is not None:
             normalized_error = require_text(error_class, "error_class", max_length=128)
-        return replace(self, status=target, last_error_class=normalized_error)
+        resolved_at = self.gap_resolved_at
+        if target in _RESOLVED_GAP_STATUSES and resolved_at is None:
+            resolved_at = datetime.now(UTC)
+        return replace(
+            self,
+            status=target,
+            last_error_class=normalized_error,
+            gap_resolved_at=resolved_at,
+        )
 
 
 @dataclass(frozen=True, slots=True)

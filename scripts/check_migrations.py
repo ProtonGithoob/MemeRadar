@@ -54,9 +54,9 @@ def main() -> int:
     metadata_tables = set(Base.metadata.tables)
     report = {"heads": heads, "table_count": len(metadata_tables)}
     print(json.dumps(report, sort_keys=True))
-    if heads != ["0011_collection_checkpoints"]:
+    if heads != ["0012_stream_gap_diagnostics"]:
         print(
-            "migration_error: expected exactly one 0011_collection_checkpoints head",
+            "migration_error: expected exactly one 0012_stream_gap_diagnostics head",
             file=sys.stderr,
         )
         return 1
