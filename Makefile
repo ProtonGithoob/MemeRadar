@@ -46,7 +46,7 @@ EARLY_DETECTION_ITERATIONS ?= 100
 EARLY_DETECTION_OUTPUT ?=
 SBOM_OUTPUT ?=
 
-.PHONY: bootstrap lint typecheck test replay-dataset profile-replay frontend-css-contract frontend-lint frontend-typecheck frontend-test frontend-e2e \
+.PHONY: bootstrap lint typecheck test mcp replay-dataset profile-replay frontend-css-contract frontend-lint frontend-typecheck frontend-test frontend-e2e \
 	frontend-build frontend-security-audit deterministic-release-gates prod-read-only-verify \
 	compose-config secret-scan migration-check integration-test verify up down migrate doctor \
 	start stop status \
@@ -70,6 +70,10 @@ typecheck:
 
 test:
 	$(PYTHON) -m pytest -q --cov=apps --cov=packages --cov-report=term-missing
+
+mcp:
+	PYTHONPATH=apps/mcp/src:apps/api/src:packages/application/src:packages/domain/src:packages/persistence/src:packages/providers/src:packages/telemetry/src \
+		$(PYTHON) -m memeradar_mcp
 
 replay-dataset:
 	$(PYTHON) scripts/replay_dataset.py --input $(REPLAY_INPUT) $(if $(REPLAY_OUTPUT),--output $(REPLAY_OUTPUT),)

@@ -18,6 +18,7 @@ for source_root in (
     ROOT / "packages" / "persistence" / "src",
     ROOT / "packages" / "telemetry" / "src",
     ROOT / "apps" / "api" / "src",
+    ROOT / "apps" / "mcp" / "src",
     ROOT / "apps" / "worker" / "src",
 ):
     sys.path.insert(0, str(source_root))
