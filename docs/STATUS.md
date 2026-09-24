@@ -69,6 +69,37 @@ not be created. The durable audit and verification record is in
 [`docs/reports/early-alpha-gap-analysis.md`](reports/early-alpha-gap-analysis.md);
 this is an environment limitation and did not require weakening any control.
 
+## 2026-09-24 early-alpha validation implementation checkpoint
+
+The first unresolved acceptance gate was implemented locally in commit
+`6113083`:
+[`early-alpha-validation-implementation.md`](reports/early-alpha-validation-implementation.md).
+The existing worker now follows all observed Pump.fun launches through durable
+1m–7d outcome horizons, versioned research labels, idempotent maturation
+upserts, forward-shadow reporting, matched-control/recall/ablation seams, and
+explicit sample insufficiency. Existing early features now include unified
+effective-liquidity turnover, age cohorts, explainable smart-wallet
+copyability/convergence, supply-quality evidence, and the separate
+`AlphaIgnitionScore`, `SafetyConfidence`, and `OpportunityConfidence`
+projection fields.
+
+The existing Telegram renderer/outbox now emits state-aware WATCH,
+EARLY_ALPHA, HIGH_CONFIDENCE_ALPHA, PAPER_ELIGIBLE, RISK_BLOCK, and EXIT
+transitions with deduplication and signal/enqueue/send timing. No Telegram
+credentials are configured locally, so external delivery remains
+`BLOCKED_EXTERNAL`. Historical case rows, Base protocol acceptance, and
+fresh mature labels remain `BLOCKED_EXTERNAL` or
+`INSUFFICIENT_SAMPLES`; the checked-in Pump.fun artifact still records
+1,278 launches, 121 MemeRadar-before-Dex leads, 995 1h-due observations, and
+zero measured executable winners.
+
+Post-commit verification: `make lint` PASS, `make typecheck` PASS for 147
+source files, `make test` PASS with 1,456 passed and 21 skipped, plus the
+focused persistence upsert regression (5 passed). The final `make verify`
+gate also passed, including frontend lint/typecheck and 83 frontend tests,
+CSS contract, Compose config, secret scan, migration check, security review,
+and SBOM. Protected modes remain unchanged.
+
 ## 2026-09-21 Pump.fun launch decoding and first live acceptance
 
 The local decoder is pinned to the exact public-docs revision used for the
