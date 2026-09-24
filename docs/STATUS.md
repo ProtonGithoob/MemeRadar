@@ -1,6 +1,6 @@
 # MemeRadar Status
 
-Last updated: 2026-09-21
+Last updated: 2026-09-24
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
@@ -32,6 +32,42 @@ There is no wallet signer, live order submission, automatic execution, or
 execution authority in the web client. Missing, stale, conflicted, invalid,
 unverified, and unresolved-gap evidence remains fail-closed and distinct from
 zero or safe evidence.
+
+## 2026-09-24 autonomous audit checkpoint
+
+The required repository audit is complete at local HEAD `c29b84c`. The gap
+matrix is recorded in
+[`docs/reports/early-alpha-gap-analysis.md`](reports/early-alpha-gap-analysis.md).
+The requested `.codex/CURRENT_TASK.md` and `.codex/VERIFICATION.md` recovery
+files could not be written because the host exposes `.codex/` read-only; the
+limitation and the recovery information are recorded in the report.
+
+The audit found reusable owners for canonical identity, early discovery,
+event-time features, wallet/creator graphs, security evidence, stream
+integrity, alerts, paper execution, replay, ablation, and promotion. No
+parallel score, lifecycle, execution, or provider framework was added. The
+first unresolved acceptance gate remains compliant real-data and
+out-of-sample validation with mature outcomes. The named case studies are not
+present as historical replay samples, and the bounded Pump.fun artifact has
+`1278` launches, `121` MemeRadar-before-Dex leads, and `0` matured executable
+winner labels. This remains `REAL_WORLD_ALPHA_NOT_YET_PROVEN` and
+`INSUFFICIENT_SAMPLES`.
+
+Pre-existing untracked operator artifacts were preserved. Remote
+synchronization is intentionally unavailable; no remote operation was run.
+
+Local verification after the audit passed: `git diff --check`, Ruff, mypy
+(`146` source files), `make test` (`1444 passed, 21 skipped, 7 warnings`), and
+`make verify`. The full verify also passed frontend CSS/lint/typecheck/tests
+(`83` tests), Compose configuration, secret scan, migration check, security
+review, and SBOM. External container/npm/pip scans remain `NOT_RUN`, and
+credentialed integration/production acceptance remains `BLOCKED_EXTERNAL`.
+
+The host filesystem exposes `.codex/` read-only, so the requested
+`.codex/CURRENT_TASK.md` and `.codex/VERIFICATION.md` checkpoint files could
+not be created. The durable audit and verification record is in
+[`docs/reports/early-alpha-gap-analysis.md`](reports/early-alpha-gap-analysis.md);
+this is an environment limitation and did not require weakening any control.
 
 ## 2026-09-21 Pump.fun launch decoding and first live acceptance
 
