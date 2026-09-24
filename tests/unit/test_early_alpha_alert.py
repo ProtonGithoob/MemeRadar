@@ -97,6 +97,34 @@ def test_missing_tracked_fields_are_explicitly_unknown() -> None:
         assert f"{label}: UNKNOWN" in rendered
 
 
+def test_renderer_includes_alpha_safety_separation_and_execution_status() -> None:
+    rendered = EarlyAlphaAlertRenderer().render(
+        _alert(
+            {
+                "state": "NOT_CONFIRMED",
+                "message_state": "EARLY_ALPHA",
+                "contract": "mint-1",
+                "turnover": "0.42",
+                "unique_buyers": 12,
+                "buyer_velocity": "4.0",
+                "AlphaIgnitionScore": 94,
+                "SafetyConfidence": 31,
+                "OpportunityConfidence": 88,
+                "execution_status": "EXECUTION_BLOCKED",
+                "provider_confidence": "FRESH",
+            }
+        )
+    )
+
+    assert "Signal state: EARLY_ALPHA" in rendered
+    assert "Contract: mint-1" in rendered
+    assert "Turnover: 0.42" in rendered
+    assert "AlphaIgnitionScore: 94" in rendered
+    assert "SafetyConfidence: 31" in rendered
+    assert "OpportunityConfidence: 88" in rendered
+    assert "Execution: EXECUTION_BLOCKED" in rendered
+
+
 def test_renderer_drops_raw_provider_payload_and_exposes_safe_correlation() -> None:
     rendered = EarlyAlphaAlertRenderer().render(
         _alert(

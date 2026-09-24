@@ -654,4 +654,232 @@ class SmartWalletScorer:
         return normalized
 
 
-__all__ = ["SmartWalletScore", "SmartWalletScorer", "SmartWalletScoringPolicy"]
+@dataclass(frozen=True, slots=True)
+class WalletCopyability:
+    """Explainable copyability projection; it is never execution authority."""
+
+    wallet_address: str
+    historical_pnl: Decimal | None
+    win_rate: Decimal | None
+    sample_count: int
+    entry_latency: Decimal | None
+    median_holding_time: Decimal | None
+    rug_exposure: Decimal | None
+    early_entry_rate: Decimal | None
+    post_entry_liquidity: Decimal | None
+    post_entry_price_impact: Decimal | None
+    mev_probability: Decimal | None
+    insider_probability: Decimal | None
+    copyability: Decimal | None
+    components: Mapping[str, Decimal | None]
+    penalties: Mapping[str, Decimal]
+    reason_codes: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "wallet_address",
+            require_solana_address(self.wallet_address, "wallet address"),
+        )
+        if self.sample_count < 0:
+            raise ValueError("sample_count must be non-negative")
+        for name in (
+            "win_rate",
+            "rug_exposure",
+            "early_entry_rate",
+            "post_entry_liquidity",
+            "post_entry_price_impact",
+            "mev_probability",
+            "insider_probability",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                bounded_decimal(value, name, Decimal("0"), Decimal("1"))
+        if self.copyability is not None:
+            object.__setattr__(
+                self,
+                "copyability",
+                bounded_decimal(self.copyability, "copyability", Decimal("0"), Decimal("100")),
+            )
+        object.__setattr__(self, "components", MappingProxyType(dict(self.components)))
+        object.__setattr__(self, "penalties", MappingProxyType(dict(self.penalties)))
+        object.__setattr__(self, "reason_codes", tuple(str(value) for value in self.reason_codes))
+
+    def to_mapping(self) -> dict[str, object]:
+        return {
+            "wallet_address": self.wallet_address,
+            "historical_pnl": self.historical_pnl,
+            "win_rate": self.win_rate,
+            "sample_count": self.sample_count,
+            "entry_latency": self.entry_latency,
+            "median_holding_time": self.median_holding_time,
+            "rug_exposure": self.rug_exposure,
+            "early_entry_rate": self.early_entry_rate,
+            "post_entry_liquidity": self.post_entry_liquidity,
+            "post_entry_price_impact": self.post_entry_price_impact,
+            "mev_probability": self.mev_probability,
+            "insider_probability": self.insider_probability,
+            "copyability": self.copyability,
+            "components": self.components,
+            "penalties": self.penalties,
+            "reason_codes": self.reason_codes,
+        }
+
+
+def assess_wallet_copyability(
+    score: SmartWalletScore,
+    snapshots: Sequence[WalletTrackingSnapshot],
+    *,
+    post_entry_evidence: Mapping[str, object] | None = None,
+) -> WalletCopyability:
+    """Project realistic copyability from existing score and tracked outcomes."""
+
+    trips = [
+        trip
+        for snapshot in snapshots
+        if snapshot.wallet_address == score.wallet_address
+        for trip in snapshot.round_trips
+    ]
+    entry_values = [
+        trip.token_age_at_entry_seconds
+        for trip in trips
+        if trip.token_age_at_entry_seconds is not None
+    ]
+    hold_values = [trip.hold_seconds for trip in trips]
+    entry_latency = _median_decimal(entry_values)
+    holding_time = _median_decimal(hold_values)
+    evidence = post_entry_evidence or {}
+
+    def evidence_decimal(name: str) -> Decimal | None:
+        value = evidence.get(name)
+        if value is None:
+            return None
+        parsed = to_decimal(value, name)
+        return bounded_decimal(parsed, name, Decimal("0"), Decimal("1"))
+
+    rug_exposure = (
+        None
+        if score.rug_avoidance_rate is None
+        else Decimal("1") - score.rug_avoidance_rate
+    )
+    post_liquidity = evidence_decimal("post_entry_liquidity")
+    price_impact = evidence_decimal("post_entry_price_impact")
+    mev_probability = evidence_decimal("mev_probability")
+    insider_probability = evidence_decimal("insider_probability")
+
+    timing_component = (
+        None
+        if entry_latency is None
+        else _clamp(
+            (entry_latency - Decimal("5")) / Decimal("115") * Decimal("100"),
+            Decimal("0"),
+            Decimal("100"),
+        )
+    )
+    holding_component = (
+        None
+        if holding_time is None
+        else _clamp(
+            (holding_time - Decimal("5")) / Decimal("115") * Decimal("100"),
+            Decimal("0"),
+            Decimal("100"),
+        )
+    )
+    components: dict[str, Decimal | None] = {
+        "historical_performance": score.score,
+        "win_rate": None if score.win_rate is None else score.win_rate * Decimal("100"),
+        "entry_timing": timing_component,
+        "holding_time": holding_component,
+        "post_entry_liquidity": None
+        if post_liquidity is None
+        else post_liquidity * Decimal("100"),
+        "post_entry_price_impact": None
+        if price_impact is None
+        else (Decimal("1") - price_impact) * Decimal("100"),
+        "latency_execution": None
+        if mev_probability is None or insider_probability is None
+        else (Decimal("1") - max(mev_probability, insider_probability)) * Decimal("100"),
+    }
+    required = (
+        entry_latency,
+        holding_time,
+        post_liquidity,
+        price_impact,
+        mev_probability,
+        insider_probability,
+    )
+    reasons = ["COPYABILITY_PROJECTED"]
+    copyability: Decimal | None = None
+    penalties: dict[str, Decimal] = {}
+    if score.sample_count == 0 or any(value is None for value in required):
+        reasons.append("COPYABILITY_EVIDENCE_UNKNOWN")
+    else:
+        assert (
+            timing_component is not None
+            and holding_component is not None
+            and post_liquidity is not None
+            and price_impact is not None
+            and mev_probability is not None
+            and insider_probability is not None
+        )
+        copyability = _clamp(
+            score.score * Decimal("0.25")
+            + timing_component * Decimal("0.15")
+            + holding_component * Decimal("0.15")
+            + post_liquidity * Decimal("100") * Decimal("0.15")
+            + (Decimal("1") - price_impact) * Decimal("100") * Decimal("0.10")
+            + (Decimal("1") - max(mev_probability, insider_probability))
+            * Decimal("100")
+            * Decimal("0.20"),
+            Decimal("0"),
+            Decimal("100"),
+        )
+        if timing_component < Decimal("25"):
+            penalties["too_early_to_follow"] = Decimal("25") - timing_component
+        if holding_component < Decimal("25"):
+            penalties["seconds_long_exit"] = Decimal("25") - holding_component
+        if post_liquidity < Decimal("0.5"):
+            penalties["post_entry_liquidity_collapse"] = (
+                Decimal("0.5") - post_liquidity
+            ) * Decimal("100")
+        if mev_probability > Decimal("0.5"):
+            penalties["mev_latency_dependency"] = mev_probability * Decimal("100")
+        if insider_probability > Decimal("0.5"):
+            penalties["insider_dependency"] = insider_probability * Decimal("100")
+    return WalletCopyability(
+        wallet_address=score.wallet_address,
+        historical_pnl=score.realized_pnl,
+        win_rate=score.win_rate,
+        sample_count=score.sample_count,
+        entry_latency=entry_latency,
+        median_holding_time=holding_time,
+        rug_exposure=rug_exposure,
+        early_entry_rate=score.early_entry_rate,
+        post_entry_liquidity=post_liquidity,
+        post_entry_price_impact=price_impact,
+        mev_probability=mev_probability,
+        insider_probability=insider_probability,
+        copyability=copyability,
+        components=components,
+        penalties=penalties,
+        reason_codes=tuple(reasons),
+    )
+
+
+def _median_decimal(values: Sequence[Decimal]) -> Decimal | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / Decimal("2")
+
+
+__all__ = [
+    "SmartWalletScore",
+    "SmartWalletScorer",
+    "SmartWalletScoringPolicy",
+    "WalletCopyability",
+    "assess_wallet_copyability",
+]

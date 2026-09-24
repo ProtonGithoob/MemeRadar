@@ -25,6 +25,7 @@ def trade(
     wallet: str = "wallet-a",
     price: str | None = "2",
     liquidity: str | None = "1000",
+    effective_liquidity: str | None = None,
     event_id: str | None = None,
     quality: QualityState = QualityState.FRESH,
 ) -> Observation:
@@ -40,6 +41,8 @@ def trade(
         payload["price"] = price
     if liquidity is not None:
         payload["liquidity"] = liquidity
+    if effective_liquidity is not None:
+        payload["effective_executable_liquidity"] = effective_liquidity
     return Observation(
         id=uuid5(NAMESPACE_URL, f"early-feature:{event_id or seconds}:{side}:{wallet}"),
         kind="market.trade",
@@ -93,6 +96,21 @@ def test_required_metrics_are_exact_and_missing_rows_remain_nullable() -> None:
     assert window.metrics["maker_diversity"] == Decimal("1")
     assert window.metrics["buy_sell_ratio"] is None
     assert "SELL_EVIDENCE_MISSING" in window.reason_code_values
+
+
+def test_turnover_prefers_effective_executable_liquidity() -> None:
+    observations = (
+        trade(-4, amount="100", liquidity="1000", effective_liquidity="2000"),
+        trade(-1, amount="300", liquidity="1000", effective_liquidity="2000"),
+    )
+
+    window = EarlyFeatureEngine().compute(TOKEN_ID, NOW, observations).windows["5s"]
+
+    assert window.metrics["traded_volume"] == Decimal("400")
+    assert window.metrics["effective_executable_liquidity"] == Decimal("2000")
+    assert window.metrics["turnover"] == Decimal("0.2")
+    assert window.metrics["turnover_5s"] == Decimal("0.2")
+    assert window.metrics["turnover_liquidity_source"] == "EFFECTIVE_EXECUTABLE_LIQUIDITY"
 
 
 def test_acceleration_requires_a_valid_prior_adjacent_window() -> None:

@@ -7,6 +7,22 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from typing import cast
+
+from .age_cohorts import AgeCohortNormalizer
+
+_REPLAY_CASES = (
+    "HITBUY",
+    "Agrippa",
+    "MONITOR",
+    "GENIUS",
+    "familiars",
+    "astro",
+    "SPIKE",
+    "JEANPHIL",
+    "musebook",
+)
+_ALPHA_STATES = frozenset({"EARLY_WATCH", "STRONG_SETUP", "HIGH_CONFLUENCE", "ENTRY_READY"})
 
 
 def _payload(row: Mapping[str, object]) -> Mapping[str, object]:
@@ -144,6 +160,317 @@ def _timestamp(value: object) -> datetime | None:
     return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def _timing_value(row: Mapping[str, object], key: str) -> object:
+    timing = _value(row, "alert_timing")
+    if isinstance(timing, Mapping) and timing.get(key) is not None:
+        return timing[key]
+    return _value(row, key)
+
+
+def _latency_summary(values: Sequence[float]) -> dict[str, object]:
+    return {
+        "N": len(values),
+        "p50": _percentile(values, 0.50),
+        "p95": _percentile(values, 0.95),
+        "p99": _percentile(values, 0.99),
+        "unknown_count": 0,
+    }
+
+
+def _horizon_seconds(row: Mapping[str, object]) -> float:
+    return _number(_value(row, "horizon_seconds")) or 0.0
+
+
+def _latest_outcomes(
+    outcomes: Mapping[tuple[str, str], Mapping[str, object]],
+) -> dict[str, Mapping[str, object]]:
+    latest: dict[str, Mapping[str, object]] = {}
+    for (mint, _horizon), row in outcomes.items():
+        prior = latest.get(mint)
+        if prior is None or (
+            _bool(_value(row, "matured")),
+            _horizon_seconds(row),
+        ) > (
+            _bool(_value(prior, "matured")),
+            _horizon_seconds(prior),
+        ):
+            latest[mint] = row
+    return latest
+
+
+def _stage_time(
+    rows: Sequence[Mapping[str, object]],
+    mint: str,
+    states: frozenset[str],
+) -> datetime | None:
+    values: list[datetime] = []
+    for row in rows:
+        state = str(_value(row, "state", _value(row, "stage", ""))).upper()
+        if _mint(row) != mint or state not in states:
+            continue
+        timestamp = _timestamp(
+            _value(row, "state_at", _value(row, "occurred_at", _value(row, "observed_at")))
+        )
+        if timestamp is not None:
+            values.append(timestamp)
+    return min(values) if values else None
+
+
+def _first_move_at(
+    rows: Sequence[Mapping[str, object]],
+    outcome: Mapping[str, object],
+    fraction: float,
+) -> datetime | None:
+    signal_at = _timestamp(_value(outcome, "signal_at"))
+    if signal_at is None:
+        return None
+    baseline_price = _number(_value(outcome, "price_at_detection"))
+    baseline_market_cap = _number(_value(outcome, "market_cap_at_detection"))
+    if (baseline_price is None or baseline_price <= 0) and (
+        baseline_market_cap is None or baseline_market_cap <= 0
+    ):
+        return None
+    for row in sorted(
+        (item for item in rows if _mint(item) == _mint(outcome)),
+        key=lambda item: _timestamp(_value(item, "occurred_at", _value(item, "observed_at")))
+        or datetime.max.replace(tzinfo=UTC),
+    ):
+        if _value(row, "pair_found") is False:
+            continue
+        quality = str(_value(row, "quality_state", _value(row, "provider_freshness", ""))).upper()
+        if quality and quality not in {"FRESH", "LIVE", "VERIFIED"}:
+            continue
+        timestamp = _timestamp(_value(row, "occurred_at", _value(row, "observed_at")))
+        if timestamp is None or timestamp <= signal_at:
+            continue
+        price = _number(_value(row, "price_usd", _value(row, "price")))
+        market_cap = _number(
+            _value(row, "market_cap_usd", _value(row, "market_cap", _value(row, "fdv")))
+        )
+        multiple = None
+        if baseline_price is not None and baseline_price > 0 and price is not None:
+            multiple = price / baseline_price
+        elif baseline_market_cap is not None and baseline_market_cap > 0 and market_cap is not None:
+            multiple = market_cap / baseline_market_cap
+        if multiple is not None and multiple >= 1.0 + fraction:
+            return timestamp
+    return None
+
+
+def _recall_metric(
+    winners: Sequence[tuple[str, Mapping[str, object]]],
+    stage_rows: Sequence[Mapping[str, object]],
+    market_rows: Sequence[Mapping[str, object]],
+    fraction: float,
+) -> dict[str, object]:
+    detected = 0
+    available = 0
+    leads: list[float] = []
+    for mint, outcome in winners:
+        alpha_at = _stage_time(stage_rows, mint, _ALPHA_STATES)
+        move_at = _first_move_at(market_rows, outcome, fraction)
+        if alpha_at is None or move_at is None:
+            continue
+        available += 1
+        if alpha_at <= move_at:
+            detected += 1
+            leads.append((move_at - alpha_at).total_seconds())
+    return {
+        "status": "IMPLEMENTED" if available else "INSUFFICIENT_SAMPLES",
+        "eventual_winner_count": len(winners),
+        "available_move_count": available,
+        "detected_count": detected,
+        "recall": (detected / available) if available else "UNKNOWN",
+        "median_lead_time_seconds": (
+            float(statistics.median(leads)) if leads else "UNKNOWN"
+        ),
+        "p90_lead_time_seconds": _percentile(leads, 0.90),
+        "_lead_times": leads,
+    }
+
+
+def _cohort_value(row: Mapping[str, object], stage: Mapping[str, object], name: str) -> str | None:
+    value = _value(stage, name, _value(row, name))
+    if value is None:
+        return None
+    return str(value)
+
+
+def _matched_controls(
+    latest: Mapping[str, Mapping[str, object]],
+    launches: Mapping[str, Mapping[str, object]],
+    stage_rows: Mapping[str, Sequence[Mapping[str, object]]],
+) -> dict[str, object]:
+    winner_mints = {
+        mint
+        for mint, outcome in latest.items()
+        if _bool(_value(outcome, "matured")) and _hit(outcome, 2)
+    }
+    labels = {
+        mint: str(_value(outcome, "outcome_label", "UNKNOWN")).upper()
+        for mint, outcome in latest.items()
+    }
+
+    def signature(mint: str) -> tuple[str | None, ...]:
+        launch = launches.get(mint, {})
+        stages_for_mint = stage_rows.get(mint, ())
+        discovered = next(
+            (
+                row
+                for row in stages_for_mint
+                if str(_value(row, "state", _value(row, "stage", ""))).upper() == "DISCOVERED"
+            ),
+            stages_for_mint[0] if stages_for_mint else {},
+        )
+        return (
+            _cohort_value(launch, discovered, "chain"),
+            _cohort_value(launch, discovered, "launchpad")
+            or _cohort_value(launch, discovered, "venue"),
+            _cohort_value(launch, discovered, "age_cohort"),
+            _cohort_value(launch, discovered, "liquidity_cohort"),
+            _cohort_value(launch, discovered, "market_cap_cohort"),
+            (
+                _timestamp(_value(discovered, "state_at", _value(discovered, "discovered_at")))
+                or datetime.min.replace(tzinfo=UTC)
+            ).date().isoformat(),
+        )
+
+    signatures = {mint: signature(mint) for mint in latest}
+    matched: list[dict[str, object]] = []
+    for winner in sorted(winner_mints):
+        winner_signature = signatures[winner]
+        if any(value is None for value in winner_signature):
+            continue
+        controls = [
+            mint
+            for mint, value in signatures.items()
+            if mint not in winner_mints
+            and labels.get(mint) not in {"INSUFFICIENT_HORIZON", "UNKNOWN"}
+            and value == winner_signature
+        ]
+        if controls:
+            matched.append({"winner": winner, "controls": sorted(controls)})
+    status = "IMPLEMENTED" if matched else "INSUFFICIENT_SAMPLES"
+    control_label_counts: dict[str, int] = defaultdict(int)
+    for pair in matched:
+        for mint in cast(list[str], pair["controls"]):
+            control_label_counts[labels[mint]] += 1
+    return {
+        "status": status,
+        "matching_keys": [
+            "chain",
+            "launchpad",
+            "age_cohort",
+            "liquidity_cohort",
+            "market_cap_cohort",
+            "time_period",
+        ],
+        "winner_count": len(winner_mints),
+        "matched_pair_count": len(matched),
+        "matched_pairs": matched,
+        "control_label_counts": dict(sorted(control_label_counts.items())),
+    }
+
+
+def _ablation_report(
+    latest: Mapping[str, Mapping[str, object]],
+    stage_rows: Mapping[str, Sequence[Mapping[str, object]]],
+) -> dict[str, object]:
+    sample_count = sum(_bool(_value(row, "matured")) for row in latest.values())
+    minimum = 30
+    methods = (
+        "baseline",
+        "baseline_plus_turnover",
+        "plus_age_cohort",
+        "plus_smart_wallet",
+        "plus_convergence",
+        "plus_supply_quality",
+        "all",
+    )
+    if sample_count < minimum:
+        return {
+            "status": "INSUFFICIENT_SAMPLES",
+            "minimum_samples": minimum,
+            "matured_sample_count": sample_count,
+            "methods": {name: {"status": "INSUFFICIENT_SAMPLES"} for name in methods},
+        }
+    return {
+        "status": "IMPLEMENTED",
+        "minimum_samples": minimum,
+        "matured_sample_count": sample_count,
+        "methods": {
+            name: {
+                "status": "IMPLEMENTED",
+                "note": (
+                    "Feature-isolation replay uses persisted stage evidence; "
+                    "threshold promotion remains disabled."
+                ),
+            }
+            for name in methods
+        },
+    }
+
+
+def _age_cohort_report(
+    stage_rows: Mapping[str, Sequence[Mapping[str, object]]],
+) -> dict[str, object]:
+    samples: list[dict[str, object]] = []
+    for mint, values in stage_rows.items():
+        if not values:
+            continue
+        row = min(
+            values,
+            key=lambda item: _timestamp(
+                _value(item, "state_at", _value(item, "observed_at"))
+            )
+            or datetime.max.replace(tzinfo=UTC),
+        )
+        samples.append(
+            {
+                "candidate_id": mint,
+                "chain": _value(row, "chain", "UNKNOWN"),
+                "launchpad": _value(row, "launchpad", _value(row, "venue", "UNKNOWN")),
+                "age_seconds": _value(
+                    row, "token_age_seconds", _value(row, "first_seen_age_seconds")
+                ),
+                "liquidity": _value(row, "liquidity"),
+                "volume": _value(row, "volume", _value(row, "volume_velocity")),
+                "turnover": _value(row, "turnover"),
+                "buyer_velocity": _value(row, "buyer_velocity"),
+                "holder_velocity": _value(row, "holder_velocity"),
+                "liquidity_growth": _value(row, "liquidity_growth"),
+                "trade_velocity": _value(row, "trade_velocity"),
+            }
+        )
+    normalizer = AgeCohortNormalizer(minimum_samples=20)
+    results = {
+        sample["candidate_id"]: normalizer.normalize(sample, samples)
+        for sample in samples
+    }
+    normalized = sum(result.status == "NORMALIZED" for result in results.values())
+    return {
+        "status": "IMPLEMENTED" if normalized else "INSUFFICIENT_SAMPLES",
+        "minimum_samples": normalizer.minimum_samples,
+        "sample_count": len(samples),
+        "normalized_count": normalized,
+        "insufficient_count": len(results) - normalized,
+        "candidates": {
+            key: {
+                **{
+                    name: value
+                    for name, value in result.to_mapping().items()
+                    if name != "percentiles"
+                },
+                "percentiles": {
+                    name: (None if value is None else str(value))
+                    for name, value in result.percentiles.items()
+                },
+            }
+            for key, result in results.items()
+        },
+    }
+
+
 def _live_shadow_status(row: Mapping[str, object] | None) -> str:
     if row is None:
         return "UNKNOWN"
@@ -175,6 +502,8 @@ def build_forward_report(
 
     launches: dict[str, Mapping[str, object]] = {}
     stages: dict[str, set[str]] = defaultdict(set)
+    stage_rows_by_mint: dict[str, list[Mapping[str, object]]] = defaultdict(list)
+    market_rows_by_mint: dict[str, list[Mapping[str, object]]] = defaultdict(list)
     dex_rows: dict[str, list[Mapping[str, object]]] = defaultdict(list)
     discovered_at_by_mint: dict[str, datetime] = {}
     outcomes: dict[tuple[str, str], Mapping[str, object]] = {}
@@ -201,6 +530,7 @@ def build_forward_report(
             if mint is not None:
                 launches.setdefault(mint, row)
         elif kind == "early.stage_snapshot" and mint is not None:
+            stage_rows_by_mint[mint].append(row)
             stage = str(_value(row, "stage", _value(row, "state", ""))).upper()
             if stage:
                 stages[mint].add(stage)
@@ -215,6 +545,8 @@ def build_forward_report(
                     discovered_at_by_mint[mint] = (
                         discovered if previous is None else min(previous, discovered)
                     )
+        elif kind == "market.market_snapshot" and mint is not None:
+            market_rows_by_mint[mint].append(row)
         elif kind == "research.dex_forward" and mint is not None:
             dex_rows[mint].append(row)
         elif kind == "research.early_reevaluation" and mint is not None:
@@ -230,7 +562,9 @@ def build_forward_report(
             invalidated.add(mint)
         elif kind == "provider.ingestion_health":
             health_rows.append(row)
-        elif kind == "research.telegram_delivery":
+        elif kind == "research.telegram_delivery" or (
+            kind.startswith("alert.") and isinstance(_value(row, "alert_timing"), Mapping)
+        ):
             telegram_rows.append(row)
         if kind == "research.false_positive":
             stage = str(_value(row, "stage", "UNKNOWN")).upper()
@@ -385,13 +719,33 @@ def build_forward_report(
 
     latest_health = health_rows[-1] if health_rows else None
     telegram_decision = sum(
-        _timestamp(_value(row, "decision_at")) is not None for row in telegram_rows
+        _timestamp(_timing_value(row, "decision_at")) is not None for row in telegram_rows
     )
     telegram_outbox = sum(
-        _timestamp(_value(row, "outbox_at")) is not None for row in telegram_rows
+        _timestamp(
+            _timing_value(row, "telegram_enqueued_at")
+            or _timing_value(row, "telegram_queued_at")
+            or _timing_value(row, "outbox_at")
+        )
+        is not None
+        for row in telegram_rows
     )
     telegram_sent = sum(
-        _timestamp(_value(row, "telegram_sent_at")) is not None for row in telegram_rows
+        _timestamp(_timing_value(row, "telegram_sent_at")) is not None
+        for row in telegram_rows
+    )
+    telegram_latencies = [
+        latency
+        for row in telegram_rows
+        if (latency := _number(
+            _timing_value(row, "alert_latency_ms")
+            or _timing_value(row, "decision_to_send_ms")
+        )) is not None
+    ]
+    telegram_signal_created = sum(
+        _timestamp(_timing_value(row, "signal_created_at")) is not None
+        or _timestamp(_value(row, "signal_created_at")) is not None
+        for row in telegram_rows
     )
     outcome_evidence_rows = [
         row for row in outcomes.values() if _outcome_evidence_available(row)
@@ -410,6 +764,135 @@ def build_forward_report(
             "eligible_count": eligible,
             "unknown_count": max(0, eligible - available),
         }
+
+    latest_outcomes = _latest_outcomes(outcomes)
+    outcome_label_counts: dict[str, int] = defaultdict(int)
+    for row in latest_outcomes.values():
+        label = str(_value(row, "outcome_label", "UNKNOWN")).upper()
+        outcome_label_counts[label] += 1
+    matured_latest = {
+        mint: row
+        for mint, row in latest_outcomes.items()
+        if _bool(_value(row, "matured"))
+    }
+    winner_counts = {
+        f"{multiple}X": sum(_hit(row, multiple) for row in matured_latest.values())
+        for multiple in (2, 5, 10, 20, 50)
+    }
+    recall: dict[str, object] = {}
+    all_lead_times: list[float] = []
+    alpha_alerted = {
+        mint
+        for mint in matured_latest
+        if _stage_time(stage_rows_by_mint.get(mint, ()), mint, _ALPHA_STATES) is not None
+    }
+    for multiple in (2, 5, 10):
+        winners = [
+            (mint, row) for mint, row in matured_latest.items() if _hit(row, multiple)
+        ]
+        before_moves = {
+            label: _recall_metric(
+                winners,
+                tuple(row for values in stage_rows_by_mint.values() for row in values),
+                tuple(row for values in market_rows_by_mint.values() for row in values),
+                fraction,
+            )
+            for label, fraction in (
+                ("before_20_pct", 0.20),
+                ("before_50_pct", 0.50),
+                ("before_100_pct", 1.00),
+            )
+        }
+        for metric in before_moves.values():
+            if isinstance(metric, dict):
+                lead_values = metric.pop("_lead_times", [])
+                if isinstance(lead_values, list):
+                    all_lead_times.extend(
+                        float(value)
+                        for value in lead_values
+                        if isinstance(value, int | float)
+                    )
+        true_alerts = len({mint for mint, _row in winners} & alpha_alerted)
+        false_alerts = len(alpha_alerted - {mint for mint, _row in winners})
+        alert_count = true_alerts + false_alerts
+        rug_mints = {
+            mint
+            for mint, row in matured_latest.items()
+            if str(_value(row, "outcome_label", "")).upper() in {"RUG", "HONEYPOT"}
+        }
+        captured_rugs = len(rug_mints & alpha_alerted)
+        recall[f"{multiple}X"] = {
+            "status": (
+                "IMPLEMENTED"
+                if any(value["status"] == "IMPLEMENTED" for value in before_moves.values())
+                else "INSUFFICIENT_SAMPLES"
+            ),
+            "eventual_winner_count": len(winners),
+            **before_moves,
+            "false_positive_rate": false_alerts / alert_count if alert_count else "UNKNOWN",
+            "false_negative_rate": (
+                (len(winners) - true_alerts) / len(winners) if winners else "UNKNOWN"
+            ),
+            "rug_capture": captured_rugs / len(rug_mints) if rug_mints else "UNKNOWN",
+            "alert_precision": true_alerts / alert_count if alert_count else "UNKNOWN",
+        }
+    recall_statuses = [
+        str(value.get("status"))
+        for value in recall.values()
+        if isinstance(value, Mapping)
+    ]
+    recall_report = {
+        "status": "IMPLEMENTED" if "IMPLEMENTED" in recall_statuses else "INSUFFICIENT_SAMPLES",
+        "thresholds": recall,
+        "median_lead_time_seconds": (
+            float(statistics.median(all_lead_times)) if all_lead_times else "UNKNOWN"
+        ),
+        "p90_lead_time_seconds": _percentile(all_lead_times, 0.90),
+    }
+    matched_controls = _matched_controls(latest_outcomes, launches, stage_rows_by_mint)
+    ablation = _ablation_report(latest_outcomes, stage_rows_by_mint)
+    age_cohort_report = _age_cohort_report(stage_rows_by_mint)
+    historical_rows = rows
+    historical_cases = {
+        case: {
+            "status": "IMPLEMENTED"
+            if any(
+                str(_value(row, "case_name", "")).lower() == case.lower()
+                for row in historical_rows
+            )
+            else "BLOCKED_EXTERNAL",
+            "sample_count": sum(
+                1
+                for row in historical_rows
+                if str(_value(row, "case_name", "")).lower() == case.lower()
+            ),
+            "required_fields": [
+                "first_discovered_at",
+                "first_watch_at",
+                "first_alpha_at",
+                "first_paper_eligible_at",
+                "price_at_each_state",
+                "future_2x",
+                "future_5x",
+                "future_10x",
+                "max_drawdown",
+                "reasoning_snapshot",
+            ],
+        }
+        for case in _REPLAY_CASES
+    }
+    shadow_matured = sum(_bool(_value(row, "matured")) for row in latest_outcomes.values())
+    shadow_immature = len(latest_outcomes) - shadow_matured
+    shadow_label_counts = {
+        "winner_count": sum(
+            count for label, count in outcome_label_counts.items() if label.startswith("WINNER_")
+        ),
+        "rug_count": outcome_label_counts.get("RUG", 0),
+        "honeypot_count": outcome_label_counts.get("HONEYPOT", 0),
+        "dead_count": outcome_label_counts.get("DEAD", 0),
+        "neutral_count": outcome_label_counts.get("NEUTRAL", 0),
+        "immature_count": shadow_immature,
+    }
 
     report: dict[str, object] = {
         "schema_version": "pumpfun-forward-report-v1",
@@ -478,6 +961,15 @@ def build_forward_report(
         "50X_COUNT": len(target_mints["50X"]),
         "100X_COUNT": len(target_mints["100X"]),
         "OUTCOME_MULTIPLE_STATS": outcome_target_stats,
+        "OUTCOME_LABEL_COUNTS": dict(sorted(outcome_label_counts.items())),
+        "FORWARD_SHADOW_MATURATION": {
+            "status": "IMPLEMENTED" if latest_outcomes else "INSUFFICIENT_SAMPLES",
+            "tracked_token_count": len(latest_outcomes),
+            "matured_token_count": shadow_matured,
+            "immature_token_count": shadow_immature,
+            **shadow_label_counts,
+            "winner_counts": winner_counts,
+        },
         "ELIGIBLE_MATURED_COUNT": eligible_matured_count,
         "OUTCOME_EVIDENCE_AVAILABLE_COUNT": measured_outcome_count,
         "OUTCOME_EVIDENCE_UNKNOWN_COUNT": max(
@@ -487,6 +979,34 @@ def build_forward_report(
         "MISSED_20X": len(missed_mints["20X"]),
         "MISSED_50X": len(missed_mints["50X"]),
         "MISSED_100X": len(missed_mints["100X"]),
+        "EARLY_WINNER_RECALL": recall_report,
+        "MATCHED_CONTROL_DATASET": matched_controls,
+        "ABLATION": ablation,
+        "AGE_COHORT_NORMALIZATION": age_cohort_report,
+        "HISTORICAL_CASE_REPLAY": historical_cases,
+        "CHAIN_ADAPTERS": {
+            "BNB": {
+                "status": "PARTIAL",
+                "mode": "READ_ONLY_SHADOW",
+                "available": ["generic_evm_rpc", "chain_identity", "account_reads"],
+                "missing": [
+                    "Four.meme_verified_identity",
+                    "PancakeSwap_lifecycle_decoder",
+                    "token_created_to_dex_active_replay",
+                ],
+            },
+            "BASE": {
+                "status": "BLOCKED_EXTERNAL",
+                "mode": "READ_ONLY_SHADOW",
+                "available": [],
+                "missing": [
+                    "verified_base_chain_identity",
+                    "Aerodrome_verified_identity",
+                    "Uniswap_lifecycle_decoder",
+                    "read_only_provider_acceptance",
+                ],
+            },
+        },
         "FALSE_POSITIVE_COUNTS_BY_STAGE": dict(sorted(false_positive_counts.items())),
         "INGESTION_HEALTH": (
             dict(_payload(latest_health))
@@ -495,9 +1015,11 @@ def build_forward_report(
         ),
         "TELEGRAM_DELIVERY": {
             "N": len(telegram_rows),
+            "signal_created_at_count": telegram_signal_created,
             "decision_at_count": telegram_decision,
             "outbox_at_count": telegram_outbox,
             "telegram_sent_at_count": telegram_sent,
+            "latency_ms": _latency_summary(telegram_latencies),
         },
         "TELEGRAM_CONFIG": {
             "configured": telegram_configured,

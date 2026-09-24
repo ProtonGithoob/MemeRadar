@@ -527,6 +527,9 @@ class AsymmetricAlphaProjection:
     reason_codes: tuple[ReasonCode, ...] = ()
     strategy_version: str = "asymmetric-alpha-v1"
     config_hash: str = "asymmetric-alpha-hash"
+    alpha_ignition_score: Decimal = Decimal("0")
+    safety_confidence: Decimal = Decimal("0")
+    opportunity_confidence: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
         eq_bounded = bounded_decimal(
@@ -563,6 +566,53 @@ class AsymmetricAlphaProjection:
             self.evidence_confidence, "evidence_confidence", Decimal("0"), Decimal("1")
         )
         object.__setattr__(self, "evidence_confidence", ec_bounded)
+        for field_name in (
+            "alpha_ignition_score",
+            "safety_confidence",
+            "opportunity_confidence",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                bounded_decimal(
+                    getattr(self, field_name),
+                    field_name,
+                    Decimal("0"),
+                    Decimal("100"),
+                ),
+            )
+
+    @property
+    def AlphaIgnitionScore(self) -> Decimal:
+        return self.alpha_ignition_score
+
+    @property
+    def SafetyConfidence(self) -> Decimal:
+        return self.safety_confidence
+
+    @property
+    def OpportunityConfidence(self) -> Decimal:
+        return self.opportunity_confidence
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return freeze_mapping(
+            {
+                "AlphaIgnitionScore": self.alpha_ignition_score,
+                "SafetyConfidence": self.safety_confidence,
+                "OpportunityConfidence": self.opportunity_confidence,
+                "alpha_ignition_score": self.alpha_ignition_score,
+                "safety_confidence": self.safety_confidence,
+                "opportunity_confidence": self.opportunity_confidence,
+                "early_quality_score": self.early_quality_score,
+                "upside_evidence_score": self.upside_evidence_score,
+                "rug_dump_risk": self.rug_dump_risk,
+                "execution_quality": self.execution_quality,
+                "evidence_confidence": self.evidence_confidence,
+                "reason_codes": tuple(reason.code for reason in self.reason_codes),
+                "execution_eligible": False,
+            },
+            "asymmetric alpha projection",
+        )
 
 
 def build_asymmetric_alpha_projection(
@@ -589,7 +639,25 @@ def build_asymmetric_alpha_projection(
 
     exec_quality = components.get("LiquidityAndSellability")
 
-    reasons = list(snapshot.reason_codes) + [ReasonCode("ASYMMETRIC_ALPHA_PROJECTED")]
+    alpha_ignition_score = snapshot.score if upside_score is None else upside_score
+    safety_confidence = Decimal("0")
+    if (
+        not snapshot.hard_risk_blocked
+        and snapshot.risk_disposition is RiskDisposition.PASS
+        and snapshot.risk_quality_state is QualityState.FRESH
+        and exec_quality is not None
+        and rug_risk is not None
+    ):
+        safety_confidence = (
+            exec_quality * Decimal("0.60")
+            + (Decimal("100") - rug_risk) * Decimal("0.40")
+        ) * snapshot.confidence
+    opportunity_confidence = Decimal("100") * snapshot.confidence
+
+    reasons = list(snapshot.reason_codes) + [
+        ReasonCode("ASYMMETRIC_ALPHA_PROJECTED"),
+        ReasonCode("ALPHA_SAFETY_CONFIDENCE_SEPARATED"),
+    ]
 
     return AsymmetricAlphaProjection(
         early_quality_score=snapshot.score,
@@ -609,6 +677,9 @@ def build_asymmetric_alpha_projection(
         market_cap_at_decision=market_cap_at_decision,
         reason_codes=tuple(sorted(set(reasons), key=str)),
         config_hash=snapshot.config_hash,
+        alpha_ignition_score=alpha_ignition_score,
+        safety_confidence=safety_confidence,
+        opportunity_confidence=opportunity_confidence,
     )
 
 

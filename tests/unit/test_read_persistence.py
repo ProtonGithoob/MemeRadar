@@ -300,3 +300,56 @@ def test_generic_observation_repository_is_idempotent_and_conflicts_on_mutation(
     import asyncio
 
     asyncio.run(exercise())
+
+
+def test_research_outcome_upsert_is_idempotent_and_preserves_maturity() -> None:
+    class Session:
+        row: ObservationRow | None = None
+
+        async def scalar(self, _statement: object) -> ObservationRow | None:
+            return self.row
+
+        def add(self, row: ObservationRow) -> None:
+            self.row = row
+
+        async def flush(self) -> None:
+            return None
+
+    def outcome(*, matured: bool, label: str | None) -> Observation:
+        return Observation(
+            kind="research.outcome",
+            provenance=Provenance(
+                provider="forward-fixture",
+                source_id="outcome:mint-a:1h",
+                observed_at=NOW,
+                parser_version="forward-v2",
+            ),
+            occurred_at=NOW,
+            observed_at=NOW,
+            ingested_at=NOW,
+            quality_state=QualityState.FRESH,
+            normalized_payload={
+                "mint": "mint-a",
+                "horizon": "1h",
+                "matured": matured,
+                "outcome_version": "forward-v2",
+                "outcome_label": label,
+            },
+        )
+
+    async def exercise() -> None:
+        session = Session()
+        repository = ObservationRepository(session)  # type: ignore[arg-type]
+        first = await repository.upsert_research_outcome(outcome(matured=False, label=None))
+        mature = await repository.upsert_research_outcome(
+            outcome(matured=True, label="WINNER_2X")
+        )
+        stale = await repository.upsert_research_outcome(outcome(matured=False, label=None))
+        assert first is mature is stale
+        assert session.row is not None
+        assert session.row.normalized_payload["matured"] is True
+        assert session.row.normalized_payload["outcome_label"] == "WINNER_2X"
+
+    import asyncio
+
+    asyncio.run(exercise())

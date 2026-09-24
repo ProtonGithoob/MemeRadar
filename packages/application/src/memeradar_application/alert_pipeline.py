@@ -599,6 +599,9 @@ class AlertRenderer:
         state = _safe_display(payload.get("state") or payload.get("to_state"))
         if state:
             lines.append(f"State: {state}")
+        message_state = _safe_display(payload.get("message_state"))
+        if message_state:
+            lines.append(f"Signal state: {message_state}")
         mint = _safe_display(payload.get("mint"))
         if mint and mint != title:
             lines.append(f"Mint: {mint}")
@@ -667,6 +670,8 @@ class AlertRenderer:
             lines.append("NOT ENTRY_READY")
             lines.append("RESEARCH/PAPER SIGNAL")
         for key, label in (
+            ("chain", "Chain"),
+            ("contract", "Contract"),
             ("age", "Age"),
             ("liquidity_usd", "Liquidity"),
             ("market_cap_usd", "Market cap"),
@@ -675,8 +680,68 @@ class AlertRenderer:
             ("health_state", "Health"),
         ):
             value = _safe_display(payload.get(key))
+            if not value and key == "liquidity_usd":
+                value = _safe_display(payload.get("liquidity"))
+            if not value and key == "market_cap_usd":
+                value = _safe_display(payload.get("market_cap"))
             if value:
                 lines.append(f"{label}: {value}")
+
+        research_fields = (
+            ("volume_velocity", "Volume velocity"),
+            ("turnover", "Turnover"),
+            ("turnover_1m", "Turnover 1m"),
+            ("turnover_3m", "Turnover 3m"),
+            ("turnover_5m", "Turnover 5m"),
+            ("turnover_15m", "Turnover 15m"),
+            ("turnover_30m", "Turnover 30m"),
+            ("turnover_1h", "Turnover 1h"),
+            ("turnover_velocity", "Turnover velocity"),
+            ("turnover_acceleration", "Turnover acceleration"),
+            ("turnover_provider_provenance", "Turnover provenance"),
+            ("unique_buyers", "Unique buyers"),
+            ("buyer_velocity", "Buyer velocity"),
+            ("holder_velocity", "Holder velocity"),
+            ("liquidity_growth", "Liquidity growth"),
+            ("trade_velocity", "Trade velocity"),
+            ("independent_wallet_count", "Independent wallets"),
+            ("weighted_wallet_quality", "Wallet quality"),
+            ("entry_time_dispersion", "Entry dispersion"),
+            ("funding_independence", "Funding independence"),
+            ("cluster_independence", "Cluster independence"),
+            ("copyability_weighted_convergence", "Copyability convergence"),
+            ("AlphaIgnitionScore", "AlphaIgnitionScore"),
+            ("SafetyConfidence", "SafetyConfidence"),
+            ("OpportunityConfidence", "OpportunityConfidence"),
+            ("execution_status", "Execution"),
+            ("provider_confidence", "Provider confidence"),
+        )
+        if any(payload.get(key) is not None for key, _label in research_fields):
+            lines.append("EARLY-ALPHA EVIDENCE")
+            for key, label in research_fields:
+                value = _safe_display(payload.get(key))
+                if value:
+                    lines.append(f"{label}: {value}")
+        supply_fields = (
+            ("top_1_holder_pct", "top1"),
+            ("top_5_holder_pct", "top5"),
+            ("top_10_holder_pct", "top10"),
+            ("developer_pct", "developer"),
+            ("creator_pct", "creator"),
+            ("insider_pct", "insider"),
+            ("sniper_pct", "sniper"),
+            ("bundler_pct", "bundler"),
+            ("fresh_wallet_pct", "fresh"),
+            ("lp_pct", "LP"),
+            ("locked_liquidity_pct", "locked LP"),
+        )
+        supply_values = [
+            f"{label}={_safe_display(payload[key])}"
+            for key, label in supply_fields
+            if key in payload and _safe_display(payload[key])
+        ]
+        if supply_values:
+            lines.append("Supply quality: " + ", ".join(supply_values))
 
         positive = _safe_lines(payload.get("top_positive_evidence"), max_items=4)
         if positive:
@@ -930,6 +995,7 @@ def _exit_alert_payload(payload: Mapping[str, object]) -> dict[str, object]:
             evidence.extend(value for value in raw_values if isinstance(value, str))
     if evidence:
         result["evidence_refs"] = tuple(dict.fromkeys(evidence))
+    result["message_state"] = "EXIT"
     return result
 
 
@@ -970,9 +1036,25 @@ def _payload_with_event_metadata(
     result = {str(key): value for key, value in payload.items()}
     result.setdefault("event_id", str(event.id))
     result.setdefault("event_kind", event.kind)
+    result.setdefault("signal_created_at", event.occurred_at.isoformat())
     if event.aggregate_id:
         result.setdefault("aggregate_id", str(event.aggregate_id))
     return result
+
+
+_STAGE_MESSAGE_STATES = {
+    "WATCH": "WATCH",
+    "EARLY_WATCH": "EARLY_ALPHA",
+    "STRONG_SETUP": "EARLY_ALPHA",
+    "HIGH_CONFLUENCE": "HIGH_CONFIDENCE_ALPHA",
+    "ENTRY_READY": "PAPER_ELIGIBLE",
+    "RISK_REJECTED": "RISK_BLOCK",
+}
+
+
+def _stage_message_state(to_state: str, payload: Mapping[str, object]) -> str:
+    explicit = _safe_display(payload.get("message_state"))
+    return explicit or _STAGE_MESSAGE_STATES.get(to_state, to_state)
 
 
 _ALERT_TIMING_KEY = "alert_timing"
@@ -1045,6 +1127,7 @@ def _alert_timing(
         "decision_at": None if decision_at is None else decision_at.isoformat(),
         "alert_projected_at": None if projected_at is None else projected_at.isoformat(),
         "telegram_queued_at": None if queued_at is None else queued_at.isoformat(),
+        "telegram_enqueued_at": None if queued_at is None else queued_at.isoformat(),
         "telegram_delivery_started_at": (
             None if started_at is None else started_at.isoformat()
         ),
@@ -1054,6 +1137,7 @@ def _alert_timing(
         "decision_to_queue_ms": _duration_ms(decision_at, queued_at),
         "queue_to_send_ms": _duration_ms(queued_at, sent_timestamp),
         "decision_to_send_ms": _duration_ms(decision_at, sent_timestamp),
+        "alert_latency_ms": _duration_ms(decision_at, sent_timestamp),
         "provider_to_alert_ms": _duration_ms(provider_observed_at, projected_at),
         "chain_to_alert_ms": _duration_ms(chain_created_at, projected_at),
     }
@@ -1131,12 +1215,17 @@ class AlertEventProjector:
                 "HIGH_CONFLUENCE": AlertType.HIGH_CONFLUENCE,
                 "ENTRY_READY": AlertType.ENTRY_READY,
             }
+            alert_payload = {
+                **payload,
+                "message_state": _stage_message_state(to_state, payload),
+            }
             alert_type = state_types.get(to_state)
             if alert_type is None:
                 if to_state != "RISK_REJECTED":
                     return None
                 alert_type = AlertType.RISK_ESCALATION
                 severity = AlertSeverity.CRITICAL
+                alert_payload = {**payload, "message_state": "RISK_BLOCK"}
         elif event.kind == "RiskEscalation":
             alert_type = AlertType.RISK_ESCALATION
             severity = (

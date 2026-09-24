@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
+from typing import cast
 from uuid import UUID, uuid4
 
 from memeradar_domain import Observation, Provenance, QualityState, ReasonCode, RiskDisposition
@@ -34,6 +35,20 @@ _QUALITY_SEVERITY = {
     QualityState.INVALID: 4,
 }
 _MISSING = object()
+_DANGEROUS_TOKEN_2022_EXTENSIONS = frozenset(
+    {
+        "confidential_transfer",
+        "default_account_state",
+        "group_member_pointer",
+        "group_pointer",
+        "interest_bearing_config",
+        "metadata_pointer",
+        "pausable",
+        "permanent_delegate",
+        "transfer_fee_config",
+        "transfer_hook",
+    }
+)
 
 
 def _reason(code: str, *, detail: str | None = None) -> ReasonCode:
@@ -55,6 +70,59 @@ def _fraction(value: object) -> Decimal | None:
     if not Decimal("0") <= parsed <= Decimal("1"):
         raise ValueError("launch risk ratios must be between zero and one")
     return parsed
+
+
+def _supply_ratio(value: object) -> Decimal | None:
+    if value is _MISSING or value is None:
+        return None
+    try:
+        parsed = to_decimal(value, "supply ratio")
+    except (TypeError, ValueError):
+        return None
+    if parsed > Decimal("1") and parsed <= Decimal("100"):
+        parsed /= Decimal("100")
+    return parsed if Decimal("0") <= parsed <= Decimal("1") else None
+
+
+def _source_value(source: object, names: Sequence[str]) -> object:
+    if isinstance(source, Mapping):
+        for name in names:
+            value = source.get(name)
+            if value is not None:
+                return value
+        return _MISSING
+    for name in names:
+        value = getattr(source, name, None)
+        if value is not None:
+            return value
+    return _MISSING
+
+
+def _authority_state(value: object) -> str | None:
+    if value is _MISSING or value is None:
+        return None
+    value = value.get("state") if isinstance(value, Mapping) else getattr(value, "state", value)
+    value = getattr(value, "value", value)
+    return None if value is None else str(value).upper()
+
+
+def _extension_names(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        values = (value,)
+    elif isinstance(value, Sequence):
+        values = tuple(value)
+    else:
+        return ()
+    return tuple(
+        sorted(
+            {
+                str(item).strip().lower().replace("-", "_")
+                for item in values
+                if str(item).strip().lower().replace("-", "_")
+                in _DANGEROUS_TOKEN_2022_EXTENSIONS
+            }
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +199,20 @@ class LaunchRiskSnapshot:
     version: str = LAUNCH_RISK_VERSION
     token_id: UUID | None = None
     id: UUID = field(default_factory=uuid4)
+    top_1_holder_pct: Decimal | None = None
+    top_5_holder_pct: Decimal | None = None
+    top_10_holder_pct: Decimal | None = None
+    developer_pct: Decimal | None = None
+    creator_pct: Decimal | None = None
+    insider_pct: Decimal | None = None
+    sniper_pct: Decimal | None = None
+    bundler_pct: Decimal | None = None
+    fresh_wallet_pct: Decimal | None = None
+    lp_pct: Decimal | None = None
+    locked_liquidity_pct: Decimal | None = None
+    mint_authority: str | None = None
+    freeze_authority: str | None = None
+    dangerous_token_2022_extensions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "as_of", ensure_utc(self.as_of, "as_of"))
@@ -181,6 +263,32 @@ class LaunchRiskSnapshot:
         object.__setattr__(self, "version", require_text(self.version, "version", max_length=64))
         if not isinstance(self.id, UUID):
             raise TypeError("id must be a UUID")
+        for field_name in (
+            "top_1_holder_pct",
+            "top_5_holder_pct",
+            "top_10_holder_pct",
+            "developer_pct",
+            "creator_pct",
+            "insider_pct",
+            "sniper_pct",
+            "bundler_pct",
+            "fresh_wallet_pct",
+            "lp_pct",
+            "locked_liquidity_pct",
+        ):
+            object.__setattr__(self, field_name, _fraction(getattr(self, field_name)))
+        object.__setattr__(
+            self,
+            "dangerous_token_2022_extensions",
+            normalize_texts(
+                self.dangerous_token_2022_extensions,
+                "dangerous_token_2022_extensions",
+            ),
+        )
+        for field_name in ("mint_authority", "freeze_authority"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(self, field_name, str(value).upper())
 
     @property
     def reason_code_values(self) -> tuple[str, ...]:
@@ -219,6 +327,20 @@ class LaunchRiskSnapshot:
                 "evidence_refs": self.evidence_refs,
                 "version": self.version,
                 "config_hash": self.config_hash,
+                "top_1_holder_pct": self.top_1_holder_pct,
+                "top_5_holder_pct": self.top_5_holder_pct,
+                "top_10_holder_pct": self.top_10_holder_pct,
+                "developer_pct": self.developer_pct,
+                "creator_pct": self.creator_pct,
+                "insider_pct": self.insider_pct,
+                "sniper_pct": self.sniper_pct,
+                "bundler_pct": self.bundler_pct,
+                "fresh_wallet_pct": self.fresh_wallet_pct,
+                "lp_pct": self.lp_pct,
+                "locked_liquidity_pct": self.locked_liquidity_pct,
+                "mint_authority": self.mint_authority,
+                "freeze_authority": self.freeze_authority,
+                "dangerous_token_2022_extensions": self.dangerous_token_2022_extensions,
                 "execution_eligible": False,
             },
             "launch_risk",
@@ -298,6 +420,7 @@ class LaunchRiskAnalyzer:
                             quality_states.append(QualityState.UNKNOWN)
 
         explicit = self._explicit_metrics(launch_footprint, deployer_activity, holder_graph)
+        supply = self._supply_quality(observations, holder_graph, launch_footprint)
         total = len(actors)
         metrics: dict[str, Decimal | None] = {
             "bundle_concentration": explicit.get("bundle_concentration")
@@ -394,6 +517,22 @@ class LaunchRiskAnalyzer:
             config_hash=self.policy.config_hash,
             version=self.policy.version,
             token_id=token_id,
+            top_1_holder_pct=cast(Decimal | None, supply["top_1_holder_pct"]),
+            top_5_holder_pct=cast(Decimal | None, supply["top_5_holder_pct"]),
+            top_10_holder_pct=cast(Decimal | None, supply["top_10_holder_pct"]),
+            developer_pct=cast(Decimal | None, supply["developer_pct"]),
+            creator_pct=cast(Decimal | None, supply["creator_pct"]),
+            insider_pct=cast(Decimal | None, supply["insider_pct"]),
+            sniper_pct=cast(Decimal | None, supply["sniper_pct"]),
+            bundler_pct=cast(Decimal | None, supply["bundler_pct"]),
+            fresh_wallet_pct=cast(Decimal | None, supply["fresh_wallet_pct"]),
+            lp_pct=cast(Decimal | None, supply["lp_pct"]),
+            locked_liquidity_pct=cast(Decimal | None, supply["locked_liquidity_pct"]),
+            mint_authority=cast(str | None, supply["mint_authority"]),
+            freeze_authority=cast(str | None, supply["freeze_authority"]),
+            dangerous_token_2022_extensions=cast(
+                tuple[str, ...], supply["dangerous_token_2022_extensions"]
+            ),
         )
 
     @staticmethod
@@ -448,6 +587,63 @@ class LaunchRiskAnalyzer:
                             Decimal("1"),
                         )
                         break
+        return result
+
+    @staticmethod
+    def _supply_quality(
+        observations: Sequence[Observation],
+        holder_graph: object | None,
+        launch_footprint: object | None,
+    ) -> dict[str, object]:
+        aliases = {
+            "top_1_holder_pct": ("top_1_holder_pct", "top1", "top1_concentration"),
+            "top_5_holder_pct": ("top_5_holder_pct", "top5", "top5_concentration"),
+            "top_10_holder_pct": ("top_10_holder_pct", "top10", "top10_concentration"),
+            "developer_pct": ("developer_pct", "deployer_pct", "deployer_share"),
+            "creator_pct": ("creator_pct", "creator_share"),
+            "insider_pct": ("insider_pct", "insider_share"),
+            "sniper_pct": ("sniper_pct", "sniper_share"),
+            "bundler_pct": ("bundler_pct", "bundle_pct", "bundler_share"),
+            "fresh_wallet_pct": ("fresh_wallet_pct", "fresh_wallet_ratio"),
+            "lp_pct": ("lp_pct", "liquidity_provider_pct", "lp_share"),
+            "locked_liquidity_pct": (
+                "locked_liquidity_pct",
+                "locked_liquidity_ratio",
+                "lp_locked_pct",
+            ),
+        }
+        sources: list[object] = [
+            value for value in (holder_graph, launch_footprint) if value is not None
+        ]
+        sources.extend(observation.normalized_payload for observation in observations)
+        result: dict[str, object] = {}
+        for output_name, names in aliases.items():
+            value = _MISSING
+            for source in sources:
+                value = _source_value(source, names)
+                if value is not _MISSING:
+                    break
+            result[output_name] = _supply_ratio(value)
+
+        for output_name, names in (
+            ("mint_authority", ("mint_authority",)),
+            ("freeze_authority", ("freeze_authority",)),
+        ):
+            value = _MISSING
+            for source in sources:
+                value = _source_value(source, names)
+                if value is not _MISSING:
+                    break
+            result[output_name] = _authority_state(value)
+
+        extensions: set[str] = set()
+        for source in sources:
+            raw = _source_value(
+                source,
+                ("dangerous_token_2022_extensions", "token_extensions", "token22_extensions"),
+            )
+            extensions.update(_extension_names(raw))
+        result["dangerous_token_2022_extensions"] = tuple(sorted(extensions))
         return result
 
 

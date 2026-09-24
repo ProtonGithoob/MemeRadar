@@ -36,6 +36,7 @@ from memeradar_domain import (
 )
 from memeradar_domain.common import ensure_utc, freeze_mapping, normalize_texts, to_decimal
 
+from .age_cohorts import age_cohort, liquidity_cohort
 from .alert_pipeline import AlertEventProjector
 from .early_decision import EarlyDecisionEngine, EarlyDecisionPolicy, EarlyDecisionResult
 from .early_detection import DetectionAuthority, EarlyDetectionResult, UltraEarlyDetector
@@ -45,7 +46,11 @@ from .early_features import (
     EarlyFeatureSnapshot,
     EarlyFeatureWindow,
 )
-from .early_scoring import EarlyScorer, EarlyScoreSnapshot
+from .early_scoring import (
+    EarlyScorer,
+    EarlyScoreSnapshot,
+    build_asymmetric_alpha_projection,
+)
 from .fast_safety import FastSafetyGate, FastSafetyResult, FastSafetyStatus
 from .organic_momentum import OrganicMomentumProjection
 
@@ -541,7 +546,7 @@ class EarlyRuntimeService:
         await self._save_observation(snapshot)
         lifecycle_event = None
         alert = None
-        if transition is not None and target is not CandidateState.WATCH:
+        if transition is not None:
             lifecycle_event = self._lifecycle_event(
                 candidate,
                 transition.from_state,
@@ -934,6 +939,19 @@ class EarlyRuntimeService:
             if isinstance(detection.authority, DetectionAuthority)
             else str(detection.authority)
         )
+        snapshot_liquidity = metrics.get("liquidity", first_payload.get("liquidity_usd"))
+        alpha_projection = (
+            None
+            if score is None
+            else build_asymmetric_alpha_projection(
+                score,
+                market_cap_at_decision=_decimal(
+                    metrics.get("market_cap", first_payload.get("market_cap_usd")),
+                    "market_cap",
+                ),
+                launch_age_ms=int(age * Decimal("1000")),
+            )
+        )
         payload: dict[str, object] = {
             "chain": "solana",
             "mint": detection.mint_address,
@@ -962,6 +980,7 @@ class EarlyRuntimeService:
             "discovered_at": detection.first_seen_at.isoformat(),
             "chain_occurred_at": launch_at.isoformat(),
             "first_seen_age_seconds": age,
+            "age_cohort": age_cohort(age),
             "first_seen_market_cap": first_payload.get(
                 "market_cap_usd", first_payload.get("market_cap")
             ),
@@ -972,7 +991,19 @@ class EarlyRuntimeService:
             "state_at": stage_at.isoformat(),
             "token_age_seconds": age,
             "market_cap": metrics.get("market_cap", first_payload.get("market_cap_usd")),
-            "liquidity": metrics.get("liquidity", first_payload.get("liquidity_usd")),
+            "liquidity": snapshot_liquidity,
+            "liquidity_cohort": liquidity_cohort(_decimal(snapshot_liquidity, "liquidity")),
+            "contract": detection.mint_address,
+            "volume_velocity": metrics.get("quote_inflow_per_second"),
+            "turnover": metrics.get("turnover"),
+            "turnover_velocity": metrics.get("turnover_velocity"),
+            "turnover_acceleration": metrics.get("turnover_acceleration"),
+            "turnover_provider_provenance": metrics.get("turnover_provider_provenance", ()),
+            "unique_buyers": metrics.get("unique_buyers"),
+            "buyer_velocity": metrics.get("new_buyers_per_minute"),
+            "holder_velocity": metrics.get("holder_velocity"),
+            "liquidity_growth": metrics.get("liquidity_velocity"),
+            "trade_velocity": metrics.get("buys_per_second"),
             "early_score": None if score is None else score.score,
             "organic_momentum_score": None if organic is None else organic.score,
             "risk": None if safety is None else safety.status.value,
@@ -981,6 +1012,30 @@ class EarlyRuntimeService:
             "noncritical_unknowns": () if safety is None else safety.noncritical_unknowns,
             "hard_blocks": () if safety is None else safety.hard_blocks,
             "confidence": None if decision is None else decision.confidence,
+            "AlphaIgnitionScore": (
+                None if alpha_projection is None else alpha_projection.alpha_ignition_score
+            ),
+            "SafetyConfidence": (
+                None if alpha_projection is None else alpha_projection.safety_confidence
+            ),
+            "OpportunityConfidence": (
+                None if alpha_projection is None else alpha_projection.opportunity_confidence
+            ),
+            "alpha_ignition_score": (
+                None if alpha_projection is None else alpha_projection.alpha_ignition_score
+            ),
+            "safety_confidence": (
+                None if alpha_projection is None else alpha_projection.safety_confidence
+            ),
+            "opportunity_confidence": (
+                None if alpha_projection is None else alpha_projection.opportunity_confidence
+            ),
+            "paper_eligible": None if decision is None else decision.entry_ready,
+            "execution_status": (
+                "PAPER_ELIGIBLE"
+                if decision is not None and decision.entry_ready
+                else "EXECUTION_BLOCKED"
+            ),
             "raw_smart_wallet_count": (
                 None if safety is None else safety.raw_smart_wallet_count
             ),

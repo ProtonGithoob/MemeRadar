@@ -52,6 +52,12 @@ _QUALITY_SEVERITY = {
 }
 _BUY_SIDES = frozenset({"buy", "b", "bid", "in", "purchase"})
 _SELL_SIDES = frozenset({"sell", "s", "ask", "out", "sale"})
+_EFFECTIVE_LIQUIDITY_KEYS = (
+    "effective_executable_liquidity",
+    "executable_liquidity",
+    "effective_liquidity",
+    "route_liquidity",
+)
 _MISSING = object()
 
 
@@ -131,10 +137,28 @@ def _liquidity(observation: Observation) -> Decimal | None:
     return _decimal(
         _payload_value(
             observation.normalized_payload,
-            ("liquidity", "liquidity_usd", "liquidity_quote", "pool_liquidity"),
+            (
+                *_EFFECTIVE_LIQUIDITY_KEYS,
+                "liquidity",
+                "liquidity_usd",
+                "liquidity_quote",
+                "pool_liquidity",
+            ),
         ),
         "liquidity",
     )
+
+
+def _liquidity_source(observation: Observation) -> str:
+    payload = observation.normalized_payload
+    if any(payload.get(key) is not None for key in _EFFECTIVE_LIQUIDITY_KEYS):
+        return "EFFECTIVE_EXECUTABLE_LIQUIDITY"
+    if any(
+        payload.get(key) is not None
+        for key in ("liquidity", "liquidity_usd", "liquidity_quote", "pool_liquidity")
+    ):
+        return "REPORTED_LIQUIDITY"
+    return "UNKNOWN"
 
 
 def _market_cap(observation: Observation) -> Decimal | None:
@@ -481,6 +505,11 @@ class EarlyFeatureEngine:
             for observation in current
             if (liquidity := _liquidity(observation)) is not None
         )
+        liquidity_sources = tuple(
+            _liquidity_source(observation)
+            for observation in current
+            if _liquidity(observation) is not None
+        )
         market_caps = tuple(
             market_cap
             for observation in current
@@ -707,6 +736,47 @@ class EarlyFeatureEngine:
         previous_amounts = tuple(
             amount for observation in previous_buys if (amount := _amount(observation)) is not None
         )
+        previous_sells = tuple(
+            observation for observation in previous if _side(observation) == "sell"
+        )
+        previous_trade_amounts = tuple(
+            amount
+            for observation in (*previous_buys, *previous_sells)
+            if (amount := _amount(observation)) is not None
+        )
+        previous_liquidities = tuple(
+            liquidity
+            for observation in previous
+            if (liquidity := _liquidity(observation)) is not None
+        )
+        traded_volume = (
+            sum((*buy_amounts, *sell_amounts), Decimal("0"))
+            if buy_amounts or sell_amounts
+            else None
+        )
+        effective_liquidity = liquidities[-1] if liquidities else None
+        turnover = (
+            traded_volume / effective_liquidity
+            if traded_volume is not None
+            and effective_liquidity is not None
+            and effective_liquidity != Decimal("0")
+            else None
+        )
+        previous_liquidity = (
+            previous_liquidities[-1] if previous_liquidities else None
+        )
+        previous_traded_volume = (
+            sum(previous_trade_amounts, Decimal("0")) if previous_trade_amounts else None
+        )
+        previous_turnover = (
+            previous_traded_volume / previous_liquidity
+            if previous_traded_volume is not None
+            and previous_liquidity is not None
+            and previous_liquidity != Decimal("0")
+            else None
+        )
+        turnover_velocity = _per_second(turnover, duration)
+        previous_turnover_velocity = _per_second(previous_turnover, duration)
         previous_rate = _per_second(
             Decimal(len(previous_buys)) if previous_buys else None,
             duration,
@@ -732,6 +802,23 @@ class EarlyFeatureEngine:
             else None
         )
         metrics["volume_acceleration"] = bounded_acceleration(current_volume, previous_volume)
+        metrics["traded_volume"] = traded_volume
+        metrics["effective_executable_liquidity"] = effective_liquidity
+        metrics["turnover"] = turnover
+        metrics[f"turnover_{label}"] = turnover
+        metrics["turnover_velocity"] = turnover_velocity
+        metrics["previous_turnover_velocity"] = previous_turnover_velocity
+        metrics["turnover_acceleration"] = bounded_acceleration(
+            turnover_velocity,
+            previous_turnover_velocity,
+        )
+        metrics["turnover_liquidity_source"] = (
+            liquidity_sources[-1] if liquidity_sources else "UNKNOWN"
+        )
+        metrics["turnover_provider_provenance"] = tuple(
+            f"{observation.provenance.provider}:{observation.provenance.source_id}"
+            for observation in current
+        )
         previous_buyers = tuple(
             wallet
             for observation in previous_buys
@@ -755,11 +842,6 @@ class EarlyFeatureEngine:
             else None
         )
         current_liquidity = liquidities[-1] if liquidities else None
-        previous_liquidities = tuple(
-            liquidity
-            for observation in previous
-            if (liquidity := _liquidity(observation)) is not None
-        )
         previous_liquidity = previous_liquidities[-1] if previous_liquidities else None
         metrics["liquidity_velocity"] = self._velocity(
             liquidities,

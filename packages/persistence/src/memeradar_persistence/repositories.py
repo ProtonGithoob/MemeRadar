@@ -609,6 +609,36 @@ class ObservationRepository:
     async def save(self, observation: Observation) -> ObservationRow:
         return await self.add(observation)
 
+    async def upsert_research_outcome(self, observation: Observation) -> ObservationRow:
+        """Refresh one mutable research horizon without duplicating its source key."""
+
+        if observation.kind != "research.outcome":
+            raise ValueError("upsert_research_outcome requires research.outcome")
+        mapped = observation_to_row(observation)
+        row = await self._session.scalar(
+            select(ObservationRow).where(
+                ObservationRow.provider == mapped.provider,
+                ObservationRow.kind == mapped.kind,
+                ObservationRow.source_id == mapped.source_id,
+            )
+        )
+        if row is None:
+            return await self.add(observation)
+        if row.normalized_payload == mapped.normalized_payload:
+            return row
+        if (
+            row.normalized_payload.get("matured") is True
+            and mapped.normalized_payload.get("matured") is not True
+            and row.normalized_payload.get("outcome_version")
+            == mapped.normalized_payload.get("outcome_version")
+        ):
+            return row
+        for column in ObservationRow.__table__.columns:
+            if column.name != "id":
+                setattr(row, column.name, getattr(mapped, column.name))
+        await self._session.flush()
+        return row
+
 
 class CollectionCheckpointRepository:
     """Persist bounded provider cursors in the caller's transaction."""

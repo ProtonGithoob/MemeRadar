@@ -187,3 +187,101 @@ def test_report_distinguishes_terminal_dex_polling_and_unknown_outcomes() -> Non
         "eligible_count": 2,
         "unknown_count": 1,
     }
+
+
+def test_report_reads_durable_alert_timing_and_computes_latency_percentiles() -> None:
+    report = build_forward_report(
+        [
+            {
+                "kind": "alert.new_watch",
+                "normalized_payload": {
+                    "alert_timing": {
+                        "signal_created_at": "2026-01-01T00:00:00+00:00",
+                        "decision_at": "2026-01-01T00:00:01+00:00",
+                        "telegram_enqueued_at": "2026-01-01T00:00:02+00:00",
+                        "telegram_sent_at": "2026-01-01T00:00:04+00:00",
+                        "alert_latency_ms": 3000,
+                    }
+                },
+            },
+        ]
+    )
+
+    assert report["TELEGRAM_DELIVERY"]["signal_created_at_count"] == 1
+    assert report["TELEGRAM_DELIVERY"]["telegram_sent_at_count"] == 1
+    assert report["TELEGRAM_DELIVERY"]["latency_ms"] == {
+        "N": 1,
+        "p50": 3000.0,
+        "p95": 3000.0,
+        "p99": 3000.0,
+        "unknown_count": 0,
+    }
+
+
+def test_report_labels_matured_shadow_tokens_and_calculates_early_recall() -> None:
+    rows = [
+        {
+            "kind": "chain.event",
+            "mint": "winner",
+            "event_type": "launch",
+            "instruction_type": "create_v2",
+            "discovered_at": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "kind": "early.stage_snapshot",
+            "mint": "winner",
+            "state": "DISCOVERED",
+            "state_at": "2026-01-01T00:00:00+00:00",
+            "token_age_seconds": 30,
+            "liquidity": 20_000,
+            "chain": "solana",
+            "venue": "pump.fun",
+        },
+        {
+            "kind": "early.stage_snapshot",
+            "mint": "winner",
+            "state": "EARLY_WATCH",
+            "state_at": "2026-01-01T00:00:00.030000+00:00",
+            "token_age_seconds": 30,
+            "liquidity": 20_000,
+            "chain": "solana",
+            "venue": "pump.fun",
+        },
+        {
+            "kind": "market.market_snapshot",
+            "mint": "winner",
+            "occurred_at": "2026-01-01T00:00:00+00:00",
+            "pair_found": True,
+            "quality_state": "FRESH",
+            "price_usd": 1,
+        },
+        {
+            "kind": "market.market_snapshot",
+            "mint": "winner",
+            "occurred_at": "2026-01-01T00:01:00+00:00",
+            "pair_found": True,
+            "quality_state": "FRESH",
+            "price_usd": 1.2,
+        },
+        {
+            "kind": "research.outcome",
+            "mint": "winner",
+            "horizon": "24h",
+            "horizon_seconds": 86400,
+            "signal_at": "2026-01-01T00:00:00+00:00",
+            "matured": True,
+            "outcome_label": "WINNER_2X",
+            "price_at_detection": 1,
+            "observed_peak_multiple": 2,
+            "executable_peak_multiple": 2,
+            "hit_2x": True,
+        },
+    ]
+
+    report = build_forward_report(rows)
+
+    assert report["FORWARD_SHADOW_MATURATION"]["winner_count"] == 1
+    assert report["OUTCOME_LABEL_COUNTS"] == {"WINNER_2X": 1}
+    recall = report["EARLY_WINNER_RECALL"]["thresholds"]["2X"]
+    assert recall["status"] == "IMPLEMENTED"
+    assert recall["before_20_pct"]["recall"] == 1.0

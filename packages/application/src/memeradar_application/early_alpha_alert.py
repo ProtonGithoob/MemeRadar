@@ -151,6 +151,12 @@ _CHANGE_FIELDS = (
     ("volume_acceleration", "Volume Accel"),
     ("alpha_score", "AlphaScore"),
     ("confidence", "Confidence"),
+    ("turnover", "Turnover"),
+    ("buyer_velocity", "Buyer Velocity"),
+    ("smart_wallet_convergence", "Smart-wallet Convergence"),
+    ("AlphaIgnitionScore", "AlphaIgnitionScore"),
+    ("SafetyConfidence", "SafetyConfidence"),
+    ("OpportunityConfidence", "OpportunityConfidence"),
 )
 
 _SNAPSHOT_ALIASES: dict[str, tuple[str, ...]] = {
@@ -164,6 +170,16 @@ _SNAPSHOT_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "alpha_score": ("alpha_score", "score", "early_score"),
     "confidence": ("confidence", "early_score_confidence", "evidence_confidence"),
+    "turnover": ("turnover", "turnover_15m", "turnover_1h"),
+    "buyer_velocity": ("buyer_velocity", "new_buyers_per_minute"),
+    "smart_wallet_convergence": (
+        "smart_wallet_convergence",
+        "copyability_weighted_convergence",
+        "independent_wallet_count",
+    ),
+    "AlphaIgnitionScore": ("AlphaIgnitionScore", "alpha_ignition_score"),
+    "SafetyConfidence": ("SafetyConfidence", "safety_confidence"),
+    "OpportunityConfidence": ("OpportunityConfidence", "opportunity_confidence"),
 }
 
 _ALLOWED_EVIDENCE_KEYS = frozenset(
@@ -211,6 +227,42 @@ _ALLOWED_EVIDENCE_KEYS = frozenset(
         "top_positive_evidence",
         "top_risk_evidence",
         "reply_to_message_id",
+        "contract",
+        "contract_address",
+        "market_cap",
+        "volume_velocity",
+        "turnover",
+        "turnover_1m",
+        "turnover_3m",
+        "turnover_5m",
+        "turnover_15m",
+        "turnover_30m",
+        "turnover_1h",
+        "turnover_velocity",
+        "turnover_acceleration",
+        "turnover_provider_provenance",
+        "unique_buyers",
+        "buyer_velocity",
+        "holder_velocity",
+        "liquidity_growth",
+        "trade_velocity",
+        "independent_wallet_count",
+        "weighted_wallet_quality",
+        "entry_time_dispersion",
+        "funding_independence",
+        "cluster_independence",
+        "copyability_weighted_convergence",
+        "AlphaIgnitionScore",
+        "SafetyConfidence",
+        "OpportunityConfidence",
+        "execution_status",
+        "provider_confidence",
+        "message_state",
+        "paper_eligible",
+        "signal_created_at",
+        "telegram_enqueued_at",
+        "telegram_sent_at",
+        "alert_latency_ms",
     }
     | frozenset(key for aliases in _SNAPSHOT_ALIASES.values() for key in aliases)
 )
@@ -500,6 +552,9 @@ class EarlyAlphaAlertRenderer(AlertRenderer):
             else "⚠️ EARLY ALPHA / STATUS UNKNOWN"
         )
         lines = [title, ""]
+        message_state = _display(early_alpha.get("message_state"))
+        if message_state != _UNKNOWN:
+            lines.append(f"Signal state: {message_state}")
         snapshot = canonical_snapshot(early_alpha)
         for label, key in (
             ("Token", "token"),
@@ -517,6 +572,18 @@ class EarlyAlphaAlertRenderer(AlertRenderer):
             ("Sellability", "sellability"),
             ("Freshness", "freshness"),
             ("Event time quality", "event_time_quality"),
+            ("Contract", "contract"),
+            ("Volume velocity", "volume_velocity"),
+            ("Turnover", "turnover"),
+            ("Unique buyers", "unique_buyers"),
+            ("Buyer velocity", "buyer_velocity"),
+            ("Holder velocity", "holder_velocity"),
+            ("Smart-wallet convergence", "smart_wallet_convergence"),
+            ("AlphaIgnitionScore", "AlphaIgnitionScore"),
+            ("SafetyConfidence", "SafetyConfidence"),
+            ("OpportunityConfidence", "OpportunityConfidence"),
+            ("Execution", "execution_status"),
+            ("Provider confidence", "provider_confidence"),
         ):
             value = early_alpha.get(key, snapshot.get(key, _UNKNOWN))
             if key == "token" and value == _UNKNOWN:

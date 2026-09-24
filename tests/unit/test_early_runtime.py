@@ -322,4 +322,6 @@ def test_unknown_launch_remains_watch_for_bounded_later_reevaluation() -> None:
     assert result.safety.status.value == "UNKNOWN"
     assert result.stage.value == "WATCH"
     assert result.candidate.state.value == "WATCH"
-    assert result.alert is None
+    assert result.alert is not None
+    assert result.alert.type.value == "NEW_WATCH"
+    assert result.alert.payload["message_state"] == "WATCH"

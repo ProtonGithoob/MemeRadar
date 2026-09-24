@@ -216,6 +216,11 @@ def test_confluence_deduplicates_correlated_wallets_and_emits_explainable_events
         now=NOW,
         config_hash="confluence-test",
         wallet_graphs=(graph(token_value),),
+        copyability_by_wallet={
+            WALLET_A: Decimal("80"),
+            WALLET_B: Decimal("40"),
+            WALLET_C: Decimal("90"),
+        },
     )[0]
 
     assert isinstance(result, TokenSmartMoneyScore)
@@ -233,6 +238,11 @@ def test_confluence_deduplicates_correlated_wallets_and_emits_explainable_events
     assert result.components["entry_quality"] == Decimal("80")
     assert result.components["independence"] == Decimal(200) / Decimal(3)
     assert result.components["exit_pressure"] == Decimal("100")
+    assert result.weighted_wallet_quality == Decimal("80")
+    assert result.entry_time_dispersion == Decimal("120")
+    assert result.cluster_independence == Decimal(2) / Decimal(3)
+    assert result.funding_independence == Decimal(1) / Decimal(3)
+    assert result.copyability_weighted_convergence == Decimal(70)
     assert result.penalties["distribution"] == Decimal("25")
     assert result.score == Decimal("59")
     entries = [event for event in result.events if event.event_type is SmartMoneyEventType.ENTRY]

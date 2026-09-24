@@ -10,6 +10,7 @@ from memeradar_application.wallet_scoring import (
     SmartWalletScore,
     SmartWalletScorer,
     SmartWalletScoringPolicy,
+    assess_wallet_copyability,
 )
 from memeradar_application.wallet_tracking import (
     TrackedWallet,
@@ -185,6 +186,49 @@ def test_score_aggregates_components_and_penalties_from_fifo_outcomes() -> None:
         score.components
     )
     assert "SMART_WALLET_SCORE_CALCULATED" in {reason.code for reason in score.reason_codes}
+
+
+def test_copyability_exposes_unknown_evidence_and_penalizes_unfollowable_entries() -> None:
+    token_value = token()
+    trips = tuple(
+        round_trip(
+            token_value,
+            source_id=f"copy-trip:{index}",
+            buy_at=NOW - timedelta(minutes=20 - index * 2),
+            sell_at=NOW - timedelta(minutes=19 - index * 2),
+            cost="10",
+            proceeds="15",
+            token_age=str(60 + index * 60),
+        )
+        for index in range(3)
+    )
+    wallet_snapshot = snapshot(token_value, trips)
+    score = SmartWalletScorer(
+        policy=SmartWalletScoringPolicy(
+            minimum_sample_count=2,
+            tier_b_minimum_sample_count=2,
+            tier_a_minimum_sample_count=3,
+        )
+    ).score((wallet_snapshot,), now=NOW, config_hash="copyability-test")[0]
+
+    unknown = assess_wallet_copyability(score, (wallet_snapshot,))
+    measured = assess_wallet_copyability(
+        score,
+        (wallet_snapshot,),
+        post_entry_evidence={
+            "post_entry_liquidity": "0.2",
+            "post_entry_price_impact": "0.8",
+            "mev_probability": "0.9",
+            "insider_probability": "0.1",
+        },
+    )
+
+    assert unknown.copyability is None
+    assert "COPYABILITY_EVIDENCE_UNKNOWN" in unknown.reason_codes
+    assert measured.copyability is not None
+    assert "too_early_to_follow" not in measured.penalties
+    assert "post_entry_liquidity_collapse" in measured.penalties
+    assert "mev_latency_dependency" in measured.penalties
 
 
 def test_rolling_window_deduplicates_and_excludes_future_or_old_outcomes() -> None:

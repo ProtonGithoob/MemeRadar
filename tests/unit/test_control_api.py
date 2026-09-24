@@ -79,6 +79,7 @@ def test_runtime_settings_are_dynamic_grouped_and_secret_safe() -> None:
         "wallet",
         "security",
         "llm",
+        "research",
     }
     telegram = {item["key"]: item for item in body["groups"]["telegram"]}
     assert telegram["api_url"] == {

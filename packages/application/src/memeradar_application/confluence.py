@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from types import MappingProxyType
+from typing import cast
 
 from memeradar_domain import (
     Freshness,
@@ -256,6 +257,11 @@ class TokenSmartMoneyScore:
     config_hash: str
     quality_state: QualityState = QualityState.UNKNOWN
     version: str = "smart-money-confluence-v1"
+    weighted_wallet_quality: Decimal | None = None
+    entry_time_dispersion: Decimal | None = None
+    funding_independence: Decimal | None = None
+    cluster_independence: Decimal | None = None
+    copyability_weighted_convergence: Decimal | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.token, TokenIdentity):
@@ -291,6 +297,30 @@ class TokenSmartMoneyScore:
                 raise ValueError(f"{field_name} must be a non-negative integer")
         if not isinstance(self.confluence_detected, bool):
             raise TypeError("confluence_detected must be a boolean")
+        for field_name in (
+            "weighted_wallet_quality",
+            "copyability_weighted_convergence",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    bounded_decimal(value, field_name, Decimal("0"), Decimal("100")),
+                )
+        for field_name in ("funding_independence", "cluster_independence"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    bounded_decimal(value, field_name, Decimal("0"), Decimal("1")),
+                )
+        if self.entry_time_dispersion is not None:
+            dispersion = to_decimal(self.entry_time_dispersion, "entry_time_dispersion")
+            if dispersion < 0:
+                raise ValueError("entry_time_dispersion must not be negative")
+            object.__setattr__(self, "entry_time_dispersion", dispersion)
         normalized_components: dict[str, Decimal] = {}
         for key, value in self.components.items():
             normalized_key = require_text(key, "component key")
@@ -406,6 +436,7 @@ class ConfluenceAnalyzer:
         now: datetime,
         config_hash: str,
         wallet_graphs: Sequence[WalletGraphSnapshot] | None = None,
+        copyability_by_wallet: Mapping[str, Decimal] | None = None,
     ) -> tuple[TokenSmartMoneyScore, ...]:
         checked_at = ensure_utc(now, "now")
         normalized_config_hash = require_text(config_hash, "config_hash")
@@ -477,6 +508,7 @@ class ConfluenceAnalyzer:
                 tuple(sorted(grouped_graphs.get(token_key, ()), key=lambda item: item.as_of)),
                 checked_at=checked_at,
                 config_hash=normalized_config_hash,
+                copyability_by_wallet=copyability_by_wallet,
             )
             for token_key in sorted(grouped_snapshots)
         ]
@@ -490,6 +522,7 @@ class ConfluenceAnalyzer:
         now: datetime,
         config_hash: str,
         wallet_graphs: Sequence[WalletGraphSnapshot] | None = None,
+        copyability_by_wallet: Mapping[str, Decimal] | None = None,
     ) -> tuple[TokenSmartMoneyScore, ...]:
         """Alias for callers that treat the token result as a score."""
 
@@ -499,6 +532,7 @@ class ConfluenceAnalyzer:
             now=now,
             config_hash=config_hash,
             wallet_graphs=wallet_graphs,
+            copyability_by_wallet=copyability_by_wallet,
         )
 
     def analyze_confluence(
@@ -509,6 +543,7 @@ class ConfluenceAnalyzer:
         now: datetime,
         config_hash: str,
         wallet_graphs: Sequence[WalletGraphSnapshot] | None = None,
+        copyability_by_wallet: Mapping[str, Decimal] | None = None,
     ) -> tuple[TokenSmartMoneyScore, ...]:
         """Descriptive alias for the primary analysis method."""
 
@@ -518,6 +553,7 @@ class ConfluenceAnalyzer:
             now=now,
             config_hash=config_hash,
             wallet_graphs=wallet_graphs,
+            copyability_by_wallet=copyability_by_wallet,
         )
 
     @staticmethod
@@ -534,6 +570,7 @@ class ConfluenceAnalyzer:
         *,
         checked_at: datetime,
         config_hash: str,
+        copyability_by_wallet: Mapping[str, Decimal] | None = None,
     ) -> TokenSmartMoneyScore:
         reasons: list[str | ReasonCode] = []
         evidence_refs: list[str] = []
@@ -805,6 +842,65 @@ class ConfluenceAnalyzer:
         if quality_state is not QualityState.FRESH:
             published_score = Decimal("0")
             confidence = Decimal("0")
+        quality_weights = {
+            wallet: candidate_score.confidence
+            for wallet, (candidate_score, _) in qualified.items()
+        }
+        quality_weight_total = sum(quality_weights.values(), Decimal("0"))
+        weighted_wallet_quality = (
+            None
+            if quality_weight_total <= 0
+            else sum(
+                score_by_wallet[wallet].score * quality_weights[wallet]
+                for wallet in quality_weights
+            )
+            / quality_weight_total
+        )
+        entry_times = [
+            min(record.trip.buy_at for record in entries if record.wallet_address == wallet)
+            for wallet in sorted({record.wallet_address for record in entries})
+        ]
+        entry_time_dispersion = (
+            Decimal(str((max(entry_times) - min(entry_times)).total_seconds()))
+            if len(entry_times) >= 2
+            else Decimal("0") if entry_times else None
+        )
+        cluster_independence = (
+            None
+            if quality_state is not QualityState.FRESH or not qualified
+            else Decimal(independent_cluster_count) / Decimal(len(qualified))
+        )
+        singleton_count = sum(
+            1 for members in cluster_context.members.values() if len(members) == 1
+        )
+        funding_independence = (
+            None
+            if quality_state is not QualityState.FRESH or not qualified
+            else Decimal(singleton_count) / Decimal(len(qualified))
+        )
+        supplied_copyability = copyability_by_wallet or {}
+        copyability_values = {
+            wallet: supplied_copyability.get(
+                wallet,
+                score_by_wallet[wallet].components.get("copyability"),
+            )
+            for wallet in entry_wallets
+        }
+        copyability_weights = {
+            wallet: quality_weights[wallet]
+            for wallet in copyability_values
+            if copyability_values[wallet] is not None and wallet in quality_weights
+        }
+        copyability_weight_total = sum(copyability_weights.values(), Decimal("0"))
+        copyability_weighted_convergence = (
+            None
+            if copyability_weight_total <= 0
+            else sum(
+                cast(Decimal, copyability_values[wallet]) * copyability_weights[wallet]
+                for wallet in copyability_weights
+            )
+            / copyability_weight_total
+        )
         events.sort(key=self._event_sort_key)
         if len(events) > self.policy.max_events:
             raise ValueError("smart-money events exceeded the configured bound")
@@ -827,6 +923,11 @@ class ConfluenceAnalyzer:
             provenance=provenance,
             quality_state=quality_state,
             config_hash=config_hash,
+            weighted_wallet_quality=weighted_wallet_quality,
+            entry_time_dispersion=entry_time_dispersion,
+            funding_independence=funding_independence,
+            cluster_independence=cluster_independence,
+            copyability_weighted_convergence=copyability_weighted_convergence,
         )
 
     def _build_clusters(
@@ -1056,6 +1157,11 @@ class ConfluenceAnalyzer:
         provenance: Sequence[Provenance],
         quality_state: QualityState,
         config_hash: str,
+        weighted_wallet_quality: Decimal | None = None,
+        entry_time_dispersion: Decimal | None = None,
+        funding_independence: Decimal | None = None,
+        cluster_independence: Decimal | None = None,
+        copyability_weighted_convergence: Decimal | None = None,
     ) -> TokenSmartMoneyScore:
         normalized_as_of = ensure_utc(as_of, "as_of")
         return TokenSmartMoneyScore(
@@ -1088,6 +1194,11 @@ class ConfluenceAnalyzer:
             config_hash=config_hash,
             quality_state=quality_state,
             version=self.policy.version,
+            weighted_wallet_quality=weighted_wallet_quality,
+            entry_time_dispersion=entry_time_dispersion,
+            funding_independence=funding_independence,
+            cluster_independence=cluster_independence,
+            copyability_weighted_convergence=copyability_weighted_convergence,
         )
 
     @staticmethod

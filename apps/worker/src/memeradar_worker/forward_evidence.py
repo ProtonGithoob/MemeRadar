@@ -7,11 +7,13 @@ It does not consume the chain stream, score candidates, or authorize trades.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import select
@@ -31,7 +33,11 @@ from memeradar_application.early_failure_analysis import (
 )
 from memeradar_application.early_replay import (
     EXTREME_OUTCOME_HORIZONS,
+    OUTCOME_LABEL_VERSION,
+    OUTCOME_METHODOLOGY_VERSION,
     ExtremeWinnerOutcomeLabeler,
+    ExtremeWinnerOutcomeSnapshot,
+    classify_research_outcome,
 )
 from memeradar_application.provider_contracts import (
     MarketDataPort,
@@ -71,6 +77,18 @@ _RESEARCH_KINDS = (
 )
 _MINT_KEYS = ("mint", "mint_address", "address")
 _OUTCOME_TARGETS = (2, 5, 10, 20, 50, 100)
+_FORWARD_OUTCOME_HORIZONS = (
+    ("1m", timedelta(minutes=1)),
+    ("3m", timedelta(minutes=3)),
+    ("5m", timedelta(minutes=5)),
+    ("15m", timedelta(minutes=15)),
+    ("30m", timedelta(minutes=30)),
+    ("1h", timedelta(hours=1)),
+    ("3h", timedelta(hours=3)),
+    ("6h", timedelta(hours=6)),
+    ("24h", timedelta(hours=24)),
+    *EXTREME_OUTCOME_HORIZONS[3:],
+)
 _FORWARD_NAMESPACE = "https://memeradar.local/pumpfun-forward/"
 _MAX_LAUNCHES_PER_CYCLE = 16
 
@@ -476,7 +494,10 @@ async def _persist(
         return 0
     async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
         for observation in observations:
-            await unit_of_work.observations.add(observation)
+            if observation.kind == "research.outcome":
+                await unit_of_work.observations.upsert_research_outcome(observation)
+            else:
+                await unit_of_work.observations.add(observation)
         await unit_of_work.commit()
     return len(observations)
 
@@ -655,6 +676,225 @@ def _observation_from_row(row: ObservationRow, *, token_id: UUID) -> Observation
     )
 
 
+def _metric(payload: Mapping[str, object], *names: str) -> Decimal | None:
+    for name in names:
+        value = payload.get(name)
+        if value is not None:
+            try:
+                parsed = Decimal(str(value))
+            except (TypeError, ValueError):
+                continue
+            if parsed > 0:
+                return parsed
+    for nested_name in ("values", "metrics", "snapshot", "data"):
+        nested = payload.get(nested_name)
+        if isinstance(nested, Mapping):
+            value = _metric(nested, *names)
+            if value is not None:
+                return value
+    return None
+
+
+def _market_metrics(record: ReplayEventRecord) -> dict[str, Decimal | None]:
+    payload = record.observation.normalized_payload
+    return {
+        "price": _metric(payload, "price_usd", "market_price", "price"),
+        "liquidity": _metric(
+            payload,
+            "effective_executable_liquidity",
+            "executable_liquidity",
+            "effective_liquidity",
+            "liquidity_usd",
+            "liquidity",
+            "pool_liquidity",
+        ),
+        "market_cap": _metric(
+            payload,
+            "market_cap_usd",
+            "market_cap",
+            "marketCapUsd",
+            "market_capitalization",
+            "fdv",
+        ),
+    }
+
+
+def _valid_market_record(record: ReplayEventRecord) -> bool:
+    if record.observation.kind != "market.market_snapshot":
+        return False
+    if record.observation.quality_state is not QualityState.FRESH:
+        return False
+    if record.observation.normalized_payload.get("pair_found") is False:
+        return False
+    return any(value is not None for value in _market_metrics(record).values())
+
+
+def _horizon_matured(
+    records: Sequence[ReplayEventRecord],
+    signal_at: datetime,
+    duration: timedelta,
+) -> bool:
+    target = signal_at + duration
+    return any(_valid_market_record(record) and record.event_at >= target for record in records)
+
+
+def _endpoint_record(
+    records: Sequence[ReplayEventRecord],
+    signal_at: datetime,
+    duration: timedelta,
+) -> ReplayEventRecord | None:
+    end = signal_at + duration
+    bounded = [
+        record
+        for record in records
+        if _valid_market_record(record)
+        and signal_at < record.event_at <= end
+    ]
+    if bounded:
+        return max(bounded, key=lambda record: record.event_at)
+    after = [
+        record
+        for record in records
+        if _valid_market_record(record) and record.event_at > end
+    ]
+    return min(after, key=lambda record: record.event_at) if after else None
+
+
+def _multiple_at_endpoint(
+    record: ReplayEventRecord | None,
+    *,
+    baseline_price: Decimal | None,
+    baseline_market_cap: Decimal | None,
+) -> Decimal | None:
+    if record is None:
+        return None
+    values = _market_metrics(record)
+    if values["price"] is not None and baseline_price is not None and baseline_price > 0:
+        return values["price"] / baseline_price
+    if (
+        values["market_cap"] is not None
+        and baseline_market_cap is not None
+        and baseline_market_cap > 0
+    ):
+        return values["market_cap"] / baseline_market_cap
+    return None
+
+
+def _initial_market_values(
+    records: Sequence[ReplayEventRecord],
+    signal_at: datetime,
+    stage_payloads: Sequence[Mapping[str, object]],
+) -> dict[str, str | None]:
+    candidates = [
+        record
+        for record in records
+        if _valid_market_record(record) and record.event_at >= signal_at
+    ]
+    first = min(candidates, key=lambda record: record.event_at) if candidates else None
+    values = _market_metrics(first) if first is not None else {}
+    stage = next(
+        (
+            payload
+            for payload in sorted(
+                stage_payloads,
+                key=lambda value: str(value.get("occurred_at", value.get("discovered_at", ""))),
+            )
+            if str(payload.get("state", payload.get("stage", ""))).upper() == "DISCOVERED"
+        ),
+        {},
+    )
+    names = {
+        "price": ("price_at_detection", "price_usd", "market_price", "price"),
+        "liquidity": (
+            "liquidity_at_detection",
+            "effective_executable_liquidity",
+            "executable_liquidity",
+            "liquidity_usd",
+            "liquidity",
+        ),
+        "market_cap": (
+            "market_cap_at_detection",
+            "market_cap_usd",
+            "market_cap",
+            "fdv",
+        ),
+    }
+    result: dict[str, str | None] = {}
+    for key, payload_names in names.items():
+        metric = values.get(key)
+        if metric is None:
+            metric = _metric(stage, *payload_names)
+        result[key] = None if metric is None else str(metric)
+    return result
+
+
+def _flag(payload: Mapping[str, object], *names: str) -> bool:
+    for name in names:
+        value = payload.get(name)
+        if isinstance(value, bool):
+            if value:
+                return True
+        elif isinstance(value, str) and value.strip().lower() in {
+            "true",
+            "yes",
+            "1",
+            "detected",
+            "removed",
+            "failed",
+            "honeypot",
+        }:
+            return True
+    return False
+
+
+def _outcome_flags(
+    records: Sequence[ReplayEventRecord],
+    stage_payloads: Sequence[Mapping[str, object]],
+    *,
+    signal_at: datetime,
+    initial_liquidity: Decimal | None,
+) -> dict[str, bool]:
+    payloads = [record.observation.normalized_payload for record in records] + list(stage_payloads)
+    rug_detected = any(
+        record.observation.kind in {"risk.rug_event", "risk.token_outcome", "security.rug"}
+        for record in records
+    ) or any(_flag(payload, "rug_detected", "rug", "rugged") for payload in payloads)
+    honeypot = any(
+        _flag(payload, "honeypot_detected", "honeypot", "is_honeypot")
+        for payload in payloads
+    )
+    migration_completed = any(
+        _flag(payload, "migration_completed", "graduated", "dex_active", "liquidity_added")
+        or str(payload.get("migration_state", payload.get("lifecycle_state", ""))).upper()
+        in {"COMPLETED", "GRADUATED", "DEX_ACTIVE", "LIQUIDITY_ADDED"}
+        for payload in payloads
+    )
+    liquidities = [
+        _market_metrics(record)["liquidity"]
+        for record in records
+        if record.event_at > signal_at and _valid_market_record(record)
+    ]
+    liquidity_removed = any(
+        _flag(payload, "liquidity_removed", "liquidity_rug", "liquidity_collapse")
+        for payload in payloads
+    )
+    if initial_liquidity is not None and initial_liquidity > 0:
+        liquidity_removed = liquidity_removed or any(
+            liquidity is not None and liquidity <= initial_liquidity * Decimal("0.10")
+            for liquidity in liquidities
+        )
+    return {
+        "rug_detected": rug_detected,
+        "honeypot_detected": honeypot,
+        "liquidity_removed": liquidity_removed,
+        "migration_completed": migration_completed,
+    }
+
+
+def _stable_payload(value: object) -> str:
+    return json.dumps(value, sort_keys=True, default=str, separators=(",", ":"))
+
+
 def _outcome_payload(
     record: LaunchRecord,
     *,
@@ -662,10 +902,22 @@ def _outcome_payload(
     horizon: str,
     duration: timedelta,
     stage_payloads: Sequence[Mapping[str, object]],
+    matured: bool = True,
+    outcome_label: str = "NEUTRAL",
+    initial_values: Mapping[str, object] | None = None,
+    outcome_series: Mapping[str, Mapping[str, object]] | None = None,
+    flags: Mapping[str, bool] | None = None,
+    provider_provenance: Sequence[str] = (),
 ) -> dict[str, object]:
     snapshot = label
+
     def get(name: str, default: object = None) -> object:
         return getattr(snapshot, name, default)
+
+    initial = dict(initial_values or {})
+    series = outcome_series or {}
+    outcome_flags = dict(flags or {})
+    current_series = dict(series.get(horizon, {}))
     states = {
         str(value.get("state", value.get("stage", ""))).upper()
         for value in stage_payloads
@@ -711,10 +963,26 @@ def _outcome_payload(
         "horizon": horizon,
         "horizon_seconds": int(duration.total_seconds()),
         "signal_at": record.discovered_at.isoformat(),
-        "matured": True,
+        "matured": matured,
+        "outcome_status": "MATURED" if matured else "INSUFFICIENT_HORIZON",
+        "outcome_label": outcome_label,
+        "label_version": OUTCOME_LABEL_VERSION,
+        "methodology_version": OUTCOME_METHODOLOGY_VERSION,
+        "price_at_detection": initial.get("price"),
+        "liquidity_at_detection": initial.get("liquidity"),
+        "market_cap_at_detection": initial.get("market_cap"),
         "observed_peak_multiple": _json_decimal(get("mark_multiple")),
         "executable_peak_multiple": _json_decimal(executable_multiple),
         "observed_return": (
+            current_series.get("return")
+            if current_series.get("return") is not None
+            else (
+                None
+                if get("mark_multiple") is None
+                else _json_decimal(Decimal(str(get("mark_multiple"))) - 1)
+            )
+        ),
+        "peak_return": (
             None
             if get("mark_multiple") is None
             else _json_decimal(Decimal(str(get("mark_multiple"))) - 1)
@@ -737,7 +1005,15 @@ def _outcome_payload(
         "hit_20x": bool(get("hit_20x", False)),
         "hit_50x": bool(get("hit_50x", False)),
         "hit_100x": bool(get("hit_100x", False)),
-        "rug_dead_liquidity_collapse": bool(get("rug_before_multiple", False)),
+        "rug_dead_liquidity_collapse": bool(
+            get("rug_before_multiple", False) or outcome_flags.get("rug_detected", False)
+        ),
+        "rug_detected": outcome_flags.get("rug_detected", False),
+        "honeypot_detected": outcome_flags.get("honeypot_detected", False),
+        "liquidity_removed": outcome_flags.get("liquidity_removed", False),
+        "dead_token": outcome_flags.get("dead_token", False),
+        "migration_completed": outcome_flags.get("migration_completed", False),
+        "provider_provenance": tuple(dict.fromkeys(str(value) for value in provider_provenance)),
         "liquidity_survival": get("liquidity_survival"),
         "quality_state": getattr(get("quality_state"), "value", get("quality_state")),
         "executable_quality_state": getattr(
@@ -761,7 +1037,21 @@ def _outcome_payload(
             )
         ),
         "collection_mode": "LIVE_SHADOW",
-        "outcome_version": "pumpfun-extreme-outcomes-v1",
+        "outcome_version": "pumpfun-forward-outcomes-v2",
+        **{
+            f"return_{name}": value.get("return")
+            for name, value in series.items()
+        },
+        **{
+            f"max_return_{name}": value.get("max_return")
+            for name, value in series.items()
+            if name in {"1h", "6h", "24h"}
+        },
+        **{
+            f"max_drawdown_{name}": value.get("max_drawdown")
+            for name, value in series.items()
+            if name in {"1h", "6h", "24h"}
+        },
     }
 
 
@@ -1039,6 +1329,11 @@ class PumpFunForwardEvidenceCollector:
     ) -> tuple[Observation, ...]:
         records = _launch_records(rows)
         existing = _existing_sources(rows)
+        existing_outcomes = {
+            row.source_id: dict(row.normalized_payload)
+            for row in rows
+            if row.kind == "research.outcome"
+        }
         result: list[Observation] = []
         labeler = ExtremeWinnerOutcomeLabeler()
         for record in records:
@@ -1087,24 +1382,130 @@ class PumpFunForwardEvidenceCollector:
                             baseline_price = Decimal(str(raw))
                     except (TypeError, ValueError):
                         pass
-            for horizon, duration in EXTREME_OUTCOME_HORIZONS:
-                source_id = f"pumpfun-outcome:{record.mint}:{horizon}"
-                if source_id in existing:
-                    continue
+
+            initial_values = _initial_market_values(
+                replay_records,
+                record.discovered_at,
+                stage_payloads,
+            )
+            if baseline_price is None and initial_values.get("price") is not None:
+                baseline_price = Decimal(str(initial_values["price"]))
+            baseline_market_cap = (
+                Decimal(str(initial_values["market_cap"]))
+                if initial_values.get("market_cap") is not None
+                else None
+            )
+            base_flags = _outcome_flags(
+                replay_records,
+                stage_payloads,
+                signal_at=record.discovered_at,
+                initial_liquidity=(
+                    Decimal(str(initial_values["liquidity"]))
+                    if initial_values.get("liquidity") is not None
+                    else None
+                ),
+            )
+            provider_provenance = tuple(
+                sorted(
+                    {
+                        observation.observation.provenance.provider
+                        for observation in replay_records
+                        if observation.observation.provenance.provider
+                    }
+                )
+            )
+            evaluations: dict[str, dict[str, object]] = {}
+            for horizon, duration in _FORWARD_OUTCOME_HORIZONS:
                 if not poll_is_due(record.discovered_at, int(duration.total_seconds()), now):
                     continue
                 label = labeler.evaluate(
                     replay_records,
                     checkpoint,
                     baseline_price=baseline_price,
+                    baseline_market_cap=baseline_market_cap,
                     horizon=duration,
                 )
+                matured = _horizon_matured(replay_records, record.discovered_at, duration)
+                endpoint = _endpoint_record(replay_records, record.discovered_at, duration)
+                endpoint_multiple = _multiple_at_endpoint(
+                    endpoint,
+                    baseline_price=baseline_price,
+                    baseline_market_cap=baseline_market_cap,
+                )
+                severe_drawdown = (
+                    getattr(label, "post_peak_drawdown", None) is not None
+                    and Decimal(str(label.post_peak_drawdown)) >= Decimal("0.50")
+                )
+                dead_token = bool(
+                    base_flags.get("dead_token", False)
+                    or (matured and endpoint is not None and endpoint_multiple is None)
+                )
+                outcome_label = classify_research_outcome(
+                    matured=matured,
+                    hit_2x=bool(getattr(label, "hit_2x", False)),
+                    hit_5x=bool(getattr(label, "hit_5x", False)),
+                    hit_10x=bool(getattr(label, "hit_10x", False)),
+                    hit_20x=bool(getattr(label, "hit_20x", False)),
+                    hit_50x=bool(getattr(label, "hit_50x", False)),
+                    rug_detected=bool(base_flags.get("rug_detected", False)),
+                    honeypot_detected=bool(base_flags.get("honeypot_detected", False)),
+                    dead_token=dead_token,
+                    severe_drawdown=severe_drawdown,
+                    observable=endpoint_multiple is not None,
+                )
+                evaluations[horizon] = {
+                    "label": label,
+                    "matured": matured,
+                    "outcome_label": outcome_label.value,
+                    "return": (
+                        None
+                        if not matured or endpoint_multiple is None
+                        else _json_decimal(endpoint_multiple - 1)
+                    ),
+                    "max_return": (
+                        None
+                        if not matured or getattr(label, "mfe", None) is None
+                        else _json_decimal(Decimal(str(label.mfe)) - 1)
+                    ),
+                    "max_drawdown": (
+                        None
+                        if not matured
+                        else _json_decimal(getattr(label, "post_peak_drawdown", None))
+                    ),
+                    "dead_token": dead_token,
+                }
+            series = {
+                name: {
+                    "return": values["return"],
+                    "max_return": values["max_return"],
+                    "max_drawdown": values["max_drawdown"],
+                    "outcome_label": values["outcome_label"],
+                }
+                for name, values in evaluations.items()
+            }
+            for horizon, duration in _FORWARD_OUTCOME_HORIZONS:
+                source_id = f"pumpfun-outcome:{record.mint}:{horizon}"
+                evaluation = evaluations.get(horizon)
+                if evaluation is None:
+                    continue
+                label = cast(ExtremeWinnerOutcomeSnapshot, evaluation["label"])
+                matured = bool(evaluation["matured"])
+                outcome_flags = {
+                    **base_flags,
+                    "dead_token": bool(evaluation["dead_token"]),
+                }
                 payload = _outcome_payload(
                     record,
                     label=label,
                     horizon=horizon,
                     duration=duration,
                     stage_payloads=stage_payloads,
+                    matured=matured,
+                    outcome_label=str(evaluation["outcome_label"]),
+                    initial_values=initial_values,
+                    outcome_series=series,
+                    flags=outcome_flags,
+                    provider_provenance=provider_provenance,
                 )
                 missed_findings = MissedWinnerAnalyzer().analyze(
                     record.mint,
@@ -1126,16 +1527,28 @@ class PumpFunForwardEvidenceCollector:
                     payload["missed_findings"] = [
                         dict(finding.to_mapping()) for finding in missed_findings
                     ]
+                previous_payload = existing_outcomes.get(source_id)
+                if previous_payload is not None:
+                    if _stable_payload(previous_payload) == _stable_payload(payload):
+                        continue
+                    if (
+                        previous_payload.get("matured") is True
+                        and payload.get("matured") is not True
+                        and previous_payload.get("outcome_version")
+                        == payload.get("outcome_version")
+                    ):
+                        continue
                 outcome = _research_observation(
                     kind="research.outcome",
                     source_id=source_id,
                     query_at=now,
                     payload=payload,
-                    quality_state=label.quality_state,
+                    quality_state=QualityState.FRESH if matured else QualityState.UNKNOWN,
                     record=record,
                 )
                 result.append(outcome)
                 existing.add(source_id)
+                existing_outcomes[source_id] = payload
                 if payload["missed_winner"] is True:
                     targets = payload["missed_targets"]
                     if not isinstance(targets, Sequence) or isinstance(

@@ -354,6 +354,38 @@ def test_event_projector_only_projects_meaningful_decision_and_degradation_event
     assert projector.project(healthy) is None
 
 
+def test_stage_alerts_expose_alpha_metrics_and_state_labels() -> None:
+    source = event(
+        "CandidateStateChanged",
+        "stage-alpha-metrics",
+        {
+            "from_state": "WATCH",
+            "to_state": "HIGH_CONFLUENCE",
+            "chain": "solana",
+            "contract": "mint-1",
+            "turnover": "0.42",
+            "unique_buyers": 12,
+            "buyer_velocity": "4.0",
+            "AlphaIgnitionScore": "94",
+            "SafetyConfidence": "31",
+            "OpportunityConfidence": "88",
+            "execution_status": "EXECUTION_BLOCKED",
+            "provider_confidence": "FRESH",
+        },
+    )
+
+    alert = AlertEventProjector().project(source)
+
+    assert alert is not None
+    assert alert.payload["message_state"] == "HIGH_CONFIDENCE_ALPHA"
+    rendered = AlertRenderer().render(alert)
+    assert "Signal state: HIGH_CONFIDENCE_ALPHA" in rendered
+    assert "Turnover: 0.42" in rendered
+    assert "AlphaIgnitionScore: 94" in rendered
+    assert "SafetyConfidence: 31" in rendered
+    assert "Execution: EXECUTION_BLOCKED" in rendered
+
+
 def test_policy_and_limiter_are_protected_and_deterministic() -> None:
     policy = AlertPolicy(max_messages=1, window=timedelta(seconds=30))
     limiter = AlertRateLimiter(policy=policy)

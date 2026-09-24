@@ -18,6 +18,8 @@ from memeradar_application.early_replay import (
     EARLY_OUTCOME_HORIZONS,
     EarlyOutcomeLabeler,
     EarlyOutcomePolicy,
+    OutcomeResearchLabel,
+    classify_research_outcome,
 )
 from memeradar_application.early_scoring import EarlyScorer
 from memeradar_application.replay_harness import ReplayCheckpoint, ReplayEventRecord
@@ -78,6 +80,21 @@ def test_policy_uses_the_required_early_horizons_and_milestones() -> None:
         "1h",
     )
     assert tuple(name for name, _ in policy.market_cap_milestones) == ("50K", "100K", "250K")
+
+
+def test_research_labels_do_not_mature_missing_horizons_and_prioritize_risk() -> None:
+    assert (
+        classify_research_outcome(matured=False, hit_50x=True)
+        is OutcomeResearchLabel.INSUFFICIENT_HORIZON
+    )
+    assert (
+        classify_research_outcome(matured=True, hit_2x=True, rug_detected=True)
+        is OutcomeResearchLabel.RUG
+    )
+    assert (
+        classify_research_outcome(matured=True, hit_10x=True)
+        is OutcomeResearchLabel.WINNER_10X
+    )
 
 
 def test_forward_labels_cover_milestones_drawdown_liquidity_and_rug() -> None:

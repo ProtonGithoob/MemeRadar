@@ -23,6 +23,7 @@ def wallet_observation(
     slot: int = 100,
     quality: QualityState = QualityState.FRESH,
     occurred_at: datetime = NOW,
+    extra: dict[str, object] | None = None,
 ) -> Observation:
     payload: dict[str, object] = {
         "wallet": wallet,
@@ -35,6 +36,7 @@ def wallet_observation(
         payload["funder"] = funder
     if fresh is not None:
         payload["fresh_wallet"] = fresh
+    payload.update(extra or {})
     return Observation(
         id=uuid5(NAMESPACE_URL, f"launch-risk:{wallet}:{slot}:{bundle}"),
         kind="wallet.activity",
@@ -74,6 +76,37 @@ def test_clean_launch_requires_complete_graph_evidence_and_passes_control() -> N
     assert snapshot.risk_disposition is RiskDisposition.PASS
     assert snapshot.hard_blocks == ()
     assert snapshot.execution_eligible() is False
+
+
+def test_supply_quality_is_exposed_without_promoting_unknown_security_to_safe() -> None:
+    observation = wallet_observation(
+        "wallet-supply",
+        extra={
+            "top_1_holder_pct": "12",
+            "top_5_holder_pct": "30",
+            "top_10_holder_pct": "42",
+            "creator_pct": "0.05",
+            "insider_pct": "0.10",
+            "sniper_pct": "0.15",
+            "bundler_pct": "0.20",
+            "fresh_wallet_pct": "0.25",
+            "lp_pct": "0.30",
+            "locked_liquidity_pct": "0.80",
+            "mint_authority": {"state": "ACTIVE"},
+            "freeze_authority": {"state": "REVOKED"},
+            "token_extensions": ["transfer_fee_config", "memo_transfer"],
+        },
+    )
+
+    snapshot = LaunchRiskAnalyzer().evaluate((observation,), as_of=NOW)
+
+    assert snapshot.top_1_holder_pct == Decimal("0.12")
+    assert snapshot.top_5_holder_pct == Decimal("0.30")
+    assert snapshot.top_10_holder_pct == Decimal("0.42")
+    assert snapshot.locked_liquidity_pct == Decimal("0.80")
+    assert snapshot.mint_authority == "ACTIVE"
+    assert snapshot.freeze_authority == "REVOKED"
+    assert snapshot.dangerous_token_2022_extensions == ("transfer_fee_config",)
 
 
 def test_bundle_and_creator_concentration_create_explicit_hard_block_candidates() -> None:

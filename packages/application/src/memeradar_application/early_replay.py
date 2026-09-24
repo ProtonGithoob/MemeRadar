@@ -14,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
+from enum import Enum
 from types import MappingProxyType
 from uuid import UUID
 
@@ -53,6 +54,63 @@ EXTREME_OUTCOME_STAGES = (
     "ENTRY_READY",
     "FIRST_TELEGRAM_ALERT",
 )
+OUTCOME_LABEL_VERSION = "research-outcome-labels-v1"
+OUTCOME_METHODOLOGY_VERSION = "future-only-event-time-v2"
+
+
+class OutcomeResearchLabel(str, Enum):
+    """Mutually exclusive, future-only research labels."""
+
+    WINNER_2X = "WINNER_2X"
+    WINNER_5X = "WINNER_5X"
+    WINNER_10X = "WINNER_10X"
+    WINNER_20X = "WINNER_20X"
+    WINNER_50X = "WINNER_50X"
+    RUG = "RUG"
+    HONEYPOT = "HONEYPOT"
+    DEAD = "DEAD"
+    SEVERE_DRAWDOWN = "SEVERE_DRAWDOWN"
+    NEUTRAL = "NEUTRAL"
+    INSUFFICIENT_HORIZON = "INSUFFICIENT_HORIZON"
+
+
+def classify_research_outcome(
+    *,
+    matured: bool,
+    hit_2x: bool = False,
+    hit_5x: bool = False,
+    hit_10x: bool = False,
+    hit_20x: bool = False,
+    hit_50x: bool = False,
+    rug_detected: bool = False,
+    honeypot_detected: bool = False,
+    dead_token: bool = False,
+    severe_drawdown: bool = False,
+    observable: bool = True,
+) -> OutcomeResearchLabel:
+    """Classify one matured horizon without treating missing data as failure."""
+
+    if not matured:
+        return OutcomeResearchLabel.INSUFFICIENT_HORIZON
+    if honeypot_detected:
+        return OutcomeResearchLabel.HONEYPOT
+    if rug_detected:
+        return OutcomeResearchLabel.RUG
+    if hit_50x:
+        return OutcomeResearchLabel.WINNER_50X
+    if hit_20x:
+        return OutcomeResearchLabel.WINNER_20X
+    if hit_10x:
+        return OutcomeResearchLabel.WINNER_10X
+    if hit_5x:
+        return OutcomeResearchLabel.WINNER_5X
+    if hit_2x:
+        return OutcomeResearchLabel.WINNER_2X
+    if dead_token or not observable:
+        return OutcomeResearchLabel.DEAD
+    if severe_drawdown:
+        return OutcomeResearchLabel.SEVERE_DRAWDOWN
+    return OutcomeResearchLabel.NEUTRAL
 _PRICE_KINDS = frozenset(
     {
         "market.snapshot",
@@ -1120,6 +1178,10 @@ __all__ = [
     "EARLY_OUTCOME_VERSION",
     "EXTREME_OUTCOME_HORIZONS",
     "EXTREME_OUTCOME_STAGES",
+    "OUTCOME_LABEL_VERSION",
+    "OUTCOME_METHODOLOGY_VERSION",
+    "OutcomeResearchLabel",
+    "classify_research_outcome",
     "EarlyForwardOutcomeLabeler",
     "EarlyOutcomeHorizonLabel",
     "EarlyOutcomeLabel",

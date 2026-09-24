@@ -6,7 +6,11 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
-from memeradar_application.early_scoring import EarlyScorePolicy, EarlyScorer
+from memeradar_application.early_scoring import (
+    EarlyScorePolicy,
+    EarlyScorer,
+    build_asymmetric_alpha_projection,
+)
 from memeradar_domain import QualityState, RiskDisposition
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
@@ -139,6 +143,32 @@ def test_hard_risk_blocks_early_score_and_launch_age_handoff() -> None:
     assert result.hard_risk_blocked is True
     assert result.handoff_to_alpha is True
     assert result.execution_eligible() is False
+
+
+def test_alpha_ignition_is_separate_from_safety_and_opportunity_confidence() -> None:
+    score = EarlyScorer().score(
+        {
+            "components": {
+                "OrganicFlowAcceleration": Decimal("100"),
+                "WalletQuality": Decimal("100"),
+                "OnChainSafety": Decimal("50"),
+                "LiquidityAndSellability": Decimal("60"),
+                "LaunchMomentum": Decimal("100"),
+                "SmartMoneyConfluence": Decimal("100"),
+                "SocialCorroboration": Decimal("100"),
+                "confidence": Decimal("0.88"),
+            },
+            "confidence": Decimal("0.88"),
+        },
+        _risk(),
+    )
+
+    projection = build_asymmetric_alpha_projection(score)
+
+    assert projection.AlphaIgnitionScore > projection.SafetyConfidence
+    assert projection.OpportunityConfidence == Decimal("88")
+    assert projection.execution_quality == Decimal("60")
+    assert projection.to_mapping()["execution_eligible"] is False
 
 
 def test_policy_rejects_unsafe_modes_and_preserves_config_identity() -> None:
