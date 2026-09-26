@@ -14,7 +14,7 @@ import re
 from collections import deque
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from hashlib import sha256
 from threading import Lock
@@ -54,6 +54,13 @@ class ReliabilityCounter(str, Enum):
     PROVIDER_FALLBACKS = "provider_fallbacks"
     DUPLICATE_EVENTS = "duplicate_events"
     PROVIDER_CONFLICTS = "provider_conflicts"
+    PROVIDER_COMPARISONS = "provider_comparisons"
+    PROVIDER_CONFLICT_TOTAL = "provider_conflict_total"
+    PRICE_CONFLICT = "price_conflict"
+    LIQUIDITY_CONFLICT = "liquidity_conflict"
+    MARKET_CAP_CONFLICT = "market_cap_conflict"
+    IDENTITY_CONFLICT = "identity_conflict"
+    SECURITY_CONFLICT = "security_conflict"
     LIVE_RECOVERED_CONFLICTS = "live_recovered_conflicts"
     DROPPED_MALFORMED = "dropped_malformed"
     MALFORMED_EVENTS = "malformed_events"
@@ -252,6 +259,7 @@ class ReliabilitySnapshot:
     gauges: Mapping[str, int | float]
     measurement_method: str
     modes: Mapping[str, bool]
+    provider_conflicts: Mapping[str, object] = field(default_factory=dict)
 
     def dominant_source(self, metric: str | LatencyMetric) -> str | None:
         name = _name(metric, "metric")
@@ -304,6 +312,7 @@ class ReliabilitySnapshot:
                 "manual_execution": False,
                 "auto_execution": False,
             },
+            "provider_conflicts": self.provider_conflicts,
         }
 
     def to_json(self) -> str:
@@ -334,6 +343,7 @@ class ReliabilityMetrics:
         self._source_totals: dict[str, dict[str, int | float]] = {}
         self._latency_source_totals: dict[str, dict[str, dict[str, int | float]]] = {}
         self._gauges: dict[str, int | float] = {}
+        self._provider_conflicts_by_pair: dict[str, dict[str, int]] = {}
         self._lock = Lock()
 
     def increment(
@@ -359,6 +369,55 @@ class ReliabilityMetrics:
                     raise ValueError("provider label cardinality exceeds the bounded limit")
                 values = self._provider_counters.setdefault(provider_name, {})
                 values[name] = values.get(name, 0) + amount
+
+    def record_provider_comparison(
+        self,
+        conflict_type: str | Enum,
+        provider_a: str,
+        provider_b: str,
+        *,
+        conflicted: bool,
+    ) -> None:
+        """Record one bounded cross-provider comparison without raw payloads."""
+
+        conflict_name = _name(conflict_type, "conflict_type")
+        allowed = {
+            ReliabilityCounter.PRICE_CONFLICT.value,
+            ReliabilityCounter.LIQUIDITY_CONFLICT.value,
+            ReliabilityCounter.MARKET_CAP_CONFLICT.value,
+            ReliabilityCounter.IDENTITY_CONFLICT.value,
+            ReliabilityCounter.SECURITY_CONFLICT.value,
+        }
+        if conflict_name not in allowed:
+            raise ValueError(f"unsupported provider conflict type: {conflict_name}")
+        if not isinstance(conflicted, bool):
+            raise TypeError("conflicted must be a boolean")
+        first = _label(provider_a, "provider label")
+        second = _label(provider_b, "provider label")
+        if first == second:
+            raise ValueError("provider comparison requires two distinct providers")
+        pair = "-".join(sorted((first, second)))
+        self.increment(ReliabilityCounter.PROVIDER_COMPARISONS, provider=pair)
+        if conflicted:
+            self.increment(ReliabilityCounter.PROVIDER_CONFLICT_TOTAL, provider=pair)
+            self.increment(conflict_name, provider=pair)
+        with self._lock:
+            values = self._provider_conflicts_by_pair.setdefault(
+                pair,
+                {
+                    ReliabilityCounter.PROVIDER_COMPARISONS.value: 0,
+                    ReliabilityCounter.PROVIDER_CONFLICT_TOTAL.value: 0,
+                    ReliabilityCounter.PRICE_CONFLICT.value: 0,
+                    ReliabilityCounter.LIQUIDITY_CONFLICT.value: 0,
+                    ReliabilityCounter.MARKET_CAP_CONFLICT.value: 0,
+                    ReliabilityCounter.IDENTITY_CONFLICT.value: 0,
+                    ReliabilityCounter.SECURITY_CONFLICT.value: 0,
+                },
+            )
+            values[ReliabilityCounter.PROVIDER_COMPARISONS.value] += 1
+            if conflicted:
+                values[ReliabilityCounter.PROVIDER_CONFLICT_TOTAL.value] += 1
+                values[conflict_name] += 1
 
     def observe_latency(
         self,
@@ -427,6 +486,17 @@ class ReliabilityMetrics:
                 metric: {source: dict(values) for source, values in sorted(source_values.items())}
                 for metric, source_values in sorted(self._latency_source_totals.items())
             }
+            provider_conflicts_by_pair = {
+                pair: {
+                    **dict(sorted(values.items())),
+                    "provider_conflict_rate": round(
+                        values[ReliabilityCounter.PROVIDER_CONFLICT_TOTAL.value]
+                        / values[ReliabilityCounter.PROVIDER_COMPARISONS.value],
+                        6,
+                    ),
+                }
+                for pair, values in sorted(self._provider_conflicts_by_pair.items())
+            }
             histograms = {
                 metric: dict(source_values) for metric, source_values in self._histograms.items()
             }
@@ -436,6 +506,8 @@ class ReliabilityMetrics:
             }
             for metric, source_values in sorted(histograms.items())
         }
+        comparisons = counters[ReliabilityCounter.PROVIDER_COMPARISONS.value]
+        conflicts = counters[ReliabilityCounter.PROVIDER_CONFLICT_TOTAL.value]
         return ReliabilitySnapshot(
             counters=counters,
             provider_counters=provider_counters,
@@ -449,6 +521,23 @@ class ReliabilityMetrics:
                 "paper_trading": True,
                 "manual_execution": False,
                 "auto_execution": False,
+            },
+            provider_conflicts={
+                "provider_conflict_total": conflicts,
+                "provider_conflict_rate": (
+                    None if comparisons == 0 else round(conflicts / comparisons, 6)
+                ),
+                "by_type": {
+                    name: counters[name]
+                    for name in (
+                        ReliabilityCounter.PRICE_CONFLICT.value,
+                        ReliabilityCounter.LIQUIDITY_CONFLICT.value,
+                        ReliabilityCounter.MARKET_CAP_CONFLICT.value,
+                        ReliabilityCounter.IDENTITY_CONFLICT.value,
+                        ReliabilityCounter.SECURITY_CONFLICT.value,
+                    )
+                },
+                "by_provider_pair": provider_conflicts_by_pair,
             },
         )
 
@@ -533,6 +622,25 @@ def emit_latency(
             observe_latency(metric_name, milliseconds)
         except Exception:
             return
+
+
+def emit_provider_conflict(
+    telemetry: object | None,
+    conflict_type: str | Enum,
+    provider_a: str,
+    provider_b: str,
+    *,
+    conflicted: bool,
+) -> None:
+    """Best-effort adapter for optional provider-agreement telemetry."""
+
+    if telemetry is None:
+        return
+    record = getattr(telemetry, "record_provider_comparison", None)
+    if not callable(record):
+        return
+    try:
+        record(conflict_type, provider_a, provider_b, conflicted=conflicted)
     except Exception:
         return
 
@@ -546,4 +654,5 @@ __all__ = [
     "ReliabilityTelemetry",
     "emit_counter",
     "emit_latency",
+    "emit_provider_conflict",
 ]

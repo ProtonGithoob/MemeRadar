@@ -138,6 +138,16 @@ def test_synthetic_launch_reaches_early_watch_and_projects_immutable_stage_alert
     assert result.stage_snapshot.normalized_payload["state"] == "EARLY_WATCH"
     assert result.stage_snapshot.normalized_payload["chain"] == "solana"
     assert result.stage_snapshot.normalized_payload["mint"] == MINT
+    assert result.stage_snapshot.normalized_payload["DataQualityConfidence"] is not None
+    assert set(result.stage_snapshot.normalized_payload["data_quality_dimensions"]) == {
+        "organic_flow_quality",
+        "wallet_independence_quality",
+        "stream_quality",
+        "price_quality",
+        "provider_agreement",
+        "protocol_identity_quality",
+        "holder_data_quality",
+    }
     discovered = next(
         row
         for row in observations.rows.values()
@@ -230,6 +240,7 @@ def test_critical_unknown_safety_never_becomes_entry_ready_but_persists_discover
     assert result.candidate.state.value != "ENTRY_READY"
     assert result.stage_snapshot.normalized_payload["critical_unknowns"]
     assert result.stage_snapshot.normalized_payload["execution_eligible"] is False
+    assert result.stage_snapshot.normalized_payload["DataQualityConfidence"] < Decimal("100")
 
 
 def test_runtime_escalates_through_strong_high_and_paper_entry_only_with_quote() -> None:

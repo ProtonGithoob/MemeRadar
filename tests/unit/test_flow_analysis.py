@@ -426,13 +426,145 @@ def test_organic_flow_exposes_cluster_adjusted_buyers_and_turnover() -> None:
     assert result.metrics.cluster_adjusted_buyer_count == 2
     assert result.metrics.funded_sibling_ratio == Decimal("0.6666666666666666666666666667")
     assert result.metrics.wallet_entropy is not None
-    assert result.metrics.wash_suspected_volume == Decimal("600")
+    assert result.metrics.wash_suspected_volume == Decimal("300")
     assert result.metrics.gross_volume == Decimal("600")
-    assert result.metrics.organic_volume_estimate == Decimal("0")
-    assert result.metrics.organic_volume_ratio == Decimal("0")
+    assert result.metrics.organic_volume_estimate == Decimal("300")
+    assert result.metrics.organic_volume_ratio == Decimal("0.5")
     assert result.metrics.raw_turnover == Decimal("0.6")
-    assert result.metrics.organic_turnover == Decimal("0")
+    assert result.metrics.organic_turnover == Decimal("0.3")
+    assert result.metrics.wash_confidence == Decimal("0.3333333333333333333333333333")
     assert "WASH_VOLUME_SUSPECTED" in {reason.code for reason in result.reason_codes}
+
+
+def test_cluster_and_repeated_size_evidence_does_not_label_legitimate_flow_as_wash() -> None:
+    token_value = token()
+    observations = (
+        market_observation(
+            token_value,
+            source_id="market:legitimate-flow",
+            observed_at=NOW - timedelta(minutes=1),
+        ),
+        *(
+            trade_observation(
+                token_value,
+                source_id=f"trade:legitimate:{index}",
+                maker=maker,
+                side="buy",
+                amount="10",
+                buyer=maker,
+                seller=MAKER_D,
+                cluster_id="shared-cex-funder",
+                observed_at=NOW - timedelta(seconds=20 - index),
+            )
+            for index, maker in enumerate((MAKER_A, MAKER_B, MAKER_C))
+        ),
+    )
+
+    result = FlowAnalyzer().analyze(
+        token_value,
+        observations,
+        now=NOW,
+        config_hash="flow-analysis-test",
+    )
+
+    assert result.metrics.cluster_adjusted_buyer_count == 1
+    assert result.metrics.funded_sibling_ratio == Decimal("1")
+    assert result.metrics.repeated_size_ratio == Decimal("1")
+    assert result.metrics.wash_suspected_volume is None
+    assert result.metrics.wash_confidence == Decimal("0")
+    assert result.metrics.organic_volume_estimate == result.metrics.gross_volume
+    assert result.metrics.organic_turnover == result.metrics.raw_turnover
+    assert result.score > Decimal("0")
+
+
+@pytest.mark.parametrize(
+    ("scenario", "trades", "expects_wash_evidence"),
+    (
+        (
+            "rapid_round_trip",
+            (
+                (MAKER_A, "buy", "10", MAKER_A, MAKER_B, 20),
+                (MAKER_A, "sell", "10", MAKER_B, MAKER_A, 10),
+            ),
+            True,
+        ),
+        (
+            "market_maker_like",
+            (
+                (MAKER_A, "buy", "10", MAKER_A, MAKER_B, 20),
+                (MAKER_A, "sell", "11", MAKER_C, MAKER_A, 19),
+            ),
+            True,
+        ),
+        (
+            "legitimate_arbitrage",
+            (
+                (MAKER_A, "buy", "10", MAKER_A, MAKER_B, 20),
+                (MAKER_B, "sell", "11", MAKER_C, MAKER_D, 19),
+            ),
+            False,
+        ),
+        (
+            "mev",
+            (
+                (MAKER_A, "buy", "5", MAKER_A, MAKER_B, 20),
+                (MAKER_B, "sell", "5", MAKER_C, MAKER_D, 19),
+            ),
+            False,
+        ),
+        (
+            "independent_repeated_small_buys",
+            (
+                (MAKER_A, "buy", "1", MAKER_A, MAKER_D, 20),
+                (MAKER_B, "buy", "1", MAKER_B, MAKER_D, 19),
+                (MAKER_C, "buy", "1", MAKER_C, MAKER_D, 18),
+            ),
+            False,
+        ),
+    ),
+)
+def test_wash_evidence_is_advisory_across_flow_shapes(
+    scenario: str,
+    trades: tuple[tuple[str, str, str, str, str, int], ...],
+    expects_wash_evidence: bool,
+) -> None:
+    token_value = token()
+    observations = (
+        market_observation(
+            token_value,
+            source_id=f"market:{scenario}",
+            observed_at=NOW - timedelta(minutes=1),
+        ),
+        *(
+            trade_observation(
+                token_value,
+                source_id=f"trade:{scenario}:{index}",
+                maker=maker,
+                side=side,
+                amount=amount,
+                buyer=buyer,
+                seller=seller,
+                observed_at=NOW - timedelta(seconds=offset),
+            )
+            for index, (maker, side, amount, buyer, seller, offset) in enumerate(trades)
+        ),
+    )
+
+    result = FlowAnalyzer().analyze(
+        token_value,
+        observations,
+        now=NOW,
+        config_hash="flow-analysis-test",
+    )
+
+    assert (result.metrics.wash_suspected_volume is not None) is expects_wash_evidence
+    assert result.metrics.wash_confidence is not None
+    if expects_wash_evidence:
+        assert result.metrics.wash_confidence <= Decimal("1")
+    else:
+        assert result.metrics.wash_confidence == Decimal("0")
+    assert result.score > Decimal("0")
+    assert result.execution_eligible(NOW) is False
 
 
 def test_bounds_and_invalid_trade_data_are_fail_closed() -> None:

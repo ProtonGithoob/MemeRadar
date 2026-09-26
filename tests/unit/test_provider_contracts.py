@@ -194,6 +194,26 @@ def test_subscription_descriptor_preserves_per_subscription_identity_and_health(
     assert descriptor.health is QualityState.FRESH
 
 
+def test_named_subscription_event_keys_do_not_become_canonical_trade_identity() -> None:
+    launches = SubscriptionDescriptor(
+        subscription_id="launches",
+        provider="robinhood-chain",
+        channels=("launches",),
+    )
+    trades = SubscriptionDescriptor(
+        subscription_id="dex-trades",
+        provider="robinhood-chain",
+        channels=("dex_trades",),
+    )
+
+    assert launches.provider_event_key("event-1") != trades.provider_event_key("event-1")
+    assert launches.provider_event_key("event-1") == (
+        "robinhood-chain",
+        "launches",
+        "event-1",
+    )
+
+
 def test_discovery_candidate_preserves_canonical_identity_and_provenance() -> None:
     token = TokenIdentity(mint_address=MINT)
     provenance = Provenance(

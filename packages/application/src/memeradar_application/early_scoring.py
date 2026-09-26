@@ -101,6 +101,43 @@ def _reasons(source: object) -> tuple[ReasonCode, ...]:
     return normalize_reason_codes(tuple(value))
 
 
+_DATA_QUALITY_DIMENSIONS = (
+    "organic_flow_quality",
+    "wallet_independence_quality",
+    "stream_quality",
+    "price_quality",
+    "provider_agreement",
+    "protocol_identity_quality",
+    "holder_data_quality",
+)
+
+
+def _quality_dimension(value: object, name: str) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return Decimal("1") if value else Decimal("0")
+    if isinstance(value, str):
+        normalized = value.strip().upper()
+        if normalized in {"FRESH", "PASS", "AGREED", "VERIFIED", "CLEAR"}:
+            return Decimal("1")
+        if normalized in {
+            "UNKNOWN",
+            "STALE",
+            "CONFLICTED",
+            "DEGRADED",
+            "INVALID",
+            "BLOCKED",
+            "UNVERIFIED",
+            "WARN",
+        }:
+            return Decimal("0")
+    try:
+        return bounded_decimal(value, name, Decimal("0"), Decimal("1"))
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass(frozen=True, slots=True)
 class EarlyScorePolicy:
     """Configuration for the launch-stage score and its protected modes."""
@@ -531,6 +568,8 @@ class AsymmetricAlphaProjection:
     safety_confidence: Decimal = Decimal("0")
     opportunity_confidence: Decimal = Decimal("0")
     data_quality_confidence: Decimal = Decimal("0")
+    data_quality_dimensions: Mapping[str, Decimal | None] = field(default_factory=dict)
+    data_quality_reasons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         eq_bounded = bounded_decimal(
@@ -583,6 +622,18 @@ class AsymmetricAlphaProjection:
                     Decimal("100"),
                 ),
             )
+        dimensions = {
+            require_text(key, "data quality dimension", max_length=64): (
+                None if value is None else _quality_dimension(value, str(key))
+            )
+            for key, value in self.data_quality_dimensions.items()
+        }
+        object.__setattr__(self, "data_quality_dimensions", MappingProxyType(dimensions))
+        object.__setattr__(
+            self,
+            "data_quality_reasons",
+            normalize_texts(self.data_quality_reasons, "data_quality_reasons"),
+        )
 
     @property
     def AlphaIgnitionScore(self) -> Decimal:
@@ -611,6 +662,8 @@ class AsymmetricAlphaProjection:
                 "safety_confidence": self.safety_confidence,
                 "opportunity_confidence": self.opportunity_confidence,
                 "data_quality_confidence": self.data_quality_confidence,
+                "data_quality_dimensions": self.data_quality_dimensions,
+                "data_quality_reasons": self.data_quality_reasons,
                 "early_quality_score": self.early_quality_score,
                 "upside_evidence_score": self.upside_evidence_score,
                 "rug_dump_risk": self.rug_dump_risk,
@@ -627,6 +680,7 @@ def build_asymmetric_alpha_projection(
     snapshot: EarlyScoreSnapshot,
     market_cap_at_decision: Decimal | None = None,
     launch_age_ms: int | None = None,
+    data_quality_dimensions: Mapping[str, object] | None = None,
 ) -> AsymmetricAlphaProjection:
     components = snapshot.components
     flow = components.get("OrganicFlowAcceleration")
@@ -663,9 +717,28 @@ def build_asymmetric_alpha_projection(
     opportunity_confidence = Decimal("100") * snapshot.confidence
     # Reuse the existing evidence coverage/confidence contract.  This is a
     # separate projection for telemetry completeness, not a second score.
-    data_quality_confidence = Decimal("100") * snapshot.confidence
-    if snapshot.risk_quality_state is not QualityState.FRESH:
-        data_quality_confidence = Decimal("0")
+    normalized_dimensions: dict[str, Decimal | None] = {}
+    data_quality_reasons: list[str] = []
+    if data_quality_dimensions:
+        for dimension in _DATA_QUALITY_DIMENSIONS:
+            value = _quality_dimension(data_quality_dimensions.get(dimension), dimension)
+            normalized_dimensions[dimension] = value
+            if value is None:
+                data_quality_reasons.append(f"DATA_QUALITY_{dimension.upper()}_UNKNOWN")
+            elif value < Decimal("1"):
+                data_quality_reasons.append(f"DATA_QUALITY_{dimension.upper()}_DEGRADED")
+        data_quality_confidence = (
+            Decimal("100")
+            * sum(
+                (value or Decimal("0") for value in normalized_dimensions.values()),
+                Decimal("0"),
+            )
+            / Decimal(len(_DATA_QUALITY_DIMENSIONS))
+        )
+    else:
+        data_quality_confidence = Decimal("100") * snapshot.confidence
+        if snapshot.risk_quality_state is not QualityState.FRESH:
+            data_quality_confidence = Decimal("0")
 
     reasons = list(snapshot.reason_codes) + [
         ReasonCode("ASYMMETRIC_ALPHA_PROJECTED"),
@@ -694,6 +767,8 @@ def build_asymmetric_alpha_projection(
         safety_confidence=safety_confidence,
         opportunity_confidence=opportunity_confidence,
         data_quality_confidence=data_quality_confidence,
+        data_quality_dimensions=normalized_dimensions,
+        data_quality_reasons=tuple(data_quality_reasons),
     )
 
 

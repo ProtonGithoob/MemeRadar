@@ -213,6 +213,57 @@ def _evidence_refs(*sources: object) -> tuple[str, ...]:
     return normalize_texts(values, "evidence_refs")
 
 
+def _data_quality_dimensions(
+    metrics: Mapping[str, object],
+    evidence: Mapping[str, object],
+    safety: FastSafetyResult | None,
+    feature_snapshot: EarlyFeatureSnapshot,
+    *,
+    provider_available: bool,
+    stream_gap: bool,
+) -> Mapping[str, object]:
+    """Project explicit quality dimensions without turning missing evidence safe."""
+
+    organic = metrics.get("organic_volume_ratio")
+    wallet = metrics.get("wallet_independence_quality", metrics.get("wallet_entropy"))
+    if wallet is None and safety is not None:
+        wallet = (
+            Decimal("1") - safety.shared_funder_ratio
+            if safety.shared_funder_ratio is not None
+            else None
+        )
+        if wallet is None and safety.raw_smart_wallet_count:
+            wallet = Decimal(safety.independent_smart_wallet_count or 0) / Decimal(
+                safety.raw_smart_wallet_count
+            )
+    stream = (
+        Decimal("0")
+        if not provider_available or stream_gap
+        else {
+            QualityState.FRESH: Decimal("1"),
+            QualityState.STALE: Decimal("0.5"),
+            QualityState.UNKNOWN: Decimal("0"),
+            QualityState.CONFLICTED: Decimal("0"),
+            QualityState.INVALID: Decimal("0"),
+        }[feature_snapshot.quality_state]
+    )
+    provider_agreement = evidence.get("provider_agreement")
+    if provider_agreement is None and isinstance(evidence.get("provider_conflict"), bool):
+        provider_agreement = not evidence["provider_conflict"]
+    holder_quality = evidence.get("holder_data_quality", metrics.get("holder_data_quality"))
+    if holder_quality is None and metrics.get("holder_velocity") is not None:
+        holder_quality = Decimal("1")
+    return {
+        "organic_flow_quality": organic,
+        "wallet_independence_quality": wallet,
+        "stream_quality": stream,
+        "price_quality": evidence.get("price_quality", metrics.get("price_quality")),
+        "provider_agreement": provider_agreement,
+        "protocol_identity_quality": evidence.get("protocol_identity_verified"),
+        "holder_data_quality": holder_quality,
+    }
+
+
 def _runtime_risk_id(candidate_id: UUID, state: CandidateState) -> UUID:
     return uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}risk:{candidate_id}:{state.value}")
 
@@ -396,6 +447,14 @@ class EarlyRuntimeService:
         ):
             if key in evidence:
                 metrics[key] = evidence[key]
+        data_quality_dimensions = _data_quality_dimensions(
+            metrics,
+            evidence,
+            safety,
+            feature_snapshot,
+            provider_available=provider_available,
+            stream_gap=stream_gap,
+        )
         organic = OrganicMomentumProjection.from_metrics(
             metrics,
             evidence_refs=feature_snapshot.evidence_refs,
@@ -462,6 +521,7 @@ class EarlyRuntimeService:
                 score=score,
                 decision=decision,
                 latencies_ms=initial_latencies,
+                data_quality_dimensions=data_quality_dimensions,
                 initial=True,
             )
             await self._save_observation(discovered_snapshot)
@@ -528,6 +588,7 @@ class EarlyRuntimeService:
                     score=score,
                     decision=decision,
                     latencies_ms=latencies,
+                    data_quality_dimensions=data_quality_dimensions,
                 )
                 await self._save_observation(intermediate)
         snapshot = self._build_snapshot(
@@ -542,6 +603,7 @@ class EarlyRuntimeService:
             score=score,
             decision=decision,
             latencies_ms=latencies,
+            data_quality_dimensions=data_quality_dimensions,
         )
         await self._save_observation(snapshot)
         lifecycle_event = None
@@ -909,6 +971,7 @@ class EarlyRuntimeService:
         score: EarlyScoreSnapshot | None,
         decision: EarlyDecisionResult | None,
         latencies_ms: Mapping[str, Decimal],
+        data_quality_dimensions: Mapping[str, object] | None = None,
         initial: bool = False,
     ) -> Observation:
         key = (candidate.id, state)
@@ -950,6 +1013,7 @@ class EarlyRuntimeService:
                     "market_cap",
                 ),
                 launch_age_ms=int(age * Decimal("1000")),
+                data_quality_dimensions=data_quality_dimensions,
             )
         )
         payload: dict[str, object] = {
@@ -1023,6 +1087,12 @@ class EarlyRuntimeService:
             ),
             "DataQualityConfidence": (
                 None if alpha_projection is None else alpha_projection.data_quality_confidence
+            ),
+            "data_quality_dimensions": (
+                {} if alpha_projection is None else alpha_projection.data_quality_dimensions
+            ),
+            "data_quality_reasons": (
+                () if alpha_projection is None else alpha_projection.data_quality_reasons
             ),
             "alpha_ignition_score": (
                 None if alpha_projection is None else alpha_projection.alpha_ignition_score

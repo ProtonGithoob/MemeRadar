@@ -365,8 +365,17 @@ def test_stage_alerts_expose_alpha_metrics_and_state_labels() -> None:
             "to_state": "HIGH_CONFLUENCE",
             "chain": "solana",
             "contract": "mint-1",
+            "gross_volume": "1200",
+            "organic_volume_estimate": "900",
+            "wash_confidence": "0.25",
             "turnover": "0.42",
+            "raw_turnover": "0.50",
+            "organic_turnover": "0.38",
             "unique_buyers": 12,
+            "cluster_adjusted_buyer_count": 8,
+            "wallet_entropy": "0.91",
+            "raw_smart_wallet_count": 4,
+            "independent_smart_wallet_count": 3,
             "buyer_velocity": "4.0",
             "AlphaIgnitionScore": "94",
             "SafetyConfidence": "31",
@@ -383,6 +392,10 @@ def test_stage_alerts_expose_alpha_metrics_and_state_labels() -> None:
     rendered = AlertRenderer().render(alert)
     assert "Signal state: HIGH_CONFIDENCE_ALPHA" in rendered
     assert "Turnover: 0.42" in rendered
+    assert "Raw volume: 1200" in rendered
+    assert "Organic volume: 900" in rendered
+    assert "Wash confidence: 0.25" in rendered
+    assert "Independent smart wallets: 3" in rendered
     assert "AlphaIgnitionScore: 94" in rendered
     assert "SafetyConfidence: 31" in rendered
     assert "Execution: EXECUTION_BLOCKED" in rendered

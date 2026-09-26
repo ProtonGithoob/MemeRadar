@@ -326,6 +326,7 @@ class FlowMetrics:
     organic_volume_ratio: Decimal | None = None
     raw_turnover: Decimal | None = None
     organic_turnover: Decimal | None = None
+    wash_confidence: Decimal | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -378,6 +379,7 @@ class FlowMetrics:
             "repeat_trade_ratio",
             "round_trip_ratio",
             "organic_volume_ratio",
+            "wash_confidence",
         ):
             value = getattr(self, field_name)
             if value is not None:
@@ -984,12 +986,6 @@ class FlowAnalyzer:
             )
             # ponytail: bounded O(n²) comparison over the 500-trade window.
             # Bucket by maker/time only if replay profiling needs it.
-            repeated_indices = {
-                index
-                for index, record in enumerate(individual)
-                if record.amount is not None
-                and sum(1 for other in individual if other.amount == record.amount) >= 2
-            }
             directed_pairs = {
                 (record.buyer, record.seller)
                 for record in individual
@@ -1018,30 +1014,14 @@ class FlowAnalyzer:
                     ):
                         rapid_indices.update((index, later_index))
                         break
-            cluster_sibling_indices = {
-                index
-                for index, (record, buyer) in enumerate(buyer_records)
-                if record.cluster_id is not None
-                and len(cluster_buyers[record.cluster_id]) > 1
-                and buyer is not None
+            explicit_wash_indices = {
+                index for index, record in enumerate(individual) if record.wash_suspected is True
             }
-            # The index above is over buyer_records; map it back to individual rows.
-            buyer_record_ids = {id(record): index for index, record in enumerate(individual)}
-            cluster_sibling_indices = {
-                buyer_record_ids[id(buyer_records[index][0])] for index in cluster_sibling_indices
-            }
-            suspected_indices = circular_indices | rapid_indices
-            if (
-                repeated_size_ratio is not None
-                and repeated_size_ratio >= self.policy.repeated_size_threshold
-            ):
-                suspected_indices.update(repeated_indices)
-            suspected_indices.update(cluster_sibling_indices)
-            suspected_indices.update(
-                index
-                for index, record in enumerate(individual)
-                if record.wash_suspected is True
-            )
+            # Cluster membership and repeated size are corroborating evidence,
+            # not wash labels: CEX/launchpad siblings and small independent buys
+            # are common legitimate flows. Round-trip structure remains a
+            # bounded suspicion, never an execution gate.
+            suspected_indices = circular_indices | rapid_indices | explicit_wash_indices
             suspected_amounts = tuple(
                 value
                 for index, record in enumerate(individual)
@@ -1058,6 +1038,11 @@ class FlowAnalyzer:
             organic_volume_ratio = (
                 organic_volume_estimate / gross_volume
                 if organic_volume_estimate is not None and gross_volume
+                else None
+            )
+            wash_confidence = (
+                Decimal(len(suspected_indices)) / Decimal(transaction_count)
+                if transaction_count
                 else None
             )
             return (
@@ -1100,6 +1085,7 @@ class FlowAnalyzer:
                     organic_volume_estimate=organic_volume_estimate,
                     wash_suspected_volume=wash_suspected_volume,
                     organic_volume_ratio=organic_volume_ratio,
+                    wash_confidence=wash_confidence,
                 ),
                 QualityState.FRESH,
                 evidence_refs,
@@ -1261,6 +1247,7 @@ class FlowAnalyzer:
             organic_volume_estimate=metrics.organic_volume_estimate,
             wash_suspected_volume=metrics.wash_suspected_volume,
             organic_volume_ratio=metrics.organic_volume_ratio,
+            wash_confidence=metrics.wash_confidence,
             raw_turnover=(
                 metrics.gross_volume / liquidity.liquidity
                 if metrics.gross_volume is not None and liquidity.liquidity

@@ -17,6 +17,7 @@ from memeradar_domain.common import (
 )
 
 from .price_semantics import PriceEvidence
+from .reliability import ReliabilityTelemetry, emit_provider_conflict
 
 PRICE_CONSENSUS_VERSION = "price-consensus-v1"
 
@@ -113,6 +114,7 @@ class PriceConsensusService:
         *,
         ttl: timedelta = timedelta(minutes=5),
         disagreement_threshold_bps: Decimal | int | str = Decimal("500"),
+        telemetry: ReliabilityTelemetry | None = None,
     ) -> None:
         if ttl <= timedelta(0):
             raise ValueError("ttl must be positive")
@@ -121,6 +123,7 @@ class PriceConsensusService:
             raise ValueError("disagreement_threshold_bps must not be negative")
         self.ttl = ttl
         self.disagreement_threshold_bps = threshold
+        self._telemetry = telemetry
 
     @staticmethod
     def _as_observation(value: PriceObservation | PriceEvidence) -> PriceObservation | None:
@@ -212,6 +215,15 @@ class PriceConsensusService:
             * Decimal("10000")
         )
         conflicted = disagreement > self.disagreement_threshold_bps
+        provider_names = tuple(sorted({value.source for value in ordered}))
+        if len(provider_names) == 2:
+            emit_provider_conflict(
+                self._telemetry,
+                "price_conflict",
+                provider_names[0],
+                provider_names[1],
+                conflicted=conflicted,
+            )
         quality = QualityState.CONFLICTED if conflicted else QualityState.FRESH
         confidence = min(
             (to_decimal(value.confidence, "confidence") for value in fresh),

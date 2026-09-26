@@ -158,6 +158,29 @@ def test_short_window_unique_buyers_and_organic_turnover_are_exposed() -> None:
     assert window.metrics["wallet_entropy"] is not None
     assert window.metrics["raw_turnover"] == Decimal("0.6")
     assert window.metrics["organic_turnover"] == Decimal("0.6")
+    assert window.metrics["wash_confidence"] == Decimal("0")
+
+
+def test_explicit_wash_evidence_is_bounded_without_treating_cluster_membership_as_wash() -> None:
+    observations = (
+        trade(-9, amount="100", wallet="wallet-a", liquidity="1000", cluster_id="cex-funder"),
+        trade(
+            -8,
+            amount="200",
+            wallet="wallet-b",
+            liquidity="1000",
+            cluster_id="cex-funder",
+            wash_trade=True,
+        ),
+    )
+
+    window = EarlyFeatureEngine().compute(TOKEN_ID, NOW, observations).windows["10s"]
+
+    assert window.metrics["gross_volume"] == Decimal("300")
+    assert window.metrics["wash_suspected_volume"] == Decimal("200")
+    assert window.metrics["organic_volume_estimate"] == Decimal("100")
+    assert window.metrics["organic_volume_ratio"] == Decimal("0.3333333333333333333333333333")
+    assert window.metrics["wash_confidence"] == Decimal("200") / Decimal("300")
 
 
 def test_runtime_windows_and_extended_microstructure_fields_are_event_time_bounded() -> None:

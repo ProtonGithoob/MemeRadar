@@ -726,6 +726,14 @@ class EarlyFeatureEngine:
             if organic_volume_estimate is not None and gross_volume
             else None
         )
+        wash_confidence = (
+            min(
+                Decimal("1"),
+                (wash_suspected_volume or Decimal("0")) / gross_volume,
+            )
+            if gross_volume
+            else None
+        )
         organic_buy_volume = (
             max(Decimal("0"), total_inflow - wash_buy_volume)
             if total_inflow is not None
@@ -784,6 +792,7 @@ class EarlyFeatureEngine:
             "gross_volume": gross_volume,
             "organic_volume_estimate": organic_volume_estimate,
             "wash_suspected_volume": wash_suspected_volume,
+            "wash_confidence": wash_confidence,
             "organic_volume_ratio": organic_volume_ratio,
             "quote_inflow": total_inflow,
             "quote_inflow_per_second": _per_second(total_inflow, duration),

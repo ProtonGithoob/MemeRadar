@@ -173,6 +173,49 @@ def test_alpha_ignition_is_separate_from_safety_and_opportunity_confidence() -> 
     assert projection.to_mapping()["DataQualityConfidence"] == Decimal("88")
 
 
+def test_data_quality_conflict_is_decomposed_and_lowers_confidence() -> None:
+    score = EarlyScorer().score(
+        {
+            "components": {
+                name: Decimal("90") for name in EarlyScorePolicy.component_names
+            },
+            "confidence": Decimal("0.9"),
+        },
+        _risk(),
+    )
+    clean = build_asymmetric_alpha_projection(
+        score,
+        data_quality_dimensions={
+            "organic_flow_quality": Decimal("1"),
+            "wallet_independence_quality": Decimal("1"),
+            "stream_quality": Decimal("1"),
+            "price_quality": Decimal("1"),
+            "provider_agreement": Decimal("1"),
+            "protocol_identity_quality": Decimal("1"),
+            "holder_data_quality": Decimal("1"),
+        },
+    )
+    conflicted = build_asymmetric_alpha_projection(
+        score,
+        data_quality_dimensions={
+            "organic_flow_quality": Decimal("0.8"),
+            "wallet_independence_quality": Decimal("0.4"),
+            "stream_quality": Decimal("1"),
+            "price_quality": Decimal("0.2"),
+            "provider_agreement": Decimal("0.1"),
+            "protocol_identity_quality": Decimal("0.5"),
+            "holder_data_quality": None,
+        },
+    )
+
+    assert clean.DataQualityConfidence == Decimal("100")
+    assert conflicted.DataQualityConfidence == Decimal("42.85714285714285714285714286")
+    assert conflicted.data_quality_dimensions["holder_data_quality"] is None
+    assert "DATA_QUALITY_PRICE_QUALITY_DEGRADED" in conflicted.data_quality_reasons
+    assert "DATA_QUALITY_HOLDER_DATA_QUALITY_UNKNOWN" in conflicted.data_quality_reasons
+    assert conflicted.to_mapping()["data_quality_reasons"] == conflicted.data_quality_reasons
+
+
 def test_policy_rejects_unsafe_modes_and_preserves_config_identity() -> None:
     assert EarlyScorePolicy().analysis_only is True
     assert EarlyScorePolicy().paper_trading is True

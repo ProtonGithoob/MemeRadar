@@ -226,6 +226,20 @@ def test_normalized_event_identity_is_transport_independent_and_observable() -> 
     assert live.execution_eligible() is False
 
 
+def test_subscription_delivery_provenance_merges_without_duplicate_canonical_activity() -> None:
+    launches = make_event(source_transport="robinhood:launches")
+    trades = make_event(source_transport="robinhood:dex-trades")
+
+    merged = launches.with_merged_provenance(trades)
+
+    assert launches.canonical_identity == trades.canonical_identity == merged.canonical_identity
+    assert launches.id == trades.id == merged.id
+    assert merged.source_transports == ("robinhood:launches", "robinhood:dex-trades")
+    assert tuple(item.provider for item in merged.additional_provenance) == (
+        "robinhood:dex-trades",
+    )
+
+
 def test_reverted_event_is_an_explicit_correction_record() -> None:
     original = make_event(commitment=CommitmentState.FINALIZED)
     correction = original.reverted_correction(
