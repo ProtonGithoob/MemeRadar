@@ -43,6 +43,46 @@ The requested `.codex/CURRENT_TASK.md` and `.codex/VERIFICATION.md` files
 remain unwritable because `.codex/` is host-mounted read-only; this checkpoint
 and verification evidence are durable under `docs/reports/`.
 
+## 2026-09-26 root-cause closure and real-acceptance checkpoint
+
+The required closure report is
+[`external-alpha-real-acceptance-2026-09-26.md`](reports/external-alpha-real-acceptance-2026-09-26.md).
+The local implementation/test checkpoint is `b0c3636` on top of baseline
+`5e39666`; no remote Git operation was run.
+
+The organic-flow audit now keeps shared-funder cluster membership, repeated
+trade size, market-maker-like shape and other correlation signals as evidence
+instead of automatically labeling every related trade as wash. Suspected wash
+volume is limited to round-trip/rapid/explicit evidence, with bounded
+`wash_confidence`, raw/organic volume and raw/organic turnover exposed through
+the existing flow, early-feature and alert owners. The new alert evidence is
+rendered for high-priority states without changing score authority.
+
+`DataQualityConfidence` now persists seven dimensions — organic flow, wallet
+independence, stream quality, price quality, provider agreement, protocol
+identity and holder data — with explicit UNKNOWN/DEGRADED reason codes. The
+existing asymmetric score remains unchanged. Provider conflict telemetry now
+exposes total/rate, conflict type, and canonical provider-pair buckets through
+the existing reliability collector; live counts remain unavailable until two
+real providers are reachable.
+
+Final backend evidence is `1518 passed, 21 skipped, 7 warnings`; three
+security-review tests fail only because the user-owned `.env.example` edit
+matches the secret scanner. Global combined line/branch coverage is `78.69%`
+(`83.22%` statements, `66.34%` branches). Ruff, mypy (`164` source files),
+frontend CSS/lint/typecheck/tests (`83` tests), Compose syntax, migration check
+and SBOM (`582` components) pass. `make verify` therefore remains a genuine
+security-gate failure, not a suppressed result.
+
+The bounded synthetic hot path reports `1616.587` iterations/s and
+chain-event-to-decision p50/p95/p99 `0.434/0.485/0.498 ms`; it is explicitly
+`synthetic_local` and does not prove live SLOs. Real Helius, Telegram,
+Robinhood named-stream, public EVM, dual-price-source and unverified protocol
+acceptance remain `BLOCKED_EXTERNAL`/`TODO_VERIFY`. Pump.fun forward shadow has
+`1278` launches and `995` one-hour-due rows, but mature 6h/24h/72h/7d counts
+remain `0/0/0/0`; OOS lift and paper lifecycle remain
+`INSUFFICIENT_SAMPLES`.
+
 ## Current classification
 
 | Dimension | Current state | Evidence / constraint |
