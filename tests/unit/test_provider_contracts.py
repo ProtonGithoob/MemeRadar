@@ -35,6 +35,7 @@ from memeradar_application.provider_contracts import (
     SocialDataPort,
     SocialDataRequest,
     SocialMetadataPort,
+    SubscriptionDescriptor,
 )
 from memeradar_domain import (
     Freshness,
@@ -171,6 +172,26 @@ def test_request_context_requires_ordered_deadline_and_bounded_correlation() -> 
             correlation_id=" ",
             requested_at=NOW,
         )
+
+
+def test_subscription_descriptor_preserves_per_subscription_identity_and_health() -> None:
+    descriptor = SubscriptionDescriptor(
+        subscription_id="token-prices",
+        provider="madeonsol",
+        channels=("token_prices", "token_prices"),
+        filters={"tokens": ("0x" + "11" * 20,)},
+        cursor="cursor-1",
+        last_event_id="event-7",
+        health=QualityState.FRESH,
+    )
+
+    assert descriptor.channels == ("token_prices",)
+    assert descriptor.provider_event_key("event-8") == (
+        "madeonsol",
+        "token-prices",
+        "event-8",
+    )
+    assert descriptor.health is QualityState.FRESH
 
 
 def test_discovery_candidate_preserves_canonical_identity_and_provenance() -> None:

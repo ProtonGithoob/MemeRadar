@@ -43,3 +43,24 @@ def test_missing_evidence_remains_unknown() -> None:
     assert result.score is None
     assert result.quality_state is QualityState.UNKNOWN
     assert "ORGANIC_MOMENTUM_EVIDENCE_MISSING" in result.reason_code_values
+
+
+def test_organic_volume_and_cluster_adjustment_reduce_momentum_confidence() -> None:
+    result = OrganicMomentumProjection.from_metrics(
+        {
+            "new_unique_buyer_velocity": Decimal("0.4"),
+            "cluster_adjusted_buyer_count": 2,
+            "wallet_entropy": Decimal("0.8"),
+            "raw_turnover": Decimal("4.2"),
+            "organic_turnover": Decimal("0.7"),
+            "gross_volume": Decimal("4200"),
+            "organic_volume_estimate": Decimal("700"),
+            "wash_suspected_volume": Decimal("3500"),
+            "organic_volume_ratio": Decimal("0.1666666666666666666666666667"),
+        }
+    )
+
+    assert result.score is not None
+    assert "ORGANIC_VOLUME_LOW" in result.reason_code_values
+    assert "WASH_VOLUME" in result.reason_code_values
+    assert result.score < Decimal("50")

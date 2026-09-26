@@ -78,17 +78,24 @@ def trade_observation(
     buyer: str,
     seller: str,
     observed_at: datetime,
+    cluster_id: str | None = None,
+    wash_trade: bool | None = None,
 ) -> Observation:
+    payload: dict[str, object] = {
+        "maker": maker,
+        "side": side,
+        "amount": amount,
+        "buyer": buyer,
+        "seller": seller,
+    }
+    if cluster_id is not None:
+        payload["cluster_id"] = cluster_id
+    if wash_trade is not None:
+        payload["wash_trade"] = wash_trade
     return observation(
         token_value,
         "market.trade",
-        {
-            "maker": maker,
-            "side": side,
-            "amount": amount,
-            "buyer": buyer,
-            "seller": seller,
-        },
+        payload,
         source_id=source_id,
         observed_at=observed_at,
     )
@@ -250,6 +257,9 @@ def test_safe_flow_has_diverse_makers_and_fresh_sellability_quote() -> None:
     assert result.metrics.repeated_size_ratio == Decimal("0")
     assert result.metrics.circular_flow_ratio == Decimal("0")
     assert result.metrics.rapid_round_trip_ratio == Decimal("0")
+    assert result.metrics.organic_volume_ratio == Decimal("1")
+    assert result.metrics.raw_turnover == Decimal("0.0155")
+    assert result.metrics.organic_turnover == Decimal("0.0155")
     assert result.metrics.sellable is True
     assert result.metrics.price_impact_bps == Decimal("25")
     assert result.metrics.quote_quality_state is QualityState.FRESH
@@ -356,7 +366,73 @@ def test_suspicious_flow_penalizes_repeated_circular_and_rapid_patterns() -> Non
         "repeated_trade_size",
         "circular_flow",
         "rapid_round_trip",
+        "organic_volume_low",
     }
+
+
+def test_organic_flow_exposes_cluster_adjusted_buyers_and_turnover() -> None:
+    token_value = token()
+    observations = (
+        market_observation(
+            token_value,
+            source_id="market:organic",
+            observed_at=NOW - timedelta(minutes=1),
+            liquidity=Decimal("1000"),
+            depth=Decimal("1000"),
+        ),
+        trade_observation(
+            token_value,
+            source_id="trade:organic:1",
+            maker=MAKER_A,
+            side="buy",
+            amount="100",
+            buyer=MAKER_A,
+            seller=MAKER_D,
+            cluster_id="funder-a",
+            observed_at=NOW - timedelta(seconds=20),
+        ),
+        trade_observation(
+            token_value,
+            source_id="trade:organic:2",
+            maker=MAKER_B,
+            side="buy",
+            amount="200",
+            buyer=MAKER_B,
+            seller=MAKER_D,
+            cluster_id="funder-a",
+            observed_at=NOW - timedelta(seconds=15),
+        ),
+        trade_observation(
+            token_value,
+            source_id="trade:organic:3",
+            maker=MAKER_C,
+            side="buy",
+            amount="300",
+            buyer=MAKER_C,
+            seller=MAKER_D,
+            wash_trade=True,
+            observed_at=NOW - timedelta(seconds=10),
+        ),
+    )
+
+    result = FlowAnalyzer().analyze(
+        token_value,
+        observations,
+        now=NOW,
+        config_hash="flow-analysis-test",
+    )
+
+    assert result.metrics.unique_buyers == 3
+    assert result.metrics.cluster_adjusted_buyer_count == 2
+    assert result.metrics.funded_sibling_ratio == Decimal("0.6666666666666666666666666667")
+    assert result.metrics.wallet_entropy is not None
+    assert result.metrics.wash_suspected_volume == Decimal("600")
+    assert result.metrics.gross_volume == Decimal("600")
+    assert result.metrics.organic_volume_estimate == Decimal("0")
+    assert result.metrics.organic_volume_ratio == Decimal("0")
+    assert result.metrics.raw_turnover == Decimal("0.6")
+    assert result.metrics.organic_turnover == Decimal("0")
+    assert "WASH_VOLUME_SUSPECTED" in {reason.code for reason in result.reason_codes}
 
 
 def test_bounds_and_invalid_trade_data_are_fail_closed() -> None:

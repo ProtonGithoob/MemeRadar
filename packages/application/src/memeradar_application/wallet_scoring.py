@@ -8,7 +8,16 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 
-from memeradar_domain import Freshness, Provenance, QualityState, ReasonCode, require_solana_address
+from memeradar_domain import (
+    Chain,
+    Freshness,
+    Provenance,
+    QualityState,
+    ReasonCode,
+    normalize_chain,
+    require_chain_address,
+    require_solana_address,
+)
 from memeradar_domain.common import (
     bounded_decimal,
     ensure_utc,
@@ -726,6 +735,138 @@ class WalletCopyability:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class SmartWalletLeaderboardEntry:
+    """Ranked projection over existing SmartWalletScore evidence."""
+
+    wallet: str
+    chain: Chain | str
+    sample_size: int
+    realized_pnl: Decimal | None
+    estimated_total_pnl: Decimal | None
+    win_rate: Decimal | None
+    median_return: Decimal | None
+    early_entry_rate: Decimal | None
+    rug_exposure: Decimal | None
+    copyability: Decimal | None
+    mev_probability: Decimal | None
+    insider_probability: Decimal | None
+    consistency: Decimal
+    confidence: Decimal
+    last_activity: datetime
+    rank_score: Decimal
+    rank_reasons: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        chain = normalize_chain(self.chain)
+        object.__setattr__(self, "chain", chain)
+        object.__setattr__(self, "wallet", require_chain_address(self.wallet, chain, "wallet"))
+        if (
+            not isinstance(self.sample_size, int)
+            or isinstance(self.sample_size, bool)
+            or self.sample_size < 0
+        ):
+            raise ValueError("sample_size must be a non-negative integer")
+        for field_name in (
+            "win_rate",
+            "early_entry_rate",
+            "rug_exposure",
+            "mev_probability",
+            "insider_probability",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    bounded_decimal(value, field_name, Decimal("0"), Decimal("1")),
+                )
+        for field_name in ("realized_pnl", "estimated_total_pnl", "median_return"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(self, field_name, to_decimal(value, field_name))
+        for field_name in ("consistency", "confidence", "rank_score"):
+            object.__setattr__(
+                self,
+                field_name,
+                bounded_decimal(
+                    getattr(self, field_name), field_name, Decimal("0"), Decimal("100")
+                )
+                if field_name == "rank_score"
+                else bounded_decimal(
+                    getattr(self, field_name), field_name, Decimal("0"), Decimal("1")
+                ),
+            )
+        object.__setattr__(self, "last_activity", ensure_utc(self.last_activity, "last_activity"))
+        object.__setattr__(self, "rank_reasons", normalize_texts(self.rank_reasons, "rank_reasons"))
+
+    @property
+    def wallet_address(self) -> str:
+        return self.wallet
+
+
+class SmartWalletLeaderboardProjection:
+    """Explainably rank mature wallet scores without promoting tiny samples."""
+
+    def project(
+        self,
+        scores: Sequence[SmartWalletScore],
+        *,
+        copyability: Sequence[WalletCopyability] = (),
+    ) -> tuple[SmartWalletLeaderboardEntry, ...]:
+        if isinstance(scores, str | bytes | bytearray):
+            raise TypeError("scores must be a sequence")
+        copy_by_wallet: dict[str, WalletCopyability] = {}
+        for value in copyability:
+            if not isinstance(value, WalletCopyability):
+                raise TypeError("copyability must contain WalletCopyability values")
+            if value.wallet_address in copy_by_wallet:
+                raise ValueError(f"duplicate copyability for {value.wallet_address}")
+            copy_by_wallet[value.wallet_address] = value
+        entries: list[SmartWalletLeaderboardEntry] = []
+        for score in scores:
+            if not isinstance(score, SmartWalletScore):
+                raise TypeError("scores must contain SmartWalletScore values")
+            evidence = copy_by_wallet.get(score.wallet_address)
+            reasons = ["SCORE_AND_SAMPLE_CONFIDENCE_RANK"]
+            if score.sample_count == 0:
+                reasons.append("NO_MATURE_OUTCOMES")
+            elif score.confidence < Decimal("0.5"):
+                reasons.append("LOW_SAMPLE_CONFIDENCE")
+            # Pull small samples toward the neutral score; SmartWalletScore already
+            # shrinks components, but this protects the leaderboard independently.
+            rank_score = Decimal("50") + (score.score - Decimal("50")) * score.confidence
+            entries.append(
+                SmartWalletLeaderboardEntry(
+                    wallet=score.wallet_address,
+                    chain=Chain.SOLANA,
+                    sample_size=score.sample_count,
+                    realized_pnl=score.realized_pnl,
+                    estimated_total_pnl=score.realized_pnl,
+                    win_rate=score.win_rate,
+                    median_return=score.median_return,
+                    early_entry_rate=score.early_entry_rate,
+                    rug_exposure=None if evidence is None else evidence.rug_exposure,
+                    copyability=None if evidence is None else evidence.copyability,
+                    mev_probability=None if evidence is None else evidence.mev_probability,
+                    insider_probability=None
+                    if evidence is None
+                    else evidence.insider_probability,
+                    consistency=score.confidence,
+                    confidence=score.confidence,
+                    last_activity=score.as_of,
+                    rank_score=rank_score,
+                    rank_reasons=tuple(reasons),
+                )
+            )
+        return tuple(
+            sorted(
+                entries,
+                key=lambda entry: (-entry.rank_score, -entry.sample_size, entry.wallet),
+            )
+        )
+
+
 def assess_wallet_copyability(
     score: SmartWalletScore,
     snapshots: Sequence[WalletTrackingSnapshot],
@@ -877,6 +1018,8 @@ def _median_decimal(values: Sequence[Decimal]) -> Decimal | None:
 
 
 __all__ = [
+    "SmartWalletLeaderboardEntry",
+    "SmartWalletLeaderboardProjection",
     "SmartWalletScore",
     "SmartWalletScorer",
     "SmartWalletScoringPolicy",

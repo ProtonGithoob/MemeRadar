@@ -1,10 +1,47 @@
 # MemeRadar Status
 
-Last updated: 2026-09-24
+Last updated: 2026-09-26
 
 This is the current authoritative project state. Historical checkpoint detail
 was consolidated here; implementation contracts remain in the canonical
 documents below.
+
+## 2026-09-26 external capability integration checkpoint
+
+The external audit and implementation report is recorded in
+[`external-alpha-capability-integration-2026-09-26.md`](reports/external-alpha-capability-integration-2026-09-26.md).
+The exact pre-change matrix is in
+[`external-feature-gap-matrix.md`](reports/external-feature-gap-matrix.md),
+with license and reuse decisions in
+[`external-repo-license-matrix.md`](reports/external-repo-license-matrix.md).
+
+The P0 path now has unique-buyer windows (10s/30s/1m/3m), cluster-adjusted
+buyers, wallet entropy, funded-sibling evidence, wash-suspected volume,
+organic volume and raw-versus-organic turnover in the existing flow/early
+feature owners.  Local P2/P3 seams now include the authenticated Helius wallet
+webhook adapter, explainable smart-wallet leaderboard, transaction taxonomy,
+evidence-only wallet labels, alert storm controller, price consensus,
+Robinhood named-subscription descriptors, adaptive EVM logs, ticker-collision
+protection, optional chain-configured read-only Multicall3, and report-only
+strategy failure metadata.  Par, HoodiePad/Doppler, NOXA and Odyssey parsers
+remain read-only candidate contracts; unverified deployments are rejected by
+the existing log reader.
+
+Protected modes remain unchanged.  No source was copied, no external
+dependency was added, and no live execution path was enabled.  The full
+Python run reached `1507 passed, 21 skipped, 7 warnings` with total coverage
+`79%`; `make lint` and `make typecheck` passed.  Frontend CSS/lint/typecheck/
+tests, Compose config, migration check, and SBOM also passed (`83` frontend
+tests, `582` SBOM components).  The repository security review is currently
+blocked by a pre-existing dirty `.env.example` value that
+matches the secret scanner's Telegram-token pattern; the file was preserved
+unchanged and the value is not recorded here.  `HEAD:.env.example` passes the
+same scan.  Real provider acceptance and mature OOS alpha evidence remain
+`BLOCKED_EXTERNAL` / `INSUFFICIENT_SAMPLES`.
+
+The requested `.codex/CURRENT_TASK.md` and `.codex/VERIFICATION.md` files
+remain unwritable because `.codex/` is host-mounted read-only; this checkpoint
+and verification evidence are durable under `docs/reports/`.
 
 ## Current classification
 

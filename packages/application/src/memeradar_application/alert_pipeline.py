@@ -7,6 +7,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from enum import Enum
 from time import perf_counter
 from typing import Protocol
@@ -198,6 +199,141 @@ class AlertRateLimiter:
             )
         reservations.append(normalized_now)
         return AlertRateLimitDecision(allowed=True)
+
+
+class AlertStormMode(str, Enum):
+    NORMAL = "NORMAL"
+    BURST = "BURST"
+    DIGEST = "DIGEST"
+
+
+@dataclass(frozen=True, slots=True)
+class AlertStormDecision:
+    mode: AlertStormMode
+    allowed: bool
+    priority: bool
+    digest: bool = False
+    duplicate: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class AlertStormMetrics:
+    alerts_per_minute: int
+    deduplicated_alerts: int
+    suppressed_alerts: int
+    digest_events: int
+    priority_alert_latency_ms: Decimal | None
+
+
+class AlertStormController:
+    """Bounded state for prioritizing urgent alerts during notification bursts."""
+
+    def __init__(
+        self,
+        *,
+        window: timedelta = timedelta(minutes=1),
+        burst_threshold: int = 15,
+        digest_threshold: int = 30,
+    ) -> None:
+        if window <= timedelta(0) or window > timedelta(days=1):
+            raise ValueError("window must be positive and at most one day")
+        if not isinstance(burst_threshold, int) or not 1 <= burst_threshold <= 100_000:
+            raise ValueError("burst_threshold must be between 1 and 100000")
+        if not isinstance(digest_threshold, int) or digest_threshold <= burst_threshold:
+            raise ValueError("digest_threshold must exceed burst_threshold")
+        self.window = window
+        self.burst_threshold = burst_threshold
+        self.digest_threshold = digest_threshold
+        self._events: list[datetime] = []
+        self._dedupe_keys: dict[str, datetime] = {}
+        self._deduplicated = 0
+        self._suppressed = 0
+        self._digest_events = 0
+        self._priority_latencies: list[Decimal] = []
+
+    @staticmethod
+    def _is_priority(alert: Alert) -> bool:
+        if alert.severity is AlertSeverity.CRITICAL:
+            return True
+        if alert.type in {
+            AlertType.ENTRY_READY,
+            AlertType.PAPER_ENTRY,
+            AlertType.PAPER_EXIT,
+            AlertType.RISK_ESCALATION,
+            AlertType.SYSTEM_KILL_SWITCH,
+            AlertType.EARLY_ALPHA,
+        }:
+            return True
+        return any(
+            alert.payload.get(key) is True
+            for key in ("high_confidence", "paper_eligible", "priority")
+        )
+
+    def _prune(self, now: datetime) -> None:
+        cutoff = now - self.window
+        self._events = [value for value in self._events if value > cutoff]
+        self._dedupe_keys = {
+            key: value for key, value in self._dedupe_keys.items() if value > cutoff
+        }
+
+    def classify(self, alert: Alert, now: datetime) -> AlertStormDecision:
+        if not isinstance(alert, Alert):
+            raise TypeError("alert must be an Alert")
+        checked_at = ensure_utc(now, "now")
+        self._prune(checked_at)
+        if alert.state is AlertState.FAILED:
+            # A failed outbox item is a retry, not a duplicate notification.
+            self._dedupe_keys.pop(alert.dedupe_key, None)
+        if alert.dedupe_key in self._dedupe_keys:
+            self._deduplicated += 1
+            mode = self._mode(len(self._events))
+            return AlertStormDecision(mode, False, self._is_priority(alert), duplicate=True)
+        self._dedupe_keys[alert.dedupe_key] = checked_at
+        self._events.append(checked_at)
+        mode = self._mode(len(self._events))
+        priority = self._is_priority(alert)
+        if priority:
+            return AlertStormDecision(mode, True, True)
+        if mode is AlertStormMode.DIGEST:
+            self._suppressed += 1
+            self._digest_events += 1
+            return AlertStormDecision(mode, False, False, digest=True)
+        return AlertStormDecision(mode, True, False)
+
+    def record_delivery(self, alert: Alert, delivered_at: datetime) -> None:
+        if not isinstance(alert, Alert):
+            raise TypeError("alert must be an Alert")
+        if self._is_priority(alert):
+            elapsed = ensure_utc(delivered_at, "delivered_at") - alert.requested_at
+            if elapsed >= timedelta(0):
+                self._priority_latencies.append(Decimal(str(elapsed.total_seconds() * 1000)))
+
+    def _mode(self, count: int) -> AlertStormMode:
+        if count >= self.digest_threshold:
+            return AlertStormMode.DIGEST
+        if count >= self.burst_threshold:
+            return AlertStormMode.BURST
+        return AlertStormMode.NORMAL
+
+    @property
+    def mode(self) -> AlertStormMode:
+        return self._mode(len(self._events))
+
+    @property
+    def metrics(self) -> AlertStormMetrics:
+        average = (
+            None
+            if not self._priority_latencies
+            else sum(self._priority_latencies, Decimal("0"))
+            / Decimal(len(self._priority_latencies))
+        )
+        return AlertStormMetrics(
+            alerts_per_minute=len(self._events),
+            deduplicated_alerts=self._deduplicated,
+            suppressed_alerts=self._suppressed,
+            digest_events=self._digest_events,
+            priority_alert_latency_ms=average,
+        )
 
 
 def _safe_display(value: object, *, max_length: int = 512) -> str:
@@ -690,6 +826,8 @@ class AlertRenderer:
         research_fields = (
             ("volume_velocity", "Volume velocity"),
             ("turnover", "Turnover"),
+            ("raw_turnover", "Raw turnover"),
+            ("organic_turnover", "Organic turnover"),
             ("turnover_1m", "Turnover 1m"),
             ("turnover_3m", "Turnover 3m"),
             ("turnover_5m", "Turnover 5m"),
@@ -700,7 +838,10 @@ class AlertRenderer:
             ("turnover_acceleration", "Turnover acceleration"),
             ("turnover_provider_provenance", "Turnover provenance"),
             ("unique_buyers", "Unique buyers"),
+            ("cluster_adjusted_buyer_count", "Cluster-adjusted buyers"),
             ("buyer_velocity", "Buyer velocity"),
+            ("organic_volume_ratio", "Organic volume ratio"),
+            ("wallet_entropy", "Wallet entropy"),
             ("holder_velocity", "Holder velocity"),
             ("liquidity_growth", "Liquidity growth"),
             ("trade_velocity", "Trade velocity"),
@@ -715,6 +856,9 @@ class AlertRenderer:
             ("OpportunityConfidence", "OpportunityConfidence"),
             ("execution_status", "Execution"),
             ("provider_confidence", "Provider confidence"),
+            ("price_quality", "Price quality"),
+            ("price_disagreement_bps", "Price disagreement bps"),
+            ("subscription_health", "Subscription health"),
         )
         if any(payload.get(key) is not None for key, _label in research_fields):
             lines.append("EARLY-ALPHA EVIDENCE")
@@ -1308,6 +1452,7 @@ class AlertDeliveryService:
         renderer: AlertRenderer | None = None,
         early_alpha_renderer: AlertRenderer | None = None,
         limiter: AlertRateLimiter | None = None,
+        storm_controller: AlertStormController | None = None,
         clock: Callable[[], datetime] | None = None,
         telemetry: object | None = None,
     ) -> None:
@@ -1320,6 +1465,11 @@ class AlertDeliveryService:
         self.renderer = renderer or AlertRenderer(max_length=self.policy.max_text_length)
         self.early_alpha_renderer = early_alpha_renderer
         self.limiter = limiter or AlertRateLimiter(policy=self.policy)
+        self.storm_controller = storm_controller or AlertStormController(
+            window=self.policy.window,
+            burst_threshold=max(1, self.policy.max_messages - 5),
+            digest_threshold=min(100_000, self.policy.max_messages + 10),
+        )
         self._clock = clock or (lambda: datetime.now(UTC))
         self._telemetry = telemetry
 
@@ -1512,10 +1662,18 @@ class AlertDeliveryService:
             await self._store.save(alert)
             return AlertDeliveryResult(alert=alert, status=AlertDeliveryStatus.SUPPRESSED)
 
-        reservation = self.limiter.reserve(self.destination, now)
-        if not reservation.allowed:
-            assert reservation.retry_at is not None
-            raise AlertDeliveryDeferred(reservation.retry_at)
+        storm = self.storm_controller.classify(alert, now)
+        if not storm.allowed:
+            reason = "ALERT_STORM_DIGEST" if storm.digest else "ALERT_STORM_DEDUPLICATED"
+            alert.mark_suppressed((ReasonCode(reason),))
+            await self._store.save(alert)
+            return AlertDeliveryResult(alert=alert, status=AlertDeliveryStatus.SUPPRESSED)
+
+        if not storm.priority:
+            reservation = self.limiter.reserve(self.destination, now)
+            if not reservation.allowed:
+                assert reservation.retry_at is not None
+                raise AlertDeliveryDeferred(reservation.retry_at)
 
         timing_start = max(
             now,
@@ -1572,6 +1730,7 @@ class AlertDeliveryService:
             ),
         )
         alert.mark_delivered(receipt.delivered_at)
+        self.storm_controller.record_delivery(alert, receipt.delivered_at)
         await self._store.save(alert)
         return AlertDeliveryResult(
             alert=alert,
@@ -1631,6 +1790,10 @@ __all__ = [
     "AlertRateLimitDecision",
     "AlertRateLimiter",
     "AlertRenderer",
+    "AlertStormController",
+    "AlertStormDecision",
+    "AlertStormMetrics",
+    "AlertStormMode",
     "AlertStore",
     "MAX_TELEGRAM_TEXT_LENGTH",
     "NotificationRejected",

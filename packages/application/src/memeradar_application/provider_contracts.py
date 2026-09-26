@@ -22,6 +22,7 @@ from memeradar_domain import (
     QualityState,
     ReasonCode,
     SocialCallObservation,
+    StreamGapStatus,
     TokenIdentity,
     normalize_chain,
     require_chain_address,
@@ -148,6 +149,57 @@ class ProviderRequestContext:
             if deadline_at <= requested_at:
                 raise ValueError("deadline_at must be later than requested_at")
             object.__setattr__(self, "deadline_at", deadline_at)
+
+
+@dataclass(frozen=True, slots=True)
+class SubscriptionDescriptor:
+    """Provider stream subscription metadata; it does not invent resume guarantees."""
+
+    subscription_id: str
+    provider: str
+    channels: tuple[str, ...]
+    filters: Mapping[str, object] = field(default_factory=dict)
+    cursor: str | None = None
+    last_event_id: str | None = None
+    health: QualityState = QualityState.UNKNOWN
+    gap_state: StreamGapStatus | str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "subscription_id",
+            require_text(self.subscription_id, "subscription_id", max_length=128),
+        )
+        object.__setattr__(
+            self,
+            "provider",
+            require_text(self.provider, "provider", max_length=128),
+        )
+        object.__setattr__(
+            self,
+            "channels",
+            normalize_texts(self.channels, "channels", max_item_length=128),
+        )
+        if not self.channels:
+            raise ValueError("channels must not be empty")
+        object.__setattr__(self, "filters", freeze_mapping(self.filters, "filters"))
+        object.__setattr__(self, "cursor", _optional_cursor(self.cursor))
+        if self.last_event_id is not None:
+            object.__setattr__(
+                self,
+                "last_event_id",
+                require_text(self.last_event_id, "last_event_id", max_length=256),
+            )
+        object.__setattr__(self, "health", QualityState(self.health))
+        if self.gap_state is not None:
+            object.__setattr__(self, "gap_state", StreamGapStatus(self.gap_state))
+
+    def provider_event_key(self, event_id: str) -> tuple[str, str, str]:
+        return (
+            self.provider,
+            self.subscription_id,
+            require_text(event_id, "event_id", max_length=256),
+        )
 
 
 def _bounded_limit(value: int, field: str = "limit") -> int:
@@ -1130,4 +1182,5 @@ __all__ = [
     "SocialMetadata",
     "SocialMetadataPort",
     "SocialMention",
+    "SubscriptionDescriptor",
 ]

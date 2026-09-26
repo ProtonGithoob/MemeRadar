@@ -178,6 +178,33 @@ def _wallet(observation: Observation, names: Sequence[str]) -> str | None:
     return str(value).strip() or None
 
 
+def _cluster_key(observation: Observation, wallet: str) -> tuple[str, bool]:
+    value = _payload_value(
+        observation.normalized_payload,
+        ("cluster_id", "wallet_cluster_id", "shared_funder", "funder", "funding_wallet"),
+    )
+    if value is _MISSING or value is None or not str(value).strip():
+        return wallet, False
+    return str(value).strip(), True
+
+
+def _normalized_entropy(values: Sequence[str]) -> Decimal | None:
+    if not values:
+        return None
+    counts = Counter(values)
+    if len(counts) <= 1:
+        return Decimal("0")
+    total = Decimal(len(values))
+    entropy = sum(
+        (
+            -(probability := Decimal(count) / total) * probability.ln()
+            for count in counts.values()
+        ),
+        Decimal("0"),
+    )
+    return entropy / Decimal(len(counts)).ln()
+
+
 def _explicit_boolean(observation: Observation, names: Sequence[str]) -> bool | None:
     value = _payload_value(observation.normalized_payload, names)
     if value is _MISSING:
@@ -628,6 +655,87 @@ class EarlyFeatureEngine:
             ))
             is not None
         )
+        buyer_cluster_rows = tuple(
+            (observation, wallet, *_cluster_key(observation, wallet))
+            for observation in buys
+            if (wallet := _wallet(observation, ("buyer_wallet", "buyer", "trader", "wallet")))
+            is not None
+        )
+        buyer_clusters = tuple(row[2] for row in buyer_cluster_rows)
+        cluster_buyers: dict[str, set[str]] = {}
+        for _, wallet, cluster, explicit in buyer_cluster_rows:
+            if explicit:
+                cluster_buyers.setdefault(cluster, set()).add(wallet)
+        funded_sibling_rows = sum(
+            1
+            for _, wallet, cluster, explicit in buyer_cluster_rows
+            if explicit and len(cluster_buyers[cluster]) > 1
+        )
+        funded_sibling_ratio = (
+            Decimal(funded_sibling_rows) / Decimal(len(buyer_cluster_rows))
+            if funded_sibling_rows
+            else None
+        )
+        wash_amounts = tuple(
+            amount
+            for observation in current
+            if _explicit_boolean(observation, ("wash_trade", "wash", "bot_trade")) is True
+            and (amount := _amount(observation)) is not None
+        )
+        payload_wash_amounts = tuple(
+            value
+            for observation in current
+            if (value := _decimal(
+                _payload_value(
+                    observation.normalized_payload,
+                    ("wash_suspected_volume", "wash_volume"),
+                ),
+                "wash_suspected_volume",
+            ))
+            is not None
+        )
+        wash_suspected_volume = (
+            sum(payload_wash_amounts, Decimal("0"))
+            if payload_wash_amounts
+            else (sum(wash_amounts, Decimal("0")) if wash_amounts else None)
+        )
+        wash_buy_volume = sum(
+            amount
+            for observation in buys
+            if _explicit_boolean(observation, ("wash_trade", "wash", "bot_trade")) is True
+            and (amount := _amount(observation)) is not None
+        )
+        wash_sell_volume = sum(
+            amount
+            for observation in sells
+            if _explicit_boolean(observation, ("wash_trade", "wash", "bot_trade")) is True
+            and (amount := _amount(observation)) is not None
+        )
+        gross_volume = (
+            (total_inflow or Decimal("0")) + (total_outflow or Decimal("0"))
+            if total_inflow is not None or total_outflow is not None
+            else None
+        )
+        organic_volume_estimate = (
+            max(Decimal("0"), gross_volume - (wash_suspected_volume or Decimal("0")))
+            if gross_volume is not None
+            else None
+        )
+        organic_volume_ratio = (
+            organic_volume_estimate / gross_volume
+            if organic_volume_estimate is not None and gross_volume
+            else None
+        )
+        organic_buy_volume = (
+            max(Decimal("0"), total_inflow - wash_buy_volume)
+            if total_inflow is not None
+            else None
+        )
+        organic_sell_volume = (
+            max(Decimal("0"), total_outflow - wash_sell_volume)
+            if total_outflow is not None
+            else None
+        )
 
         def latest_delta(values: Sequence[Decimal]) -> Decimal | None:
             return values[-1] - values[0] if len(values) >= 2 else None
@@ -666,6 +774,17 @@ class EarlyFeatureEngine:
                 if total_inflow is None and total_outflow is None
                 else (total_inflow or Decimal("0")) - (total_outflow or Decimal("0"))
             ),
+            "organic_buy_volume": organic_buy_volume,
+            "organic_sell_volume": organic_sell_volume,
+            "organic_net_volume": (
+                None
+                if organic_buy_volume is None and organic_sell_volume is None
+                else (organic_buy_volume or Decimal("0")) - (organic_sell_volume or Decimal("0"))
+            ),
+            "gross_volume": gross_volume,
+            "organic_volume_estimate": organic_volume_estimate,
+            "wash_suspected_volume": wash_suspected_volume,
+            "organic_volume_ratio": organic_volume_ratio,
             "quote_inflow": total_inflow,
             "quote_inflow_per_second": _per_second(total_inflow, duration),
             "quote_outflow": total_outflow,
@@ -690,6 +809,24 @@ class EarlyFeatureEngine:
             "migration_state": self._migration_state(current),
             "unique_buyers": len(set(buyers)) if buyers else None,
             "repeat_buyer_ratio": self._repeat_ratio(buyers),
+            "new_unique_buyer_velocity": _per_second(
+                Decimal(len(set(buyers))) if buyers else None,
+                duration,
+            ),
+            "unique_buyer_velocity": _per_second(
+                Decimal(len(set(buyers))) if buyers else None,
+                duration,
+            ),
+            "cluster_adjusted_buyer_count": (
+                len(set(buyer_clusters)) if buyer_clusters else None
+            ),
+            "wallet_entropy": _normalized_entropy(buyer_clusters),
+            "funded_sibling_ratio": funded_sibling_ratio,
+            "buy_sell_unique_wallet_ratio": (
+                Decimal(len(set(buyers))) / Decimal(len(set(sellers)))
+                if buyers and sellers
+                else None
+            ),
             "buy_sell_ratio": (
                 Decimal(len(buys)) / Decimal(len(sells)) if buys and sells else None
             ),
@@ -726,7 +863,9 @@ class EarlyFeatureEngine:
                 "top_holder_distribution",
             ),
             "repeated_size_ratio": self._repeat_ratio(tuple(str(value) for value in all_amounts)),
+            "repeat_trade_ratio": self._repeat_ratio(makers),
             "circular_flow_ratio": max(circular_values) if circular_values else None,
+            "round_trip_ratio": max(circular_values) if circular_values else None,
             "wash_evidence": any(wash_flags),
             "future_observations_excluded": future_count,
         }
@@ -758,6 +897,13 @@ class EarlyFeatureEngine:
         turnover = (
             traded_volume / effective_liquidity
             if traded_volume is not None
+            and effective_liquidity is not None
+            and effective_liquidity != Decimal("0")
+            else None
+        )
+        organic_turnover = (
+            organic_volume_estimate / effective_liquidity
+            if organic_volume_estimate is not None
             and effective_liquidity is not None
             and effective_liquidity != Decimal("0")
             else None
@@ -804,6 +950,8 @@ class EarlyFeatureEngine:
         metrics["volume_acceleration"] = bounded_acceleration(current_volume, previous_volume)
         metrics["traded_volume"] = traded_volume
         metrics["effective_executable_liquidity"] = effective_liquidity
+        metrics["raw_turnover"] = turnover
+        metrics["organic_turnover"] = organic_turnover
         metrics["turnover"] = turnover
         metrics[f"turnover_{label}"] = turnover
         metrics["turnover_velocity"] = turnover_velocity
@@ -827,6 +975,19 @@ class EarlyFeatureEngine:
         )
         metrics["unique_buyer_growth"] = (
             len(set(buyers)) - len(set(previous_buyers)) if buyers and previous_buyers else None
+        )
+        current_unique_buyer_velocity = _per_second(
+            Decimal(len(set(buyers))) if buyers else None,
+            duration,
+        )
+        previous_unique_buyer_velocity = _per_second(
+            Decimal(len(set(previous_buyers))) if previous_buyers else None,
+            duration,
+        )
+        metrics["previous_unique_buyer_velocity"] = previous_unique_buyer_velocity
+        metrics["unique_buyer_acceleration"] = bounded_acceleration(
+            current_unique_buyer_velocity,
+            previous_unique_buyer_velocity,
         )
         previous_sellers = _trade_wallets(previous, "sell")
         metrics["buyer_growth_rate"] = (

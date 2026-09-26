@@ -28,6 +28,8 @@ def trade(
     effective_liquidity: str | None = None,
     event_id: str | None = None,
     quality: QualityState = QualityState.FRESH,
+    cluster_id: str | None = None,
+    wash_trade: bool | None = None,
 ) -> Observation:
     occurred = NOW + timedelta(seconds=seconds)
     payload: dict[str, object] = {
@@ -43,6 +45,10 @@ def trade(
         payload["liquidity"] = liquidity
     if effective_liquidity is not None:
         payload["effective_executable_liquidity"] = effective_liquidity
+    if cluster_id is not None:
+        payload["cluster_id"] = cluster_id
+    if wash_trade is not None:
+        payload["wash_trade"] = wash_trade
     return Observation(
         id=uuid5(NAMESPACE_URL, f"early-feature:{event_id or seconds}:{side}:{wallet}"),
         kind="market.trade",
@@ -131,10 +137,27 @@ def test_acceleration_requires_a_valid_prior_adjacent_window() -> None:
 def test_all_configured_windows_are_present_and_unknown_input_is_fail_closed() -> None:
     snapshot = EarlyFeatureEngine().compute(TOKEN_ID, NOW, ())
 
-    assert tuple(snapshot.windows) == ("1s", "5s", "15s", "30s", "60s", "3m", "5m")
+    assert tuple(snapshot.windows) == ("1s", "5s", "10s", "15s", "30s", "60s", "3m", "5m")
     assert all(window.quality_state is QualityState.UNKNOWN for window in snapshot.windows.values())
     assert all(window.metrics["buys_per_second"] is None for window in snapshot.windows.values())
     assert snapshot.execution_eligible() is False
+
+
+def test_short_window_unique_buyers_and_organic_turnover_are_exposed() -> None:
+    observations = (
+        trade(-9, amount="100", wallet="wallet-a", liquidity="1000", cluster_id="funder-a"),
+        trade(-8, amount="200", wallet="wallet-b", liquidity="1000", cluster_id="funder-a"),
+        trade(-7, amount="300", wallet="wallet-c", liquidity="1000"),
+    )
+
+    window = EarlyFeatureEngine().compute(TOKEN_ID, NOW, observations).windows["10s"]
+
+    assert window.metrics["unique_buyers"] == 3
+    assert window.metrics["new_unique_buyer_velocity"] == Decimal("0.3")
+    assert window.metrics["cluster_adjusted_buyer_count"] == 2
+    assert window.metrics["wallet_entropy"] is not None
+    assert window.metrics["raw_turnover"] == Decimal("0.6")
+    assert window.metrics["organic_turnover"] == Decimal("0.6")
 
 
 def test_runtime_windows_and_extended_microstructure_fields_are_event_time_bounded() -> None:

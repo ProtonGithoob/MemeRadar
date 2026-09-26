@@ -17,6 +17,8 @@ from memeradar_application.alert_pipeline import (
     AlertPolicy,
     AlertRateLimiter,
     AlertRenderer,
+    AlertStormController,
+    AlertStormMode,
 )
 from memeradar_application.provider_contracts import (
     DeliveryReceipt,
@@ -405,6 +407,54 @@ def test_policy_and_limiter_are_protected_and_deterministic() -> None:
 
     with pytest.raises(ValueError, match="protected"):
         AlertPolicy(auto_execution=True)
+
+
+def test_alert_storm_digests_low_priority_but_prioritizes_critical_alerts() -> None:
+    controller = AlertStormController(
+        window=timedelta(minutes=1),
+        burst_threshold=2,
+        digest_threshold=3,
+    )
+    low_one = Alert(
+        type=AlertType.NEW_WATCH,
+        severity=AlertSeverity.INFO,
+        payload={},
+        dedupe_key="storm:1",
+        requested_at=NOW,
+    )
+    low_two = Alert(
+        type=AlertType.NEW_WATCH,
+        severity=AlertSeverity.INFO,
+        payload={},
+        dedupe_key="storm:2",
+        requested_at=NOW,
+    )
+    low_three = Alert(
+        type=AlertType.NEW_WATCH,
+        severity=AlertSeverity.INFO,
+        payload={},
+        dedupe_key="storm:3",
+        requested_at=NOW,
+    )
+    critical = Alert(
+        type=AlertType.RISK_ESCALATION,
+        severity=AlertSeverity.CRITICAL,
+        payload={},
+        dedupe_key="storm:critical",
+        requested_at=NOW,
+    )
+
+    assert controller.classify(low_one, NOW).mode is AlertStormMode.NORMAL
+    assert controller.classify(low_two, NOW).mode is AlertStormMode.BURST
+    digest = controller.classify(low_three, NOW)
+    urgent = controller.classify(critical, NOW)
+
+    assert digest.allowed is False
+    assert digest.digest is True
+    assert urgent.allowed is True
+    assert urgent.priority is True
+    assert controller.metrics.digest_events == 1
+    assert controller.metrics.suppressed_alerts == 1
 
 
 class FakeAlertStore:

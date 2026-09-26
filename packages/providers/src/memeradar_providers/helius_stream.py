@@ -3,20 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import inspect
+import json
 import math
 from collections.abc import AsyncIterable, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from memeradar_application.event_taxonomy import classify_transaction
 from memeradar_application.reliability import ReliabilityTelemetry, emit_counter, emit_latency
-from memeradar_domain import Observation, Provenance, QualityState
-from memeradar_domain.common import ensure_ordered_timestamps, ensure_utc, require_text
+from memeradar_domain import Observation, Provenance, QualityState, require_solana_address
+from memeradar_domain.common import (
+    ensure_ordered_timestamps,
+    ensure_utc,
+    require_text,
+    to_decimal,
+)
 
 from .fixtures import FixtureRedactor
 from .transport import (
+    ProviderAuthenticationError,
     ProviderSchemaError,
     ProviderTimeoutError,
     ProviderUnavailableError,
@@ -238,6 +249,9 @@ class HeliusObservationNormalizer:
         normalized_payload["source_id"] = source_id
         normalized_payload["normalized_kind"] = kind
         normalized_payload["activity_kind"] = _activity_kind(message)
+        taxonomy, taxonomy_confidence = classify_transaction(normalized_payload)
+        normalized_payload["canonical_event_type"] = taxonomy.value
+        normalized_payload["classification_confidence"] = taxonomy_confidence
         normalized_payload["collection_mode"] = "PRODUCTION"
         provenance = Provenance(
             provider=HELIUS_PROVIDER,
@@ -258,6 +272,230 @@ class HeliusObservationNormalizer:
             )
         except (TypeError, ValueError) as exc:
             raise ProviderSchemaError("stream message failed observation validation") from exc
+
+
+class HeliusWalletWebhookAdapter:
+    """Authenticate and map Helius wallet webhooks to existing wallet evidence."""
+
+    provider_name = HELIUS_PROVIDER
+    parser_version = "helius-wallet-webhook-v1"
+    capabilities = frozenset({"wallet_activity", "realtime_stream"})
+
+    def __init__(
+        self,
+        *,
+        webhook_secret: str,
+        watched_wallets: Sequence[str] = (),
+        replay_ttl: float = 900.0,
+        max_replay_ids: int = 10_000,
+        clock: Clock | None = None,
+    ) -> None:
+        self._secret = require_text(webhook_secret, "webhook_secret", max_length=512)
+        if isinstance(watched_wallets, str | bytes | bytearray):
+            raise TypeError("watched_wallets must be a sequence")
+        self._watched_wallets = frozenset(
+            require_solana_address(value, "watched wallet") for value in watched_wallets
+        )
+        if not 0 < replay_ttl <= 86_400:
+            raise ValueError("replay_ttl must be between 0 and 86400 seconds")
+        if not isinstance(max_replay_ids, int) or not 1 <= max_replay_ids <= 100_000:
+            raise ValueError("max_replay_ids must be between 1 and 100000")
+        self._replay_ttl = replay_ttl
+        self._max_replay_ids = max_replay_ids
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._seen_events: dict[str, datetime] = {}
+
+    def authenticate(self, body: bytes, signature: str) -> None:
+        if not isinstance(body, bytes):
+            raise TypeError("webhook body must be bytes")
+        supplied = require_text(signature, "signature", max_length=256)
+        if supplied.lower().startswith("sha256="):
+            supplied = supplied[7:]
+        expected = hmac.new(self._secret.encode(), body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, supplied.lower()):
+            raise ProviderAuthenticationError("Helius webhook signature was invalid")
+
+    @staticmethod
+    def _event_id(event: Mapping[str, object]) -> str:
+        value = next(
+            (
+                event.get(key)
+                for key in ("event_id", "webhook_id", "signature", "transactionSignature", "id")
+                if event.get(key) is not None
+            ),
+            None,
+        )
+        if not isinstance(value, str) or not value.strip():
+            raise ProviderSchemaError("wallet webhook event id is missing")
+        return require_text(value, "event_id", max_length=256)
+
+    @staticmethod
+    def _address(value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        try:
+            return require_solana_address(value, "wallet address")
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _transfer_amount(transfer: Mapping[str, object]) -> Decimal | None:
+        raw = transfer.get("tokenAmount", transfer.get("amount", transfer.get("quantity")))
+        decimals = transfer.get("decimals")
+        if isinstance(raw, Mapping):
+            decimals = raw.get("decimals", decimals)
+            raw = raw.get("tokenAmount", raw.get("amount", raw.get("value")))
+        if raw is None:
+            return None
+        try:
+            amount = to_decimal(raw, "token amount")
+            if isinstance(decimals, int) and not isinstance(decimals, bool) and decimals >= 0:
+                amount /= Decimal(10) ** decimals
+            return amount if amount > 0 else None
+        except (TypeError, ValueError, ArithmeticError):
+            return None
+
+    def _transfer_observation(
+        self,
+        event: Mapping[str, object],
+        transfer: Mapping[str, object],
+        *,
+        event_id: str,
+        index: int,
+        observed_at: datetime,
+        occurred_at: datetime | None,
+    ) -> Observation | None:
+        mint = next(
+            (
+                transfer.get(key, event.get(key))
+                for key in ("mint", "tokenMint", "mintAddress")
+                if transfer.get(key, event.get(key)) is not None
+            ),
+            None,
+        )
+        if not isinstance(mint, str):
+            return None
+        try:
+            mint = require_solana_address(mint, "token mint")
+        except (TypeError, ValueError):
+            return None
+        from_wallet = self._address(
+            transfer.get("fromUserAccount", transfer.get("from", event.get("fromUserAccount")))
+        )
+        to_wallet = self._address(
+            transfer.get("toUserAccount", transfer.get("to", event.get("toUserAccount")))
+        )
+        candidates = tuple(
+            value
+            for value in (from_wallet, to_wallet, self._address(event.get("walletAddress")))
+            if value
+        )
+        wallets = tuple(value for value in candidates if value in self._watched_wallets)
+        if not wallets:
+            return None
+        wallet = wallets[0]
+        raw_side = event.get("side", event.get("action"))
+        normalized_side = raw_side.strip().upper() if isinstance(raw_side, str) else ""
+        if normalized_side in {"BUY", "BOUGHT"} or to_wallet == wallet:
+            action = "BUY"
+        elif normalized_side in {"SELL", "SOLD"} or from_wallet == wallet:
+            action = "SELL"
+        else:
+            action = "TRANSFER"
+        if action == "TRANSFER":
+            # WalletTrackingAnalyzer intentionally accepts only position-changing actions.
+            return None
+        amount = self._transfer_amount(transfer)
+        if amount is None:
+            return None
+        quote = event.get("usdValue", event.get("quoteAmount", event.get("value")))
+        try:
+            quote_amount = None if quote is None else to_decimal(quote, "quote amount")
+        except (TypeError, ValueError):
+            quote_amount = None
+        source_id = f"webhook:{event_id}:{index}:{wallet}:{mint}"
+        payload: dict[str, object] = {
+            "wallet_address": wallet,
+            "action": action,
+            "quantity": str(amount),
+            "mint_address": mint,
+            "signature": event_id,
+            "slot": event.get("slot"),
+            "protocol": event.get("source", event.get("protocol")),
+            "dex": event.get("source", event.get("protocol")),
+            "usd_value": None if quote_amount is None else str(quote_amount),
+            "classification_confidence": (
+                "EXPLICIT_SIDE" if normalized_side else "TRANSFER_DIRECTION"
+            ),
+            "collection_mode": "PRODUCTION",
+        }
+        return Observation(
+            kind="wallet.activity",
+            provenance=Provenance(
+                provider=HELIUS_PROVIDER,
+                source_id=source_id,
+                observed_at=observed_at,
+                parser_version=self.parser_version,
+            ),
+            occurred_at=occurred_at,
+            observed_at=observed_at,
+            ingested_at=observed_at,
+            quality_state=QualityState.FRESH,
+            normalized_payload=payload,
+        )
+
+    def normalize(
+        self,
+        payload: Mapping[str, object] | Sequence[Mapping[str, object]],
+        *,
+        signature: str,
+        raw_body: bytes | None = None,
+        observed_at: datetime | None = None,
+    ) -> tuple[Observation, ...]:
+        body = (
+            raw_body
+            if raw_body is not None
+            else json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        )
+        self.authenticate(body, signature)
+        checked_at = ensure_utc(observed_at or self._clock(), "observed_at")
+        events = (payload,) if isinstance(payload, Mapping) else tuple(payload)
+        if not events or any(not isinstance(event, Mapping) for event in events):
+            raise ProviderSchemaError("wallet webhook payload must contain objects")
+        output: list[Observation] = []
+        for event in events:
+            event_id = self._event_id(event)
+            prior = self._seen_events.get(event_id)
+            if prior is not None and checked_at - prior <= timedelta(seconds=self._replay_ttl):
+                continue
+            self._seen_events[event_id] = checked_at
+            if len(self._seen_events) > self._max_replay_ids:
+                oldest = min(self._seen_events, key=lambda key: self._seen_events[key])
+                del self._seen_events[oldest]
+            raw_time = event.get("timestamp", event.get("blockTime", event.get("occurred_at")))
+            occurred = None if raw_time is None else _parse_event_time(raw_time)
+            if occurred is not None and occurred > checked_at:
+                occurred = None
+            transfers = event.get("tokenTransfers", event.get("token_transfers", ()))
+            if not isinstance(transfers, Sequence) or isinstance(
+                transfers, str | bytes | bytearray
+            ):
+                transfers = ()
+            for index, transfer in enumerate(transfers):
+                if isinstance(transfer, Mapping):
+                    normalized = self._transfer_observation(
+                        event,
+                        transfer,
+                        event_id=event_id,
+                        index=index,
+                        observed_at=checked_at,
+                        occurred_at=occurred,
+                    )
+                    if normalized is not None:
+                        output.append(normalized)
+        return tuple(output)
+
+    ingest = normalize
 
 
 class HeliusStreamConsumer:
@@ -414,6 +652,7 @@ __all__ = [
     "HELIUS_STREAM_PARSER_VERSION",
     "HeliusObservationNormalizer",
     "HeliusStreamConsumer",
+    "HeliusWalletWebhookAdapter",
     "MessageSource",
     "ObservationSink",
     "SourceFactory",

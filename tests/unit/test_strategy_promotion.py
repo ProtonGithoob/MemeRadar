@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from memeradar_application.strategy_promotion import (
     PromotionCandidate,
+    StrategyFailureModeMetadata,
+    StrategyFailureModeRegistry,
     StrategyPromotionGate,
 )
 from memeradar_domain import ReasonCode
@@ -58,3 +60,21 @@ def test_strategy_promotion_approval_with_human_signature():
     assert record.is_approved_for_promotion is True
     assert record.human_reviewer == "principal_engineer"
     assert ReasonCode("STRATEGY_PROMOTION_APPROVED") in record.reason_codes
+
+
+def test_strategy_failure_mode_metadata_is_reportable_without_affecting_scores() -> None:
+    registry = StrategyFailureModeRegistry()
+    entry = registry.register(
+        StrategyFailureModeMetadata(
+            strategy_name="SMART_WALLET_CONVERGENCE",
+            hypothesis="independent early wallet entries predict follow-through",
+            required_evidence=("wallet_entries", "independence", "liquidity"),
+            known_failure_modes=("same_entity_cluster", "already_pumped", "MEV"),
+            minimum_data_quality="FRESH_PRIMARY_ONCHAIN",
+            hard_blocks=("UNRESOLVED_STREAM_GAP", "SELLABILITY_UNKNOWN"),
+            validation_status="LIVE_SHADOW",
+        )
+    )
+
+    assert registry.get("smart_wallet_convergence") is entry
+    assert entry.hard_blocks == ("UNRESOLVED_STREAM_GAP", "SELLABILITY_UNKNOWN")

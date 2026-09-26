@@ -11,7 +11,7 @@ from memeradar_domain import QualityState, ReasonCode
 from memeradar_domain.common import bounded_decimal, normalize_texts, to_decimal
 from memeradar_domain.events import normalize_reason_codes
 
-ORGANIC_MOMENTUM_VERSION = "organic-momentum-v1"
+ORGANIC_MOMENTUM_VERSION = "organic-momentum-v2"
 
 
 def _decimal(metrics: Mapping[str, object], key: str) -> Decimal | None:
@@ -100,6 +100,7 @@ class OrganicMomentumProjection:
         metrics: Mapping[str, object],
         *,
         evidence_refs: Sequence[str] = (),
+        minimum_organic_volume_ratio: Decimal = Decimal("0.5"),
     ) -> OrganicMomentumProjection:
         if not isinstance(metrics, Mapping):
             raise TypeError("metrics must be a mapping")
@@ -146,11 +147,49 @@ class OrganicMomentumProjection:
             positive_values.append(healthy)
             if healthy > Decimal("0.5"):
                 positives.append("HEALTHY_BUY_SELL_FLOW")
+        unique_velocity = _bounded_signal(_decimal(metrics, "new_unique_buyer_velocity"))
+        if unique_velocity is not None:
+            positive_values.append(unique_velocity)
+            if unique_velocity > 0:
+                positives.append("UNIQUE_BUYER_VELOCITY")
+        cluster_buyers = _decimal(metrics, "cluster_adjusted_buyer_count")
+        if cluster_buyers is not None:
+            cluster_signal = min(Decimal("1"), cluster_buyers / Decimal("5"))
+            positive_values.append(cluster_signal)
+            if cluster_buyers > 0:
+                positives.append("CLUSTER_ADJUSTED_BUYERS")
+        wallet_entropy = _decimal(metrics, "wallet_entropy")
+        if wallet_entropy is not None:
+            positive_values.append(wallet_entropy)
+            if wallet_entropy > Decimal("0"):
+                positives.append("WALLET_INDEPENDENCE")
 
         penalties: dict[str, Decimal] = {}
         wash = metrics.get("wash_evidence") is True
         if wash:
             penalties["WASH_VOLUME"] = Decimal("30")
+        wash_volume = _decimal(metrics, "wash_suspected_volume")
+        if wash_volume is not None and wash_volume > 0:
+            penalties["WASH_VOLUME"] = max(
+                penalties.get("WASH_VOLUME", Decimal("0")),
+                Decimal("30"),
+            )
+        organic_ratio = _decimal(metrics, "organic_volume_ratio")
+        if organic_ratio is not None:
+            minimum_ratio = bounded_decimal(
+                minimum_organic_volume_ratio,
+                "minimum_organic_volume_ratio",
+                Decimal("0"),
+                Decimal("1"),
+            )
+            if organic_ratio >= minimum_ratio:
+                positive_values.append(organic_ratio)
+                positives.append("ORGANIC_VOLUME")
+            elif minimum_ratio > 0:
+                penalties["ORGANIC_VOLUME_LOW"] = min(
+                    Decimal("40"),
+                    (minimum_ratio - organic_ratio) / minimum_ratio * Decimal("40"),
+                )
         circular = _decimal(metrics, "circular_flow_ratio")
         if circular is not None and circular > 0:
             penalties["CIRCULAR_FLOW"] = min(Decimal("25"), circular * Decimal("30"))
@@ -205,7 +244,7 @@ class OrganicMomentumProjection:
         reasons.extend(ReasonCode(value) for value in penalties)
         return cls(
             score=score,
-            confidence=min(Decimal("1"), Decimal(len(known_keys)) / Decimal("8")),
+            confidence=min(Decimal("1"), Decimal(len(known_keys)) / Decimal("12")),
             quality_state=QualityState.FRESH,
             positive_evidence=tuple(positives),
             penalties=penalties,

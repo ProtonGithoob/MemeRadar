@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from memeradar_application.wallet_scoring import (
+    SmartWalletLeaderboardProjection,
     SmartWalletScore,
     SmartWalletScorer,
     SmartWalletScoringPolicy,
@@ -380,3 +381,31 @@ def test_score_does_not_mutate_registry_wallet_tier() -> None:
 
     assert score.recommended_tier is WalletTier.TIER_A
     assert wallet.tier is WalletTier.CANDIDATE
+
+
+def test_leaderboard_pulls_small_samples_toward_neutral_and_exposes_copyability() -> None:
+    token_value = token()
+    trip = round_trip(
+        token_value,
+        source_id="trip:leaderboard",
+        buy_at=NOW - timedelta(minutes=10),
+        sell_at=NOW - timedelta(minutes=9),
+        cost="10",
+        proceeds="20",
+    )
+    score = SmartWalletScorer(
+        policy=SmartWalletScoringPolicy(
+            minimum_sample_count=1,
+            tier_b_minimum_sample_count=1,
+            tier_b_minimum_confidence=Decimal("0"),
+            tier_a_minimum_sample_count=1,
+            tier_a_minimum_confidence=Decimal("0"),
+        )
+    ).score((snapshot(token_value, (trip,)),), now=NOW, config_hash="leaderboard-test")[0]
+    entries = SmartWalletLeaderboardProjection().project((score,))
+
+    assert entries[0].wallet == WALLET_A
+    assert entries[0].sample_size == 1
+    assert entries[0].estimated_total_pnl == score.realized_pnl
+    assert entries[0].rank_score < score.score
+    assert "SCORE_AND_SAMPLE_CONFIDENCE_RANK" in entries[0].rank_reasons

@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import Enum
 from typing import ClassVar, Protocol
@@ -147,6 +147,8 @@ EVM_PROTOCOL_CANDIDATES: tuple[EvmProtocolDeployment, ...] = (
     _deployment("uniswap-v4", Chain.ROBINHOOD),
     _deployment("pons", Chain.ROBINHOOD),
     _deployment("par", Chain.ROBINHOOD),
+    _deployment("hoodiepad", Chain.ROBINHOOD),
+    _deployment("doppler-v4", Chain.ROBINHOOD),
     _deployment("noxa", Chain.ROBINHOOD),
     _deployment("the-odyssey", Chain.ROBINHOOD),
     _deployment("bags", Chain.ROBINHOOD),
@@ -157,6 +159,9 @@ EVM_PROTOCOL_CANDIDATES: tuple[EvmProtocolDeployment, ...] = (
 
 
 _EVENT_ALIASES = {
+    "launch": "token_created",
+    "curve_created": "pool_created",
+    "bonding_curve_created": "pool_created",
     "tokencreate": "token_created",
     "token_create": "token_created",
     "tokencreated": "token_created",
@@ -367,6 +372,16 @@ class EvmProtocolAdapter:
             "buy_flow",
             "sell_flow",
             "multi_market_state",
+            "holder_count",
+            "top1_pct",
+            "top5_pct",
+            "top10_pct",
+            "dev_pct",
+            "dev_initial_buy",
+            "dev_net_flow",
+            "unique_buyers",
+            "buy_count",
+            "sell_count",
         ):
             if key in message:
                 payload[key] = message[key]
@@ -416,6 +431,87 @@ class OpenLaunchAdapter(EvmProtocolAdapter):
 class ParLaunchAdapter(EvmProtocolAdapter):
     protocol = "par"
     default_chain = Chain.ROBINHOOD
+
+    def parse(self, message: object, context: ProviderRequestContext) -> Observation:
+        observation = super().parse(message, context)
+        payload = dict(observation.normalized_payload)
+        lifecycle = {
+            "token_created": "TOKEN_CREATED",
+            "pool_created": "POOL_CREATED",
+            "trade": "DEX_ACTIVE",
+            "migration": "DEX_ACTIVE",
+        }.get(str(payload["event_type"]), "UNKNOWN")
+        payload["lifecycle_state"] = lifecycle
+        payload["market_model"] = "UNISWAP_V4_IMMEDIATE"
+        return replace(observation, normalized_payload=payload)
+
+
+class HoodiePadLaunchAdapter(EvmProtocolAdapter):
+    """Unverified read-only HoodiePad/Doppler V4 parser contract."""
+
+    protocol = "hoodiepad"
+    default_chain = Chain.ROBINHOOD
+
+    def parse(self, message: object, context: ProviderRequestContext) -> Observation:
+        observation = super().parse(message, context)
+        payload = dict(observation.normalized_payload)
+        if payload["event_type"] in {"token_created", "pool_created", "trade"}:
+            payload["lifecycle_state"] = "DEX_ACTIVE"
+        for key in (
+            "pool_key",
+            "pool_id",
+            "hook",
+            "pair_token",
+            "fixed_supply",
+            "wallet_limit",
+            "liquidity_lock",
+            "fee_configuration",
+        ):
+            if key in payload:
+                continue
+            if isinstance(message, Mapping) and key in message:
+                payload[key] = message[key]
+        return replace(observation, normalized_payload=payload)
+
+
+class NoxaLaunchAdapter(EvmProtocolAdapter):
+    """Unverified read-only NOXA launch and holder-flow parser contract."""
+
+    protocol = "noxa"
+    default_chain = Chain.ROBINHOOD
+
+    def parse(self, message: object, context: ProviderRequestContext) -> Observation:
+        observation = super().parse(message, context)
+        payload = dict(observation.normalized_payload)
+        if payload["event_type"] in {"pool_created", "trade", "migration"}:
+            payload["lifecycle_state"] = "DEX_ACTIVE"
+        return replace(observation, normalized_payload=payload)
+
+
+class DopplerV4LaunchAdapter(HoodiePadLaunchAdapter):
+    """Same unverified V4 event shape under the Doppler deployment name."""
+
+    protocol = "doppler-v4"
+
+
+class OdysseyLaunchAdapter(EvmProtocolAdapter):
+    """Unverified read-only Odyssey bonding-curve and graduation parser contract."""
+
+    protocol = "the-odyssey"
+    default_chain = Chain.ROBINHOOD
+
+    def parse(self, message: object, context: ProviderRequestContext) -> Observation:
+        observation = super().parse(message, context)
+        payload = dict(observation.normalized_payload)
+        event_type = str(payload["event_type"])
+        payload["lifecycle_state"] = {
+            "token_created": "TOKEN_CREATED",
+            "pool_created": "BONDING",
+            "trade": "BONDING",
+            "graduation": "GRADUATED",
+            "migration": "DEX_ACTIVE",
+        }.get(event_type, "UNKNOWN")
+        return replace(observation, normalized_payload=payload)
 
 
 class EvmProtocolLogReader:
@@ -472,6 +568,7 @@ class EvmProtocolLogReader:
 
 __all__ = [
     "AerodromeAdapter",
+    "DopplerV4LaunchAdapter",
     "EVM_PROTOCOL_CANDIDATES",
     "EVM_PROTOCOL_PARSER_VERSION",
     "EvmProtocolAdapter",
@@ -480,7 +577,10 @@ __all__ = [
     "EvmProtocolLogReader",
     "EvmProtocolVerificationStatus",
     "FourMemeAdapter",
+    "HoodiePadLaunchAdapter",
+    "NoxaLaunchAdapter",
     "OpenLaunchAdapter",
+    "OdysseyLaunchAdapter",
     "PancakeSwapAdapter",
     "ParLaunchAdapter",
     "UniswapAdapter",

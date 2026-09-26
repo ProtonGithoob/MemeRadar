@@ -20,7 +20,15 @@ from memeradar_providers.evm_rpc import (
     EVM_CHAIN_IDS,
     ROBINHOOD_MAINNET_CHAIN_ID,
     ROBINHOOD_TESTNET_CHAIN_ID,
+    AdaptiveEvmLogScanner,
+    AdaptiveLogScanPolicy,
     EvmRpcAdapter,
+    EvmTokenMetadataRegistry,
+    Multicall3Call,
+    Multicall3Config,
+    decode_multicall3_aggregate3,
+    encode_multicall3_aggregate3,
+    verify_evm_token_metadata,
 )
 from memeradar_providers.transport import (
     ProviderRateLimitedError,
@@ -148,6 +156,130 @@ def test_evm_rpc_reads_logs_and_runtime_bytecode_without_write_capability() -> N
             await client.aclose()
 
     asyncio.run(scenario())
+
+
+def test_adaptive_log_scanner_reduces_ranges_and_deduplicates_canonical_logs() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        params = body["params"][0]
+        start = int(params["fromBlock"], 16)
+        end = int(params["toBlock"], 16)
+        if end - start >= 1:
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "error": {"code": -32005, "message": "too many results"},
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": [
+                    {
+                        "transactionHash": "0x" + "12" * 32,
+                        "logIndex": "0x0",
+                        "blockNumber": hex(start),
+                    }
+                ],
+            },
+        )
+
+    async def scenario() -> None:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter = EvmRpcAdapter(
+            Chain.ROBINHOOD,
+            "https://fixture.robinhood.example",
+            client=client,
+            transport=transport(),
+            clock=lambda: NOW,
+        )
+        try:
+            result = await AdaptiveEvmLogScanner(
+                policy=AdaptiveLogScanPolicy(initial_span=4, minimum_span=1, maximum_span=4)
+            ).scan(
+                adapter,
+                addresses=(ROBINHOOD_ADDRESS,),
+                from_block=0,
+                to_block=3,
+                context=context(),
+            )
+        finally:
+            await client.aclose()
+
+        assert result.completed_to_block == 3
+        assert result.successful_ranges == 4
+        assert result.retries == 4
+        assert result.deduplicated_logs == 3
+        assert len(result.logs) == 1
+
+    asyncio.run(scenario())
+
+
+def test_evm_metadata_requires_bytecode_and_keeps_same_symbol_contracts_separate() -> None:
+    first = verify_evm_token_metadata(
+        chain=Chain.BASE,
+        chain_id=8453,
+        contract_address="0x" + "11" * 20,
+        bytecode="0x6000",
+        decimals=18,
+        symbol="USDG",
+        name="Dollar One",
+    )
+    second = verify_evm_token_metadata(
+        chain=Chain.BASE,
+        chain_id=8453,
+        contract_address="0x" + "22" * 20,
+        bytecode="0x6000",
+        decimals=6,
+        symbol="USDG",
+        name="Dollar Two",
+    )
+    registry = EvmTokenMetadataRegistry()
+    registry.register(first)
+    registry.register(second)
+
+    assert len(registry.by_symbol("USDG")) == 2
+    assert registry.get(8453, first.contract_address) == first
+    with pytest.raises(ValueError, match="bytecode"):
+        verify_evm_token_metadata(
+            chain=Chain.BASE,
+            chain_id=8453,
+            contract_address="0x" + "33" * 20,
+            bytecode="0x",
+            decimals=18,
+            symbol="USDG",
+            name="Missing Runtime",
+        )
+
+
+def test_multicall3_is_explicitly_configured_and_uses_read_only_aggregate3_encoding() -> None:
+    config = Multicall3Config(
+        chain=Chain.ROBINHOOD,
+        chain_id=4663,
+        address="0x" + "99" * 20,
+    )
+    call = Multicall3Call(target=ROBINHOOD_ADDRESS, data="0x1234")
+    encoded = encode_multicall3_aggregate3((call,))
+    assert encoded.startswith("0x82ad56cb")
+    encoded_result = "0x" + "".join(
+        (
+            (32).to_bytes(32, "big").hex(),
+            (1).to_bytes(32, "big").hex(),
+            (64).to_bytes(32, "big").hex(),
+            (1).to_bytes(32, "big").hex(),
+            (64).to_bytes(32, "big").hex(),
+            (2).to_bytes(32, "big").hex(),
+            "1234" + "0" * 60,
+        )
+    )
+    assert decode_multicall3_aggregate3(encoded_result) == ((True, b"\x12\x34"),)
+    assert config.address == "0x" + "99" * 20
+    with pytest.raises(ValueError, match="chain_id"):
+        Multicall3Config(chain=Chain.BASE, chain_id=4663, address=ROBINHOOD_ADDRESS)
 
 
 def test_evm_rpc_fetches_transaction_receipt_without_exposing_write_methods() -> None:

@@ -7,10 +7,14 @@ import pytest
 from memeradar_application.provider_contracts import ProviderRequestContext
 from memeradar_domain import Chain, QualityState
 from memeradar_providers.evm_protocols import (
+    DopplerV4LaunchAdapter,
     EvmProtocolDeployment,
     EvmProtocolLogReader,
     EvmProtocolVerificationStatus,
     FourMemeAdapter,
+    HoodiePadLaunchAdapter,
+    NoxaLaunchAdapter,
+    OdysseyLaunchAdapter,
     PancakeSwapAdapter,
     UniswapAdapter,
 )
@@ -127,6 +131,35 @@ def test_par_adapter_preserves_protocol_specific_multi_market_fields() -> None:
     )
     assert observation.normalized_payload["pool_id"] == "pool-1"
     assert observation.normalized_payload["multi_market_state"] == "PRIMARY"
+
+
+def test_robinhood_candidate_adapters_remain_read_only_and_unverified() -> None:
+    base = {
+        "address": ADDRESS,
+        "topics": [TOPIC],
+        "event_name": "Launch",
+        "token_address": ADDRESS,
+        "pool_address": POOL,
+        "pool_key": "pool-key",
+        "pool_id": "pool-id",
+        "hook": "hook-address",
+        "holder_count": 12,
+        "top10_pct": "0.42",
+        "transaction_hash": "0x" + "34" * 32,
+    }
+    hoodie = HoodiePadLaunchAdapter().parse(base, context())
+    doppler = DopplerV4LaunchAdapter().parse(base, context())
+    noxa = NoxaLaunchAdapter().parse({**base, "event_name": "Swap"}, context())
+    odyssey = OdysseyLaunchAdapter().parse({**base, "event_name": "Graduation"}, context())
+
+    for observation in (hoodie, doppler, noxa, odyssey):
+        assert observation.quality_state is QualityState.UNKNOWN
+        assert observation.normalized_payload["verification_status"] == "TODO_VERIFY"
+        assert observation.normalized_payload["authoritative"] is False
+    assert hoodie.normalized_payload["lifecycle_state"] == "DEX_ACTIVE"
+    assert noxa.normalized_payload["lifecycle_state"] == "DEX_ACTIVE"
+    assert odyssey.normalized_payload["lifecycle_state"] == "GRADUATED"
+    assert hoodie.normalized_payload["pool_id"] == "pool-id"
 
 
 def test_verified_deployment_contract_requires_all_identity_evidence() -> None:

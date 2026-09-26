@@ -1,6 +1,9 @@
 """Unit contracts for the untrusted Helius webhook/stream observation seam."""
 
 import asyncio
+import hashlib
+import hmac
+import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
@@ -8,8 +11,16 @@ import pytest
 
 from memeradar_application.reliability import ReliabilityMetrics
 from memeradar_domain import Observation, QualityState
-from memeradar_providers.helius_stream import HeliusObservationNormalizer, HeliusStreamConsumer
-from memeradar_providers.transport import ProviderSchemaError, ProviderUnavailableError
+from memeradar_providers.helius_stream import (
+    HeliusObservationNormalizer,
+    HeliusStreamConsumer,
+    HeliusWalletWebhookAdapter,
+)
+from memeradar_providers.transport import (
+    ProviderAuthenticationError,
+    ProviderSchemaError,
+    ProviderUnavailableError,
+)
 
 NOW = datetime(2026, 8, 27, 6, 0, tzinfo=UTC)
 
@@ -112,6 +123,48 @@ def test_transaction_activity_taxonomy_keeps_ambiguous_and_weak_signals_unknown(
 
     assert ambiguous.normalized_payload["activity_kind"] == "UNKNOWN"
     assert weak_mint.normalized_payload["activity_kind"] == "UNKNOWN"
+
+
+def test_wallet_webhook_authenticates_replays_and_maps_to_existing_activity_contract() -> None:
+    secret = "fixture-webhook-secret"
+    payload = {
+        "signature": "wallet-webhook-1",
+        "timestamp": int(NOW.timestamp()),
+        "source": "raydium",
+        "tokenTransfers": [
+            {
+                "mint": "So11111111111111111111111111111111111111112",
+                "tokenAmount": "2",
+                "decimals": 0,
+                "fromUserAccount": "11111111111111111111111111111113",
+                "toUserAccount": "11111111111111111111111111111112",
+            }
+        ],
+        "usdValue": "12.5",
+    }
+    raw_body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    signature = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    adapter = HeliusWalletWebhookAdapter(
+        webhook_secret=secret,
+        watched_wallets=("11111111111111111111111111111112",),
+        clock=lambda: NOW,
+    )
+
+    observations = adapter.normalize(payload, signature=signature, raw_body=raw_body)
+    duplicate = adapter.normalize(payload, signature=signature, raw_body=raw_body)
+
+    assert len(observations) == 1
+    assert observations[0].kind == "wallet.activity"
+    assert observations[0].normalized_payload["action"] == "BUY"
+    assert observations[0].normalized_payload["quantity"] == "2"
+    assert observations[0].normalized_payload["usd_value"] == "12.5"
+    assert observations[0].normalized_payload["mint_address"] == payload["tokenTransfers"][0][
+        "mint"
+    ]
+    assert duplicate == ()
+
+    with pytest.raises(ProviderAuthenticationError):
+        adapter.normalize(payload, signature="bad", raw_body=raw_body)
 
 
 def test_missing_identity_or_malformed_timestamp_is_classified_schema_failure() -> None:

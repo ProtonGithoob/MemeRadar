@@ -8,6 +8,7 @@ import json
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from types import TracebackType
@@ -29,6 +30,7 @@ from memeradar_domain import (
     require_chain_address,
 )
 from memeradar_domain.common import ensure_utc, require_text
+from memeradar_domain.identities import require_evm_address
 
 from .transport import (
     CapabilityUnavailableError,
@@ -115,6 +117,317 @@ class EvmRpcHealthStatus(str, Enum):
     AUTH_FAILED = "AUTH_FAILED"
 
 
+@dataclass(frozen=True, slots=True)
+class AdaptiveLogScanPolicy:
+    """Bounded range growth policy for provider-limited eth_getLogs calls."""
+
+    initial_span: int = 2_000
+    minimum_span: int = 1
+    maximum_span: int = 100_000
+    growth_factor: int = 2
+    maximum_attempts: int = 10_000
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "initial_span",
+            "minimum_span",
+            "maximum_span",
+            "maximum_attempts",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"{field_name} must be a positive integer")
+        if self.minimum_span > self.initial_span or self.initial_span > self.maximum_span:
+            raise ValueError("log scan spans must be minimum <= initial <= maximum")
+        if self.growth_factor < 2:
+            raise ValueError("growth_factor must be at least two")
+
+
+@dataclass(frozen=True, slots=True)
+class AdaptiveLogScanResult:
+    logs: tuple[Mapping[str, object], ...]
+    completed_to_block: int
+    successful_ranges: int
+    retries: int
+    deduplicated_logs: int
+
+
+class AdaptiveEvmLogScanner:
+    """Read-only adaptive scanner with bounded progress and log deduplication."""
+
+    def __init__(self, *, policy: AdaptiveLogScanPolicy | None = None) -> None:
+        self.policy = policy or AdaptiveLogScanPolicy()
+
+    @staticmethod
+    def _log_key(log: Mapping[str, object]) -> tuple[object, ...]:
+        transaction = log.get("transactionHash", log.get("transaction_hash"))
+        log_index = log.get("logIndex", log.get("log_index"))
+        if transaction is not None or log_index is not None:
+            return (transaction, log_index)
+        topics = log.get("topics")
+        return (
+            log.get("blockNumber", log.get("block_number")),
+            log.get("address"),
+            log.get("data"),
+            tuple(topics) if isinstance(topics, list | tuple) else (),
+        )
+
+    async def scan(
+        self,
+        adapter: EvmRpcAdapter,
+        *,
+        addresses: Sequence[str],
+        topics: Sequence[str] = (),
+        from_block: int,
+        to_block: int,
+        context: ProviderRequestContext,
+    ) -> AdaptiveLogScanResult:
+        if not isinstance(adapter, EvmRpcAdapter):
+            raise TypeError("adapter must be an EvmRpcAdapter")
+        if not isinstance(from_block, int) or not isinstance(to_block, int):
+            raise TypeError("from_block and to_block must be integers")
+        if from_block < 0 or to_block < from_block:
+            raise ValueError("invalid log scan block range")
+        current = from_block
+        span = min(self.policy.initial_span, to_block - from_block + 1)
+        attempts = 0
+        retries = 0
+        successful_ranges = 0
+        deduplicated = 0
+        logs_by_key: dict[tuple[object, ...], Mapping[str, object]] = {}
+        while current <= to_block:
+            attempts += 1
+            if attempts > self.policy.maximum_attempts:
+                raise ProviderSchemaError("adaptive log scan exceeded its attempt bound")
+            end = min(to_block, current + span - 1)
+            try:
+                batch = await adapter.fetch_logs(
+                    addresses=addresses,
+                    topics=topics,
+                    from_block=current,
+                    to_block=end,
+                    context=context,
+                )
+            except (
+                ProviderRateLimitedError,
+                ProviderSchemaError,
+                ProviderTimeoutError,
+                ProviderUnavailableError,
+            ):
+                if span <= self.policy.minimum_span:
+                    raise
+                span = max(self.policy.minimum_span, span // 2)
+                retries += 1
+                continue
+            for log in batch:
+                key = self._log_key(log)
+                if key in logs_by_key:
+                    deduplicated += 1
+                    continue
+                logs_by_key[key] = dict(log)
+            successful_ranges += 1
+            current = end + 1
+            span = min(self.policy.maximum_span, max(span + 1, span * self.policy.growth_factor))
+        return AdaptiveLogScanResult(
+            logs=tuple(logs_by_key.values()),
+            completed_to_block=to_block,
+            successful_ranges=successful_ranges,
+            retries=retries,
+            deduplicated_logs=deduplicated,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedEvmTokenMetadata:
+    """Metadata accepted only with chain/address and bytecode identity present."""
+
+    chain_id: int
+    contract_address: str
+    bytecode: str
+    decimals: int
+    symbol: str
+    name: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.chain_id, int) or isinstance(self.chain_id, bool):
+            raise TypeError("chain_id must be an integer")
+        chain = next(
+            (value for value, identifier in EVM_CHAIN_IDS.items() if identifier == self.chain_id),
+            None,
+        )
+        if chain is None:
+            raise ValueError("chain_id is not configured")
+        object.__setattr__(
+            self,
+            "contract_address",
+            require_chain_address(self.contract_address, chain, "contract_address"),
+        )
+        if (
+            not isinstance(self.bytecode, str)
+            or re.fullmatch(r"0x[0-9a-fA-F]+", self.bytecode) is None
+        ):
+            raise ValueError("bytecode must contain deployed runtime code")
+        if (
+            not isinstance(self.decimals, int)
+            or isinstance(self.decimals, bool)
+            or not 0 <= self.decimals <= 255
+        ):
+            raise ValueError("decimals must be between 0 and 255")
+        object.__setattr__(self, "symbol", require_text(self.symbol, "symbol", max_length=64))
+        object.__setattr__(self, "name", require_text(self.name, "name", max_length=128))
+
+    @property
+    def canonical_key(self) -> tuple[int, str]:
+        return self.chain_id, self.contract_address
+
+
+def verify_evm_token_metadata(
+    *,
+    chain: Chain | str,
+    chain_id: int,
+    contract_address: str,
+    bytecode: str,
+    decimals: int,
+    symbol: str,
+    name: str,
+) -> VerifiedEvmTokenMetadata:
+    normalized_chain = normalize_chain(chain)
+    if EVM_CHAIN_IDS.get(normalized_chain) != chain_id:
+        raise ValueError("chain_id does not match the configured chain")
+    return VerifiedEvmTokenMetadata(
+        chain_id=chain_id,
+        contract_address=contract_address,
+        bytecode=bytecode,
+        decimals=decimals,
+        symbol=symbol,
+        name=name,
+    )
+
+
+class EvmTokenMetadataRegistry:
+    """Keep same-symbol contracts separate by (chain_id, contract_address)."""
+
+    def __init__(self, *, max_tokens: int = 10_000) -> None:
+        if not isinstance(max_tokens, int) or not 1 <= max_tokens <= 100_000:
+            raise ValueError("max_tokens must be between 1 and 100000")
+        self.max_tokens = max_tokens
+        self._tokens: dict[tuple[int, str], VerifiedEvmTokenMetadata] = {}
+
+    def register(self, metadata: VerifiedEvmTokenMetadata) -> VerifiedEvmTokenMetadata:
+        if not isinstance(metadata, VerifiedEvmTokenMetadata):
+            raise TypeError("metadata must be VerifiedEvmTokenMetadata")
+        current = self._tokens.get(metadata.canonical_key)
+        if current is not None and current != metadata:
+            raise ValueError("conflicting metadata for canonical token identity")
+        if current is None and len(self._tokens) >= self.max_tokens:
+            raise ValueError("EVM token registry exceeded bound")
+        self._tokens[metadata.canonical_key] = metadata
+        return metadata
+
+    def get(self, chain_id: int, contract_address: str) -> VerifiedEvmTokenMetadata | None:
+        return self._tokens.get((chain_id, contract_address.lower()))
+
+    def by_symbol(self, symbol: str) -> tuple[VerifiedEvmTokenMetadata, ...]:
+        normalized = require_text(symbol, "symbol", max_length=64)
+        return tuple(value for value in self._tokens.values() if value.symbol == normalized)
+
+
+MULTICALL3_AGGREGATE3_SELECTOR = "0x82ad56cb"
+
+
+@dataclass(frozen=True, slots=True)
+class Multicall3Config:
+    """Explicitly configured Multicall3 deployment; no chain-wide address guess."""
+
+    chain: Chain | str
+    chain_id: int
+    address: str
+
+    def __post_init__(self) -> None:
+        chain = normalize_chain(self.chain)
+        if not chain.is_evm or EVM_CHAIN_IDS.get(chain) != self.chain_id:
+            raise ValueError("Multicall3 chain_id does not match the configured chain")
+        object.__setattr__(self, "chain", chain)
+        object.__setattr__(self, "address", require_evm_address(self.address, "multicall3 address"))
+
+
+@dataclass(frozen=True, slots=True)
+class Multicall3Call:
+    target: str
+    data: str
+    allow_failure: bool = True
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "target", require_evm_address(self.target, "call target"))
+        if not isinstance(self.data, str) or re.fullmatch(r"0x[0-9a-fA-F]*", self.data) is None:
+            raise ValueError("call data must be hexadecimal")
+        if not isinstance(self.allow_failure, bool):
+            raise TypeError("allow_failure must be a boolean")
+
+
+def _abi_word(value: int) -> bytes:
+    if value < 0:
+        raise ValueError("ABI word must be non-negative")
+    return value.to_bytes(32, "big")
+
+
+def encode_multicall3_aggregate3(calls: Sequence[Multicall3Call]) -> str:
+    if isinstance(calls, str | bytes | bytearray):
+        raise TypeError("calls must be a sequence")
+    if not calls or len(calls) > 500:
+        raise ValueError("calls must contain between 1 and 500 items")
+    normalized = tuple(calls)
+    if any(not isinstance(value, Multicall3Call) for value in normalized):
+        raise TypeError("calls must contain Multicall3Call values")
+    encoded_tuples: list[bytes] = []
+    for call in normalized:
+        data = bytes.fromhex(call.data[2:])
+        tuple_body = (
+            bytes.fromhex(call.target[2:]).rjust(32, b"\x00")
+            + _abi_word(1 if call.allow_failure else 0)
+            + _abi_word(96)
+            + _abi_word(len(data))
+            + data
+        )
+        encoded_tuples.append(tuple_body + b"\x00" * ((-len(data)) % 32))
+    array_head_size = 32 * (len(encoded_tuples) + 1)
+    offsets: list[bytes] = []
+    cursor = array_head_size
+    for body in encoded_tuples:
+        offsets.append(_abi_word(cursor))
+        cursor += len(body)
+    array = _abi_word(len(encoded_tuples)) + b"".join(offsets) + b"".join(encoded_tuples)
+    return MULTICALL3_AGGREGATE3_SELECTOR + ( _abi_word(32) + array).hex()
+
+
+def decode_multicall3_aggregate3(result: object) -> tuple[tuple[bool, bytes], ...]:
+    if not isinstance(result, str) or re.fullmatch(r"0x[0-9a-fA-F]*", result) is None:
+        raise ProviderSchemaError("Multicall3 result was not hexadecimal")
+    raw = bytes.fromhex(result[2:])
+
+    def word(offset: int) -> int:
+        if offset < 0 or offset + 32 > len(raw):
+            raise ProviderSchemaError("Multicall3 result was truncated")
+        return int.from_bytes(raw[offset : offset + 32], "big")
+
+    array_offset = word(0)
+    count = word(array_offset)
+    if count > 500:
+        raise ProviderSchemaError("Multicall3 result exceeded bound")
+    output: list[tuple[bool, bytes]] = []
+    for index in range(count):
+        tuple_offset = array_offset + word(array_offset + 32 + index * 32)
+        success = word(tuple_offset) != 0
+        data_offset = tuple_offset + word(tuple_offset + 32)
+        data_length = word(data_offset)
+        data_start = data_offset + 32
+        data_end = data_start + data_length
+        if data_end > len(raw):
+            raise ProviderSchemaError("Multicall3 result bytes were truncated")
+        output.append((success, raw[data_start:data_end]))
+    return tuple(output)
+
+
 class EvmRpcAdapter(OnChainPort):
     """Read-only standard JSON-RPC for any supported EVM chain."""
 
@@ -132,6 +445,7 @@ class EvmRpcAdapter(OnChainPort):
         clock: Clock | None = None,
         parser_version: str = EVM_RPC_PARSER_VERSION,
         max_concurrency: int = 4,
+        multicall3: Multicall3Config | None = None,
     ) -> None:
         normalized_chain = normalize_chain(chain)
         if normalized_chain not in EVM_CHAIN_IDS:
@@ -145,6 +459,8 @@ class EvmRpcAdapter(OnChainPort):
             raise TypeError("max_concurrency must be an integer")
         if not 1 <= max_concurrency <= 32:
             raise ValueError("max_concurrency must be between 1 and 32")
+        if multicall3 is not None and multicall3.chain is not normalized_chain:
+            raise ValueError("multicall3 chain must match the RPC adapter chain")
         self.chain = normalized_chain
         self.provider_name = f"evm-public-rpc:{normalized_chain.value}"
         self._endpoint = self._validate_endpoint(endpoint)
@@ -160,6 +476,7 @@ class EvmRpcAdapter(OnChainPort):
         self._parser_version = require_text(parser_version, "parser_version", max_length=64)
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._last_rate_limit: RateLimitSnapshot | None = None
+        self.multicall3 = multicall3
 
     @staticmethod
     def _validate_endpoint(endpoint: str) -> str:
@@ -335,6 +652,24 @@ class EvmRpcAdapter(OnChainPort):
             ({"to": normalized_address, "data": data}, "latest"),
             context=context,
         )
+
+    async def multicall_read(
+        self,
+        calls: Sequence[Multicall3Call],
+        *,
+        context: ProviderRequestContext,
+    ) -> tuple[tuple[bool, bytes], ...]:
+        """Batch read-only calls through an explicitly configured Multicall3."""
+
+        if self.multicall3 is None:
+            raise CapabilityUnavailableError("Multicall3 is not configured for this chain")
+        data = encode_multicall3_aggregate3(calls)
+        result = await self._rpc(
+            "eth_call",
+            ({"to": self.multicall3.address, "data": data}, "latest"),
+            context=context,
+        )
+        return decode_multicall3_aggregate3(result)
 
     async def fetch_logs(
         self,
@@ -536,6 +871,9 @@ class EvmRpcAdapter(OnChainPort):
 
 
 __all__ = [
+    "AdaptiveEvmLogScanner",
+    "AdaptiveLogScanPolicy",
+    "AdaptiveLogScanResult",
     "EVM_CHAIN_IDS",
     "EVM_CHAIN_ID_BY_NAME",
     "EVM_RPC_PARSER_VERSION",
@@ -543,4 +881,12 @@ __all__ = [
     "ROBINHOOD_TESTNET_CHAIN_ID",
     "EvmRpcAdapter",
     "EvmRpcHealthStatus",
+    "EvmTokenMetadataRegistry",
+    "Multicall3Call",
+    "Multicall3Config",
+    "MULTICALL3_AGGREGATE3_SELECTOR",
+    "VerifiedEvmTokenMetadata",
+    "decode_multicall3_aggregate3",
+    "encode_multicall3_aggregate3",
+    "verify_evm_token_metadata",
 ]

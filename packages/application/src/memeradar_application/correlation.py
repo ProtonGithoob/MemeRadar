@@ -75,6 +75,7 @@ CORRELATION_VERSION = "correlation-window-v1"
 ULTRA_EARLY_CORRELATION_WINDOWS: tuple[tuple[str, timedelta], ...] = (
     ("1s", timedelta(seconds=1)),
     ("5s", timedelta(seconds=5)),
+    ("10s", timedelta(seconds=10)),
     ("15s", timedelta(seconds=15)),
     ("30s", timedelta(seconds=30)),
     ("60s", timedelta(seconds=60)),
