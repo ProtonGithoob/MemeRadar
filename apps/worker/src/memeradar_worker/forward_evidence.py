@@ -54,6 +54,19 @@ from memeradar_application.pumpfun_forward import (
     offset_label,
     poll_is_due,
 )
+from memeradar_application.pumpfun_forward import endpoint_record as _endpoint_record
+from memeradar_application.pumpfun_forward import flag as _flag  # noqa: F401 - legacy import
+from memeradar_application.pumpfun_forward import horizon_matured as _horizon_matured
+from memeradar_application.pumpfun_forward import initial_market_values as _initial_market_values
+from memeradar_application.pumpfun_forward import (
+    market_metrics as _market_metrics,  # noqa: F401 - legacy import
+)
+from memeradar_application.pumpfun_forward import metric as _metric  # noqa: F401 - legacy import
+from memeradar_application.pumpfun_forward import multiple_at_endpoint as _multiple_at_endpoint
+from memeradar_application.pumpfun_forward import outcome_flags as _outcome_flags
+from memeradar_application.pumpfun_forward import (
+    valid_market_record as _valid_market_record,  # noqa: F401 - legacy import
+)
 from memeradar_application.replay_harness import ReplayCheckpoint, ReplayEventRecord
 from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
 from memeradar_domain.common import ensure_utc
@@ -674,221 +687,6 @@ def _observation_from_row(row: ObservationRow, *, token_id: UUID) -> Observation
         candidate_id=row.candidate_id,
         token_id=token_id,
     )
-
-
-def _metric(payload: Mapping[str, object], *names: str) -> Decimal | None:
-    for name in names:
-        value = payload.get(name)
-        if value is not None:
-            try:
-                parsed = Decimal(str(value))
-            except (TypeError, ValueError):
-                continue
-            if parsed > 0:
-                return parsed
-    for nested_name in ("values", "metrics", "snapshot", "data"):
-        nested = payload.get(nested_name)
-        if isinstance(nested, Mapping):
-            value = _metric(nested, *names)
-            if value is not None:
-                return value
-    return None
-
-
-def _market_metrics(record: ReplayEventRecord) -> dict[str, Decimal | None]:
-    payload = record.observation.normalized_payload
-    return {
-        "price": _metric(payload, "price_usd", "market_price", "price"),
-        "liquidity": _metric(
-            payload,
-            "effective_executable_liquidity",
-            "executable_liquidity",
-            "effective_liquidity",
-            "liquidity_usd",
-            "liquidity",
-            "pool_liquidity",
-        ),
-        "market_cap": _metric(
-            payload,
-            "market_cap_usd",
-            "market_cap",
-            "marketCapUsd",
-            "market_capitalization",
-            "fdv",
-        ),
-    }
-
-
-def _valid_market_record(record: ReplayEventRecord) -> bool:
-    if record.observation.kind != "market.market_snapshot":
-        return False
-    if record.observation.quality_state is not QualityState.FRESH:
-        return False
-    if record.observation.normalized_payload.get("pair_found") is False:
-        return False
-    return any(value is not None for value in _market_metrics(record).values())
-
-
-def _horizon_matured(
-    records: Sequence[ReplayEventRecord],
-    signal_at: datetime,
-    duration: timedelta,
-) -> bool:
-    target = signal_at + duration
-    return any(_valid_market_record(record) and record.event_at >= target for record in records)
-
-
-def _endpoint_record(
-    records: Sequence[ReplayEventRecord],
-    signal_at: datetime,
-    duration: timedelta,
-) -> ReplayEventRecord | None:
-    end = signal_at + duration
-    bounded = [
-        record
-        for record in records
-        if _valid_market_record(record)
-        and signal_at < record.event_at <= end
-    ]
-    if bounded:
-        return max(bounded, key=lambda record: record.event_at)
-    after = [
-        record
-        for record in records
-        if _valid_market_record(record) and record.event_at > end
-    ]
-    return min(after, key=lambda record: record.event_at) if after else None
-
-
-def _multiple_at_endpoint(
-    record: ReplayEventRecord | None,
-    *,
-    baseline_price: Decimal | None,
-    baseline_market_cap: Decimal | None,
-) -> Decimal | None:
-    if record is None:
-        return None
-    values = _market_metrics(record)
-    if values["price"] is not None and baseline_price is not None and baseline_price > 0:
-        return values["price"] / baseline_price
-    if (
-        values["market_cap"] is not None
-        and baseline_market_cap is not None
-        and baseline_market_cap > 0
-    ):
-        return values["market_cap"] / baseline_market_cap
-    return None
-
-
-def _initial_market_values(
-    records: Sequence[ReplayEventRecord],
-    signal_at: datetime,
-    stage_payloads: Sequence[Mapping[str, object]],
-) -> dict[str, str | None]:
-    candidates = [
-        record
-        for record in records
-        if _valid_market_record(record) and record.event_at >= signal_at
-    ]
-    first = min(candidates, key=lambda record: record.event_at) if candidates else None
-    values = _market_metrics(first) if first is not None else {}
-    stage = next(
-        (
-            payload
-            for payload in sorted(
-                stage_payloads,
-                key=lambda value: str(value.get("occurred_at", value.get("discovered_at", ""))),
-            )
-            if str(payload.get("state", payload.get("stage", ""))).upper() == "DISCOVERED"
-        ),
-        {},
-    )
-    names = {
-        "price": ("price_at_detection", "price_usd", "market_price", "price"),
-        "liquidity": (
-            "liquidity_at_detection",
-            "effective_executable_liquidity",
-            "executable_liquidity",
-            "liquidity_usd",
-            "liquidity",
-        ),
-        "market_cap": (
-            "market_cap_at_detection",
-            "market_cap_usd",
-            "market_cap",
-            "fdv",
-        ),
-    }
-    result: dict[str, str | None] = {}
-    for key, payload_names in names.items():
-        metric = values.get(key)
-        if metric is None:
-            metric = _metric(stage, *payload_names)
-        result[key] = None if metric is None else str(metric)
-    return result
-
-
-def _flag(payload: Mapping[str, object], *names: str) -> bool:
-    for name in names:
-        value = payload.get(name)
-        if isinstance(value, bool):
-            if value:
-                return True
-        elif isinstance(value, str) and value.strip().lower() in {
-            "true",
-            "yes",
-            "1",
-            "detected",
-            "removed",
-            "failed",
-            "honeypot",
-        }:
-            return True
-    return False
-
-
-def _outcome_flags(
-    records: Sequence[ReplayEventRecord],
-    stage_payloads: Sequence[Mapping[str, object]],
-    *,
-    signal_at: datetime,
-    initial_liquidity: Decimal | None,
-) -> dict[str, bool]:
-    payloads = [record.observation.normalized_payload for record in records] + list(stage_payloads)
-    rug_detected = any(
-        record.observation.kind in {"risk.rug_event", "risk.token_outcome", "security.rug"}
-        for record in records
-    ) or any(_flag(payload, "rug_detected", "rug", "rugged") for payload in payloads)
-    honeypot = any(
-        _flag(payload, "honeypot_detected", "honeypot", "is_honeypot")
-        for payload in payloads
-    )
-    migration_completed = any(
-        _flag(payload, "migration_completed", "graduated", "dex_active", "liquidity_added")
-        or str(payload.get("migration_state", payload.get("lifecycle_state", ""))).upper()
-        in {"COMPLETED", "GRADUATED", "DEX_ACTIVE", "LIQUIDITY_ADDED"}
-        for payload in payloads
-    )
-    liquidities = [
-        _market_metrics(record)["liquidity"]
-        for record in records
-        if record.event_at > signal_at and _valid_market_record(record)
-    ]
-    liquidity_removed = any(
-        _flag(payload, "liquidity_removed", "liquidity_rug", "liquidity_collapse")
-        for payload in payloads
-    )
-    if initial_liquidity is not None and initial_liquidity > 0:
-        liquidity_removed = liquidity_removed or any(
-            liquidity is not None and liquidity <= initial_liquidity * Decimal("0.10")
-            for liquidity in liquidities
-        )
-    return {
-        "rug_detected": rug_detected,
-        "honeypot_detected": honeypot,
-        "liquidity_removed": liquidity_removed,
-        "migration_completed": migration_completed,
-    }
 
 
 def _stable_payload(value: object) -> str:

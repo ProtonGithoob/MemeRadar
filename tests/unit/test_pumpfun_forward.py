@@ -67,3 +67,26 @@ def test_source_identity_is_deterministic_per_mint_and_offset() -> None:
     assert early_reevaluation_source_id(mint, 60) == (
         "pumpfun-forward:early-reevaluation:9vRzjUmVLv894UwsBkCtmbFFLUPwUC3p8bU7RgL7pump:60"
     )
+
+
+def test_forward_policy_helpers_retain_legacy_imports_and_market_fallback() -> None:
+    from memeradar_application import pumpfun_forward
+    from memeradar_worker import forward_evidence
+
+    for name in (
+        "metric",
+        "market_metrics",
+        "valid_market_record",
+        "horizon_matured",
+        "endpoint_record",
+        "multiple_at_endpoint",
+        "initial_market_values",
+        "flag",
+        "outcome_flags",
+    ):
+        assert getattr(forward_evidence, f"_{name}") is getattr(pumpfun_forward, name)
+    values = pumpfun_forward.initial_market_values(
+        (), datetime(2026, 10, 18, tzinfo=UTC), ({"state": "DISCOVERED", "price_usd": "2"},)
+    )
+    assert values["price"] == "2"
+    assert values["liquidity"] is None

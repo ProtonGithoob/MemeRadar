@@ -25,6 +25,7 @@ from memeradar_persistence import (
     TokenRow,
     create_database_engine,
 )
+from memeradar_worker import early_discovery as worker_discovery
 
 pytestmark = pytest.mark.integration
 
@@ -104,7 +105,7 @@ async def _exercise(database_url: str, monkeypatch) -> None:
 
     source = Source()
     bundle = SimpleNamespace(madeonsol=source, aclose=lambda: asyncio.sleep(0))
-    monkeypatch.setattr(worker_main, "build_provider_bundle", lambda _settings: bundle)
+    monkeypatch.setattr(worker_discovery, "build_provider_bundle", lambda _settings: bundle)
     settings = Settings.from_env(
         {
             "DATABASE_URL": database_url,
