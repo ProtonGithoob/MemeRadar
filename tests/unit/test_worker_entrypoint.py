@@ -13,6 +13,7 @@ from memeradar_application.provider_contracts import (
 )
 from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
 from memeradar_providers.transport import ProviderRateLimitedError
+from memeradar_worker import early_discovery as worker_discovery
 from memeradar_worker.main import (
     _early_alpha_shadow_is_configured,
     _gmgn_shadow_is_configured,
@@ -217,9 +218,9 @@ def test_madeonsol_shadow_worker_round_trip_uses_generic_collector(monkeypatch) 
     source = FakeSource()
     bundle = SimpleNamespace(madeonsol=source, aclose=lambda: asyncio.sleep(0))
     engine = SimpleNamespace(dispose=lambda: asyncio.sleep(0))
-    monkeypatch.setattr(worker_main, "create_database_engine", lambda _: engine)
-    monkeypatch.setattr(worker_main, "build_provider_bundle", lambda _: bundle)
-    monkeypatch.setattr(worker_main, "SqlAlchemyUnitOfWork", UnitOfWork)
+    monkeypatch.setattr(worker_discovery, "create_database_engine", lambda _: engine)
+    monkeypatch.setattr(worker_discovery, "build_provider_bundle", lambda _: bundle)
+    monkeypatch.setattr(worker_discovery, "SqlAlchemyUnitOfWork", UnitOfWork)
 
     settings = Settings.from_env(
         {
