@@ -21,7 +21,7 @@ from .config import (
     runtime_setting_spec,
     validate_runtime_setting,
 )
-from .read_api import AuditEventView, ConfigVersionView
+from .read_operations import AuditEventView, ConfigVersionView
 
 CONTROL_API_VERSION = "control-api-v1"
 _CONFIG_VERSION_PREFIX = "control-config-v"

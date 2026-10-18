@@ -71,7 +71,7 @@ from memeradar_providers.solana_raw_stream import (  # noqa: E402
     SOLANA_PUBLIC_WEBSOCKET_URL,
     SolanaRawTransactionSource,
 )
-from memeradar_worker.main import _BoundRuntimeRepositories  # noqa: E402
+from memeradar_worker.early_discovery import _BoundRuntimeRepositories  # noqa: E402
 
 EXPECTED_PROTECTED_MODES = {
     "ANALYSIS_ONLY": True,
