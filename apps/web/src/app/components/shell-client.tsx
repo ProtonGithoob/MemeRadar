@@ -13,7 +13,7 @@ const NAV_SECTIONS: Array<{
   items: Array<{ href: string; label: string; glyph: string }>;
 }> = [
   {
-    label: "Intelligence",
+    label: "Discover",
     items: [
       { href: "/", label: "Overview", glyph: "OV" },
       { href: "/radar", label: "Radar", glyph: "RD" },
@@ -21,21 +21,26 @@ const NAV_SECTIONS: Array<{
     ]
   },
   {
-    label: "Research",
+    label: "Investigate",
     items: [
-      { href: "/positions", label: "Positions", glyph: "PS" },
-      { href: "/opportunities", label: "Opportunities", glyph: "CH" },
       { href: "/wallets", label: "Wallets", glyph: "WL" },
-      { href: "/callers", label: "Callers", glyph: "CL" },
-      { href: "/wallet-graph", label: "Graph", glyph: "GR" }
+      { href: "/wallet-graph", label: "Graph", glyph: "GR" },
+      { href: "/callers", label: "Callers", glyph: "CL" }
     ]
   },
   {
-    label: "System",
+    label: "Validate",
     items: [
+      { href: "/positions", label: "Positions", glyph: "PS" },
+      { href: "/opportunities", label: "Opportunities", glyph: "CH" }
+    ]
+  },
+  {
+    label: "Operate",
+    items: [
+      { href: "/readiness", label: "Readiness", glyph: "RS" },
       { href: "/providers", label: "Providers", glyph: "PV" },
       { href: "/operations", label: "Operations", glyph: "OP" },
-      { href: "/readiness", label: "Readiness", glyph: "RS" },
       { href: "/audit", label: "Audit", glyph: "AU" },
       { href: "/settings", label: "Settings", glyph: "ST" }
     ]

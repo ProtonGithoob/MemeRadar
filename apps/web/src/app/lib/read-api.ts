@@ -6,6 +6,8 @@
  * environment values to the browser.
  */
 
+import { cache } from "react";
+
 import { runtimeEnv } from "./runtime-env";
 
 export type ReadFailureReason =
@@ -3108,10 +3110,11 @@ export async function fetchProviderHealth(
     : request(url, (value) => parsePage(value, parseProviderHealth));
 }
 
-export async function fetchOperations(): Promise<ReadResult<OperationsRecord>> {
+// Share the layout/page read within one server request; React invalidates between requests.
+export const fetchOperations = cache(async function fetchOperations(): Promise<ReadResult<OperationsRecord>> {
   const url = endpoint("/v1/operations/overview");
   return url === null ? configuredFailure() : request(url, parseOperations);
-}
+});
 
 export async function fetchAuditEvents(
   filters: AuditFilters = {}

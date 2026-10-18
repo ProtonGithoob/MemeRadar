@@ -62,6 +62,9 @@ describe("WorkstationShell", () => {
     expect(screen.getByRole("status", { name: "EXECUTION: LOCKED" })).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Operator sections" });
     expect(nav).toBeInTheDocument();
+    for (const group of ["Discover", "Investigate", "Validate", "Operate"]) {
+      expect(screen.getByText(group)).toBeInTheDocument();
+    }
     expect(screen.getByRole("link", { name: "Radar" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Overview" })).not.toHaveAttribute("aria-current");
   });

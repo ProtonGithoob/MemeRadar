@@ -206,6 +206,9 @@ describe("server-side read gateway", () => {
 
     const result = await fetchOperations();
 
+    await fetchOperations();
+    expect(fetchMock).toHaveBeenCalledTimes(2); // No process-wide cache outside a server render.
+
     expect(result.ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://api.internal:8000/v1/operations/overview",
