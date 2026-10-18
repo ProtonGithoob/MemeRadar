@@ -1,0 +1,74 @@
+{
+  "status": "BLOCKED_HOST_RUNTIME",
+  "prerequisites": {
+    "nodeVersion": "24.18.0",
+    "nodeSupported": true,
+    "playwrightCliAvailable": true,
+    "browserExecutableAvailable": true,
+    "serverMode": "runner-owned-local-server",
+    "endpointProbe": "managed_startup_delegated",
+    "status": "READY_TO_RUN"
+  },
+  "sourceBefore": {
+    "sourceId": "sha256:c1039dd7e1091e4263aff4442772d6d821c49916a4c4222cce1569f63efd23fe",
+    "branch": "main",
+    "head": "35274d2fd7ae07ef6446b66cef70ac6b93f5e84e",
+    "sourceFiles": 136,
+    "scope": "frontend-source-config-tests-and-acceptance-helpers",
+    "exclusions": [
+      ".env and credential/key files",
+      "dependencies/build/test-output/visual-artifact directories",
+      "repository paths outside the listed frontend scope"
+    ]
+  },
+  "sourceAfter": {
+    "sourceId": "sha256:c1039dd7e1091e4263aff4442772d6d821c49916a4c4222cce1569f63efd23fe",
+    "branch": "main",
+    "head": "35274d2fd7ae07ef6446b66cef70ac6b93f5e84e",
+    "sourceFiles": 136,
+    "scope": "frontend-source-config-tests-and-acceptance-helpers",
+    "exclusions": [
+      ".env and credential/key files",
+      "dependencies/build/test-output/visual-artifact directories",
+      "repository paths outside the listed frontend scope"
+    ]
+  },
+  "suites": [
+    {
+      "name": "primary",
+      "status": "BLOCKED_HOST_RUNTIME",
+      "exitCode": 1,
+      "report": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "flaky": 0,
+        "tests": 0,
+        "cases": []
+      },
+      "runtimeDiagnostics": {
+        "status": "HOST_PERMISSION_BLOCKED",
+        "operation": "local_server_bind",
+        "localServerBind": "host_permission_blocked",
+        "browserLaunch": "not_checked"
+      },
+      "failure": {
+        "category": "HOST_PERMISSION_BLOCKED",
+        "operation": "local_server_bind"
+      },
+      "outputDirectory": "/home/ubra/codex/MemeRadar/docs/ui-redesign-vnext/visual-evidence/runs/c1039dd7e109/2026-10-14T12-48-59-996Z-1af603da-cd74-4835-9a7b-31c814137e5e/host-acceptance/playwright/primary"
+    },
+    {
+      "name": "social-alpha-and-services",
+      "status": "NOT_RUN_HOST_BLOCKED",
+      "exitCode": null,
+      "report": null
+    },
+    {
+      "name": "radar-visual-fixtures",
+      "status": "NOT_RUN_HOST_BLOCKED",
+      "exitCode": null,
+      "report": null
+    }
+  ]
+}
