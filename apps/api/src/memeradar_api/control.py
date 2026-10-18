@@ -27,7 +27,7 @@ from memeradar_application.control import (
     ControlState,
     ControlVersionConflictError,
 )
-from memeradar_application.read_api import ConfigVersionView
+from memeradar_application.read_operations import ConfigVersionView
 from memeradar_telemetry.logging import CORRELATION_ID_HEADER, resolve_correlation_id
 
 from .auth import RoleTokenAuthenticator

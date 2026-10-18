@@ -10,10 +10,8 @@ from uuid import UUID
 from pydantic import Field
 
 from memeradar_application.event_time import EventTimeQuality
-from memeradar_application.read_api import (
-    DEFAULT_PAGE_LIMIT,
-    MAX_CURSOR_LENGTH,
-    MAX_PAGE_LIMIT,
+from memeradar_application.read_common import DEFAULT_PAGE_LIMIT, MAX_CURSOR_LENGTH, MAX_PAGE_LIMIT
+from memeradar_application.read_positions import (
     ClosedTradeExplanationView,
     PositionExitRiskView,
     PositionMarkView,

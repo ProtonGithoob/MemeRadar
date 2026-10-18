@@ -9,7 +9,7 @@ from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
-from memeradar_application.read_api import Page, ProvenanceView
+from memeradar_application.read_common import Page, ProvenanceView
 
 _RISK_DISPOSITIONS = Literal["PASS", "WARN", "BLOCK", "UNKNOWN"]
 

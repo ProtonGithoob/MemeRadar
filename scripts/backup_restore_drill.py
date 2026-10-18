@@ -140,7 +140,7 @@ def _run_drill_command(command: Sequence[str], label: str) -> None:
 def _application_read(restore_url: str) -> None:
     """Exercise the existing application read path against the restore target."""
 
-    from memeradar_application.read_api import ProviderHealthQuery
+    from memeradar_application.read_operations import ProviderHealthQuery
     from memeradar_persistence import SqlAlchemyReadQueryService, create_database_engine
 
     async def read() -> None:

@@ -9,14 +9,8 @@ from typing import Literal, cast
 
 from pydantic import Field
 
-from memeradar_application.read_api import (
-    DEFAULT_PAGE_LIMIT,
-    MAX_CURSOR_LENGTH,
-    MAX_PAGE_LIMIT,
-    CreatorReputationView,
-    WalletGraphView,
-    WalletView,
-)
+from memeradar_application.read_common import DEFAULT_PAGE_LIMIT, MAX_CURSOR_LENGTH, MAX_PAGE_LIMIT
+from memeradar_application.read_wallets import CreatorReputationView, WalletGraphView, WalletView
 from memeradar_domain import QualityState
 
 from .common import _mapping, _StrictModel

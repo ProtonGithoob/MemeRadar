@@ -28,7 +28,7 @@ from memeradar_application.control import (
     next_config_version,
     normalize_config,
 )
-from memeradar_application.read_api import AuditEventView, ConfigVersionView
+from memeradar_application.read_operations import AuditEventView, ConfigVersionView
 from memeradar_domain.common import ensure_utc, require_text
 
 from .models import AuditEventRow, ConfigVersionRow, ControlStateRow, RuntimeSettingsRow
