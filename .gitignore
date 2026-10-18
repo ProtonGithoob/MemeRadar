@@ -22,3 +22,14 @@ apps/web/test-results/
 .DS_Store
 artifacts/
 
+
+# Disposable future local reports; acceptance evidence under docs remains visible.
+apps/web/playwright-report/
+apps/web/coverage/
+docs/ui-redesign-vnext/visual-evidence/tmp/
+scripts/nohup.out
+
+# Operator-owned local runner state and credential file; never release inputs.
+/.codex/logs/
+/.codex/runtime/
+/.codex/telegram.env
