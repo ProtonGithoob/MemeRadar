@@ -10,13 +10,14 @@ Local implementation/test success is distinct from provider operational acceptan
 PostgreSQL runtime acceptance, credentialed browser acceptance and statistically
 adequate mature real outcomes. The purpose refactor does not promote any gate.
 
-Current bounded host checks confirmed Docker and the existing healthy PostgreSQL
-container, and Chrome completed a headless launch. These capabilities are
-available; an isolated test database target and final-source authenticated
-browser acceptance are still unverified. Git writes and local commits now work
-through approved host operations. Inherited feature prerequisites remain
-unstaged under the explicit ownership rule; see STATUS before interpreting
-local engineering verification as a clean-checkout release result.
+Current bounded host checks confirmed Docker 29.1.3 and a successful Chrome
+headless launch. After the execution-environment reset the previously observed
+PostgreSQL container is no longer visible, and no isolated test URL is set:
+`NEEDS_DATABASE_RUNTIME`. Final-source authenticated browser acceptance is also
+unverified. Git writes and local commits work through approved host operations.
+Inherited feature prerequisites remain unstaged under the explicit ownership
+rule; see STATUS before interpreting local engineering verification as a
+clean-checkout release result.
 
 Outcome coverage is limited to the returned, filtered/as-of page of at most
 100 valid rows. Population coverage is unavailable under the existing query

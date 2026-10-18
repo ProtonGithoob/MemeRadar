@@ -100,7 +100,7 @@ No protected mode, score arithmetic/threshold, provider authority, immutable T0 
 | 32 | Actual final production-build exit/results in binding. |
 | 33 | Actual final route-budget exit/results in binding. |
 | 34 | Existing0022_cross_chain_evidence /40 tables; final migration check in binding. |
-| 35 | Existing host PostgreSQL container healthy; isolated test target unset/unverified. No substitute DB created. |
+| 35 | Current Docker available, but prior PostgreSQL container no longer visible after runtime reset; isolated target unset: NEEDS_DATABASE_RUNTIME. No substitute DB created. |
 | 36 | Host Chrome launch PASS; final-source credentialed browser acceptance unverified. |
 | 37 | Provider acceptance unverified; no fabricated evidence. |
 | 38 | READ_ONLY_SHADOW_READY = NOT ACCEPTED. |

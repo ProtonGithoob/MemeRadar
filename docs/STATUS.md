@@ -23,11 +23,11 @@ Updated: 2026-10-18. This is current repository truth; earlier Git/runtime claim
 
 ## External blockers and next external action
 
-**POSTGRESQL_RUNTIME:** AVAILABLE on existing healthy Compose PostgreSQL through approved host Docker (29.1.3). Host psql/postgres/initdb/pg_ctl absent; test URL unset. No isolated database test was run or substitute database created. PostgreSQL acceptance remains unverified, not runtime-absent.
+**POSTGRESQL_RUNTIME:** `NEEDS_DATABASE_RUNTIME`. Current approved host Docker is available (29.1.3), but no running `compose-postgres-1` is visible after the execution-environment reset and the isolated test URL is unset. An earlier continuation observed that container healthy; that observation is historical, not current acceptance. No substitute database or new PostgreSQL runtime was created.
 **BROWSER_RUNTIME:** AVAILABLE: installed Chrome completed a bounded headless about:blank launch. Final-source credentialed workflows/screenshots/axe/performance remain unverified.
 **PROVIDER_ACCEPTANCE:** unverified; no fabricated sequencer/Relay frames, receipts/deployments, wallet economics/benchmark or launch/Jito evidence.
 **REAL_OOS_ALPHA:** evidence/time required for real independent mature cohorts, economics/copyability and chronological OOS.
-**NEXT_EXTERNAL_ACTION:** configure the existing authorized isolated PostgreSQL and final-source browser acceptance targets; collect verified provider and mature OOS evidence. Independently resolve the explicitly protected inherited-prerequisite integration scope.
+**NEXT_EXTERNAL_ACTION:** provide an authorized isolated PostgreSQL runtime/URL and final-source browser acceptance targets; collect verified provider and mature OOS evidence. Independently resolve the explicitly protected inherited-prerequisite integration scope.
 
 `READ_ONLY_SHADOW_READY = NOT ACCEPTED`; `ALPHA_VALIDATED = NO`; `REAL_WORLD_ALPHA_NOT_YET_PROVEN`; `PRODUCTION_READY=false`.
 Modes stay `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`, `CANARY=false`, `LIVE=false`. No scoring, safety, provider authority or no-lookahead change.
