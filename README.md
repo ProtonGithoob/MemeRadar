@@ -8,24 +8,19 @@ Future 20x/50x/100x outcomes are research labels and historical cohorts — neve
 
 ## Current project status
 
-As of 2026-09-05:
+The current source identity, actual test results, blockers and next action are
+maintained only in [docs/STATUS.md](docs/STATUS.md). Historical results are linked
+from that checkpoint; they are not current production acceptance.
 
-| Dimension | Status |
-|---|---|
-| Keyless engineering roadmap | `KEYLESS_ENGINEERING_COMPLETE` |
-| API/Web/Postgres/Redis stack | `STACK_READY` when local stack is healthy |
-| Core read-only providers | Solana public RPC + DexScreener + local deterministic engines |
-| Optional enrichment | Helius, Birdeye, RugCheck, social analytics, external wallet, Ollama, Telegram |
-| Live-shadow collection | `READY_FOR_FREE_READ_ONLY_SHADOW` when free core/readiness/run-state gates pass |
-| Real-world alpha | `REAL_WORLD_ALPHA_NOT_YET_PROVEN` |
-| Analysis mode | `ANALYSIS_ONLY=true` |
-| Paper trading | `PAPER_TRADING=true` |
-| Manual execution | `MANUAL_EXECUTION=false` |
-| Auto execution | `AUTO_EXECUTION=false` |
-| Live-money Phase 12 | **LOCKED** |
-| Full quality gate | `make verify` passing at the latest verified checkpoint |
+The canonical path is discovery → normalized evidence → independent risk and
+corroboration → alpha decision → paper observation → outcome maturation → validation.
+See [architecture](docs/ARCHITECTURE.md) and the
+[purpose/ownership audit](docs/reports/memeradar-purpose-refactor.md).
 
-The engineering system is intentionally feature-frozen around the alpha core while real live-shadow evidence is collected. Frontend parity/UX modernization is an approved product-surface sprint and does not unlock live execution.
+`REAL_WORLD_ALPHA_NOT_YET_PROVEN`; `PRODUCTION_READY=false`;
+`PROD_READ_ONLY_NOT_ACCEPTED`. Analysis and paper remain enabled; manual/automatic
+execution, CANARY and LIVE remain disabled. Current design is documented in
+[apps/web/DESIGN.md](apps/web/DESIGN.md).
 
 ## Free-first provider architecture
 
@@ -278,26 +273,24 @@ The Next.js operator application already exposes surfaces for:
 - audit;
 - settings.
 
-The current approved frontend-parity modernization is specified in:
+The old 2026-09-04 frontend modernization proposal was explicitly reverted and
+is retained only as history. Current frontend evidence and design decisions are
+recorded in:
 
-- [`docs/FRONTEND_UI_UX_MODERNIZATION.md`](docs/FRONTEND_UI_UX_MODERNIZATION.md)
-- [`FRONTEND_EXECUTION_PROMPT.md`](FRONTEND_EXECUTION_PROMPT.md)
+- [`apps/web/DESIGN.md`](apps/web/DESIGN.md)
+- [`docs/FRONTEND_BACKEND_PARITY.md`](docs/FRONTEND_BACKEND_PARITY.md)
+- [`docs/ui-redesign/README.md`](docs/ui-redesign/README.md)
 
 The target is an operator-grade early-alpha workstation rather than a static status dashboard. The primary screen should make it possible to quickly answer: which token deserves attention now, how early it was detected, why it is interesting, what can invalidate it, whether entry is executable, what creator/smart-wallet evidence exists, and what the current paper/exit state is.
 
-Planned/approved workstation surfaces include:
+Current integrated workstation routes include:
 
 ```text
 MemeRadar Workstation
-├── Command Center
-├── Ultra-Early Workspace
-├── Token Research Workspace
-├── Wallet / Creator Graph
-├── Paper Position / Exit Desk
-├── Providers / Shadow Operations
-├── Research / Calibration
-├── Audit
-└── Settings
+├── Discover          /, /radar, /ultra-early
+├── Investigate       /tokens/[tokenId], /wallets, /wallet-graph, /callers, /social-alpha
+├── Validate          /pipeline, /missed-winners, /outcomes, /compare, /positions, /opportunities
+└── Operate           /readiness, /providers, /services, /operations, /audit, /settings
 ```
 
 The UI modernization must reuse existing read APIs and does not weaken the backend feature freeze or protected execution modes.
@@ -428,7 +421,8 @@ Stop the local stack without removing its PostgreSQL or Redis volumes:
 
 Equivalent Make targets are `make start`, `make status`, and `make stop`.
 
-For safe live-shadow operation after configuring required provider credentials:
+For safe live-shadow operation after configuring the core read-only provider path
+(paid provider credentials are optional):
 
 ```bash
 make shadow-start
@@ -467,7 +461,7 @@ Engineering completion is not proof of profitable alpha.
 The next evidence phase is:
 
 ```text
-Helius + Birdeye credentials
+Core read-only provider/runtime acceptance (paid enhancements separately)
         ↓
 provider acceptance
         ↓
@@ -490,34 +484,23 @@ The key business question is not whether tests pass, but whether MemeRadar can r
 
 ## Source of truth
 
-Agents must read these before autonomous implementation or continuation:
-
-1. [`AGENTS.md`](AGENTS.md) — repository operating contract.
-2. [`docs/MASTER_SPEC.md`](docs/MASTER_SPEC.md) — product/technical specification.
-3. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system boundaries and data flow.
-4. [`docs/ROADMAP.md`](docs/ROADMAP.md) — phases/sprints/tasks/acceptance gates.
-5. [`docs/ROADMAP_RESEARCH_EXTENSIONS.md`](docs/ROADMAP_RESEARCH_EXTENSIONS.md) — research extensions.
-6. [`docs/ALPHA_20X_100X_PRODUCT_OBJECTIVE.md`](docs/ALPHA_20X_100X_PRODUCT_OBJECTIVE.md) — north-star extreme-upside objective.
-7. [`docs/WALLET_CREATOR_OUTCOME_GRAPH.md`](docs/WALLET_CREATOR_OUTCOME_GRAPH.md) — graph/reputation specification.
-8. [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — persistence/event schema.
-9. [`docs/SCORING_AND_RISK.md`](docs/SCORING_AND_RISK.md) — scoring/risk/exit rules.
-10. [`docs/PROVIDERS.md`](docs/PROVIDERS.md) — provider contracts/fallbacks.
-11. [`docs/SECURITY.md`](docs/SECURITY.md) — safety/execution boundaries.
-12. [`docs/TESTING.md`](docs/TESTING.md) — verification strategy.
-13. [`docs/LIVE_READONLY_CHECKLIST.md`](docs/LIVE_READONLY_CHECKLIST.md) — provider acceptance.
-14. [`docs/LIVE_SHADOW_VALIDATION.md`](docs/LIVE_SHADOW_VALIDATION.md) — real shadow validation protocol.
-15. [`docs/RESEARCH_GATE_REPORT.md`](docs/RESEARCH_GATE_REPORT.md) — evidence/research classification.
-16. [`docs/FRONTEND_UI_UX_MODERNIZATION.md`](docs/FRONTEND_UI_UX_MODERNIZATION.md) — approved frontend parity/UX roadmap.
-17. [`docs/STATUS.md`](docs/STATUS.md) — **canonical current implementation state and next task**.
+Agents should read `AGENTS.md` and then the startup sequence it defines. Use
+[`docs/README.md`](docs/README.md) as a short index and
+[`docs/STATUS.md`](docs/STATUS.md) as the current implementation ledger. The
+latest recorded engineering report is
+[`MEMERADAR_V8_3_CAUSAL_9PLUS_CLOSURE_FINAL.md`](docs/reports/MEMERADAR_V8_3_CAUSAL_9PLUS_CLOSURE_FINAL.md).
 
 ## Autonomous agent execution
 
 For Codex/Antigravity continuation:
 
 - [`CODEX_START_PROMPT.md`](CODEX_START_PROMPT.md) — general autonomous implementation contract.
-- [`FRONTEND_EXECUTION_PROMPT.md`](FRONTEND_EXECUTION_PROMPT.md) — currently approved frontend-parity execution prompt.
+- [`FRONTEND_EXECUTION_PROMPT.md`](FRONTEND_EXECUTION_PROMPT.md) — pointer to an archived, superseded prompt; do not execute it.
 
-Agents should reconcile local and `origin/main`, resume from the exact unfinished work, avoid repeating completed backend work, run verification at coherent checkpoints, update `docs/STATUS.md`, commit and push.
+Agents should inspect the local branch and worktree, resume from the exact
+unfinished task in `docs/STATUS.md`, preserve unrelated changes, and record
+verification before making claims. Remote Git operations are not required by
+this repository handoff.
 
 Routine repository reads, edits, tests, local project services and safe git reconciliation are expected to proceed autonomously where the execution environment permits. Product/host security boundaries must never be weakened to bypass platform-enforced approvals.
 

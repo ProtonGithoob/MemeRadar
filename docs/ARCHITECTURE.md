@@ -1,5 +1,113 @@
 # Architecture
 
+## Canonical Alpha Core
+
+MemeRadar's purpose is early discovery with defensible evidence, followed by
+honest validation of mature, copyable outcomes. Current acceptance is maintained
+only in [STATUS.md](STATUS.md), not inferred from a class or configured provider.
+
+```text
+Raw provider observation
+ → normalized Observation / NormalizedChainEvent
+ → chain-qualified TokenIdentity / discovery candidate
+ → EarlyFeatureSnapshot + independent risk + wallet/creator/caller evidence
+ → EarlyScorer → EarlyDecisionEngine → immutable decision/stage snapshot at T0
+ → paper / forward observations → mature outcome evidence
+ → replay / calibration / independent-sample validation
+```
+
+`EarlyRuntimeService` is the existing early-path composition root. The mature
+`CorrelationSnapshot` / `FeatureSnapshot` / `AlphaScoreV1Strategy` path is its
+versioned research/mature-feature counterpart. Neither requires another owner
+class, lifecycle, universal snapshot, score engine or provider-specific store.
+Future enrichment evaluates T0 decisions; it never rewrites their evidence.
+
+| Conceptual owner | Existing implementation | Boundary |
+| --- | --- | --- |
+| DiscoveryOwner | CandidateDiscoveryCollector / UltraEarlyDetector | Listing DTO → canonical candidate, quality retained |
+| EvidenceOwner | EarlyFeatureEngine / CorrelationWindowBuilder / FeatureWindowAggregator | Bounded normalized evidence, as-of cutoffs |
+| RiskOwner | TokenSecurityEvaluator / HolderGraphAnalyzer / FlowAnalyzer / FastSafetyGate | Independent danger/UNKNOWN gates |
+| WalletIntelligenceOwner | WalletTrackingAnalyzer / SmartWalletScorer / OperatorClusterResolver | Corroboration, not ownership or token promotion |
+| CreatorIntelligenceOwner | CreatorOutcomeGraph / CreatorReputationAnalyzer | Sourced relations and recurrence, not inferred identity |
+| CallerIntelligenceOwner | CallPerformanceAnalyzer / caller/social analyzers | Timing and source evidence, not execution authority |
+| AlphaDecisionOwner | EarlyScorer / EarlyDecisionEngine; AlphaScoreRecomputer / DecisionEngine | Versioned immutable advisory decisions |
+| OutcomeOwner | PaperExecutionEngine / PumpFunForwardEvidenceCollector / outcome labelers | Later outcomes separate from decision-time inputs |
+| StreamReliabilityOwner | StreamIntegrityCoordinator / NamedStream / OperationsProjector | Gaps reduce trust; observed health cannot raise rank |
+| RuntimeConfigOwner | RuntimeSettingSpec registry / control plane adapters | Admin RBAC, audit, version, pending and external secrets |
+
+The [purpose refactor report](reports/memeradar-purpose-refactor.md) records module,
+class, consumer, metric and route classifications. Provider classes remain
+transport/normalization adapters; repositories/read views remain projections.
+The sole shared TTL policy for the existing flow/holder/token-security analyzers
+is `evidence_helpers.observation_quality_at`; each analyzer retains its own TTL.
+
+## Status vocabulary and reporting dimensions
+
+| Term | Meaning |
+| --- | --- |
+| CONFIGURED | Configuration exists; no claim of observed health |
+| HEALTHY | Current runtime health was observed under its freshness contract |
+| AVAILABLE | Capability can be accessed in the stated environment/window |
+| SUPPORTED | Implementation exists; not provider/production acceptance |
+| VERIFIED | Named evidence/check succeeded for the stated source and scope |
+| ACCEPTED | Required acceptance tests passed for that scope/environment |
+| PASS | This particular gate/check succeeded, not general readiness |
+| CERTIFIED | Explicit protocol verification contract is met; never inferred from catalogue presence |
+| COMPLETE | Named implementation scope is closed; external acceptance can remain blocked |
+| ALPHA_VALIDATED | Adequate mature real, independent, leakage-safe outcome evidence exists |
+| LIVE | Real-money execution authority; absent/disabled in this product state |
+
+Report readiness through ENGINEERING_READY, READ_ONLY_SHADOW_READY and
+ALPHA_VALIDATED dimensions; retain detailed backend diagnostics and production
+classification independently. The UI projects backend ENGINEERING/SHADOW stage
+statuses and alpha evidence; it does not calculate readiness or promote a gate.
+Alpha promise, safety, data quality, copyability and realized outcome remain
+separate quantities. Missing costs/reference/coverage stays UNKNOWN.
+
+## Product validation measurements
+
+Use existing owners: early_benchmark/early_observability for lead time and event
+latency; integrity/operations for completeness, UNKNOWN/conflict/gap and lag;
+forward outcomes/replay/calibration for ranked precision, MFE/MAE, rug/liquidity
+survival and 1h/6h/24h/72h/7d outcomes; wallet/paper economics for copyability and
+cost coverage. Recall requires a reference population. Loaded outcome row counts
+are not independent samples: one token can have multiple horizons/decisions.
+No sampled mark return establishes realized tradability or proven alpha.
+
+## Current read and worker ownership
+
+The Alpha Core remains provider observation → normalized chain evidence → canonical
+token/discovery → `EarlyFeatureSnapshot` → independent risk/corroboration →
+`EarlyScorer` / `EarlyDecisionEngine` in `EarlyRuntimeService` → immutable T0 →
+forward/paper outcomes → calibration/replay/OOS. No universal evidence or score
+owner was introduced.
+
+`memeradar_api.read` is now a router/compatibility facade over product DTO and
+serializer modules. `memeradar_application.read_api` retains `ReadQueryPort` and
+the in-memory facade; token timeline recovery/reputation calculations, product contracts and the forward-outcome
+query reside in focused `read_*` modules. Persistence and all existing paths stay
+with their current owners. Explicit re-exports preserve legacy imports; remove
+an alias only after API/MCP/CLI/test/replay consumers migrate.
+
+Worker `main` registers/supervises jobs; discovery, wallet, intent-reconciliation
+and operations jobs have separate composition modules. Pure forward-outcome
+horizon/market calculations reside in the existing application `pumpfun_forward`
+owner. Worker compatibility aliases preserve scripts. Providers normalize source
+evidence; they do not gain scoring or decision authority.
+
+Forward-outcome reads optionally include `include_coverage=true`, a summary of
+only the filtered/as-of returned page (`LOADED_PAGE`, at most 100 rows). No full-filter population aggregate exists: the query has no population cap or lower time bound, and counting raw rows would bypass view validation. The UI explicitly marks population coverage unavailable. Distinct tokens/decision snapshots are
+not independent statistical samples. Missing decision IDs or maturity stay
+UNKNOWN; mature means at least one recorded horizon, not full economics/OOS
+acceptance. The default page contract is unchanged.
+
+Current Settings reads use a server-side viewer credential. Guarded writes require
+the user's existing Admin bearer, backend reauthorization, version checks and
+audit; no service Admin credential is loaded or stored. Secrets remain external,
+CANARY/LIVE are protected environment modes, LIVE/AUTO enablement stays blocked.
+Settings configures operations; Readiness reports evidence/acceptance; Research
+retains hypotheses and diagnostics. None authorizes execution.
+
 ## Architectural style
 
 Start as a modular monolith with asynchronous workers and explicit ports/adapters. This keeps deployment and transactions simple while preserving extraction boundaries for high-throughput paths.
@@ -96,10 +204,12 @@ invalid states remain visible. These routes are observability projections and
 have no scoring, state-transition, configuration, signing or execution
 authority.
 
-Sprint 8.3 extends the same server-only gateway to wallet leaderboard/detail,
+**HISTORICAL / SUPERSEDED — Sprint 8.3:** This paragraph describes the original read-only UI, not the current runtime-settings mutation contract. See [runtime-settings security](SECURITY.md#runtime-settings-security-contract).
+
+Sprint 8.3 extended the same server-only gateway to wallet leaderboard/detail,
 provider health/quota, validated control-state/configuration and audit/config
 history pages. API order is preserved, catalogs remain explicit when empty,
-and settings are a read-only explanation of the authenticated control boundary.
+and Settings was then a read-only explanation of the authenticated control boundary.
 Wallet labels, provider health and audit/config metadata cannot change a
 decision, protected mode or execution permission. The Playwright Gate P8 suite
 exercises the rendered routes against a keyless local runtime and verifies
@@ -375,8 +485,7 @@ candidate, send an alert, change configuration or authorize execution.
 `SqlAlchemyReadQueryService` reads the existing normalized token, pool,
 candidate, observation, feature, risk, score, transition and alert tables with
 bounded storage reads. Audit/config views now project the physical Sprint 7.3
-control-plane tables; wallet/provider-health remain injectable catalogs until
-their physical persistence task. An empty catalog is explicit and never
+control-plane tables. Provider health merges persisted collection-health observations with optional catalog entries; wallet detail can derive persisted identity/history, while the wallet leaderboard remains catalog-backed. An empty catalog is explicit and never
 fabricated as healthy. Read payloads are copied through a recursive bounded
 redactor, raw provider body references are not returned, and malformed queries
 or unavailable storage fail with safe public errors. Timeline ordering uses
@@ -392,8 +501,9 @@ server components. The token detail view iterates the API timeline order and
 projects only allow-listed market, liquidity, flow and holder fields into
 native SVG/CSS; social and narrative entries expose provenance/reason codes,
 not untrusted text or raw provider bodies. Wallet/provider/control/audit
-records use the same strict boundary and allow-listed display projections; no
-browser fetch or control mutation is introduced.
+records use the same strict boundary and allow-listed display projections.
+Same-origin browser gateways provide explicit graph/search/diagnostic actions;
+the guarded Settings write contract above requires the user's Admin bearer.
 
 Alpha Caller Task 14 extends the same read port with GET-only
 `/v1/caller-profiles`, `/v1/social-calls` and `/v1/caller-convergence` routes.

@@ -272,7 +272,7 @@ kill-switch. If any role token is configured, the existing read API also
 requires a valid role bearer token; with no configured token, local development
 read behavior remains unchanged.
 
-Sprint 8.1 keeps the browser boundary credential-free: the web bundle receives
+The historical Sprint 8.1 read-only baseline kept the browser boundary credential-free; current guarded Settings writes are specified below. The web bundle receives
 no API token, provider secret, cookie, wallet material or raw provider payload.
 `NEXT_PUBLIC_REALTIME_URL`, when configured, is endpoint metadata only. Missing
 stream configuration is rendered as `DISABLED`; connection errors are shown as
@@ -295,7 +295,12 @@ projections. Empty, unknown, stale, conflicted and invalid evidence remains
 non-safe and visible; no UI read, chart, realtime message or advisory label
 can authorize `ENTRY_READY`, alter modes, clear a kill switch, sign or submit.
 
-Sprint 8.3 keeps wallet, provider, settings and audit reads behind that same
+**HISTORICAL / SUPERSEDED — Sprint 8.3 read-only Settings baseline.**
+The following paragraph describes that sprint, not the current runtime-settings
+editor. Its no-mutation-form and no-browser-control-credential statements are
+superseded by the [current runtime-settings security contract](#runtime-settings-security-contract).
+
+Sprint 8.3 kept wallet, provider, settings and audit reads behind that same
 server boundary. Wallet scores and external labels remain corroborating
 evidence; provider health is data-quality evidence; audit/config metadata is
 not a permission grant. Settings render protected modes and a role matrix but
@@ -410,15 +415,22 @@ pinning `@playwright/test`/Playwright to `1.62.1`, after which npm reported
 zero vulnerabilities. Pip-audit and Trivy remain unavailable locally, so this
 checkout does not claim a complete production vulnerability scan.
 
+## Runtime settings security contract
+
 The API has no ambient browser session-cookie authority: operator access uses
 server-side bearer reads and role-scoped bearer authorization, compared in
 constant time and mapped to non-secret principals. The Next.js
-`/api/control/runtime-settings` gateway is intentionally read-only: it loads
-only `MEMERADAR_VIEWER_API_TOKEN`, proxies only GET, and returns 403 for POST.
-It never treats browser reachability as operator authentication and never
-loads `MEMERADAR_ADMIN_API_TOKEN`. Direct API control mutations remain
-explicit, authenticated, RBAC-checked and audit-backed; no web mutation is
-enabled until a trusted operator session boundary exists. Deployment TLS,
+`/api/control/runtime-settings` gateway uses only `MEMERADAR_VIEWER_API_TOKEN`
+for reads. A write requires the user's explicitly supplied bearer credential;
+the fixed backend control route independently verifies the existing Admin role.
+The gateway never loads `MEMERADAR_ADMIN_API_TOKEN` or substitutes a service
+Admin credential. The runtime editor clears its password field on submission,
+does not put the credential in React state or persistent browser storage, and
+preserves backend authorization and safety errors. Secret parameter replacement
+and clearing are refused before persistence/audit with `EXTERNAL_SECRET_ONLY`.
+Structural validation errors are masked so attempted values cannot be echoed.
+CANARY/LIVE remain read-only environment modes and cannot be DB overrides;
+LIVE/AUTO enabling is blocked with stable 409 safety reasons. Deployment TLS,
 token rotation, rate limiting and secret-manager policy remain operational
 responsibilities.
 
@@ -427,12 +439,12 @@ for local development, or explicitly `development`/`production`; typos such as
 `prod` are rejected. API role credentials are API-owned. The worker receives no
 viewer/operator/admin/execution API credentials, and the production Compose
 override requires its DB, Redis, API-role and web-viewer inputs rather than
-using local passwords or URLs. The full frontend audit currently retains the
-bounded development-only `GHSA-82fw-gwwq-j7x9` moderate Vitest finding
-(CVSS 5.9; Vitest 3.2.7 and `@vitest/mocker`, fixed by the Vitest 5.0.1 major
-line); the shipped production dependency audit has zero vulnerabilities. The
-exception owner is the MemeRadar maintainers, review/expiry is 2026-12-15,
-and the upgrade target is a dedicated Vitest 5 migration.
+using local passwords or URLs. The previous frontend audit recorded the
+development-only `GHSA-82fw-gwwq-j7x9` moderate Vitest finding
+against Vitest 3.2.7. That exception described the earlier dependency state:
+the current package and lock pin Vitest 5.0.2, beyond the recorded 5.0.1 fix.
+This version check is not a fresh external vulnerability scan; current scan
+acceptance remains separately recorded in STATUS.
 
 ## Threats to test
 
