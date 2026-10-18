@@ -7,7 +7,7 @@ Updated: 2026-10-18. This is current repository truth; earlier Git/runtime claim
 **CURRENT_HEAD:** resolve `git rev-parse HEAD`; the final literal value is recorded in the [verification binding](../artifacts/verification/memeradar-completion-loop-2026-10-18.json).
 **SOURCE_ID:** final HEAD-salted identity and scoped-content hash are recorded in that binding. Initial actual source was `sha256:cfef350a11768ab0ea6e93c33961d636410b80d9fa69b9fdead5de57e31a086c` (732 files), compared with supplied historical `sha256:29e7990941ba3a3f078fe34f80f51af37c90b09cf62d4f25038948e6251ac5e3` (731 files). The difference includes the operator's new `scripts/MemeRadar.md`, not an inferred source regression.
 **LOCAL_GIT_STATUS:** `LOCAL_GIT_WRITABLE / COMMITS_CREATED`. The sandbox's Git mount is read-only; approved host Git operations work. Empty September-26 index lock was preserved at `/tmp/memeradar-stale-index-lock-20260926`. Git is not a project blocker. No push/pull/fetch/remote mutation.
-**LOCAL_COMMITS:** 9 reviewed local commits so far; final ledger below. Commits reconstruct only HEAD-owned implementations and independently applicable hunks; inherited feature prerequisites remain unstaged.
+**LOCAL_COMMITS:** complete final count/list is in the verification binding; preceding checkpoints are listed below. Commits reconstruct only HEAD-owned implementations and independently applicable hunks; inherited feature prerequisites remain unstaged.
 **TEST_STATUS:** focused full-worktree backend 221 PASS; frontend 78 PASS; scoped Ruff, mypy (205 files), ESLint and TypeScript PASS. Committed-snapshot reads 25 PASS, import migrations 30 PASS, worker 7 PASS, web 23 PASS, helper ownership 4 PASS / isolated-PG test skipped. Final aggregate/build/budget exits and totals are recorded in the binding; only completed successful exits count. First aggregate continuation was interrupted at 36% with no exit result; it is not PASS or FAIL and cannot count as acceptance; the subsequent complete run is recorded separately.
 **MIGRATION:** existing head `0022_cross_chain_evidence`, 40 tables; final graph check in binding. No schema migration introduced.
 
@@ -45,6 +45,8 @@ Modes stay `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`,
 | `4b010b88d819eb4420e94b0477771ef72e9a65f4` | chore(repo): narrowly ignore generated reports and operator runtime state |
 | `4ada7421e303d1c2cc9a4e7fa0f3f1e1d309ba3b` | docs(repo): preserve historical visual evidence in verified archive |
 | `82e9b7b821d0f9f639745ad70544906229ca3541` | refactor(imports): migrate remaining control and acceptance aliases |
+| `d7bb1047ded2ac2505f7c1fa128b95c8eb45468e` | docs(repo): reconcile Git state, ownership audits and verification boundaries |
+| `26e0765a37f0ce2533cbc08330f6ac3d375a9ead` | test(reads): check all split modules in packaging safety contract |
 
 This ledger records source/archive commits before the final documentation checkpoint; use local `git log 35274d2..HEAD` and the final binding for the complete count and final HEAD. HEAD-dependent source IDs cannot be embedded into their own commit without a self-reference; final binding is deliberately excluded verification output.
 

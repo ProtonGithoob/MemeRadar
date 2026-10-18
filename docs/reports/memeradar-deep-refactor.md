@@ -8,7 +8,7 @@ The first normal Git refresh found an empty index lock dated September 26; no Gi
 
 No remote operation was performed. Local cached `origin/main` was already 20 commits behind the initial HEAD; compare locally again in the final binding. No remote synchronization is claimed.
 
-Every source commit used an explicitly reviewed cached patch, never `git add .`, `git add -A`, or `git commit -a`. Mechanical projections start from actual HEAD definitions, not whole dirty files: **75 application + 84 API + 27 worker** class/function ASTs were preserved. Nine pure forward helpers were preserved after declared global renames and one local `metric` → `metric_value` collision avoidance. Original application scheduling/worker orchestration functions remained unchanged. The complete staged diffs, names and stats were inspected before each commit. No inherited unrelated hunk, credential or local runtime file was deliberately staged.
+Every source commit used an explicitly reviewed cached patch, never `git add .`, `git add -A`, or `git commit -a`. Mechanical projections start from actual HEAD definitions, not whole dirty files: **75 application + 84 API + 27 worker** class/function ASTs were preserved. Nine pure forward helpers were preserved after declared global renames and one local `metric` → `metric_value` collision avoidance. Original application scheduling/worker orchestration functions remained unchanged. The complete staged diffs, names and stats were inspected before each commit. The packaging safety contract is now committed too: it scans all split read modules and preserves every original forbidden-import/mutation/mode assertion. Its focused regression passed. No inherited unrelated hunk, credential or local runtime file was deliberately staged.
 
 | Local commit | Purpose |
 | --- | --- |
@@ -21,6 +21,8 @@ Every source commit used an explicitly reviewed cached patch, never `git add .`,
 | `4b010b88d819eb4420e94b0477771ef72e9a65f4` | chore(repo): narrowly ignore generated reports and operator runtime state |
 | `4ada7421e303d1c2cc9a4e7fa0f3f1e1d309ba3b` | docs(repo): preserve historical visual evidence in verified archive |
 | `82e9b7b821d0f9f639745ad70544906229ca3541` | refactor(imports): migrate remaining control and acceptance aliases |
+| `d7bb1047ded2ac2505f7c1fa128b95c8eb45468e` | docs(repo): reconcile Git state, ownership audits and verification boundaries |
+| `26e0765a37f0ce2533cbc08330f6ac3d375a9ead` | test(reads): check all split modules in packaging safety contract |
 
 This is the ledger before the documentation checkpoint containing this report. The [final binding](../../artifacts/verification/memeradar-completion-loop-2026-10-18.json) records the complete commit count/list, literal final HEAD and final source identity, avoiding an impossible self-referential commit SHA inside its own content.
 
@@ -66,7 +68,7 @@ No protected mode, score arithmetic/threshold, provider authority, immutable T0 
 | ---: | --- |
 | 1 | YES: local Git is writable through approved host operations; commits are real. |
 | 2 | Prior report overgeneralized the sandbox read-only mount and treated a stale observation as a project-wide blocker; historical internal reasoning is not fully recoverable. |
-| 3 | 9 source/archive/hygiene commits before this documentation checkpoint; exact final count in binding. |
+| 3 | 11 source/archive/hygiene commits before this documentation checkpoint; exact final count in binding. |
 | 4 | Full SHA/purpose ledger above and final binding. |
 | 5 | No inherited unrelated hunk deliberately staged; HEAD-only AST reconstruction protected mixed files. Dependent prerequisites remain unstaged. |
 | 6 | Literal final HEAD in binding (`finalHead`). |

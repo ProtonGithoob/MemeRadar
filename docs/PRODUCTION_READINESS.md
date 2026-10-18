@@ -24,7 +24,7 @@ contract. Distinct token/decision IDs never establish statistical independence.
 
 | Reporting dimension | Current evidence | Acceptance |
 | --- | --- | --- |
-| ENGINEERING_READY | Final-source make verify exit 0; production build and 5/5 bundle budgets pass; identity bound in STATUS | Local scope only; hosted/release runtime not accepted |
+| ENGINEERING_READY | Focused local checks passed; completed final aggregate/build/budget exits and identity are recorded in the verification binding linked from STATUS | Local worktree scope only; clean-checkout and hosted/release runtime not accepted |
 | READ_ONLY_SHADOW_READY | Read-only collection paths exist; current PG/browser/provider operational evidence incomplete | NOT ACCEPTED |
 | ALPHA_VALIDATED | Independent matured real cohorts, complete economics/copyability and locked chronological OOS unproven | NO |
 
