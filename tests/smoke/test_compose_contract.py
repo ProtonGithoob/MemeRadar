@@ -680,10 +680,12 @@ def test_read_api_surface_is_packaged_and_safe():
 
     assert build_read_router
     assert ReadQueryPort
-    read_source = (ROOT / "apps" / "api" / "src" / "memeradar_api" / "read.py").read_text()
-    application_source = (
-        ROOT / "packages" / "application" / "src" / "memeradar_application" / "read_api.py"
-    ).read_text()
+    read_package = ROOT / "apps" / "api" / "src" / "memeradar_api" / "read"
+    read_source = "\n".join(path.read_text() for path in sorted(read_package.glob("*.py")))
+    application_package = ROOT / "packages" / "application" / "src" / "memeradar_application"
+    application_source = "\n".join(
+        path.read_text() for path in sorted(application_package.glob("read_*.py"))
+    )
     assert "POST" not in read_source
     assert "memeradar_providers" not in application_source
     assert "fastapi" not in application_source
