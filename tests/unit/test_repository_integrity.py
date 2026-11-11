@@ -331,7 +331,9 @@ def test_rehydrated_canonical_chain_event_never_conflicts_with_its_persisted_row
                     observed_at=NOW,
                     ingested_at=NOW,
                     parser_version="pumpfun-trade-event-log-v1",
-                    quality_state="FRESH",
+                    # Gap recovery changed the canonical row after the copy
+                    # above was read.
+                    quality_state="UNKNOWN",
                     normalized_payload={"event_type": "trade_event", "commitment": "FINALIZED"},
                 )
             )
@@ -339,6 +341,7 @@ def test_rehydrated_canonical_chain_event_never_conflicts_with_its_persisted_row
         async with factory() as session:
             row = await ObservationRepository(session).add(stale)
             assert row.normalized_payload["commitment"] == "FINALIZED"
+            assert row.quality_state == "UNKNOWN"
         await engine.dispose()
 
     asyncio.run(exercise())
