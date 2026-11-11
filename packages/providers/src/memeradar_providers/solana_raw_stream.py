@@ -457,6 +457,15 @@ class SolanaRpcBackfillAdapter:
             requested_at=requested_at,
             deadline_at=requested_at + timedelta(seconds=request.timeout_seconds),
         )
+        # getBlocks(finalized) omits slots that are produced but not yet
+        # finalized. Without this bound those slots would be recorded as
+        # skipped and a near-tip gap could verify without proof.
+        finalized_tip = await self.rpc.fetch_finalized_slot(context=context)
+        if request.to_slot > finalized_tip:
+            raise BackfillUnavailableError(
+                f"backfill range ends at slot {request.to_slot}, beyond finalized "
+                f"tip {finalized_tip}"
+            )
         block_observation = await self.rpc.fetch_blocks(
             request.from_slot,
             request.to_slot,

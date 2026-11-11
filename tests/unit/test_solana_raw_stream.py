@@ -171,6 +171,10 @@ def test_transaction_mapping_produces_raw_pump_launch_event() -> None:
     assert event.commitment is CommitmentState.CONFIRMED
 
 
+async def _finalized_tip(*_args: object, **_kwargs: object) -> int:
+    return 448_781_000
+
+
 def test_solana_rpc_backfill_uses_the_same_pump_decoder_as_live_ingest() -> None:
     rpc = SolanaRpcAdapter("https://fixture.solana.example")
     transaction = _transaction()
@@ -195,6 +199,7 @@ def test_solana_rpc_backfill_uses_the_same_pump_decoder_as_live_ingest() -> None
         )
 
     rpc.fetch_blocks = fetch_blocks  # type: ignore[method-assign]
+    rpc.fetch_finalized_slot = _finalized_tip  # type: ignore[method-assign]
     rpc.fetch_block = fetch_block  # type: ignore[method-assign]
 
     async def scenario() -> object:
@@ -238,6 +243,7 @@ def test_backfill_unknown_create_instruction_is_not_reported_complete() -> None:
         )
 
     rpc.fetch_blocks = fetch_blocks  # type: ignore[method-assign]
+    rpc.fetch_finalized_slot = _finalized_tip  # type: ignore[method-assign]
     rpc.fetch_block = fetch_block  # type: ignore[method-assign]
     request = BackfillRequest(
         chain="solana",
@@ -257,6 +263,7 @@ def test_backfill_translates_provider_timeout_for_recovery() -> None:
         raise ProviderTimeoutError("deadline")
 
     rpc.fetch_blocks = timed_out  # type: ignore[method-assign]
+    rpc.fetch_finalized_slot = _finalized_tip  # type: ignore[method-assign]
     request = BackfillRequest(chain="solana", stream_id="fixture", from_slot=1, to_slot=1)
     with pytest.raises(BackfillTimeoutError):
         asyncio.run(SolanaRpcBackfillAdapter(rpc).fetch(request))
@@ -612,3 +619,24 @@ def test_reconnect_reason_is_cleared_after_first_event_on_new_connection(monkeyp
         await source.aclose()
 
     asyncio.run(scenario())
+
+
+def test_backfill_beyond_finalized_tip_is_not_verified_as_skipped_slots() -> None:
+    rpc = SolanaRpcAdapter("https://fixture.solana.example")
+    block_calls = 0
+
+    async def tip(*_args: object, **_kwargs: object) -> int:
+        return 100
+
+    async def fetch_blocks(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        nonlocal block_calls
+        block_calls += 1
+        return SimpleNamespace(normalized_payload={"slots": (90,)}, observed_at=NOW)
+
+    rpc.fetch_finalized_slot = tip  # type: ignore[method-assign]
+    rpc.fetch_blocks = fetch_blocks  # type: ignore[method-assign]
+    request = BackfillRequest(chain="solana", stream_id="fixture", from_slot=90, to_slot=120)
+
+    with pytest.raises(BackfillUnavailableError, match="finalized tip"):
+        asyncio.run(SolanaRpcBackfillAdapter(rpc).fetch(request))
+    assert block_calls == 0

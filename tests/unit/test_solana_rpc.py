@@ -210,6 +210,7 @@ def test_standard_rpc_supports_signature_and_block_reads_with_normalized_payload
             "getSignaturesForAddress": signatures_payload,
             "getBlocks": blocks_payload,
             "getBlock": block_payload,
+            "getSlot": {"jsonrpc": "2.0", "id": 1, "result": 125},
         }
         return httpx.Response(200, json=payloads[method])
 
@@ -229,10 +230,12 @@ def test_standard_rpc_supports_signature_and_block_reads_with_normalized_payload
             )
             blocks = await adapter.fetch_blocks(123, 124, context=context())
             block = await adapter.fetch_block(123, context=context())
+            finalized = await adapter.fetch_finalized_slot(context=context())
         finally:
             await client.aclose()
 
-        assert calls == ["getSignaturesForAddress", "getBlocks", "getBlock"]
+        assert calls == ["getSignaturesForAddress", "getBlocks", "getBlock", "getSlot"]
+        assert finalized == 125
         assert signatures.normalized_payload["address"] == ACCOUNT
         assert len(signatures.normalized_payload["signatures"]) == 2
         assert blocks.normalized_payload["slots"] == (123, 124)

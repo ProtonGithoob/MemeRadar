@@ -653,6 +653,15 @@ class SolanaRpcAdapter(OnChainPort):
             },
         )
 
+    async def fetch_finalized_slot(self, *, context: ProviderRequestContext) -> int:
+        """Return the current finalized slot tip reported by the RPC node."""
+
+        result = await self._rpc("getSlot", ({"commitment": "finalized"},), context=context)
+        slot = _nonnegative_int(result, "slot")
+        if slot is None:
+            raise ProviderSchemaError("getSlot response was invalid")
+        return slot
+
     async def fetch_blocks(
         self,
         start_slot: int,
