@@ -20,6 +20,7 @@ from memeradar_providers import solana_raw_stream
 from memeradar_providers.solana_raw_stream import (
     PUMP_FUN_CREATE_V2_TAG,
     PUMP_FUN_PROGRAM_ID,
+    SolanaLogsNotification,
     SolanaRawTransactionSource,
     SolanaRpcBackfillAdapter,
     map_transaction_to_raw_events,
@@ -678,3 +679,48 @@ def test_first_event_after_process_start_carries_restart_boundary(monkeypatch) -
         await source.aclose()
 
     asyncio.run(scenario())
+
+
+def _logs_notification(logs: list[str]) -> SolanaLogsNotification:
+    return SolanaLogsNotification(
+        slot=1,
+        signature=SIGNATURE,
+        error=None,
+        logs=tuple(logs),
+        commitment=CommitmentState.CONFIRMED,
+        observed_at=NOW,
+    )
+
+
+def test_launch_classification_ignores_create_named_instructions_of_other_programs() -> None:
+    source = SolanaRawTransactionSource(
+        SolanaRpcAdapter("https://fixture.solana.example"),
+        stop_event=asyncio.Event(),
+    )
+    ata = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    aggregator = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+    ordinary_buy = [
+        f"Program {PUMP_FUN_PROGRAM_ID} invoke [1]",
+        "Program log: Instruction: Buy",
+        f"Program {ata} invoke [2]",
+        "Program log: Instruction: CreateIdempotent",
+        f"Program {ata} success",
+        f"Program {PUMP_FUN_PROGRAM_ID} success",
+    ]
+    fee_config = [
+        f"Program {PUMP_FUN_PROGRAM_ID} invoke [1]",
+        "Program log: Instruction: CreateFeeSharingConfig",
+        f"Program {PUMP_FUN_PROGRAM_ID} success",
+    ]
+    aggregated_launch = [
+        f"Program {aggregator} invoke [1]",
+        "Program log: Instruction: CreateCoinAndBuyBondingCurveV3",
+        f"Program {PUMP_FUN_PROGRAM_ID} invoke [2]",
+        "Program log: Instruction: CreateV2",
+        f"Program {PUMP_FUN_PROGRAM_ID} success",
+        f"Program {aggregator} success",
+    ]
+
+    assert source._is_launch_notification(_logs_notification(ordinary_buy)) is False
+    assert source._is_launch_notification(_logs_notification(fee_config)) is False
+    assert source._is_launch_notification(_logs_notification(aggregated_launch)) is True

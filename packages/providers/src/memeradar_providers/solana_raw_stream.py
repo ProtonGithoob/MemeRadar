@@ -36,6 +36,7 @@ from memeradar_domain.identities import require_solana_address
 
 from .pump_fun_events import (
     extract_pump_fun_trade_events,
+    pump_fun_logged_instructions,
     trade_events_to_raw_transactions,
 )
 from .pump_fun_idl import (
@@ -70,6 +71,8 @@ class UnsupportedPumpFunInstructionError(ProviderSchemaError):
     """A launch-shaped Pump.fun transaction uses an unrecognized instruction."""
 
 SOLANA_RAW_TRANSPORT = "solana-public-rpc"
+# Anchor instruction log names Pump.fun emits for a launch.
+_LAUNCH_LOG_NAMES = frozenset({"Create", "CreateV2"})
 SOLANA_PUBLIC_WEBSOCKET_URL = "wss://api.mainnet-beta.solana.com"
 PUMP_FUN_BUY_TAG = bytes.fromhex("66063d1201daebea")
 PUMP_FUN_BUY_V2_TAG = bytes.fromhex("b817ee6167c5d33d")
@@ -378,8 +381,8 @@ def map_transaction_to_raw_events(
 
     events: list[RawChainTransaction] = []
     create_logged = any(
-        "Instruction: Create" in log or "Instruction: create" in log
-        for log in notification.logs
+        name.lower().startswith("create")
+        for name in pump_fun_logged_instructions(notification.logs, program_id=program_id)
     )
     for event_index, instruction in raw_instructions:
         if _instruction_program_id(instruction, account_keys) != program_id:
@@ -970,14 +973,15 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         # ponytail: fetch only launch-shaped logs on the public endpoint.  This
         # keeps one HTTP request per launch instead of attempting every Pump
         # trade; expand to trade windows after measured provider capacity exists.
-        has_program = any(
-            f"Program {self.program_id}" in log for log in notification.logs
-        )
-        has_create = any(
-            "Instruction: Create" in log or "Instruction: create" in log
-            for log in notification.logs
-        )
-        return has_program and has_create
+        # Only an instruction Pump.fun itself logged counts; other programs in
+        # the same transaction log names such as ``CreateIdempotent``.
+        try:
+            logged = pump_fun_logged_instructions(
+                notification.logs, program_id=self.program_id
+            )
+        except ProviderSchemaError:
+            return False
+        return any(name in _LAUNCH_LOG_NAMES for name in logged)
 
     def _track_mint(self, mint: object, observed_at: datetime) -> None:
         if not isinstance(mint, str) or not mint:

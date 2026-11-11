@@ -27,7 +27,7 @@ import binascii
 import hashlib
 import re
 import struct
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -193,28 +193,22 @@ def decode_pump_fun_trade_event(raw: bytes, *, log_index: int = 0) -> PumpFunTra
     )
 
 
-def extract_pump_fun_trade_events(
-    logs: Sequence[str],
-    *,
-    program_id: str = PUMP_FUN_PROGRAM_ID,
-) -> PumpFunTradeEventExtraction:
-    """Extract TradeEvents emitted while ``program_id`` is the executing program.
+_INSTRUCTION_LOG_PREFIX = "Program log: Instruction: "
 
-    The same function serves live ``logsSubscribe`` notifications and
-    backfilled ``meta.logMessages`` so both paths share one decoder.
+
+def _program_log_lines(logs: Sequence[str]) -> Iterator[tuple[int, str, str | None]]:
+    """Yield ``(index, line, executing_program)`` while tracking the invoke stack.
+
+    Invoke, success and failure lines themselves are consumed. A ``Log
+    truncated`` line is yielded with the program that was executing.
     """
 
     if isinstance(logs, str | bytes | bytearray):
         raise TypeError("logs must be a sequence of log lines")
     stack: list[str] = []
-    events: list[PumpFunTradeEvent] = []
-    truncated = False
     for index, line in enumerate(logs):
         if not isinstance(line, str):
             raise ProviderSchemaError("log line was not text")
-        if line.startswith(_TRUNCATED):
-            truncated = True
-            continue
         invoked = _INVOKE.match(line)
         if invoked is not None:
             depth = int(invoked.group(2))
@@ -227,7 +221,46 @@ def extract_pump_fun_trade_events(
             if stack and stack[-1] == exited.group(1):
                 stack.pop()
             continue
-        if not line.startswith(_DATA_PREFIX) or not stack or stack[-1] != program_id:
+        yield index, line, stack[-1] if stack else None
+
+
+def pump_fun_logged_instructions(
+    logs: Sequence[str],
+    *,
+    program_id: str = PUMP_FUN_PROGRAM_ID,
+) -> tuple[str, ...]:
+    """Instruction names Anchor logged while ``program_id`` was executing.
+
+    Other programs log similar names (for example the associated token
+    program's ``CreateIdempotent``), so substring matches over the whole log
+    misclassify ordinary trades as launches.
+    """
+
+    return tuple(
+        line[len(_INSTRUCTION_LOG_PREFIX) :].strip()
+        for _, line, executing in _program_log_lines(logs)
+        if executing == program_id and line.startswith(_INSTRUCTION_LOG_PREFIX)
+    )
+
+
+def extract_pump_fun_trade_events(
+    logs: Sequence[str],
+    *,
+    program_id: str = PUMP_FUN_PROGRAM_ID,
+) -> PumpFunTradeEventExtraction:
+    """Extract TradeEvents emitted while ``program_id`` is the executing program.
+
+    The same function serves live ``logsSubscribe`` notifications and
+    backfilled ``meta.logMessages`` so both paths share one decoder.
+    """
+
+    events: list[PumpFunTradeEvent] = []
+    truncated = False
+    for index, line, executing in _program_log_lines(logs):
+        if line.startswith(_TRUNCATED):
+            truncated = True
+            continue
+        if not line.startswith(_DATA_PREFIX) or executing != program_id:
             continue
         try:
             raw = base64.b64decode(line[len(_DATA_PREFIX) :], validate=True)
@@ -295,5 +328,6 @@ __all__ = [
     "PumpFunTradeEventExtraction",
     "decode_pump_fun_trade_event",
     "extract_pump_fun_trade_events",
+    "pump_fun_logged_instructions",
     "trade_events_to_raw_transactions",
 ]
