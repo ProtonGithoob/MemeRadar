@@ -428,7 +428,10 @@ def test_worst_case_expectancy_books_unresolved_exits_as_total_losses() -> None:
         ),
     )
 
-    report = BacktestHarness().run(value, policy=BacktestPolicy(max_liquidity_fraction=None))
+    report = BacktestHarness().run(
+        value,
+        policy=BacktestPolicy(max_liquidity_fraction=None, one_position_per_token=False),
+    )
 
     assert report.metrics.executed_trade_count == 1
     assert report.metrics.unresolved_exit_count == 1
@@ -714,3 +717,32 @@ def test_stop_loss_must_match_the_label_drawdown_fraction() -> None:
             _result(_with_outcome(checkpoint, labelled)),
             policy=BacktestPolicy(max_liquidity_fraction=None, stop_loss_fraction=Decimal("0.2")),
         )
+
+
+def test_repeated_checkpoints_on_an_open_token_are_not_independent_trades() -> None:
+    value = _result(
+        _checkpoint_result(suffix="first-entry", at=NOW, score="90", forward_return="0.5"),
+        _checkpoint_result(
+            suffix="re-entry",
+            at=NOW + timedelta(minutes=1),
+            score="90",
+            forward_return="0.5",
+        ),
+    )
+
+    deduplicated = BacktestHarness().run(
+        value, policy=BacktestPolicy(max_liquidity_fraction=None)
+    )
+    independent = BacktestHarness().run(
+        value,
+        policy=BacktestPolicy(max_liquidity_fraction=None, one_position_per_token=False),
+    )
+
+    assert deduplicated.metrics.executed_trade_count == 1
+    assert deduplicated.metrics.entry_rejected_count == 1
+    assert any(
+        reason.code == "POSITION_ALREADY_OPEN"
+        for skip in deduplicated.skips
+        for reason in skip.reason_codes
+    )
+    assert independent.metrics.executed_trade_count == 2

@@ -203,6 +203,7 @@ class BacktestPolicy:
     exit_on_liquidity_collapse: bool = False
     exit_on_creator_dump: bool = False
     exit_on_paper_exit: bool = False
+    one_position_per_token: bool = True
     position_notional: Decimal = Decimal("100")
     initial_capital: Decimal = Decimal("10000")
     fee_bps: Decimal = Decimal("30")
@@ -253,6 +254,7 @@ class BacktestPolicy:
             "exit_on_liquidity_collapse",
             "exit_on_creator_dump",
             "exit_on_paper_exit",
+            "one_position_per_token",
         ):
             if not isinstance(getattr(self, field_name), bool):
                 raise TypeError(f"{field_name} must be a boolean")
@@ -320,6 +322,7 @@ class BacktestPolicy:
             "exit_on_liquidity_collapse": self.exit_on_liquidity_collapse,
             "exit_on_creator_dump": self.exit_on_creator_dump,
             "exit_on_paper_exit": self.exit_on_paper_exit,
+            "one_position_per_token": self.one_position_per_token,
             "position_notional": self.position_notional,
             "initial_capital": self.initial_capital,
             "fee_bps": self.fee_bps,
@@ -1087,6 +1090,10 @@ class BacktestHarness:
         trades: list[BacktestTrade] = []
         skips: list[BacktestSkippedSignal] = []
         segment_checkpoints: dict[str, tuple[BacktestSegmentKey, int]] = {}
+        # One simulated position per token at a time: repeated checkpoints on
+        # a token whose earlier trade is still open are correlated re-entries,
+        # not independent samples.
+        open_until: dict[UUID, datetime] = {}
         for item in ordered:
             self._validate_checkpoint(item, replay.manifest)
             segment = self._segment_key(item, replay.manifest)
@@ -1096,6 +1103,14 @@ class BacktestHarness:
                 1 if existing is None else existing[1] + 1,
             )
             entry_errors = self._entry_errors(item, replay.manifest, selected_policy)
+            held_until = open_until.get(item.checkpoint.token_id)
+            if (
+                not entry_errors
+                and selected_policy.one_position_per_token
+                and held_until is not None
+                and item.checkpoint.as_of < held_until
+            ):
+                entry_errors = (ReasonCode("POSITION_ALREADY_OPEN"),)
             snapshot = item.strategy_snapshot
             if entry_errors:
                 skips.append(
@@ -1145,16 +1160,16 @@ class BacktestHarness:
                 continue
             assert exit_plan is not None
             try:
-                trades.append(
-                    self._simulate_trade(
-                        replay=replay,
-                        item=item,
-                        horizon=horizon,
-                        exit_plan=exit_plan,
-                        policy=selected_policy,
-                        segment=segment,
-                    )
+                trade = self._simulate_trade(
+                    replay=replay,
+                    item=item,
+                    horizon=horizon,
+                    exit_plan=exit_plan,
+                    policy=selected_policy,
+                    segment=segment,
                 )
+                trades.append(trade)
+                open_until[item.checkpoint.token_id] = trade.exit_at
             except (PaperExecutionRejected, ValueError) as exc:
                 skips.append(
                     BacktestSkippedSignal(
