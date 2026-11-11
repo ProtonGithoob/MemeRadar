@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from memeradar_application.creator_graph import (
@@ -408,9 +408,19 @@ def _market_observation(
 async def _load_rows(engine: AsyncEngine) -> list[ObservationRow]:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
+        event_type = ObservationRow.normalized_payload["event_type"].as_string()
         result = await session.scalars(
             select(ObservationRow)
-            .where(ObservationRow.kind.in_(_RESEARCH_KINDS))
+            .where(
+                ObservationRow.kind.in_(_RESEARCH_KINDS),
+                # Decoded trade tape is high volume and only consumed by early
+                # reevaluation; forward research needs launches and history.
+                or_(
+                    ObservationRow.kind != "chain.event",
+                    event_type.is_(None),
+                    event_type != "trade_event",
+                ),
+            )
             .order_by(ObservationRow.occurred_at, ObservationRow.id)
         )
         return list(result.all())

@@ -32,6 +32,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from memeradar_application.stream_integrity import RawChainTransaction
+from memeradar_domain import Chain, CommitmentState
 from memeradar_domain.identities import require_solana_address
 
 from .pump_fun_idl import PUMP_FUN_PROGRAM_ID
@@ -40,6 +42,7 @@ from .transport import ProviderSchemaError
 PUMP_FUN_TRADE_EVENT_DISCRIMINATOR = hashlib.sha256(b"event:TradeEvent").digest()[:8]
 PUMP_FUN_TRADE_EVENT_DECODER_VERSION = "pumpfun-trade-event-log-v1"
 
+_LAMPORTS_PER_SOL = Decimal(1_000_000_000)
 _BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 _INVOKE = re.compile(r"^Program (\S+) invoke \[(\d+)\]$")
 _EXIT = re.compile(r"^Program (\S+) (?:success|failed: .*)$")
@@ -99,6 +102,7 @@ class PumpFunTradeEvent:
 
         executed = self.executed_price
         reference = self.market_reference_price
+        quote_amount_sol = Decimal(self.sol_amount_lamports) / _LAMPORTS_PER_SOL
         return {
             "event_type": "trade_event",
             "protocol": "pump.fun",
@@ -109,6 +113,11 @@ class PumpFunTradeEvent:
             "buyer_wallet": self.user if self.is_buy else None,
             "seller_wallet": None if self.is_buy else self.user,
             "quote_amount_lamports": self.sol_amount_lamports,
+            # Feature engines read ``quote_amount`` (SOL) for flow and
+            # ``market_price`` for returns. The market price is the curve
+            # reference, never the trade's executed price.
+            "quote_amount": str(quote_amount_sol),
+            "market_price": None if reference is None else str(reference),
             "token_amount_raw": self.token_amount_raw,
             "executed_price_lamports_per_raw_token": None if executed is None else str(executed),
             "market_reference_price_lamports_per_raw_token": (
@@ -230,6 +239,55 @@ def extract_pump_fun_trade_events(
     return PumpFunTradeEventExtraction(events=tuple(events), logs_truncated=truncated)
 
 
+def trade_events_to_raw_transactions(
+    events: Sequence[PumpFunTradeEvent],
+    *,
+    signature: str,
+    slot: int,
+    observed_at: datetime,
+    ingested_at: datetime,
+    commitment: CommitmentState,
+    transport: str,
+    program_id: str = PUMP_FUN_PROGRAM_ID,
+    connection_id: str | None = None,
+    reconnect_reason: str | None = None,
+) -> tuple[RawChainTransaction, ...]:
+    """Wrap decoded trades as canonical raw events keyed by (program, event tag)."""
+
+    raw: list[RawChainTransaction] = []
+    for event in events:
+        payload = event.to_payload()
+        payload.update(
+            {
+                "provider_observed_at": observed_at.isoformat(),
+                "memeradar_ingested_at": ingested_at.isoformat(),
+                "event_time_source": "trade_event_timestamp",
+                "event_time_quality": "EXACT",
+                "commitment": commitment.value,
+            }
+        )
+        raw.append(
+            RawChainTransaction(
+                chain=Chain.SOLANA,
+                slot=slot,
+                signature=signature,
+                event_index=event.log_index,
+                program_id=program_id,
+                discriminator_or_tag=PUMP_FUN_TRADE_EVENT_DISCRIMINATOR,
+                payload=payload,
+                occurred_at=event.occurred_at,
+                observed_at=observed_at,
+                ingested_at=ingested_at,
+                transport=transport,
+                commitment=commitment,
+                event_schema_version=2,
+                connection_id=connection_id,
+                reconnect_reason=reconnect_reason,
+            )
+        )
+    return tuple(raw)
+
+
 __all__ = [
     "PUMP_FUN_TRADE_EVENT_DECODER_VERSION",
     "PUMP_FUN_TRADE_EVENT_DISCRIMINATOR",
@@ -237,4 +295,5 @@ __all__ = [
     "PumpFunTradeEventExtraction",
     "decode_pump_fun_trade_event",
     "extract_pump_fun_trade_events",
+    "trade_events_to_raw_transactions",
 ]

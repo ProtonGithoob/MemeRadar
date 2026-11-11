@@ -465,3 +465,39 @@ def test_restart_reuses_durable_stream_cursor_without_losing_event_time_order() 
     assert [event.slot for event, _ in second_processor.events] == [100, 101]
     cursor = run(store.load_cursor(Chain.SOLANA, "fixture-live", "early-runtime"))
     assert cursor is not None and cursor.last_observed_slot == 101
+
+
+class TradeTapeDecoder(Decoder):
+    def decode_live(self, transaction: RawChainTransaction) -> NormalizedChainEvent:
+        event_type = str(transaction.payload.get("event_type", "launch"))
+        return replace(super().decode_live(transaction), event_type=event_type)
+
+
+def test_trade_tape_events_are_persisted_without_a_runtime_pass() -> None:
+    store = InMemoryStreamStateStore()
+    worker_coordinator = StreamIntegrityCoordinator(
+        chain=Chain.SOLANA,
+        transport="fixture-live",
+        stream_id="early-runtime",
+        decoder=TradeTapeDecoder(),
+        state_store=store,
+        policy=StreamIntegrityPolicy(recovery_interval_seconds=0),
+        clock=lambda: NOW + timedelta(minutes=1),
+    )
+    processor = Processor()
+    trade = replace(
+        raw(101),
+        signature="worker-trade-101",
+        payload={"mint_address": MINT, "event_type": "trade_event", "side": "buy"},
+    )
+
+    report = run(EarlyRuntimeStreamWorker(worker_coordinator, processor).run(
+        source(raw(100), trade)
+    ))
+
+    assert report.received == 2
+    assert report.processed == 1
+    assert report.persisted_only_events == 1
+    assert [event.event_type for event, _ in processor.events] == ["launch"]
+    persisted = run(store.list_events(from_slot=100, to_slot=101))
+    assert {event.event_type for event in persisted} == {"launch", "trade_event"}

@@ -39,6 +39,12 @@ class EarlyRuntimeStreamReport:
     gap_affected_events: int
     last_slot: int | None
     stopped: bool
+    persisted_only_events: int = 0
+
+
+# Trade tape events are persisted for later reevaluation but never trigger a
+# runtime pass of their own.
+DEFAULT_PERSIST_ONLY_EVENT_TYPES = frozenset({"trade_event"})
 
 
 class EarlyRuntimeStreamWorker:
@@ -48,6 +54,8 @@ class EarlyRuntimeStreamWorker:
         self,
         coordinator: StreamIntegrityCoordinator,
         processor: EarlyEventProcessor,
+        *,
+        persist_only_event_types: frozenset[str] = DEFAULT_PERSIST_ONLY_EVENT_TYPES,
     ) -> None:
         if not isinstance(coordinator, StreamIntegrityCoordinator):
             raise TypeError("coordinator must be a StreamIntegrityCoordinator")
@@ -55,6 +63,7 @@ class EarlyRuntimeStreamWorker:
             raise TypeError("processor must be callable")
         self.coordinator = coordinator
         self.processor = processor
+        self.persist_only_event_types = frozenset(persist_only_event_types)
 
     async def run(
         self,
@@ -69,6 +78,7 @@ class EarlyRuntimeStreamWorker:
         """
 
         received = processed = duplicate_events = conflicted_events = gap_affected = 0
+        persisted_only = 0
         last_slot: int | None = None
         stopped = False
         last_recovery_at: float | None = None
@@ -87,6 +97,8 @@ class EarlyRuntimeStreamWorker:
             for recovery in recoveries:
                 stream_gap = recovery.gap.status is not StreamGapStatus.VERIFIED
                 for recovered_event in recovery.events:
+                    if recovered_event.event_type in self.persist_only_event_types:
+                        continue
                     recovery_result = await self.processor(
                         recovered_event,
                         stream_gap=stream_gap,
@@ -140,6 +152,12 @@ class EarlyRuntimeStreamWorker:
                 if result.status is EventAppendStatus.CONFLICTED:
                     conflicted_events += 1
                     continue
+                if result.event.event_type in self.persist_only_event_types:
+                    # Durable tape evidence only: lifecycle reevaluation reads
+                    # it later with full safety evidence, so a per-trade
+                    # runtime pass (and its quote lookups) is not needed.
+                    persisted_only += 1
+                    continue
                 gaps = await self.coordinator.active_gaps()
                 stream_gap = any(
                     gap.chain is self.coordinator.chain
@@ -172,6 +190,7 @@ class EarlyRuntimeStreamWorker:
             duplicate_events=duplicate_events,
             conflicted_events=conflicted_events,
             gap_affected_events=gap_affected,
+            persisted_only_events=persisted_only,
             last_slot=last_slot,
             stopped=stopped,
         )

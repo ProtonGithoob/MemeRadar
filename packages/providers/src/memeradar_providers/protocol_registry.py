@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Protocol, cast
@@ -32,6 +32,10 @@ from .launchpad_dex import (
     PumpFunAdapter,
     PumpSwapAdapter,
     RaydiumAdapter,
+)
+from .pump_fun_events import (
+    PUMP_FUN_TRADE_EVENT_DECODER_VERSION,
+    PUMP_FUN_TRADE_EVENT_DISCRIMINATOR,
 )
 from .pump_fun_idl import (
     PUMP_FUN_CREATION_DOC_SOURCE,
@@ -56,6 +60,10 @@ from .solana_raw_stream import (
 from .transport import ProviderSchemaError
 
 PROTOCOL_REGISTRY_VERSION = "protocol-registry-v1"
+# Log-emitted Anchor events decoded from ``Program data`` lines. They pass
+# through the canonical decoder unchanged instead of the instruction adapter,
+# and are pinned to their own verified log decoder rather than the IDL.
+PUMP_FUN_LOG_EVENT_NAMES = frozenset({"trade_event"})
 
 
 class ProgramKind(str, Enum):
@@ -257,6 +265,13 @@ class ProtocolRegistryEntry:
     def protocol_pin_status(self) -> str:
         if self.protocol != "pump.fun":
             return "OK"
+        if self.instruction_name in PUMP_FUN_LOG_EVENT_NAMES:
+            return (
+                "OK"
+                if self.decoder_version == PUMP_FUN_TRADE_EVENT_DECODER_VERSION
+                and self.local_schema_version == PUMP_FUN_TRADE_EVENT_DECODER_VERSION
+                else PUMP_FUN_PROTOCOL_DRIFT_DETECTED
+            )
         if any(
             value is None
             for value in (
@@ -724,6 +739,24 @@ def _verified_pump_fun_entry(
     )
 
 
+def _verified_pump_fun_log_event_entry() -> ProtocolRegistryEntry:
+    entry = _verified_production_entry(
+        protocol="pump.fun",
+        program_id=PUMP_FUN_PROGRAM_ID,
+        kind=ProgramKind.ANCHOR,
+        instruction_name="trade_event",
+        tag=PUMP_FUN_TRADE_EVENT_DISCRIMINATOR,
+        sources=(
+            "anchor:sha256(event:TradeEvent)[:8]",
+            "mainnet cross-check 2026-11-11: token balance delta and blockTime "
+            "(fixtures/providers/pump_fun_trade_events_mainnet.json)",
+        ),
+        verified_at=datetime(2026, 11, 11, tzinfo=UTC),
+        local_schema_version=PUMP_FUN_TRADE_EVENT_DECODER_VERSION,
+    )
+    return replace(entry, decoder_version=PUMP_FUN_TRADE_EVENT_DECODER_VERSION)
+
+
 # Verified entries below have current primary documentation, derived tags,
 # keyless decoder fixtures and a live program-identity cross-check. Remaining
 # entries stay provisional and cannot route authoritative production evidence.
@@ -739,6 +772,7 @@ DEFAULT_PROTOCOL_REGISTRY = ProtocolIdentityRegistry(
         _verified_pump_fun_entry(instruction_name="sell", tag=PUMP_FUN_SELL_TAG),
         _verified_pump_fun_entry(instruction_name="sell_v2", tag=PUMP_FUN_SELL_V2_TAG),
         _verified_pump_fun_entry(instruction_name="migrate", tag=PUMP_FUN_MIGRATE_TAG),
+        _verified_pump_fun_log_event_entry(),
         _production_entry(
             protocol="pump.fun",
             # Current Pump public docs publish ...hRvf...; retain TODO_VERIFY
@@ -904,7 +938,11 @@ class CanonicalProtocolDecoder:
             payload["idl_sha256"] = entry.idl_sha256
         if entry.local_schema_version is not None:
             payload["local_schema_version"] = entry.local_schema_version
-        adapter = self._adapters.get(entry.protocol)
+        adapter = (
+            None
+            if entry.instruction_name in PUMP_FUN_LOG_EVENT_NAMES
+            else self._adapters.get(entry.protocol)
+        )
         normalized_event_type = entry.instruction_name
         if adapter is not None:
             if not hasattr(adapter, "parse"):

@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import random
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -34,6 +34,10 @@ from memeradar_domain import Chain, CommitmentState
 from memeradar_domain.common import ensure_ordered_timestamps, ensure_utc, require_text
 from memeradar_domain.identities import require_solana_address
 
+from .pump_fun_events import (
+    extract_pump_fun_trade_events,
+    trade_events_to_raw_transactions,
+)
 from .pump_fun_idl import (
     PUMP_FUN_CREATE_TAG,
     PUMP_FUN_CREATE_V2_TAG,
@@ -544,6 +548,26 @@ class SolanaRpcBackfillAdapter:
                     raise BackfillUnavailableError(
                         f"canonical backfill decode failed for slot {slot}"
                     ) from exc
+                if transaction_meta.get("err") is None:
+                    # Same log decoder as live ingestion, so recovered trade
+                    # tape converges with live trade events.
+                    try:
+                        trade_extraction = extract_pump_fun_trade_events(logs)
+                    except ProviderSchemaError as exc:
+                        raise BackfillUnsupportedDataError(
+                            "unsupported Pump.fun trade event layout"
+                        ) from exc
+                    decoded.extend(
+                        trade_events_to_raw_transactions(
+                            trade_extraction.events,
+                            signature=raw_signatures[0],
+                            slot=slot,
+                            observed_at=block.observed_at,
+                            ingested_at=max(block.observed_at, requested_at),
+                            commitment=CommitmentState.FINALIZED,
+                            transport="solana-rpc-backfill",
+                        )
+                    )
             blocks.append(
                 RawChainBlock(
                     slot=slot,
@@ -578,6 +602,9 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         seen_signature_limit: int = 20_000,
         rejection_sink: Callable[[SolanaLogsNotification, str, str], Awaitable[None]] | None = None,
         initial_reconnect_reason: str | None = "PROCESS_START",
+        trade_tracking_window: timedelta = timedelta(minutes=20),
+        max_tracked_mints: int = 5_000,
+        max_trades_per_mint: int = 1_000,
     ) -> None:
         if not isinstance(rpc, SolanaRpcAdapter):
             raise TypeError("rpc must be a SolanaRpcAdapter")
@@ -604,6 +631,19 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         # worker was down are recorded as a gap instead of being skipped.
         self._pending_reconnect_reason: str | None = initial_reconnect_reason
         self._last_slot: int | None = None
+        # Trade tape is collected only for mints this source saw launch, for a
+        # bounded window, so ordinary Pump.fun volume cannot flood the queue.
+        if (
+            trade_tracking_window <= timedelta(0)
+            or max_tracked_mints < 1
+            or max_trades_per_mint < 1
+        ):
+            raise ValueError("trade tracking window and capacities must be positive")
+        self._max_trades_per_mint = max_trades_per_mint
+        self._tracked_trade_counts: dict[str, int] = {}
+        self._trade_tracking_window = trade_tracking_window
+        self._max_tracked_mints = max_tracked_mints
+        self._tracked_mints: OrderedDict[str, datetime] = OrderedDict()
         self._latency_samples_ms: deque[float] = deque(maxlen=10_000)
         self._launch_observed_at: deque[datetime] = deque(maxlen=10_000)
         self.metrics: dict[str, int] = {
@@ -631,6 +671,10 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
             "confirmed_event_loss": 0,
             "unknown_loss": 0,
             "stream_errors": 0,
+            "trade_events_emitted": 0,
+            "trade_event_decode_failures": 0,
+            "trade_logs_truncated": 0,
+            "trade_events_capped": 0,
         }
 
     def __aiter__(self) -> SolanaRawTransactionSource:
@@ -723,10 +767,27 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                         if notification.signature in self._seen_set:
                             self.metrics["signatures_deduplicated"] += 1
                             continue
-                        if notification.error is not None or not self._is_launch_notification(
-                            notification
-                        ):
+                        if notification.error is not None:
                             self._remember(notification.signature)
+                            continue
+                        if not self._is_launch_notification(notification):
+                            trades = self._tracked_trade_events(
+                                notification.logs,
+                                notification,
+                                observed_at=observed_at,
+                                reconnect_reason=reconnect_reason,
+                            )
+                            for trade in trades:
+                                await self._queue.put(trade)
+                                self.metrics["trade_events_emitted"] += 1
+                                self.metrics["raw_events_emitted"] += 1
+                                self.metrics["queue_depth_max"] = max(
+                                    self.metrics["queue_depth_max"], self._queue.qsize()
+                                )
+                            self._remember(notification.signature)
+                            if trades and reconnect_reason is not None:
+                                self._pending_reconnect_reason = None
+                                reconnect_reason = None
                             continue
                         context = ProviderRequestContext(
                             correlation_id=f"solana:{notification.signature}",
@@ -775,6 +836,26 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                                     notification, self.program_id, "TRANSACTION_DECODE_FAILED"
                                 )
                             raise
+                        for event in events:
+                            if event.payload.get("instruction_type") in _CREATE_NAMES:
+                                self._track_mint(event.payload.get("mint_address"), observed_at)
+                        transaction_meta = transaction.get("meta")
+                        launch_logs = (
+                            transaction_meta.get("logMessages")
+                            if isinstance(transaction_meta, Mapping)
+                            else None
+                        )
+                        if isinstance(launch_logs, Sequence) and not isinstance(
+                            launch_logs, str | bytes | bytearray
+                        ):
+                            trade_events = self._tracked_trade_events(
+                                tuple(str(line) for line in launch_logs),
+                                notification,
+                                observed_at=observed_at,
+                                reconnect_reason=None,
+                            )
+                            events = (*events, *trade_events)
+                            self.metrics["trade_events_emitted"] += len(trade_events)
                         for event in events:
                             await self._queue.put(event)
                             self.metrics["raw_events_emitted"] += 1
@@ -897,6 +978,71 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
             for log in notification.logs
         )
         return has_program and has_create
+
+    def _track_mint(self, mint: object, observed_at: datetime) -> None:
+        if not isinstance(mint, str) or not mint:
+            return
+        if mint not in self._tracked_mints:
+            self._tracked_trade_counts[mint] = 0
+        self._tracked_mints[mint] = observed_at
+        self._tracked_mints.move_to_end(mint)
+        while len(self._tracked_mints) > self._max_tracked_mints:
+            evicted, _ = self._tracked_mints.popitem(last=False)
+            self._tracked_trade_counts.pop(evicted, None)
+
+    def _is_tracked(self, mint: str, at: datetime) -> bool:
+        while self._tracked_mints:
+            oldest_mint, launched_at = next(iter(self._tracked_mints.items()))
+            if at - launched_at <= self._trade_tracking_window:
+                break
+            del self._tracked_mints[oldest_mint]
+            self._tracked_trade_counts.pop(oldest_mint, None)
+        if mint not in self._tracked_mints:
+            return False
+        count = self._tracked_trade_counts.get(mint, 0)
+        if count >= self._max_trades_per_mint:
+            self.metrics["trade_events_capped"] += 1
+            return False
+        self._tracked_trade_counts[mint] = count + 1
+        return True
+
+    def _tracked_trade_events(
+        self,
+        logs: Sequence[str],
+        notification: SolanaLogsNotification,
+        *,
+        observed_at: datetime,
+        reconnect_reason: str | None,
+    ) -> tuple[RawChainTransaction, ...]:
+        """Decode Pump.fun trade events from logs for recently launched mints."""
+
+        if not self._tracked_mints:
+            return ()
+        try:
+            extraction = extract_pump_fun_trade_events(logs, program_id=self.program_id)
+        except ProviderSchemaError:
+            # Layout drift: count it and emit nothing rather than guess fields.
+            self.metrics["trade_event_decode_failures"] += 1
+            return ()
+        if extraction.logs_truncated:
+            self.metrics["trade_logs_truncated"] += 1
+        tracked = tuple(
+            event for event in extraction.events if self._is_tracked(event.mint, observed_at)
+        )
+        if not tracked:
+            return ()
+        return trade_events_to_raw_transactions(
+            tracked,
+            signature=notification.signature,
+            slot=notification.slot,
+            observed_at=observed_at,
+            ingested_at=ensure_utc(self._clock(), "ingested_at"),
+            commitment=notification.commitment,
+            transport=SOLANA_RAW_TRANSPORT,
+            program_id=self.program_id,
+            connection_id=self._connection_id,
+            reconnect_reason=reconnect_reason,
+        )
 
     def _remember(self, signature: str) -> None:
         if len(self._seen) == self._seen.maxlen:

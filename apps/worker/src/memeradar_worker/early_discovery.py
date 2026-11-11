@@ -1142,19 +1142,36 @@ def _reevaluation_observation(
     )
 
 
-async def _load_early_reevaluation_rows(engine: AsyncEngine) -> list[ObservationRow]:
+# Launches older than the last reevaluation offset plus this margin have no
+# remaining milestones, so their rows are not reloaded every cycle.
+EARLY_REEVALUATION_LOOKBACK = timedelta(seconds=max(EARLY_REEVALUATION_OFFSETS_SECONDS)) + (
+    timedelta(hours=1)
+)
+
+
+async def _load_early_reevaluation_rows(
+    engine: AsyncEngine, *, since: datetime | None = None
+) -> list[ObservationRow]:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
-        result = await session.scalars(
-            select(ObservationRow)
-            .where(
-                ObservationRow.kind.in_(
-                    ("chain.event", "market.market_snapshot", "research.early_reevaluation")
-                )
+        statement = select(ObservationRow).where(
+            ObservationRow.kind.in_(
+                ("chain.event", "market.market_snapshot", "research.early_reevaluation")
             )
-            .order_by(ObservationRow.occurred_at, ObservationRow.id)
+        )
+        if since is not None:
+            statement = statement.where(ObservationRow.observed_at >= since)
+        result = await session.scalars(
+            statement.order_by(ObservationRow.occurred_at, ObservationRow.id)
         )
         return list(result.all())
+
+
+def _is_trade_tape_row(row: ObservationRow) -> bool:
+    return (
+        row.kind == "chain.event"
+        and row.normalized_payload.get("event_type") == "trade_event"
+    )
 
 
 async def _run_early_lifecycle_reevaluation(
@@ -1174,7 +1191,9 @@ async def _run_early_lifecycle_reevaluation(
     while not stop_event.is_set():
         now = datetime.now(UTC)
         try:
-            rows = await _load_early_reevaluation_rows(engine)
+            rows = await _load_early_reevaluation_rows(
+                engine, since=now - EARLY_REEVALUATION_LOOKBACK
+            )
             launches: dict[str, ObservationRow] = {}
             for row in rows:
                 if not _pumpfun_launch_row(row):
@@ -1192,7 +1211,9 @@ async def _run_early_lifecycle_reevaluation(
             existing = {row.source_id for row in rows if row.kind == "research.early_reevaluation"}
             market_by_mint: dict[str, list[ObservationRow]] = {}
             for row in rows:
-                if row.kind != "market.market_snapshot":
+                # Market snapshots plus decoded trade tape (never instruction-
+                # level buys, which would double count the same trades).
+                if row.kind != "market.market_snapshot" and not _is_trade_tape_row(row):
                     continue
                 payload_mint = row.normalized_payload.get(
                     "mint_address", row.normalized_payload.get("mint")
