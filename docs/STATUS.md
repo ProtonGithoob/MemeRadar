@@ -16,6 +16,39 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**PUMP_TRADE_TAPE_STAGE2_LIVE_2026-11-11:** Trade tape is wired end to end.
+The protocol registry routes the verified `trade_event`. The live source
+decodes trade events from logs for mints launched within 20 minutes (capped
+per mint). Backfill uses the same log decoder. The stream worker persists
+tape without a runtime pass, and lifecycle reevaluation feeds tape to the
+feature engine. Bounded live mainnet runs (read-only, public RPC, local
+SQLite worker) found and fixed:
+- launch misclassification from other programs' `Create*` logs;
+- `create_v2` 4/8-account extensions rejected as invalid;
+- zero-signature notices forcing reconnects;
+- account and DexScreener snapshot source identities that crashed the worker
+  with `IdempotencyConflict` (46% of reevaluations failed);
+- single-event failures stopping ingestion;
+- persisted chain events discarded as non-production evidence.
+
+Measured over 4 minutes, before → after:
+
+| Metric | Before | After |
+| --- | --- | --- |
+| Launches | 7 | 85 |
+| Decoder failures | 10 | 0 |
+| Trade events | 41 | 3,851 |
+
+A 6-minute full-worker run had 0 crashes and 0 failed reevaluations, with
+organic momentum ranging 35–87 from real tape. Remaining external blockers:
+- `early_score` stays 0 because no executable quote provider is configured
+  (DexScreener reference cannot prove sellability) and public WebSocket
+  disconnects every 15–35 s keep stream gaps open, which fail protocol
+  identity closed;
+- `solana-rpc.publicnode.com` does not deliver `logsSubscribe` notifications.
+
+Protected modes are unchanged; no credentials were used or stored.
+
 **PUMP_TRADE_TAPE_STAGE1_2026-11-11:** A cloud environment with free public
 Solana RPC (`api.mainnet-beta.solana.com`, `solana-rpc.publicnode.com`) and
 DexScreener access was created for read-only verification. The Pump.fun
