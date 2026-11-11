@@ -16,6 +16,18 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**PUMP_TRADE_TAPE_STAGE1_2026-11-11:** A cloud environment with free public
+Solana RPC (`api.mainnet-beta.solana.com`, `solana-rpc.publicnode.com`) and
+DexScreener access was created for read-only verification. The Pump.fun
+Anchor `TradeEvent` (`bddb7fd34ee661ee`) was observed on mainnet, and its
+prefix fields were cross-checked against user token balance deltas and block
+time (51/60 single-trade transactions; the remaining 9 were router trades).
+`memeradar_providers.pump_fun_events` decodes it from logs, accepting a line
+only while Pump.fun is the executing program. Verified mainnet fixtures and 8
+tests were added. Stage 2 is still open: live and backfill wiring, a registry
+entry, tracked-mint gating and a trade-only runtime path that skips
+per-event quote collection.
+
 **AUDIT_REMEDIATION_PHASE2_2026-11-11:** Research validity and paper
 realism fixes, each with a regression test verified failing before the
 change:
