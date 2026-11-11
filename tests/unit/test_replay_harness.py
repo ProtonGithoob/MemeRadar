@@ -410,3 +410,41 @@ def test_dataset_rejects_malformed_entries_and_secret_shaped_payload_fields() ->
             at=NOW,
             payload={"api_key": "redacted"},
         )
+
+
+def test_horizon_ending_after_the_dataset_is_truncated_not_labelled_complete() -> None:
+    records = (
+        event(
+            token(),
+            source_id="truncation-baseline",
+            kind="market.market_data",
+            at=NOW - timedelta(seconds=1),
+            payload={"price_usd": "1", "liquidity_usd": "50000"},
+        ),
+        event(
+            token(),
+            source_id="truncation-last",
+            kind="market.market_data",
+            at=NOW + timedelta(minutes=2),
+            payload={"price_usd": "3", "liquidity_usd": "50000"},
+        ),
+    )
+    policy = OutcomeLabelPolicy(
+        horizons=(
+            ("1m", timedelta(minutes=1)),
+            ("1h", timedelta(hours=1)),
+        ),
+    )
+
+    result = (
+        ReplayHarness(outcome_policy=policy)
+        .replay(dataset(*records), manifest=manifest())
+        .checkpoints[0]
+    )
+
+    one_minute, one_hour = result.outcome.horizons
+    assert one_minute.reason_codes[0].code != "OUTCOME_HORIZON_TRUNCATED"
+    assert one_hour.forward_return is None
+    assert one_hour.quality_state is QualityState.UNKNOWN
+    assert one_hour.reason_codes[0].code == "OUTCOME_HORIZON_TRUNCATED"
+    assert one_hour.mfe == Decimal("2")

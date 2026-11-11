@@ -1475,7 +1475,19 @@ class OutcomeLabeler:
         self,
         records: Sequence[ReplayEventRecord],
         checkpoint: ReplayCheckpoint,
+        *,
+        data_as_of: datetime | None = None,
     ) -> OutcomeLabel:
+        """Label forward outcomes; ``data_as_of`` bounds the available data.
+
+        A horizon that ends after ``data_as_of`` is truncated: events seen
+        inside it (rug, creator dump, partial MFE/MAE bounds) are kept, but the
+        terminal forward return is UNKNOWN instead of using the last available
+        price as the full-horizon outcome.
+        """
+
+        if data_as_of is not None:
+            data_as_of = ensure_utc(data_as_of, "data_as_of")
         if isinstance(records, str | bytes | bytearray):
             raise TypeError("records must be a sequence")
         normalized = tuple(records)
@@ -1526,6 +1538,13 @@ class OutcomeLabeler:
                 checkpoint.as_of,
                 baseline_price,
             )
+            if data_as_of is not None and checkpoint.as_of + duration > data_as_of:
+                label = replace(
+                    label,
+                    forward_return=None,
+                    quality_state=QualityState.UNKNOWN,
+                    reason_codes=(ReasonCode("OUTCOME_HORIZON_TRUNCATED"),),
+                )
             labels.append(label)
             for reference in label.evidence_refs:
                 if reference not in evidence_refs:
@@ -2004,6 +2023,9 @@ class ReplayHarness:
                 raise ValueError("replay event registry_version does not match manifest")
             if record.event_schema_version != manifest.event_schema_version:
                 raise ValueError("replay event schema_version does not match manifest")
+        # The latest event in the dataset bounds what any forward label can
+        # know; horizons that end later are truncated rather than complete.
+        data_end = max((record.event_at for record in dataset.events), default=None)
         results: list[ReplayCheckpointResult] = []
         for checkpoint in dataset.checkpoints:
             if checkpoint.as_of > manifest.as_of:
@@ -2075,7 +2097,9 @@ class ReplayHarness:
                     now=checkpoint.as_of,
                     config_hash=manifest.config_hash,
                 )
-            outcome = self.outcome_labeler.label(token_records, checkpoint)
+            outcome = self.outcome_labeler.label(
+                token_records, checkpoint, data_as_of=data_end
+            )
             early_outcome = self.early_outcome_labeler.label(token_records, checkpoint)
             cohort = _cohort_key(
                 token_records,
