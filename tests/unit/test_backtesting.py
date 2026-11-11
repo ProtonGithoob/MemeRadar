@@ -13,7 +13,11 @@ from memeradar_application.backtesting import (
     BacktestPolicy,
     BacktestReport,
 )
-from memeradar_application.calibration import ScoreCalibrationHarness
+from memeradar_application.calibration import (
+    CalibrationPartition,
+    CalibrationTimeSplit,
+    ScoreCalibrationHarness,
+)
 from memeradar_application.correlation import CorrelationSnapshot, CorrelationWindowFeatures
 from memeradar_application.replay_harness import (
     OutcomeHorizonLabel,
@@ -632,3 +636,21 @@ def test_calibration_ranking_prefers_adequate_samples_and_worst_case_objective()
         key=lambda item: key(item[1], item[0]),
     )
     assert [name for name, _ in ranked] == ["broad", "survivor", "lucky"]
+
+
+
+def test_calibration_split_embargo_purges_checkpoints_whose_labels_cross_a_boundary() -> None:
+    split = CalibrationTimeSplit(
+        train_end=NOW + timedelta(days=2),
+        validation_end=NOW + timedelta(days=4),
+        test_end=NOW + timedelta(days=6),
+        embargo=timedelta(hours=24),
+    )
+
+    assert split.partition(NOW) is CalibrationPartition.TRAIN
+    assert split.partition(NOW + timedelta(days=1, hours=1)) is CalibrationPartition.OUT_OF_RANGE
+    assert split.partition(NOW + timedelta(days=2)) is CalibrationPartition.VALIDATION
+    assert split.partition(NOW + timedelta(days=3, hours=1)) is CalibrationPartition.OUT_OF_RANGE
+    assert split.partition(NOW + timedelta(days=4)) is CalibrationPartition.TEST
+    assert split.partition(NOW + timedelta(days=5, hours=1)) is CalibrationPartition.OUT_OF_RANGE
+    assert split.to_json_dict()["embargo_seconds"] == 86_400

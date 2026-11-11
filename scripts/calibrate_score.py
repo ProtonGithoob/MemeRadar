@@ -63,6 +63,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-end", type=_timestamp)
     parser.add_argument("--validation-end", type=_timestamp)
     parser.add_argument("--test-end", type=_timestamp)
+    parser.add_argument(
+        "--embargo-hours",
+        type=float,
+        default=24.0,
+        help="purge window before each split end; must cover the outcome label horizon",
+    )
     return parser
 
 
@@ -91,15 +97,21 @@ def _load_bundle(input_path: Path) -> tuple[ReplayDataset, ResearchReplayManifes
     return dataset, manifest
 
 
-def _default_split(manifest: ResearchReplayManifest) -> CalibrationTimeSplit:
+def _default_split(
+    manifest: ResearchReplayManifest, embargo: timedelta
+) -> CalibrationTimeSplit:
+    # Each partition spans one day of usable checkpoints plus the embargo, so
+    # purging label overlap never empties a partition.
+    width = timedelta(days=1) + embargo
     test_end = manifest.as_of
-    validation_end = test_end - timedelta(days=1)
-    train_end = test_end - timedelta(days=2)
+    validation_end = test_end - width
+    train_end = validation_end - width
     return CalibrationTimeSplit(
-        start_at=test_end - timedelta(days=3),
+        start_at=train_end - width,
         train_end=train_end,
         validation_end=validation_end,
         test_end=test_end,
+        embargo=embargo,
     )
 
 
@@ -107,6 +119,9 @@ def _split(
     arguments: argparse.Namespace,
     manifest: ResearchReplayManifest,
 ) -> CalibrationTimeSplit:
+    if arguments.embargo_hours < 0:
+        raise ValueError("embargo-hours must not be negative")
+    embargo = timedelta(hours=arguments.embargo_hours)
     supplied = (arguments.train_end, arguments.validation_end, arguments.test_end)
     if any(value is not None for value in supplied) and not all(
         value is not None for value in supplied
@@ -118,8 +133,9 @@ def _split(
             train_end=train_end,
             validation_end=validation_end,
             test_end=test_end,
+            embargo=embargo,
         )
-    return _default_split(manifest)
+    return _default_split(manifest, embargo)
 
 
 def _candidates(arguments: argparse.Namespace) -> tuple[CalibrationCandidate, ...]:

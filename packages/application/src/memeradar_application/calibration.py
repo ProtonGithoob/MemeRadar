@@ -14,7 +14,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import cast
@@ -179,8 +179,14 @@ class CalibrationTimeSplit:
     validation_end: datetime
     test_end: datetime
     start_at: datetime | None = None
+    # Purge window before every partition end. Outcome labels look forward by
+    # the label horizon, so checkpoints closer than that to a boundary would
+    # be labelled with prices from the next partition (or past the data end).
+    embargo: timedelta = timedelta(0)
 
     def __post_init__(self) -> None:
+        if not isinstance(self.embargo, timedelta) or self.embargo < timedelta(0):
+            raise ValueError("embargo must be a non-negative timedelta")
         train_end = ensure_utc(self.train_end, "train_end")
         validation_end = ensure_utc(self.validation_end, "validation_end")
         test_end = ensure_utc(self.test_end, "test_end")
@@ -199,10 +205,16 @@ class CalibrationTimeSplit:
         if self.start_at is not None and checked_at < self.start_at:
             return CalibrationPartition.OUT_OF_RANGE
         if checked_at < self.train_end:
+            if checked_at >= self.train_end - self.embargo:
+                return CalibrationPartition.OUT_OF_RANGE
             return CalibrationPartition.TRAIN
         if checked_at < self.validation_end:
+            if checked_at >= self.validation_end - self.embargo:
+                return CalibrationPartition.OUT_OF_RANGE
             return CalibrationPartition.VALIDATION
         if checked_at < self.test_end:
+            if checked_at >= self.test_end - self.embargo:
+                return CalibrationPartition.OUT_OF_RANGE
             return CalibrationPartition.TEST
         return CalibrationPartition.OUT_OF_RANGE
 
@@ -218,7 +230,8 @@ class CalibrationTimeSplit:
             "train_end": self.train_end.isoformat(),
             "validation_end": self.validation_end.isoformat(),
             "test_end": self.test_end.isoformat(),
-            "interval_semantics": "[start,end)",
+            "embargo_seconds": int(self.embargo.total_seconds()),
+            "interval_semantics": "[start,end - embargo)",
         }
 
 
