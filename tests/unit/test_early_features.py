@@ -228,3 +228,15 @@ def test_bounded_acceleration_uses_a_floor_and_is_bounded() -> None:
     assert values[1] > values[0]
     assert values[1] > values[4]
     assert bounded_acceleration(Decimal("0"), Decimal("0")) == Decimal("0")
+
+
+def test_zero_first_price_leaves_return_unknown_instead_of_crashing() -> None:
+    observations = (
+        trade(-2, wallet="wallet-a", price="0"),
+        trade(-1, wallet="wallet-b", price="3"),
+    )
+
+    window = EarlyFeatureEngine().compute(TOKEN_ID, NOW, observations).windows["5s"]
+
+    assert window.metrics["return"] is None
+    assert window.metrics["price"] == Decimal("3")

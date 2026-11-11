@@ -806,7 +806,11 @@ class EarlyFeatureEngine:
                 ),
                 duration,
             ),
-            "return": None if len(prices) < 2 else prices[-1] / prices[0] - Decimal("1"),
+            "return": (
+                None
+                if len(prices) < 2 or prices[0] <= 0
+                else prices[-1] / prices[0] - Decimal("1")
+            ),
             "liquidity_change": None if len(liquidities) < 2 else liquidities[-1] - liquidities[0],
             "liquidity": liquidities[-1] if liquidities else None,
             "market_cap": market_caps[-1] if market_caps else None,
