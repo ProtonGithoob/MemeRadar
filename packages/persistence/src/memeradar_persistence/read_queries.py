@@ -700,6 +700,9 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             await session.scalars(
                 select(CandidateRow)
                 .options(selectinload(CandidateRow.token))
+                # Without an ordering the database may return any bounded
+                # subset, silently dropping the newest candidates.
+                .order_by(CandidateRow.state_changed_at.desc(), CandidateRow.id.desc())
                 .limit(MAX_STORAGE_ROWS)
             )
         ).all()
@@ -1532,7 +1535,9 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                 ),
                 or_(PositionRow.closed_at.is_(None), PositionRow.closed_at <= query.as_of),
             )
-        statement = statement.limit(MAX_STORAGE_ROWS)
+        statement = statement.order_by(
+            PositionRow.opened_at.desc().nulls_last(), PositionRow.id.desc()
+        ).limit(MAX_STORAGE_ROWS)
         async with self._session_factory() as session:
             rows = (await session.scalars(statement)).all()
             values = tuple(
