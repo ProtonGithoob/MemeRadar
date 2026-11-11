@@ -501,3 +501,26 @@ def test_trade_tape_events_are_persisted_without_a_runtime_pass() -> None:
     assert [event.event_type for event, _ in processor.events] == ["launch"]
     persisted = run(store.list_events(from_slot=100, to_slot=101))
     assert {event.event_type for event in persisted} == {"launch", "trade_event"}
+
+
+def test_one_failed_runtime_projection_does_not_stop_ingestion() -> None:
+    class FlakyProcessor(Processor):
+        async def __call__(self, event: NormalizedChainEvent, *, stream_gap: bool):
+            if event.slot == 100:
+                raise RuntimeError("projection failed")
+            return await super().__call__(event, stream_gap=stream_gap)
+
+    processor = FlakyProcessor()
+    store = InMemoryStreamStateStore()
+    worker = EarlyRuntimeStreamWorker(coordinator(store), processor)
+
+    report = run(worker.run(source(raw(100), raw(101))))
+
+    assert report.received == 2
+    assert report.failed_events == 1
+    assert report.processed == 1
+    assert [event.slot for event, _ in processor.events] == [101]
+    assert {event.slot for event in run(store.list_events(from_slot=100, to_slot=101))} == {
+        100,
+        101,
+    }

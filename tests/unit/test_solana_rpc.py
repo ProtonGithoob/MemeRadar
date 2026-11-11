@@ -339,3 +339,54 @@ def test_standard_rpc_normalizes_http_failures_without_response_body(
         assert "secret-looking" not in str(caught.value)
 
     asyncio.run(scenario())
+
+
+def test_repeated_mint_metadata_reads_are_distinct_snapshots_by_slot() -> None:
+    slots = [100, 100, 101]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "context": {"slot": slots.pop(0)},
+                    "value": {
+                        "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                        "data": {
+                            "parsed": {
+                                "type": "mint",
+                                "info": {
+                                    "decimals": 6,
+                                    "supply": "1000",
+                                    "mintAuthority": None,
+                                    "freezeAuthority": None,
+                                },
+                            }
+                        },
+                    },
+                },
+            },
+        )
+
+    async def scenario() -> list[str]:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter = SolanaRpcAdapter(
+            "https://fixture.solana.example",
+            client=client,
+            transport=one_shot_transport(),
+            clock=lambda: NOW,
+        )
+        try:
+            token = TokenIdentity(mint_address=MINT, token_program="spl-token")
+            return [
+                (await adapter.fetch_token_metadata(token, context=context())).provenance.source_id
+                for _ in range(3)
+            ]
+        finally:
+            await client.aclose()
+
+    first, same_slot, later = asyncio.run(scenario())
+    assert first == same_slot == f"getAccountInfo:mint-metadata:{MINT}:slot:100"
+    assert later == f"getAccountInfo:mint-metadata:{MINT}:slot:101"

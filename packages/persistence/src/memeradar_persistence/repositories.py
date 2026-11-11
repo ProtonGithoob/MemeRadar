@@ -627,7 +627,11 @@ class ObservationRepository:
         )
         if row is not None:
             if not _observation_row_matches(row, mapped):
-                raise IdempotencyConflict("observation conflicts with persisted source identity")
+                raise IdempotencyConflict(
+                    "observation conflicts with persisted source identity: "
+                    f"provider={mapped.provider} kind={mapped.kind} "
+                    f"source_id={mapped.source_id}"
+                )
             return row
         self._session.add(mapped)
         await self._session.flush()

@@ -62,6 +62,23 @@ def _mapping(value: object, field: str) -> Mapping[str, object]:
     return value
 
 
+def _context_slot_suffix(result: Mapping[str, object]) -> str:
+    """Identify an account read by the slot it reflects.
+
+    Repeated reads of the same account are distinct point-in-time snapshots.
+    Without the slot, a later read shared the earlier read's source identity
+    and its different content raised an idempotency conflict that stopped the
+    worker. Reads at the same slot keep one identity and stay idempotent.
+    """
+
+    context = result.get("context")
+    if isinstance(context, Mapping):
+        slot = context.get("slot")
+        if isinstance(slot, int) and not isinstance(slot, bool) and slot >= 0:
+            return f":slot:{slot}"
+    return ""
+
+
 def _nonnegative_int(value: object, field: str) -> int | None:
     if value is _MISSING or value is None:
         return None
@@ -370,7 +387,7 @@ class SolanaRpcAdapter(OnChainPort):
                 else QualityState.UNKNOWN
             )
         provenance = self._provenance(
-            f"getAccountInfo:{normalized_address}",
+            f"getAccountInfo:{normalized_address}{_context_slot_suffix(result_mapping)}",
             observed_at,
             result,
         )
@@ -451,7 +468,10 @@ class SolanaRpcAdapter(OnChainPort):
             else QualityState.UNKNOWN
         )
         provenance = self._provenance(
-            f"getAccountInfo:mint-metadata:{token.mint_address}", observed_at, result
+            f"getAccountInfo:mint-metadata:{token.mint_address}"
+            f"{_context_slot_suffix(result_mapping)}",
+            observed_at,
+            result,
         )
         payload_info = info if isinstance(info, Mapping) else {}
         decimals = payload_info.get("decimals")

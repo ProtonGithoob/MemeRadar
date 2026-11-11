@@ -801,12 +801,18 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
         return pairs
 
     def _provenance(self, source_id: str, observed_at: datetime, raw: object) -> Provenance:
+        payload_hash = _payload_hash(raw)
+        # Market snapshots change between polls but carry no slot. Keying the
+        # source identity by content keeps identical re-reads idempotent and
+        # gives each changed snapshot its own identity; a fixed path made the
+        # second differing poll raise an idempotency conflict.
+        content_key = payload_hash.removeprefix("sha256:")[:16]
         return Provenance(
             provider=DEXSCREENER_PROVIDER,
-            source_id=source_id,
+            source_id=f"{source_id}@{content_key}",
             observed_at=observed_at,
             parser_version=self._parser_version,
-            raw_payload_hash=_payload_hash(raw),
+            raw_payload_hash=payload_hash,
         )
 
     @staticmethod

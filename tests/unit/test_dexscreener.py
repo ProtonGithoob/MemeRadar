@@ -94,7 +94,7 @@ def test_snapshot_filters_chain_and_selects_highest_quality_liquid_pair() -> Non
     observation = observations[0]
     assert observation.token_id == TOKEN_ID
     assert observation.provenance.provider == "dexscreener"
-    assert observation.provenance.source_id.endswith(f":{PAIR_HIGH}")
+    assert f":{PAIR_HIGH}@" in observation.provenance.source_id
     assert observation.quality_state is QualityState.FRESH
     assert observation.occurred_at == datetime.fromtimestamp(1787810300, UTC)
     assert observation.normalized_payload["chain"] == "solana"
@@ -529,3 +529,14 @@ def test_invalid_json_is_a_schema_error() -> None:
             await client.aclose()
 
     asyncio.run(scenario())
+
+
+def test_snapshot_source_identity_changes_with_content_and_is_stable_otherwise() -> None:
+    adapter = DexScreenerAdapter("https://api.dexscreener.com")
+    first = adapter._provenance("/token-pairs/v1/solana/MINT:PAIR", NOW, {"priceUsd": "1"})
+    repeat = adapter._provenance("/token-pairs/v1/solana/MINT:PAIR", NOW, {"priceUsd": "1"})
+    changed = adapter._provenance("/token-pairs/v1/solana/MINT:PAIR", NOW, {"priceUsd": "2"})
+
+    assert first.source_id == repeat.source_id
+    assert first.source_id != changed.source_id
+    assert first.source_id.startswith("/token-pairs/v1/solana/MINT:PAIR@")

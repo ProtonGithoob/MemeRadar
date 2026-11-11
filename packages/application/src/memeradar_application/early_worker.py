@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterable, AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ from .stream_integrity import (
     RawChainTransaction,
     StreamIntegrityCoordinator,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class EarlyEventProcessor(Protocol):
@@ -40,6 +43,7 @@ class EarlyRuntimeStreamReport:
     last_slot: int | None
     stopped: bool
     persisted_only_events: int = 0
+    failed_events: int = 0
 
 
 # Trade tape events are persisted for later reevaluation but never trigger a
@@ -79,6 +83,7 @@ class EarlyRuntimeStreamWorker:
 
         received = processed = duplicate_events = conflicted_events = gap_affected = 0
         persisted_only = 0
+        failed_events = 0
         last_slot: int | None = None
         stopped = False
         last_recovery_at: float | None = None
@@ -167,7 +172,24 @@ class EarlyRuntimeStreamWorker:
                 )
                 if stream_gap:
                     gap_affected += 1
-                runtime_result = await self.processor(result.event, stream_gap=stream_gap)
+                try:
+                    runtime_result = await self.processor(result.event, stream_gap=stream_gap)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    # The event is already durably persisted and lifecycle
+                    # reevaluation re-reads persisted launches, so one failed
+                    # projection must not stop ingestion for every token.
+                    failed_events += 1
+                    LOGGER.warning(
+                        "early_runtime_event_failed",
+                        extra={
+                            "signature": result.event.signature,
+                            "event_type": result.event.event_type,
+                            "error_class": type(exc).__name__,
+                        },
+                    )
+                    continue
                 processed += 1
                 if result.status is EventAppendStatus.DUPLICATE or runtime_result.duplicate:
                     duplicate_events += 1
@@ -191,6 +213,7 @@ class EarlyRuntimeStreamWorker:
             conflicted_events=conflicted_events,
             gap_affected_events=gap_affected,
             persisted_only_events=persisted_only,
+            failed_events=failed_events,
             last_slot=last_slot,
             stopped=stopped,
         )
