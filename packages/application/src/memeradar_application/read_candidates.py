@@ -12,6 +12,7 @@ from uuid import UUID
 from memeradar_domain import (
     CandidateState,
     EarlyDecisionState,
+    PriceSemantics,
     QualityState,
     normalize_chain,
     require_chain_address,
@@ -89,8 +90,11 @@ class EarlyRadarQuery:
     min_score: Decimal | None = None
     risk_quality_state: QualityState | str | None = None
     risk_disposition: str | None = None
+    qualified_only: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.qualified_only, bool):
+            raise TypeError("qualified_only must be a boolean")
         object.__setattr__(self, "cursor", _optional_cursor(self.cursor))
         object.__setattr__(self, "limit", _bounded_limit(self.limit))
         if self.state is not None:
@@ -244,12 +248,17 @@ class EarlyRadarView:
     unique_buyers: Mapping[str, object] = field(default_factory=dict)
     quote_inflow: Mapping[str, object] = field(default_factory=dict)
     liquidity_usd: Decimal | int | float | str | None = None
+    buy_impact_bps: Decimal | int | float | str | None = None
     price_impact_bps: Decimal | int | float | str | None = None
     creator_risk: str = "UNKNOWN"
     bundle_risk: str = "UNKNOWN"
     holder_risk: str = "UNKNOWN"
     smart_money_confluence: Decimal | int | float | str | None = None
     sellability: str = "UNKNOWN"
+    mint_authority_safe: bool | None = None
+    freeze_authority_safe: bool | None = None
+    protocol_identity_verified: bool | None = None
+    quote_semantics: str | None = None
     shadow_entry_status: str = "NOT_ATTEMPTED"
     external_call_lead_time_ms: Decimal | int | float | str | None = None
     hard_block_reasons: tuple[str, ...] = ()
@@ -309,6 +318,7 @@ class EarlyRadarView:
             "launch_age_seconds",
             "first_seen_latency_ms",
             "liquidity_usd",
+            "buy_impact_bps",
             "price_impact_bps",
             "external_call_lead_time_ms",
         ):
@@ -357,6 +367,20 @@ class EarlyRadarView:
                 self,
                 field_name,
                 require_text(getattr(self, field_name), field_name, max_length=32).upper(),
+            )
+        for field_name in (
+            "mint_authority_safe",
+            "freeze_authority_safe",
+            "protocol_identity_verified",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, bool):
+                raise TypeError(f"{field_name} must be a boolean or None")
+        if self.quote_semantics is not None:
+            object.__setattr__(
+                self,
+                "quote_semantics",
+                PriceSemantics(self.quote_semantics).value,
             )
         for field_name in (
             "buy_velocity",

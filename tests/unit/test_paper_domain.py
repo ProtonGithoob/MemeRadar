@@ -63,6 +63,7 @@ def test_paper_order_records_fill_and_preserves_idempotency_identity() -> None:
         idempotency_key="paper-order-1",
         quote_snapshot={"input_amount": "10", "output_amount": "100"},
     )
+    assert order.fill_model_version == "paper-fill-v2"
     fill = PaperFill(
         order_id=order.id,
         occurred_at=NOW + timedelta(seconds=1),

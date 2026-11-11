@@ -1,4 +1,22 @@
-from memeradar_application.pumpfun_forward_report import build_forward_report
+from memeradar_application.pumpfun_forward_report import (
+    build_forward_report as _build_forward_report,
+)
+
+
+def build_forward_report(rows, **kwargs):
+    """These aggregation fixtures represent identities already verified by the caller."""
+    prepared = []
+    verified = set()
+    for index, original in enumerate(rows):
+        row = dict(original)
+        if row.get("kind") == "chain.event" and (
+            row.get("event_type") in {"launch", "create", "create_v2"}
+            or row.get("instruction_type") in {"create", "create_v2"}
+        ):
+            row["id"] = f"fixture-{index}"
+            verified.add(row["id"])
+        prepared.append(row)
+    return _build_forward_report(prepared, verified_launch_ids=frozenset(verified), **kwargs)
 
 
 def test_forward_report_has_requested_counts_and_no_denominator_free_rates() -> None:

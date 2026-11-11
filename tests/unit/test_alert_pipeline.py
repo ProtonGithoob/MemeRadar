@@ -22,7 +22,10 @@ from memeradar_application.alert_pipeline import (
 )
 from memeradar_application.provider_contracts import (
     DeliveryReceipt,
+    NotificationNotSent,
     NotificationPort,
+    NotificationRateLimited,
+    NotificationRejected,
     NotificationRequest,
 )
 from memeradar_application.reliability import LatencyMetric
@@ -34,7 +37,7 @@ from memeradar_domain import (
     EventEnvelope,
     ReasonCode,
 )
-from memeradar_providers.transport import ProviderTimeoutError
+from memeradar_worker import operations_jobs
 
 NOW = datetime(2026, 8, 31, 2, 0, tzinfo=UTC)
 CANDIDATE_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -95,6 +98,22 @@ def test_renderer_is_bounded_explainable_and_redacts_secret_shaped_text() -> Non
     assert "should-not-be-rendered" not in rendered
     assert "api_key" not in rendered.lower()
     assert len(rendered) <= 4096
+
+
+def test_early_runtime_alert_shows_decision_time_age_and_safety() -> None:
+    source = event("CandidateStateChanged", "early-display", {
+        "from_state": "WATCH", "to_state": "EARLY_WATCH", "mint": "fixture-mint",
+        "state_at": "2026-08-31T02:00:02+00:00", "token_age_seconds": 12,
+        "safety_status": "PASS", "early_score": "70", "liquidity": "25000",
+        "critical_unknowns": ("HOLDER_UNKNOWN",),
+    })
+    alert = AlertEventProjector().project(source)
+    assert alert is not None
+    rendered = AlertRenderer().render(alert)
+    assert "Decision time: 2026-08-31T02:00:02+00:00" in rendered
+    assert "Age (seconds): 12" in rendered
+    assert "Safety: PASS" in rendered
+    assert "HOLDER_UNKNOWN" in rendered
 
 
 def test_renderer_projects_ultra_early_fields_and_keeps_auto_execution_locked() -> None:
@@ -496,12 +515,121 @@ class FakeNotification(NotificationPort):
         self.requests.append(request)
         if self.failures:
             self.failures -= 1
-            raise ProviderTimeoutError("notification timed out")
+            raise NotificationNotSent("connection failed before submission")
         return DeliveryReceipt(
             provider_message_id=f"message-{len(self.requests)}",
             delivered_at=request.context.requested_at + timedelta(seconds=1),
             accepted=True,
         )
+
+
+def test_unknown_notification_outcome_is_persisted_and_not_resent() -> None:
+    from memeradar_application.provider_contracts import NotificationOutcomeUnknown
+
+    class Ambiguous(FakeNotification):
+        async def send(self, request: NotificationRequest) -> DeliveryReceipt:
+            self.requests.append(request)
+            raise NotificationOutcomeUnknown("acknowledgement unavailable")
+
+    store = FakeAlertStore()
+    notification = Ambiguous()
+    service = AlertDeliveryService(store, notification, destination="fixture", clock=lambda: NOW)
+    source = event(
+        "CandidateStateChanged", "ambiguous-transition",
+        {"from_state": "WATCH", "to_state": "EARLY_WATCH", "safety_status": "PASS",
+         "notification_eligible": True},
+    )
+    asyncio.run(service.handle_event(source))
+    asyncio.run(service.handle_event(source))
+    assert len(notification.requests) == 1
+    assert next(iter(store.alerts.values())).state.value == "DELIVERY_UNKNOWN"
+
+
+def test_interrupted_send_is_unknown_after_service_restart() -> None:
+    class Interrupted(FakeNotification):
+        async def send(self, request: NotificationRequest) -> DeliveryReceipt:
+            self.requests.append(request)
+            raise asyncio.CancelledError()
+
+    store = FakeAlertStore()
+    notification = Interrupted()
+    source = event(
+        "CandidateStateChanged", "interrupted-transition",
+        {"from_state": "WATCH", "to_state": "EARLY_WATCH", "safety_status": "PASS",
+         "notification_eligible": True},
+    )
+    service = AlertDeliveryService(store, notification, destination="fixture", clock=lambda: NOW)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(service.handle_event(source))
+    restarted = AlertDeliveryService(store, notification, destination="fixture", clock=lambda: NOW)
+    asyncio.run(restarted.handle_event(source))
+    assert len(notification.requests) == 1
+    assert next(iter(store.alerts.values())).state.value == "DELIVERY_UNKNOWN"
+
+
+def test_expired_candidate_is_persistently_suppressed_without_sending() -> None:
+    store = FakeAlertStore()
+    notification = FakeNotification()
+    service = AlertDeliveryService(store, notification, destination="fixture", clock=lambda: NOW)
+    source = event(
+        "CandidateStateChanged", "expired-transition",
+        {"from_state": "WATCH", "to_state": "EARLY_WATCH", "safety_status": "PASS",
+         "notification_eligible": True},
+    )
+
+    asyncio.run(operations_jobs._handle_alert_event(
+        source, service, now=source.ingested_at + timedelta(minutes=6)
+    ))
+
+    assert notification.requests == []
+    alert = next(iter(store.alerts.values()))
+    assert alert.state is AlertState.SUPPRESSED
+    assert "ALERT_EXPIRED" in {reason.code for reason in alert.reason_codes}
+
+
+def test_worker_delivers_fresh_candidate_and_preserves_receipt_when_replayed_late() -> None:
+    store = FakeAlertStore()
+    notification = FakeNotification()
+    service = AlertDeliveryService(
+        store, notification, destination="fixture", clock=lambda: NOW + timedelta(seconds=2)
+    )
+    source = event(
+        "CandidateStateChanged", "fresh-transition",
+        {"from_state": "WATCH", "to_state": "EARLY_WATCH", "safety_status": "PASS",
+         "notification_eligible": True},
+    )
+
+    async def exercise() -> None:
+        await operations_jobs._handle_alert_event(source, service, now=source.ingested_at)
+        await operations_jobs._handle_alert_event(
+            source, service, now=source.ingested_at + timedelta(minutes=6)
+        )
+
+    asyncio.run(exercise())
+    assert len(notification.requests) == 1
+    alert = next(iter(store.alerts.values()))
+    assert alert.state is AlertState.DELIVERED
+    assert alert.delivered_at is not None
+
+
+def test_worker_suppresses_future_and_unqualified_decisions() -> None:
+    for payload, offset, reason in (
+        ({"notification_eligible": True, "safety_status": "PASS"}, -1,
+         "ALERT_DECISION_IN_FUTURE"),
+        ({"notification_eligible": False, "safety_status": "UNKNOWN"}, 0,
+         "ALERT_INELIGIBLE"),
+    ):
+        store = FakeAlertStore()
+        notification = FakeNotification()
+        service = AlertDeliveryService(store, notification, destination="fixture")
+        source = event("CandidateStateChanged", reason, {
+            **payload, "from_state": "WATCH", "to_state": "EARLY_WATCH",
+        })
+        asyncio.run(operations_jobs._handle_alert_event(
+            source, service, now=source.ingested_at + timedelta(seconds=offset)
+        ))
+        assert not notification.requests
+        assert reason in {code.code for code in next(iter(store.alerts.values())).reason_codes}
 
 
 def test_delivery_is_deduplicated_and_retries_transient_provider_failure() -> None:
@@ -528,7 +656,7 @@ def test_delivery_is_deduplicated_and_retries_transient_provider_failure() -> No
         reason_codes=(ReasonCode("WATCH_THRESHOLD_REACHED"),),
     )
 
-    with pytest.raises(ProviderTimeoutError):
+    with pytest.raises(NotificationNotSent):
         asyncio.run(service.handle_event(source))
     failed = next(iter(store.alerts.values()))
     assert failed.state is AlertState.FAILED
@@ -553,6 +681,85 @@ def test_delivery_is_deduplicated_and_retries_transient_provider_failure() -> No
     assert timing["decision_to_send_ms"] == 1000
     assert timing["sent_timestamp_semantics"] == "SENT_TO_TELEGRAM_API"
     assert timing["delivered_to_user_at"] is None
+
+
+def test_unclassified_notification_error_is_ambiguous_and_never_retried() -> None:
+    class Unclassified(FakeNotification):
+        async def send(self, request: NotificationRequest) -> DeliveryReceipt:
+            self.requests.append(request)
+            raise RuntimeError("transport adapter returned an unknown failure")
+
+    store = FakeAlertStore()
+    notification = Unclassified()
+    service = AlertDeliveryService(store, notification, destination="fixture", clock=lambda: NOW)
+    source = event(
+        "CandidateStateChanged",
+        "unclassified-notification-error",
+        {
+            "from_state": "WATCH",
+            "to_state": "EARLY_WATCH",
+            "safety_status": "PASS",
+            "notification_eligible": True,
+        },
+    )
+    result = asyncio.run(service.handle_event(source))
+    replay = asyncio.run(service.handle_event(source))
+    assert result.status is AlertDeliveryStatus.DELIVERY_UNKNOWN
+    assert replay.status is AlertDeliveryStatus.DELIVERY_UNKNOWN
+    assert len(notification.requests) == 1
+
+
+def test_provider_rejection_is_recorded_without_outbox_retry() -> None:
+    class Rejected(FakeNotification):
+        async def send(self, request: NotificationRequest) -> DeliveryReceipt:
+            self.requests.append(request)
+            raise NotificationRejected("HTTP_400")
+
+    store = FakeAlertStore()
+    notification = Rejected()
+    service = AlertDeliveryService(store, notification, destination="fixture", clock=lambda: NOW)
+    source = event(
+        "CandidateStateChanged",
+        "definite-notification-rejection",
+        {
+            "from_state": "WATCH",
+            "to_state": "EARLY_WATCH",
+            "safety_status": "PASS",
+            "notification_eligible": True,
+        },
+    )
+    result = asyncio.run(service.handle_event(source))
+    assert result.status is AlertDeliveryStatus.REJECTED
+    assert result.alert is not None
+    assert result.alert.state is AlertState.FAILED
+    assert "TELEGRAM_REJECTED" in {reason.code for reason in result.alert.reason_codes}
+    assert len(notification.requests) == 1
+
+
+def test_telegram_rate_limit_uses_bounded_retry_after() -> None:
+    class Limited(FakeNotification):
+        async def send(self, request: NotificationRequest) -> DeliveryReceipt:
+            self.requests.append(request)
+            raise NotificationRateLimited(4)
+
+    store = FakeAlertStore()
+    notification = Limited()
+    service = AlertDeliveryService(store, notification, destination="fixture", clock=lambda: NOW)
+    source = event(
+        "CandidateStateChanged",
+        "telegram-rate-limited",
+        {
+            "from_state": "WATCH",
+            "to_state": "EARLY_WATCH",
+            "safety_status": "PASS",
+            "notification_eligible": True,
+        },
+    )
+    with pytest.raises(AlertDeliveryDeferred) as deferred:
+        asyncio.run(service.handle_event(source))
+    assert deferred.value.retry_at == NOW + timedelta(seconds=4)
+    assert next(iter(store.alerts.values())).state is AlertState.FAILED
+    assert len(notification.requests) == 1
 
 
 def test_delivery_defers_when_destination_rate_limit_is_exhausted() -> None:

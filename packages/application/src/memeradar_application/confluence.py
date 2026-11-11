@@ -344,7 +344,7 @@ class TokenSmartMoneyScore:
         events = tuple(self.events)
         if any(not isinstance(value, SmartMoneyEvent) for value in events):
             raise TypeError("events must contain SmartMoneyEvent values")
-        if any(event.token != self.token for event in events):
+        if any(event.token.canonical_id != self.token.canonical_id for event in events):
             raise ValueError("score events must use the score token")
         confluence_count = sum(
             event.event_type is SmartMoneyEventType.CONFLUENCE for event in events
@@ -466,10 +466,13 @@ class ConfluenceAnalyzer:
         for snapshot in snapshots:
             if not isinstance(snapshot, WalletTrackingSnapshot):
                 raise TypeError("snapshots must contain WalletTrackingSnapshot values")
-            token_key = str(snapshot.token.id)
+            token_key = snapshot.token.canonical_id
             existing_token = token_by_id.get(token_key)
-            if existing_token is not None and existing_token != snapshot.token:
-                raise ValueError(f"conflicting token identity for {snapshot.token.mint_address}")
+            if (
+                existing_token is not None
+                and existing_token.token_program != snapshot.token.token_program
+            ):
+                raise ValueError(f"conflicting token program for {snapshot.token.mint_address}")
             token_by_id[token_key] = snapshot.token
             snapshot_key = (token_key, snapshot.wallet_address, snapshot.as_of)
             existing_snapshot = seen_snapshots.get(snapshot_key)
@@ -487,10 +490,13 @@ class ConfluenceAnalyzer:
         for graph in wallet_graphs or ():
             if not isinstance(graph, WalletGraphSnapshot):
                 raise TypeError("wallet_graphs must contain WalletGraphSnapshot values")
-            token_key = str(graph.token.id)
+            token_key = graph.token.canonical_id
             existing_token = token_by_id.get(token_key)
-            if existing_token is not None and existing_token != graph.token:
-                raise ValueError(f"conflicting graph token identity for {graph.token.mint_address}")
+            if (
+                existing_token is not None
+                and existing_token.token_program != graph.token.token_program
+            ):
+                raise ValueError(f"conflicting graph token program for {graph.token.mint_address}")
             graph_key = (token_key, graph.as_of)
             existing_graph = seen_graphs.get(graph_key)
             if existing_graph is not None:
@@ -666,7 +672,10 @@ class ConfluenceAnalyzer:
             cluster_provenance = cluster_context.provenance.get(cluster_id, ())
             for snapshot in wallet_snapshots:
                 for trip in snapshot.round_trips:
-                    if trip.token != token or trip.wallet_address != wallet:
+                    if (
+                        trip.token.canonical_id != token.canonical_id
+                        or trip.wallet_address != wallet
+                    ):
                         raise ValueError("wallet round trip does not match its snapshot")
                     trip_key = self._trip_key(trip)
                     existing_trip = seen_trips.get(trip_key)

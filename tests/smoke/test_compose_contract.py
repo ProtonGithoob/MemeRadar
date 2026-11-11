@@ -58,6 +58,23 @@ def test_dockerfiles_keep_runtime_entrypoints_explicit():
     assert 'CMD ["node", "server.js"]' in web_dockerfile
 
 
+def test_web_runtime_image_removes_unused_npm_tooling():
+    web_dockerfile = (ROOT / "infra" / "docker" / "web.Dockerfile").read_text()
+    runner_stage = web_dockerfile.split("FROM node:22-alpine AS runner", maxsplit=1)[1]
+
+    assert "/usr/local/lib/node_modules/npm" in runner_stage
+    assert "/usr/local/bin/npm" in runner_stage
+    assert "/usr/local/bin/npx" in runner_stage
+
+
+def test_python_runtime_images_apply_current_distribution_security_updates():
+    for filename in ("api.Dockerfile", "worker.Dockerfile"):
+        dockerfile = (ROOT / "infra" / "docker" / filename).read_text()
+
+        assert "apt-get update" in dockerfile
+        assert "apt-get upgrade" in dockerfile
+
+
 def test_helius_read_layer_and_doctor_are_explicit_and_keyless():
     from memeradar_providers.helius import HeliusRpcAdapter
     from memeradar_providers.helius_stream import (

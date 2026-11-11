@@ -1,6 +1,7 @@
 """Provider-independent read-query, pagination and safety contracts."""
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -106,6 +107,19 @@ def test_candidate_ranking_filter_and_cursor_are_deterministic() -> None:
     )
     assert [item.score for item in first_page.items] == [Decimal("90")]
     assert [item.score for item in next_page.items] == [Decimal("75")]
+
+
+def test_unscored_candidates_can_be_paginated() -> None:
+    first = replace(candidate("1"), score=None)
+    second = replace(candidate("2"), score=None)
+    service = InMemoryReadQueryService(candidates=(first, second))
+    page = asyncio.run(service.list_candidates(CandidateQuery(limit=1)))
+    assert page.has_more and page.next_cursor
+    next_page = asyncio.run(
+        service.list_candidates(CandidateQuery(limit=1, cursor=page.next_cursor))
+    )
+    assert len(next_page.items) == 1
+    assert next_page.items[0].id != page.items[0].id
 
 
 def test_timeline_applies_as_of_and_redacts_payload() -> None:

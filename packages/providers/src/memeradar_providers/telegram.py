@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
+import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from types import TracebackType
@@ -14,7 +16,11 @@ import httpx
 
 from memeradar_application.provider_contracts import (
     DeliveryReceipt,
+    NotificationNotSent,
+    NotificationOutcomeUnknown,
     NotificationPort,
+    NotificationRateLimited,
+    NotificationRejected,
     NotificationRequest,
     ProviderRequestContext,
     SocialCallPort,
@@ -43,6 +49,15 @@ TELEGRAM_GET_UPDATES_METHOD = "getUpdates"
 TELEGRAM_HEALTH_METHOD = "getMe"
 MAX_MESSAGE_LENGTH = 4096
 Clock = Callable[[], datetime]
+
+
+class _TelegramHttpLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return re.search(r"https?://[^\s]+/bot[^/\s]+/", record.getMessage()) is None
+
+
+# HTTPX logs complete request URLs at INFO; Telegram embeds the bot token in the path.
+logging.getLogger("httpx").addFilter(_TelegramHttpLogFilter())
 
 _CREDENTIAL_QUERY_KEYS = {
     "api_key",
@@ -280,6 +295,10 @@ class TelegramNotificationAdapter(NotificationPort):
                         pool=self._transport.timeouts.connect_seconds,
                     ),
                 )
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+                raise NotificationNotSent(
+                    "telegram connection failed before request submission"
+                ) from exc
             except httpx.TimeoutException as exc:
                 raise ProviderTimeoutError("telegram request timed out") from exc
             except httpx.TransportError as exc:
@@ -320,6 +339,7 @@ class TelegramNotificationAdapter(NotificationPort):
         return await self._transport.execute(
             operation,
             timeout_seconds=self._timeout_for(context),
+            allow_retries=payload is None,
         )
 
     async def check_health(self, *, context: ProviderRequestContext) -> Mapping[str, object]:
@@ -350,25 +370,44 @@ class TelegramNotificationAdapter(NotificationPort):
             value = _optional_bool(request.payload.get(field_name), field_name)
             if value is not None:
                 body[field_name] = value
-        result = await self._request(
-            TELEGRAM_SEND_MESSAGE_METHOD,
-            context=request.context,
-            payload=body,
-        )
-        if not isinstance(result, Mapping) or result.get("ok") is not True:
-            if isinstance(result, Mapping):
-                parameters = result.get("parameters")
-                if isinstance(parameters, Mapping):
-                    retry_after = parameters.get("retry_after")
-                    if isinstance(retry_after, int | float) and not isinstance(retry_after, bool):
-                        raise ProviderRateLimitedError(float(retry_after))
-            raise ProviderSchemaError("telegram send response was not accepted")
+        try:
+            result = await self._request(
+                TELEGRAM_SEND_MESSAGE_METHOD,
+                context=request.context,
+                payload=body,
+            )
+        except ProviderRateLimitedError as exc:
+            raise NotificationRateLimited(exc.retry_after_seconds) from exc
+        except ProviderAuthenticationError as exc:
+            raise NotificationRejected("AUTHENTICATION_REJECTED") from exc
+        except (
+            ProviderTimeoutError,
+            ProviderUnavailableError,
+            ProviderSchemaError,
+            TimeoutError,
+        ) as exc:
+            raise NotificationOutcomeUnknown(
+                "telegram delivery acknowledgement unavailable"
+            ) from exc
+        except ProviderError as exc:
+            raise NotificationRejected("HTTP_REJECTED") from exc
+        if not isinstance(result, Mapping):
+            raise NotificationOutcomeUnknown("telegram send result was invalid")
+        parameters = result.get("parameters")
+        if isinstance(parameters, Mapping):
+            retry_after = parameters.get("retry_after")
+            if isinstance(retry_after, int | float) and not isinstance(retry_after, bool):
+                raise NotificationRateLimited(float(retry_after))
+        if result.get("ok") is False:
+            raise NotificationRejected("TELEGRAM_REJECTED")
+        if result.get("ok") is not True:
+            raise NotificationOutcomeUnknown("telegram send acknowledgement was ambiguous")
         message = result.get("result")
         if not isinstance(message, Mapping):
-            raise ProviderSchemaError("telegram send result was invalid")
+            raise NotificationOutcomeUnknown("telegram send result was invalid")
         message_id = message.get("message_id")
         if isinstance(message_id, bool) or not isinstance(message_id, int) or message_id < 1:
-            raise ProviderSchemaError("telegram send result was missing message_id")
+            raise NotificationOutcomeUnknown("telegram send result was missing message_id")
         return DeliveryReceipt(
             provider_message_id=str(message_id),
             delivered_at=max(
@@ -442,9 +481,7 @@ class TelegramCallAdapter(TelegramNotificationAdapter, SocialCallPort):
                 continue
             payload, update_id = prepared
             next_update_id = (
-                update_id + 1
-                if next_update_id is None
-                else max(next_update_id, update_id + 1)
+                update_id + 1 if next_update_id is None else max(next_update_id, update_id + 1)
             )
             calls.append(
                 normalize_social_call(

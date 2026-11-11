@@ -102,6 +102,8 @@ def test_in_memory_early_radar_is_bounded_ranked_and_preserves_unknowns() -> Non
     assert unknown.items == (second,)
     assert unknown.items[0].execution_eligible is False
     assert unknown.items[0].holder_risk == "UNKNOWN"
+    qualified = asyncio.run(service.list_early_radar(EarlyRadarQuery(qualified_only=True)))
+    assert qualified.items == ()
 
 
 def test_early_radar_api_returns_explainable_fields_and_stays_get_only() -> None:

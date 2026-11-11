@@ -9,7 +9,12 @@ from types import SimpleNamespace
 import pytest
 
 from memeradar_application.provider_contracts import ProviderRequestContext
-from memeradar_application.stream_integrity import BackfillRequest
+from memeradar_application.stream_integrity import (
+    BackfillBoundsError,
+    BackfillRequest,
+    BackfillTimeoutError,
+    BackfillUnavailableError,
+)
 from memeradar_domain import CommitmentState
 from memeradar_providers import solana_raw_stream
 from memeradar_providers.solana_raw_stream import (
@@ -21,7 +26,7 @@ from memeradar_providers.solana_raw_stream import (
     parse_logs_notification,
 )
 from memeradar_providers.solana_rpc import SolanaRpcAdapter
-from memeradar_providers.transport import ProviderSchemaError
+from memeradar_providers.transport import ProviderSchemaError, ProviderTimeoutError
 
 NOW = datetime(2026, 9, 20, 18, 0, tzinfo=UTC)
 SIGNATURE = "5" * 88
@@ -206,6 +211,68 @@ def test_solana_rpc_backfill_uses_the_same_pump_decoder_as_live_ingest() -> None
     assert result.produced_slots == (448780651,)
     assert len(result.transactions) == 1
     assert result.transactions[0].payload["event_type"] == "create_v2"
+    assert result.commitment is CommitmentState.FINALIZED
+
+
+def test_backfill_unknown_create_instruction_is_not_reported_complete() -> None:
+    rpc = SolanaRpcAdapter("https://fixture.solana.example")
+    transaction = _transaction()
+    transaction["transaction"]["signatures"] = [SIGNATURE]  # type: ignore[index]
+    transaction["transaction"]["message"]["instructions"][0]["data"] = (  # type: ignore[index]
+        _base58_encode(bytes.fromhex("ff" * 8))
+    )
+    transaction["meta"]["logMessages"] = [  # type: ignore[index]
+        f"Program {PUMP_FUN_PROGRAM_ID} invoke [1]",
+        "Program log: Instruction: CreateV3",
+    ]
+    block_time = datetime.fromtimestamp(transaction["blockTime"], UTC)  # type: ignore[arg-type]
+
+    async def fetch_blocks(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(normalized_payload={"slots": (448780651,)}, observed_at=NOW)
+
+    async def fetch_block(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            normalized_payload={"slot": 448780651, "transactions": (transaction,)},
+            observed_at=NOW,
+            occurred_at=block_time,
+        )
+
+    rpc.fetch_blocks = fetch_blocks  # type: ignore[method-assign]
+    rpc.fetch_block = fetch_block  # type: ignore[method-assign]
+    request = BackfillRequest(
+        chain="solana",
+        stream_id="fixture-stream",
+        from_slot=448780651,
+        to_slot=448780651,
+    )
+
+    with pytest.raises(BackfillUnavailableError, match="unsupported"):
+        asyncio.run(SolanaRpcBackfillAdapter(rpc).fetch(request))
+
+
+def test_backfill_translates_provider_timeout_for_recovery() -> None:
+    rpc = SolanaRpcAdapter("https://fixture.solana.example")
+
+    async def timed_out(*_args: object, **_kwargs: object) -> object:
+        raise ProviderTimeoutError("deadline")
+
+    rpc.fetch_blocks = timed_out  # type: ignore[method-assign]
+    request = BackfillRequest(chain="solana", stream_id="fixture", from_slot=1, to_slot=1)
+    with pytest.raises(BackfillTimeoutError):
+        asyncio.run(SolanaRpcBackfillAdapter(rpc).fetch(request))
+
+
+def test_backfill_range_above_rpc_limit_fails_as_bounded_recovery() -> None:
+    rpc = SolanaRpcAdapter("https://fixture.solana.example")
+    request = BackfillRequest(
+        chain="solana",
+        stream_id="fixture",
+        from_slot=0,
+        to_slot=501,
+    )
+
+    with pytest.raises(BackfillBoundsError):
+        asyncio.run(SolanaRpcBackfillAdapter(rpc).fetch(request))
 
 
 def test_transaction_mapping_resolves_versioned_lookup_table_accounts() -> None:
@@ -426,9 +493,59 @@ def test_source_reconnects_restores_subscription_and_emits_raw_event(monkeypatch
         assert health["create_v2_observed"] == 1
         assert health["get_transaction_retries"] == 0
         assert health["decoder_failures"] == 0
+        assert health["subscription_reconnects"] == 1
+        assert health["recovery_succeeded"] == 0
         assert health["dropped_events"] == 0
         assert "latency_p95_ms" in health
         await source.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_failed_transaction_decode_is_not_deduplicated_or_silently_covered(monkeypatch) -> None:
+    class Session:
+        def __init__(self) -> None:
+            self.messages = [json.dumps({"result": 7}), json.dumps(_notification())]
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+        async def send(self, _value: str) -> None:
+            pass
+
+        async def recv(self) -> str:
+            return self.messages.pop(0)
+
+    async def scenario() -> None:
+        stop = asyncio.Event()
+        rejected = []
+
+        async def on_rejection(notification, program_id, reason):
+            rejected.append((notification.signature, program_id, reason))
+
+        source = SolanaRawTransactionSource(
+            SolanaRpcAdapter("https://fixture.solana.example"), stop_event=stop,
+            rejection_sink=on_rejection,
+        )
+        monkeypatch.setattr(solana_raw_stream.websockets, "connect", lambda *a, **k: Session())
+
+        async def fetch(*_args: object, **_kwargs: object):
+            return _transaction()
+
+        def fail_decode(*_args: object, **_kwargs: object):
+            stop.set()
+            raise ProviderSchemaError("invalid transaction")
+
+        source.rpc.fetch_transaction_payload = fetch  # type: ignore[method-assign]
+        monkeypatch.setattr(solana_raw_stream, "map_transaction_to_raw_events", fail_decode)
+        await source._run()
+        assert SIGNATURE not in source._seen_set
+        assert source.metrics["decoder_failures"] == 1
+        assert source.metrics["unknown_loss"] == 1
+        assert rejected == [(SIGNATURE, PUMP_FUN_PROGRAM_ID, "TRANSACTION_DECODE_FAILED")]
 
     asyncio.run(scenario())
 

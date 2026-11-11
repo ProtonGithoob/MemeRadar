@@ -5,6 +5,8 @@ from decimal import Decimal
 from memeradar_application.fast_safety import FastSafetyGate, FastSafetyStatus
 
 BASE_EVIDENCE = {
+    "protocol_identity_verified": True,
+    "quote_semantics": "EXECUTION_QUOTE",
     "mint_authority_safe": True,
     "freeze_authority_safe": True,
     "liquidity": Decimal("25000"),

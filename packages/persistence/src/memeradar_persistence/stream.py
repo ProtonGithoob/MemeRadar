@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from memeradar_application.stream_integrity import (
@@ -19,6 +20,7 @@ from memeradar_domain import (
     ChainCursor,
     CommitmentState,
     NormalizedChainEvent,
+    Observation,
     Provenance,
     QualityState,
     ReasonCode,
@@ -36,6 +38,7 @@ from .models import (
     StreamVerificationRow,
     TokenRow,
 )
+from .repositories import _observation_row_matches, observation_to_row
 from .serialization import (
     json_safe,
     provenance_from_json,
@@ -368,12 +371,65 @@ def _gap_from_row(row: StreamGapRow) -> StreamGap:
     )
 
 
+async def _save_gap_in_session(
+    session: AsyncSession,
+    gap: StreamGap,
+    *,
+    now: datetime,
+) -> None:
+    row = await session.get(StreamGapRow, gap.id)
+    if row is None:
+        session.add(_gap_to_row(gap, updated_at=now))
+        await session.flush()
+        return
+    current = _gap_from_row(row)
+    if current.status is not gap.status:
+        current.transition(gap.status)
+    mapped = _gap_to_row(gap, updated_at=max(row.updated_at, now))
+    for field_name in (
+        "chain",
+        "transport",
+        "stream_id",
+        "from_slot",
+        "to_slot",
+        "detected_at",
+        "gap_started_at",
+        "gap_resolved_at",
+        "detection_method",
+        "missed_slot_start",
+        "missed_slot_end",
+        "provider",
+        "connection_id",
+        "reconnect_reason",
+        "status",
+        "backfill_status",
+        "attempt_count",
+        "last_error_class",
+        "recovered_event_count",
+        "events_recovered",
+        "verified_event_count",
+        "events_unrecoverable",
+        "merged_gap_ids",
+        "updated_at",
+    ):
+        setattr(row, field_name, getattr(mapped, field_name))
+    if gap.status is not StreamGapStatus.RECOVERING:
+        row.recovery_claim_id = None
+        row.recovery_claim_expires_at = None
+    await session.flush()
+
+
 def _verification_to_row(
     verification: StreamVerification, *, created_at: datetime | None = None
 ) -> StreamVerificationRow:
     return StreamVerificationRow(
         id=verification.id,
         gap_id=verification.gap_id,
+        provider_id=verification.provider_id,
+        program_scope=verification.program_scope,
+        commitment=cast(CommitmentState, verification.commitment).value,
+        verification_method=verification.verification_method,
+        recovery_attempt=verification.recovery_attempt,
         chain=cast(Chain, verification.chain).value,
         transport=verification.transport,
         stream_id=verification.stream_id,
@@ -397,6 +453,11 @@ def _verification_from_row(row: StreamVerificationRow) -> StreamVerification:
     return StreamVerification(
         id=row.id,
         gap_id=row.gap_id,
+        provider_id=row.provider_id,
+        program_scope=row.program_scope,
+        commitment=row.commitment or CommitmentState.UNKNOWN,
+        verification_method=row.verification_method,
+        recovery_attempt=row.recovery_attempt,
         chain=Chain(row.chain),
         transport=row.transport,
         stream_id=row.stream_id,
@@ -495,42 +556,164 @@ class SqlAlchemyStreamStateStore:
 
     async def save_gap(self, gap: StreamGap) -> None:
         async with self._session_factory() as session, session.begin():
-            row = await session.get(StreamGapRow, gap.id)
-            now = datetime.now(UTC)
-            if row is None:
-                session.add(_gap_to_row(gap, updated_at=now))
-                return
-            current = _gap_from_row(row)
-            if current.status is not gap.status:
-                current.transition(gap.status)
-            mapped = _gap_to_row(gap, updated_at=max(row.updated_at, now))
-            for field_name in (
-                "chain",
-                "transport",
-                "stream_id",
-                "from_slot",
-                "to_slot",
-                "detected_at",
-                "gap_started_at",
-                "gap_resolved_at",
-                "detection_method",
-                "missed_slot_start",
-                "missed_slot_end",
-                "provider",
-                "connection_id",
-                "reconnect_reason",
-                "status",
-                "backfill_status",
-                "attempt_count",
-                "last_error_class",
-                "recovered_event_count",
-                "events_recovered",
-                "verified_event_count",
-                "events_unrecoverable",
-                "merged_gap_ids",
-                "updated_at",
+            await _save_gap_in_session(session, gap, now=datetime.now(UTC))
+
+    async def claim_gap(
+        self,
+        gap_id: UUID,
+        *,
+        claim_id: UUID,
+        now: datetime,
+        lease_expires_at: datetime,
+    ) -> StreamGap | None:
+        eligible_status = StreamGapRow.status.in_(
+            (
+                StreamGapStatus.OPEN.value,
+                StreamGapStatus.FAILED.value,
+                StreamGapStatus.RECOVERED.value,
+            )
+        )
+        expired_recovery = and_(
+            StreamGapRow.status == StreamGapStatus.RECOVERING.value,
+            or_(
+                StreamGapRow.recovery_claim_id.is_(None),
+                StreamGapRow.recovery_claim_expires_at.is_(None),
+                StreamGapRow.recovery_claim_expires_at <= now,
+            ),
+        )
+        async with self._session_factory() as session, session.begin():
+            result = await session.execute(
+                update(StreamGapRow)
+                .where(StreamGapRow.id == gap_id, or_(eligible_status, expired_recovery))
+                .values(
+                    status=StreamGapStatus.RECOVERING.value,
+                    recovery_claim_id=claim_id,
+                    recovery_claim_expires_at=lease_expires_at,
+                    updated_at=now,
+                )
+            )
+            if result.rowcount != 1:
+                return None
+            row = await session.get(StreamGapRow, gap_id)
+            return None if row is None else _gap_from_row(row)
+
+    async def save_claimed_gap(
+        self,
+        gap: StreamGap,
+        *,
+        claim_id: UUID,
+        now: datetime,
+        lease_expires_at: datetime,
+    ) -> bool:
+        if gap.status is not StreamGapStatus.RECOVERING:
+            raise ValueError("claimed gap must remain RECOVERING")
+        mapped = _gap_to_row(gap, updated_at=now)
+        values = {
+            column.name: getattr(mapped, column.name)
+            for column in StreamGapRow.__table__.columns
+            if column.name not in {"id", "recovery_claim_id", "recovery_claim_expires_at"}
+        }
+        values.update(
+            recovery_claim_id=claim_id,
+            recovery_claim_expires_at=lease_expires_at,
+        )
+        async with self._session_factory() as session, session.begin():
+            result = await session.execute(
+                update(StreamGapRow)
+                .where(
+                    StreamGapRow.id == gap.id,
+                    StreamGapRow.status == StreamGapStatus.RECOVERING.value,
+                    StreamGapRow.recovery_claim_id == claim_id,
+                    StreamGapRow.recovery_claim_expires_at > now,
+                )
+                .values(**values)
+            )
+            return result.rowcount == 1
+
+    async def finish_claimed_gap(
+        self,
+        gap: StreamGap,
+        verification: StreamVerification,
+        *,
+        claim_id: UUID,
+        now: datetime,
+    ) -> bool:
+        if verification.gap_id != gap.id:
+            raise ValueError("verification must reference the completed gap")
+        mapped = _gap_to_row(gap, updated_at=now)
+        values = {
+            column.name: getattr(mapped, column.name)
+            for column in StreamGapRow.__table__.columns
+            if column.name not in {"id", "recovery_claim_id", "recovery_claim_expires_at"}
+        }
+        values.update(recovery_claim_id=None, recovery_claim_expires_at=None)
+        async with self._session_factory() as session, session.begin():
+            current = await session.get(StreamGapRow, gap.id)
+            if (
+                current is None
+                or current.status != StreamGapStatus.RECOVERING.value
+                or current.recovery_claim_id != claim_id
+                or current.recovery_claim_expires_at is None
+                or current.recovery_claim_expires_at <= now
             ):
-                setattr(row, field_name, getattr(mapped, field_name))
+                return False
+            current_gap = _gap_from_row(current)
+            if gap.status is StreamGapStatus.VERIFIED:
+                current_gap.transition(StreamGapStatus.RECOVERED).transition(
+                    StreamGapStatus.VERIFIED
+                )
+            else:
+                current_gap.transition(gap.status)
+            result = await session.execute(
+                update(StreamGapRow)
+                .where(
+                    StreamGapRow.id == gap.id,
+                    StreamGapRow.status == StreamGapStatus.RECOVERING.value,
+                    StreamGapRow.recovery_claim_id == claim_id,
+                    StreamGapRow.recovery_claim_expires_at > now,
+                )
+                .values(**values)
+            )
+            if result.rowcount != 1:
+                return False
+            session.add(_verification_to_row(verification))
+            await session.flush()
+            return True
+
+    async def save_gap_with_observation(
+        self,
+        *,
+        superseded_gaps: Sequence[StreamGap],
+        merged_gap: StreamGap,
+        observation: Observation,
+    ) -> None:
+        """Persist the failed-source diagnostic and its fail-closed gap atomically."""
+        mapped_observation = observation_to_row(observation)
+        async with self._session_factory() as session, session.begin():
+            now = datetime.now(UTC)
+            for gap in superseded_gaps:
+                await _save_gap_in_session(
+                    session,
+                    gap,
+                    now=now,
+                )
+            await _save_gap_in_session(session, merged_gap, now=now)
+
+            existing = await session.get(ObservationRow, mapped_observation.id)
+            if existing is None:
+                existing = await session.scalar(
+                    select(ObservationRow).where(
+                        ObservationRow.provider == mapped_observation.provider,
+                        ObservationRow.kind == mapped_observation.kind,
+                        ObservationRow.source_id == mapped_observation.source_id,
+                    )
+                )
+            if existing is not None:
+                if not _observation_row_matches(existing, mapped_observation):
+                    raise ValueError("pre-identity observation source identity conflicts")
+                return
+            session.add(mapped_observation)
+            await session.flush()
 
     async def append_event(self, event: NormalizedChainEvent) -> EventAppendResult:
         async with self._session_factory() as session, session.begin():

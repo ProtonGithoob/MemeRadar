@@ -370,6 +370,7 @@ class ProviderTransport:
         *,
         timeout_seconds: float | None = None,
         rate_limit_snapshot: RateLimitSnapshot | None = None,
+        allow_retries: bool = True,
     ) -> T:
         """Run one provider callback with bounded retry and failure policy."""
 
@@ -425,7 +426,7 @@ class ProviderTransport:
                 retryable = self.retry_policy.is_retryable(error)
                 if retryable:
                     self.circuit_breaker.record_failure()
-                if not self.retry_policy.should_retry(attempt, error):
+                if not allow_retries or not self.retry_policy.should_retry(attempt, error):
                     raise
                 emit_counter(
                     self._telemetry,

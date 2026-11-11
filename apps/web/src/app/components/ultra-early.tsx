@@ -8,7 +8,6 @@ import {
   Pill,
   evidenceTone,
   formatAgeSeconds,
-  formatCompactMap,
   formatConfidence,
   formatScore,
   formatUsd,
@@ -37,7 +36,11 @@ function displayMetric(value: number | null): string {
 }
 
 function displayAlert(value: boolean | null): string {
-  return value === null ? "UNKNOWN" : value ? "YES" : "NO";
+  return value === null ? "NOT CONFIRMED" : value ? "DELIVERED" : "NOT DELIVERED";
+}
+
+function displayGate(value: boolean | null | undefined, pass: string, fail: string): string {
+  return value == null ? "UNKNOWN" : value ? pass : fail;
 }
 
 type PresetKey =
@@ -134,7 +137,7 @@ function sortEntries(entries: EarlyRadarRecord[], sort: SortKey): EarlyRadarReco
 }
 
 function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
-  const displayName = entry.symbol || entry.name || "UNNAMED";
+  const displayName = entry.symbol || entry.name || shortIdentity(entry.mintAddress);
   return (
     <tr>
       <td>
@@ -144,52 +147,48 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
         </div>
       </td>
       <td className="num">{entry.launchAgeSeconds === null ? "UNKNOWN" : formatAgeSeconds(entry.launchAgeSeconds)}</td>
-      <td><Pill label={entry.venue} tone={evidenceTone(entry.venue)} /></td>
-      <td className="num">{formatUsd(entry.firstSeenMarketCap)}</td>
-      <td className="num">{formatUsd(entry.currentMarketCap)}</td>
-      <td className="num">{formatUsd(entry.liquidityUsd)}</td>
-      <td className="dt-reasons" title={formatCompactMap(entry.uniqueBuyers, 6)}>{formatCompactMap(entry.uniqueBuyers)}</td>
-      <td className="num">{displayMetric(entry.buyerAcceleration)}</td>
-      <td className="num">{displayMetric(entry.volumeAcceleration)}</td>
-      <td className="num">{displayMetric(entry.liquidityAcceleration)}</td>
-      <td className="num">{displayMetric(entry.rawSmartWalletCount)}</td>
-      <td className="num">{displayMetric(entry.independentSmartWalletCount)}</td>
-      <td className="num">{entry.organicMomentum === null ? "UNKNOWN" : formatScore(entry.organicMomentum)}</td>
+      <td><Pill label={entry.earlyState} tone="info" /></td>
       <td className="num">{entry.earlyScore === null ? "UNKNOWN" : formatScore(entry.earlyScore)}</td>
       <td className="num">{formatConfidence(entry.earlyScoreConfidence)}</td>
-      <td><Pill label={entry.earlyState} tone="info" /></td>
       <td><Pill label={entry.riskDisposition} tone={riskTone(entry.riskDisposition)} /></td>
-      <td className="num">{entry.priceImpactBps === null ? "UNKNOWN" : `${displayMetric(entry.priceImpactBps)}`}</td>
-      <td className="dt-reasons" title={formatCompactMap(entry.buyVelocity, 6)}>{formatCompactMap(entry.buyVelocity)}</td>
-      <td><Pill label={entry.creatorRisk} tone={evidenceTone(entry.creatorRisk)} /></td>
-      <td><Pill label={entry.bundleRisk} tone={evidenceTone(entry.bundleRisk)} /></td>
-      <td><Pill label={entry.holderRisk} tone={evidenceTone(entry.holderRisk)} /></td>
-      <td className="num">{entry.smartMoneyConfluence === null ? "UNKNOWN" : formatScore(entry.smartMoneyConfluence)}</td>
+      <td className="num">{formatUsd(entry.liquidityUsd)}</td>
+      <td className="num">{formatUsd(entry.currentMarketCap)}</td>
       <td><Pill label={entry.sellability} tone={evidenceTone(entry.sellability)} /></td>
-      <td className="dt-reasons" title={formatCompactMap(entry.upsideEvidence, 6)}>
-        {formatCompactMap(entry.upsideEvidence, 3)}
+      <td className="num">{entry.priceImpactBps === null ? "UNKNOWN" : displayMetric(entry.priceImpactBps)}</td>
+      <td><Pill label={displayAlert(entry.alerted)} tone={entry.alerted ? "low" : "unknown"} /></td>
+      <td>
+        <details className="early-evidence">
+          <summary>Inspect</summary>
+          <div className="early-evidence__panel">
+            <dl>
+              <div><dt>Protocol source</dt><dd>{entry.firstSeenSource}</dd></div>
+              <div><dt>Venue</dt><dd>{entry.venue}</dd></div>
+              <div><dt>Protocol identity</dt><dd>{displayGate(entry.protocolIdentityVerified, "VERIFIED", "UNVERIFIED")}</dd></div>
+              <div><dt>Mint authority</dt><dd>{displayGate(entry.mintAuthoritySafe, "SAFE", "ACTIVE")}</dd></div>
+              <div><dt>Freeze authority</dt><dd>{displayGate(entry.freezeAuthoritySafe, "SAFE", "ACTIVE")}</dd></div>
+              <div><dt>Quote semantics</dt><dd>{entry.quoteSemantics ?? "UNKNOWN"}</dd></div>
+              <div><dt>Input quote impact</dt><dd>{entry.buyImpactBps == null ? "UNKNOWN" : `${displayMetric(entry.buyImpactBps)} bps`}</dd></div>
+              <div><dt>Exit quote impact</dt><dd>{entry.priceImpactBps == null ? "UNKNOWN" : `${displayMetric(entry.priceImpactBps)} bps`}</dd></div>
+              <div><dt>Evidence quality</dt><dd>{entry.firstSeenQuality}</dd></div>
+            </dl>
+            <strong>Decision reasons</strong>
+            {entry.reasonCodes.length ? (
+              <ul>{entry.reasonCodes.map((reason) => <li key={reason}>{reason.replaceAll("_", " ")}</li>)}</ul>
+            ) : <p>Current qualification gates passed without a warning.</p>}
+            <strong>Source evidence</strong>
+            {entry.evidenceRefs.length ? (
+              <ul>{entry.evidenceRefs.map((reference) => <li key={reference}><code>{reference}</code></li>)}</ul>
+            ) : <p>No source reference was attached.</p>}
+          </div>
+        </details>
       </td>
-      <td><Pill label={entry.marketIntegrityRisk} tone={evidenceTone(entry.marketIntegrityRisk)} /></td>
-      <td><Pill label={entry.contractDeployerRisk} tone={evidenceTone(entry.contractDeployerRisk)} /></td>
-      <td><Pill label={entry.liquidityExitRisk} tone={evidenceTone(entry.liquidityExitRisk)} /></td>
-      <td className="num">{entry.executionQuality === null ? "UNKNOWN" : displayMetric(entry.executionQuality)}</td>
-      <td className="num">{formatConfidence(entry.evidenceConfidence)}</td>
-      <td><Pill label={entry.evidenceQualityState} tone={evidenceTone(entry.evidenceQualityState)} /></td>
-      <td className="num">{entry.firstSeenLatencyMs === null ? "UNKNOWN" : `${displayMetric(entry.firstSeenLatencyMs)}ms`}</td>
-      <td><Pill label={displayAlert(entry.alerted)} tone={entry.alerted === null ? "unknown" : entry.alerted ? "low" : "medium"} /></td>
-      <td className="num">{entry.alertLatencyMs === null ? "UNKNOWN" : `${displayMetric(entry.alertLatencyMs)}ms`}</td>
-      <td className="num">{entry.multipleSinceDiscovery === null ? "UNKNOWN" : `${displayMetric(entry.multipleSinceDiscovery)}x`}</td>
     </tr>
   );
 }
 
 const TABLE_HEAD = [
-  "Token", "Age", "Venue", "First seen MC", "Current MC", "Liquidity", "Buyers",
-  "Buyer accel", "Volume accel", "Liquidity accel", "Raw smart $", "Independent smart $",
-  "Organic momentum", "Score", "Conf", "State", "Risk", "Impact bps", "Buy velocity",
-  "Creator", "Bundle", "Holder", "Smart $", "Sellable", "Upside evidence", "Market integrity",
-  "Contract / deployer", "Liquidity / exit", "Exec quality", "Evidence conf", "Evidence freshness",
-  "1st-seen latency", "Alerted", "Alert latency", "Since discovery"
+  "Token", "Age at decision", "State", "Score", "Confidence", "Risk", "Liquidity",
+  "Decision MC", "Sellable", "Sell impact @ 0.01 SOL", "Telegram", "Evidence"
 ];
 
 export function UltraEarlyWorkspace({
@@ -203,7 +202,7 @@ export function UltraEarlyWorkspace({
   const heading = (
     <PageHeader
       eyebrow="Launch intelligence / read-only"
-      note="Observed, derived and paper-only fields; UNKNOWN remains explicit. Auto execution: LOCKED."
+      note="Only fresh candidates passing the Telegram gate are shown. When an executable quote provider is configured, buy and sell routes use a read-only 0.01 SOL probe; this is not an order-size recommendation. Auto execution: LOCKED."
       title="Ultra-Early Detection"
     />
   );
@@ -255,9 +254,10 @@ export function UltraEarlyWorkspace({
           <strong>NO ULTRA-EARLY CANDIDATES</strong>
           <p>
             {items.length === 0
-              ? "No launch projection matched the current read boundary."
+              ? "No fresh candidate currently passes the authority, liquidity, executable buy/sell quote and stream-integrity gates. Reference prices do not count as executable quotes."
               : `No launch projection matches the ${activePreset.label} preset.`}
           </p>
+          {items.length === 0 && <Link href="/scan-monitor">OPEN SCAN MONITOR</Link>}
         </div>
       ) : (
         <div className="dt-wrap">

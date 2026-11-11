@@ -43,6 +43,7 @@ from .control import build_control_router
 from .health import build_health_router
 from .manual import build_manual_router
 from .operations import build_operations_router
+from .operations_store import PersistedStreamOperations
 from .read import build_read_router
 
 LOGGER = logging.getLogger(__name__)
@@ -99,7 +100,11 @@ def create_app(
         )
         control_plane = InMemoryControlPlane(initial_config=initial_config)
     if operations_service is None:
-        operations_service = InMemoryOperationsQueryService()
+        operations_service = (
+            PersistedStreamOperations(owned_engine)
+            if owned_engine is not None
+            else InMemoryOperationsQueryService()
+        )
     app.state.read_service = read_service
     app.state.control_plane = control_plane
     app.state.operations_service = operations_service

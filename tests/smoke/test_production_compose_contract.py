@@ -15,6 +15,9 @@ def _environment() -> dict[str, str]:
     for key in (
         "DATABASE_URL",
         "REDIS_URL",
+        "POSTGRES_DB",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
         "VIEWER_API_TOKEN",
         "OPERATOR_API_TOKEN",
         "ADMIN_API_TOKEN",
@@ -34,7 +37,17 @@ def _environment() -> dict[str, str]:
 
 def _compose(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["docker", "compose", "-f", str(BASE), "-f", str(PRODUCTION), *args],
+        [
+            "docker",
+            "compose",
+            "--env-file",
+            os.devnull,
+            "-f",
+            str(BASE),
+            "-f",
+            str(PRODUCTION),
+            *args,
+        ],
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -43,7 +56,9 @@ def _compose(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str
 
 
 def test_production_compose_requires_secrets_before_startup() -> None:
-    result = _compose("config", "--quiet", env=_environment())
+    env = _environment()
+    env.update({"POSTGRES_USER": "ci-test-user", "POSTGRES_PASSWORD": "ci-test-password"})
+    result = _compose("config", "--quiet", env=env)
 
     assert result.returncode != 0
     assert "DATABASE_URL" in result.stdout + result.stderr
@@ -114,7 +129,17 @@ def test_local_compose_uses_one_postgres_password_source_for_api_and_database() 
     env = _environment()
     env.update({"POSTGRES_PASSWORD": "compose-contract-password"})
     result = subprocess.run(
-        ["docker", "compose", "-f", str(BASE), "config", "--format", "json"],
+        [
+            "docker",
+            "compose",
+            "--env-file",
+            os.devnull,
+            "-f",
+            str(BASE),
+            "config",
+            "--format",
+            "json",
+        ],
         cwd=ROOT,
         env=env,
         capture_output=True,

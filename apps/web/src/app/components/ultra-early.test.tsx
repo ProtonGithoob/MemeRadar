@@ -73,16 +73,9 @@ describe("UltraEarlyPanel", () => {
       "/tokens/22222222-2222-4222-8222-222222222222"
     );
     expect(screen.getByText("34s")).toBeInTheDocument();
-    expect(screen.getByText("PUMPSWAP")).toBeInTheDocument();
-    expect(screen.getByText("$42.0K")).toBeInTheDocument();
-    expect(screen.getByText("1.62x")).toBeInTheDocument();
-    expect(screen.getByText("YES")).toBeInTheDocument();
+    expect(screen.getByText("DELIVERED")).toBeInTheDocument();
     expect(screen.getByText("91")).toBeInTheDocument();
     expect(screen.getByText("$12.0K")).toBeInTheDocument();
-    expect(screen.getByText("125ms")).toBeInTheDocument();
-    expect(screen.getByText("narrative=CONVERGENT smart_wallets=4")).toBeInTheDocument();
-    expect(screen.getByText("Market integrity")).toBeInTheDocument();
-    expect(screen.getByText("Evidence freshness")).toBeInTheDocument();
     expect(screen.getByText("ENTRY_READY")).toBeInTheDocument();
   });
 

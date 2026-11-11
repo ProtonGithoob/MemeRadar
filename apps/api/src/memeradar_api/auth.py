@@ -40,6 +40,8 @@ class RoleTokenAuthenticator:
         ):
             if token is not None:
                 configured.append((role, token))
+        if len({token for _, token in configured}) != len(configured):
+            raise ValueError("role tokens must be unique")
         self._tokens: tuple[tuple[ControlRole, str], ...] = tuple(configured)
 
     @property

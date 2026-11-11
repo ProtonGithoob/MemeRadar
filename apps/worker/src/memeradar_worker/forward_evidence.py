@@ -71,6 +71,7 @@ from memeradar_application.replay_harness import ReplayCheckpoint, ReplayEventRe
 from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
 from memeradar_domain.common import ensure_utc
 from memeradar_persistence import ObservationRow, SqlAlchemyUnitOfWork
+from memeradar_providers.pump_fun_idl import PUMP_FUN_PROGRAM_ID
 from memeradar_providers.transport import ProviderError, ProviderRateLimitedError
 
 Clock = Callable[[], datetime]
@@ -179,6 +180,11 @@ class LaunchRecord:
 def is_pumpfun_launch(row: ObservationRow | Mapping[str, object]) -> bool:
     """Recognize only canonical Pump.fun create/create_v2 launch events."""
 
+    program_id = (
+        row.program_id if isinstance(row, ObservationRow) else _row_value(row, "program_id")
+    )
+    if program_id != PUMP_FUN_PROGRAM_ID:
+        return False
     payload = _payload(row)
     event_type = str(
         payload.get(
@@ -186,8 +192,7 @@ def is_pumpfun_launch(row: ObservationRow | Mapping[str, object]) -> bool:
             payload.get("event_type", row.event_type if isinstance(row, ObservationRow) else ""),
         )
     ).lower()
-    protocol_type = str(payload.get("protocol_event_type", "")).lower()
-    return event_type in {"create", "create_v2"} or protocol_type == "launch"
+    return event_type in {"create", "create_v2"}
 
 
 def _launch_records(rows: Sequence[ObservationRow]) -> tuple[LaunchRecord, ...]:
@@ -213,7 +218,9 @@ def _launch_records(rows: Sequence[ObservationRow]) -> tuple[LaunchRecord, ...]:
         mint = _mint(row)
         if mint is None:
             continue
-        discovered = discovered_by_mint.get(mint, ensure_utc(row.observed_at, "observed_at"))
+        discovered = discovered_by_mint.get(mint)
+        if discovered is None:
+            discovered = ensure_utc(row.observed_at, "observed_at")
         current = LaunchRecord(row, mint, discovered, dict(row.normalized_payload))
         previous_record = records.get(mint)
         if previous_record is None or _row_time(row) < _row_time(previous_record.row):

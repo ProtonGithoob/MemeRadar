@@ -75,7 +75,7 @@ function compareRows(key: SortKey, a: RadarRow, b: RadarRow): number {
 
 function Row({ row, now }: { row: RadarRow; now: number }) {
   const { candidate, early } = row;
-  const displayName = candidate.symbol || candidate.name || "UNNAMED";
+  const displayName = candidate.symbol || candidate.name || shortIdentity(candidate.mintAddress);
   const score = scoreOf(row);
   const confidence = confidenceOf(row);
   const age = ageSeconds(row);

@@ -320,7 +320,7 @@ class CallerConvergenceEvidence:
         if self.kol_bundle is not None:
             if not isinstance(self.kol_bundle, KOLBundleClusterEvidence):
                 raise TypeError("kol_bundle must be KOLBundleClusterEvidence or None")
-            if self.kol_bundle.token != self.token:
+            if self.kol_bundle.token.canonical_id != self.token.canonical_id:
                 raise ValueError("kol_bundle token must match caller convergence token")
 
     @property

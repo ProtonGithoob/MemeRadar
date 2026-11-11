@@ -26,7 +26,11 @@ from memeradar_domain.common import ensure_utc, freeze_mapping, normalize_texts,
 
 from .provider_contracts import (
     DeliveryReceipt,
+    NotificationNotSent,
+    NotificationOutcomeUnknown,
     NotificationPort,
+    NotificationRateLimited,
+    NotificationRejected,
     NotificationRequest,
     ProviderRequestContext,
 )
@@ -64,6 +68,8 @@ class AlertDeliveryStatus(str, Enum):
     DEDUPLICATED = "DEDUPLICATED"
     SUPPRESSED = "SUPPRESSED"
     IGNORED = "IGNORED"
+    DELIVERY_UNKNOWN = "DELIVERY_UNKNOWN"
+    REJECTED = "REJECTED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,14 +96,6 @@ class AlertDeliveryDeferred(RuntimeError):
     def __init__(self, retry_at: datetime) -> None:
         self.retry_at = ensure_utc(retry_at, "retry_at")
         super().__init__("alert delivery deferred by the destination rate limit")
-
-
-class NotificationRejected(RuntimeError):
-    """A notification provider returned a non-accepted delivery receipt."""
-
-    def __init__(self, error_class: str | None = None) -> None:
-        self.error_class = require_text(error_class or "NotificationRejected", "error_class")
-        super().__init__("notification provider rejected the delivery")
 
 
 @dataclass(frozen=True, slots=True)
@@ -738,6 +736,15 @@ class AlertRenderer:
         message_state = _safe_display(payload.get("message_state"))
         if message_state:
             lines.append(f"Signal state: {message_state}")
+        decision_at = _safe_display(payload.get("state_at"))
+        if decision_at:
+            lines.append(f"Decision time: {decision_at}")
+        safety = _safe_display(payload.get("safety_status"))
+        if safety:
+            lines.append(f"Safety: {safety}")
+        unknowns = _safe_lines(payload.get("critical_unknowns"), max_items=4)
+        if unknowns:
+            lines.append("Critical unknowns: " + "; ".join(unknowns))
         mint = _safe_display(payload.get("mint"))
         if mint and mint != title:
             lines.append(f"Mint: {mint}")
@@ -781,6 +788,8 @@ class AlertRenderer:
                 ("external_call_lead_time_ms", "Lead time (ms)"),
             ):
                 value = _safe_metric_summary(early_payload.get(key))
+                if not value and key == "launch_age_seconds":
+                    value = _safe_metric_summary(early_payload.get("token_age_seconds"))
                 if value:
                     lines.append(f"{label}: {value}")
             block_reasons = _safe_lines(early_payload.get("hard_block_reasons"), max_items=4)
@@ -1491,6 +1500,26 @@ class AlertDeliveryService:
         )
         return await self.deliver(alert, context=context)
 
+    async def suppress_event(self, event: EventEnvelope, reason: str) -> AlertDeliveryResult:
+        """Persist a skipped logical alert without claiming external delivery."""
+        alert = AlertEventProjector().project(event)
+        if alert is None:
+            return AlertDeliveryResult(alert=None, status=AlertDeliveryStatus.IGNORED)
+        existing = await self._store.get_by_dedupe_key(alert.dedupe_key)
+        if existing is not None:
+            if existing.state is AlertState.DELIVERED:
+                return AlertDeliveryResult(alert=existing, status=AlertDeliveryStatus.DEDUPLICATED)
+            if existing.state is AlertState.DELIVERY_UNKNOWN:
+                return AlertDeliveryResult(
+                    alert=existing, status=AlertDeliveryStatus.DELIVERY_UNKNOWN
+                )
+            if existing.state is AlertState.SUPPRESSED:
+                return AlertDeliveryResult(alert=existing, status=AlertDeliveryStatus.SUPPRESSED)
+            alert = existing
+        alert.mark_suppressed((ReasonCode(reason),))
+        saved = await self._store.save(alert)
+        return AlertDeliveryResult(alert=saved, status=AlertDeliveryStatus.SUPPRESSED)
+
     async def _handle_early_alpha_event(
         self,
         alert: Alert,
@@ -1649,6 +1678,10 @@ class AlertDeliveryService:
                     alert=existing,
                     status=AlertDeliveryStatus.DEDUPLICATED,
                 )
+            if existing.state is AlertState.DELIVERY_UNKNOWN:
+                return AlertDeliveryResult(
+                    alert=existing, status=AlertDeliveryStatus.DELIVERY_UNKNOWN
+                )
             if existing.state is AlertState.SUPPRESSED:
                 return AlertDeliveryResult(
                     alert=existing,
@@ -1714,18 +1747,57 @@ class AlertDeliveryService:
                 round((perf_counter() - rendering_started) * 1000, 3),
                 source="internal",
             )
+        alert.mark_delivery_unknown()
+        await self._store.save(alert)
         try:
             receipt = await self._notification.send(request)
             if not isinstance(receipt, DeliveryReceipt):
-                raise TypeError("notification provider returned an invalid delivery receipt")
+                raise NotificationOutcomeUnknown("notification receipt was invalid")
             if not receipt.accepted:
                 raise NotificationRejected(receipt.error_class)
         except AlertDeliveryDeferred:
-            raise
-        except Exception:
             alert.mark_failed()
             await self._store.save(alert)
             raise
+        except NotificationNotSent:
+            alert.mark_failed()
+            alert.reason_codes = normalize_reason_codes(
+                (*alert.reason_codes, ReasonCode("TELEGRAM_NOT_SENT"))
+            )
+            await self._store.save(alert)
+            raise
+        except NotificationRateLimited as error:
+            alert.mark_failed()
+            alert.reason_codes = normalize_reason_codes(
+                (*alert.reason_codes, ReasonCode("TELEGRAM_RATE_LIMITED"))
+            )
+            await self._store.save(alert)
+            retry_after = error.retry_after_seconds or 1.0
+            raise AlertDeliveryDeferred(
+                now + timedelta(seconds=max(1.0, retry_after))
+            ) from error
+        except NotificationRejected as error:
+            alert.mark_failed()
+            alert.reason_codes = normalize_reason_codes(
+                (
+                    *alert.reason_codes,
+                    ReasonCode("TELEGRAM_REJECTED", detail=error.error_class),
+                )
+            )
+            await self._store.save(alert)
+            return AlertDeliveryResult(alert=alert, status=AlertDeliveryStatus.REJECTED)
+        except NotificationOutcomeUnknown:
+            alert.reason_codes = normalize_reason_codes(
+                (*alert.reason_codes, ReasonCode("TELEGRAM_ACK_UNKNOWN"))
+            )
+            await self._store.save(alert)
+            return AlertDeliveryResult(alert=alert, status=AlertDeliveryStatus.DELIVERY_UNKNOWN)
+        except Exception:
+            alert.reason_codes = normalize_reason_codes(
+                (*alert.reason_codes, ReasonCode("NOTIFICATION_OUTCOME_UNCLASSIFIED"))
+            )
+            await self._store.save(alert)
+            return AlertDeliveryResult(alert=alert, status=AlertDeliveryStatus.DELIVERY_UNKNOWN)
         alert = _set_alert_timing(
             alert,
             _alert_timing(

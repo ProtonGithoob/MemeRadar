@@ -1,10 +1,11 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import StatementError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from memeradar_application.provider_contracts import MarketDataRequest
@@ -12,6 +13,7 @@ from memeradar_domain import Observation, QualityState, TokenIdentity
 from memeradar_persistence import Base, ObservationRow
 from memeradar_providers.solana_raw_stream import PUMP_FUN_PROGRAM_ID
 from memeradar_providers.transport import ProviderSchemaError
+from memeradar_worker.early_discovery import _pumpfun_launch_row
 from memeradar_worker.forward_evidence import (
     LaunchRecord,
     PumpFunForwardEvidenceCollector,
@@ -26,8 +28,31 @@ NOW = datetime(2026, 9, 21, 8, 0, tzinfo=UTC)
 
 
 def test_launch_filter_keeps_create_v2_and_rejects_trades() -> None:
-    assert is_pumpfun_launch({"kind": "chain.event", "event_type": "create_v2"})
+    assert is_pumpfun_launch(
+        {"kind": "chain.event", "event_type": "create_v2", "program_id": PUMP_FUN_PROGRAM_ID}
+    )
     assert not is_pumpfun_launch({"kind": "chain.event", "event_type": "buy_v2"})
+
+
+def test_launch_consumers_require_pumpfun_program_identity() -> None:
+    row = _launch_row(NOW)
+    assert is_pumpfun_launch(row)
+    assert _pumpfun_launch_row(row)
+    for program in (None, "11111111111111111111111111111111"):
+        row.program_id = program
+        assert not is_pumpfun_launch(row)
+        assert not _pumpfun_launch_row(row)
+
+
+def test_trade_cannot_be_classified_as_launch_by_conflicting_label() -> None:
+    row = _launch_row(NOW)
+    row.normalized_payload = {
+        **row.normalized_payload,
+        "instruction_type": "buy_v2",
+        "protocol_event_type": "launch",
+    }
+    assert not is_pumpfun_launch(row)
+    assert not _pumpfun_launch_row(row)
 
 
 def test_forward_scheduler_orders_launches_oldest_first() -> None:
@@ -117,6 +142,62 @@ def _discovered_row(at: datetime) -> ObservationRow:
     )
 
 
+@pytest.mark.parametrize(
+    "offset",
+    [UTC, timezone(timedelta(hours=4)), timezone(timedelta(hours=-7))],
+)
+def test_observation_timestamps_round_trip_as_utc(offset: timezone) -> None:
+    pytest.importorskip("aiosqlite")
+
+    async def scenario() -> None:
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        source_time = datetime(2026, 9, 21, 12, 0, tzinfo=offset)
+        row = _launch_row(source_time)
+        async with factory() as session:
+            session.add(row)
+            await session.commit()
+        async with factory() as session:
+            reloaded = await session.get(ObservationRow, row.id)
+
+        assert reloaded is not None
+        assert reloaded.occurred_at == source_time.astimezone(UTC)
+        assert reloaded.observed_at == (source_time + timedelta(seconds=1)).astimezone(UTC)
+        assert reloaded.ingested_at == (source_time + timedelta(seconds=2)).astimezone(UTC)
+        assert all(
+            value is None or value.utcoffset() == timedelta(0)
+            for value in (reloaded.occurred_at, reloaded.observed_at, reloaded.ingested_at)
+        )
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_observation_timestamp_persistence_rejects_naive_values() -> None:
+    pytest.importorskip("aiosqlite")
+
+    async def scenario() -> None:
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        row = _launch_row(NOW)
+        row.observed_at = datetime(2026, 9, 21, 8, 0, 1)
+        async with factory() as session:
+            session.add(row)
+            with pytest.raises(StatementError, match="timestamp must be timezone-aware"):
+                await session.commit()
+        await engine.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_no_pair_is_persisted_as_unknown_and_second_cycle_is_idempotent() -> None:
     pytest.importorskip("aiosqlite")
 
@@ -132,7 +213,7 @@ def test_no_pair_is_persisted_as_unknown_and_second_cycle_is_idempotent() -> Non
             session.add(_discovered_row(NOW - timedelta(days=8)))
             await session.commit()
         collector = PumpFunForwardEvidenceCollector(engine, NoPairMarket(), clock=lambda: NOW)
-        counts = [await collector.collect_once(now=NOW) for _ in range(12)]
+        counts = [await collector.collect_once(now=NOW) for _ in range(13)]
         final_count = await collector.collect_once(now=NOW)
         async with factory() as session:
             rows = list(

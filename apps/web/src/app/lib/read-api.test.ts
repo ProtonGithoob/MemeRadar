@@ -260,6 +260,23 @@ describe("server-side read gateway", () => {
     }
   });
 
+  it("accepts research settings and the initial control configuration identity", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(response({
+        api_version: "runtime-settings-v1", as_of: "2026-09-07T12:00:00.000Z",
+        groups: { providers: [], chains: [], telegram: [], x: [], social: [], website: [], wallet: [], security: [], llm: [], research: [] },
+        protected_modes: { analysis_only: true, paper_trading: true, manual_execution: false, auto_execution: false }, execution_eligible: false
+      }))
+      .mockResolvedValueOnce(response({
+        api_version: "control-api-v1", id: "00000000-0000-0000-0000-000000000000",
+        version: "control-config-v0", created_at: "2026-09-07T12:00:00.000Z",
+        actor: "system", config_hash: "sha256:initial", decision_affecting: false, config: {}
+      })));
+    expect((await fetchRuntimeSettings()).ok).toBe(true);
+    expect((await fetchControlConfig()).ok).toBe(true);
+  });
+
   it("keeps canonical alpha validation zeros and unknown timestamps intact", async () => {
     vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({

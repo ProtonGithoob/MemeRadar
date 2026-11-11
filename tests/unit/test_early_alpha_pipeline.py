@@ -14,7 +14,11 @@ from memeradar_application.alert_pipeline import (
     AlertDeliveryStatus,
     AlertPolicy,
 )
-from memeradar_application.provider_contracts import DeliveryReceipt, NotificationRequest
+from memeradar_application.provider_contracts import (
+    DeliveryReceipt,
+    NotificationNotSent,
+    NotificationRequest,
+)
 from memeradar_domain import Alert, EventEnvelope
 
 NOW = datetime(2026, 9, 11, 6, 0, tzinfo=UTC)
@@ -52,7 +56,7 @@ class RecordingNotification:
         self.requests.append(request)
         if self.fail_once:
             self.fail_once = False
-            raise RuntimeError("network failure")
+            raise NotificationNotSent("connection failed before submission")
         return DeliveryReceipt(
             provider_message_id=f"message-{len(self.requests)}",
             delivered_at=NOW + timedelta(seconds=10 + len(self.requests)),

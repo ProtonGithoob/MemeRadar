@@ -26,6 +26,13 @@ export const PARITY_MANIFEST: Record<string, ParityManifestEntry> = {
       { field: "positions", reason: "paper positions have a dedicated read surface", status: "INTENTIONALLY_OMITTED" }
     ]
   },
+  "/scan-monitor": {
+    backendRoutes: ["/candidates", "/early-radar", "/operations/overview"],
+    owner: "ScanMonitorPage",
+    apiFields: ["candidate", "early_state", "risk", "reason_codes", "provider_health"],
+    frontendFields: ["recorded_candidates", "rejected_decisions", "provider_state", "timestamps", "read_errors"],
+    omissions: [{ field: "pre_identity_rejections", reason: "no durable producer or read projection exists", status: "BACKEND_NOT_EXPOSED" }]
+  },
   "/radar": {
     backendRoutes: ["/candidates", "/early-radar"],
     owner: "RadarExplorer / RadarTable",

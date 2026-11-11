@@ -15,7 +15,7 @@ from that checkpoint; they are not current production acceptance.
 The canonical path is discovery → normalized evidence → independent risk and
 corroboration → alpha decision → paper observation → outcome maturation → validation.
 See [architecture](docs/ARCHITECTURE.md) and the
-[purpose/ownership audit](docs/reports/memeradar-purpose-refactor.md).
+[current gap analysis](docs/audits/MEMERADAR_GAP_ANALYSIS.md).
 
 `REAL_WORLD_ALPHA_NOT_YET_PROVEN`; `PRODUCTION_READY=false`;
 `PROD_READ_ONLY_NOT_ACCEPTED`. Analysis and paper remain enabled; manual/automatic
@@ -160,7 +160,7 @@ The web application includes an interactive SVG node-link explorer with zoom, pa
 
 ### 8. Paper execution and position lifecycle
 
-The platform supports simulated/paper entries and positions with fees/slippage/impact-aware research semantics. Browser-side live-order controls remain absent and signing/submission paths remain locked.
+The repository contains a fee/slippage/impact-aware paper engine, gate, shadow-entry service and SQL ledger. The worker does not currently compose an automatic paper-entry path; the DexScreener quote is reference-market evidence, not a verified executable fill. Browser-side live-order controls remain absent and signing/submission paths remain locked.
 
 Paper/shadow metrics include open/closed position counts, measured realized/unrealized PnL coverage and explicit `UNKNOWN` handling when canonical PnL is unavailable.
 
@@ -279,7 +279,6 @@ recorded in:
 
 - [`apps/web/DESIGN.md`](apps/web/DESIGN.md)
 - [`docs/FRONTEND_BACKEND_PARITY.md`](docs/FRONTEND_BACKEND_PARITY.md)
-- [`docs/ui-redesign/README.md`](docs/ui-redesign/README.md)
 
 The target is an operator-grade early-alpha workstation rather than a static status dashboard. The primary screen should make it possible to quickly answer: which token deserves attention now, how early it was detected, why it is interesting, what can invalidate it, whether entry is executable, what creator/smart-wallet evidence exists, and what the current paper/exit state is.
 
@@ -484,11 +483,10 @@ The key business question is not whether tests pass, but whether MemeRadar can r
 
 ## Source of truth
 
-Agents should read `AGENTS.md` and then the startup sequence it defines. Use
-[`docs/README.md`](docs/README.md) as a short index and
-[`docs/STATUS.md`](docs/STATUS.md) as the current implementation ledger. The
-latest recorded engineering report is
-[`MEMERADAR_V8_3_CAUSAL_9PLUS_CLOSURE_FINAL.md`](docs/reports/MEMERADAR_V8_3_CAUSAL_9PLUS_CLOSURE_FINAL.md).
+Agents should read `AGENTS.md` and then the startup sequence it defines.
+[`docs/STATUS.md`](docs/STATUS.md) is the current implementation ledger; the
+current stabilization evidence is in
+[`docs/audits`](docs/audits/CI_ROOT_CAUSE_ANALYSIS.md).
 
 ## Autonomous agent execution
 

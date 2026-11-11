@@ -9,11 +9,17 @@ from decimal import Decimal
 from enum import Enum
 from types import MappingProxyType
 
-from memeradar_domain import Provenance, QualityState, ReasonCode, RiskDisposition
+from memeradar_domain import (
+    PriceSemantics,
+    Provenance,
+    QualityState,
+    ReasonCode,
+    RiskDisposition,
+)
 from memeradar_domain.common import bounded_decimal, normalize_texts, to_decimal
 from memeradar_domain.events import normalize_reason_codes
 
-FAST_SAFETY_VERSION = "fast-safety-v1"
+FAST_SAFETY_VERSION = "fast-safety-v2"
 
 
 class FastSafetyStatus(str, Enum):
@@ -63,8 +69,12 @@ class FastSafetyResult:
     latency_ms: Decimal = Decimal("0")
     liquidity: Decimal | None = None
     sellability: bool | None = None
+    mint_authority_safe: bool | None = None
+    freeze_authority_safe: bool | None = None
+    protocol_identity_verified: bool | None = None
     buy_impact_bps: Decimal | None = None
     sell_impact_bps: Decimal | None = None
+    quote_semantics: str | None = None
     raw_smart_wallet_count: int | None = None
     independent_smart_wallet_count: int | None = None
     shared_funder_ratio: Decimal | None = None
@@ -96,6 +106,15 @@ class FastSafetyResult:
         if any(not isinstance(value, Provenance) for value in provenance):
             raise TypeError("provenance must contain Provenance values")
         object.__setattr__(self, "provenance", provenance)
+        for name in (
+            "sellability",
+            "mint_authority_safe",
+            "freeze_authority_safe",
+            "protocol_identity_verified",
+        ):
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, bool):
+                raise TypeError(f"{name} must be a boolean or None")
         object.__setattr__(
             self,
             "latency_ms",
@@ -105,6 +124,8 @@ class FastSafetyResult:
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, to_decimal(value, name))
+        if self.quote_semantics is not None:
+            object.__setattr__(self, "quote_semantics", str(self.quote_semantics).upper())
         for name in ("shared_funder_ratio", "coordinated_wallet_probability"):
             value = getattr(self, name)
             if value is not None:
@@ -143,8 +164,12 @@ class FastSafetyResult:
                 "latency_ms": self.latency_ms,
                 "liquidity": self.liquidity,
                 "sellability": self.sellability,
+                "mint_authority_safe": self.mint_authority_safe,
+                "freeze_authority_safe": self.freeze_authority_safe,
+                "protocol_identity_verified": self.protocol_identity_verified,
                 "buy_impact_bps": self.buy_impact_bps,
                 "sell_impact_bps": self.sell_impact_bps,
+                "quote_semantics": self.quote_semantics,
                 "raw_smart_wallet_count": self.raw_smart_wallet_count,
                 "independent_smart_wallet_count": self.independent_smart_wallet_count,
                 "shared_funder_ratio": self.shared_funder_ratio,
@@ -229,6 +254,27 @@ class FastSafetyGate:
         reasons: list[ReasonCode] = []
         refs: list[str] = []
         provenance: list[Provenance] = []
+        direct_refs = direct.get("evidence_refs", ())
+        if isinstance(direct_refs, Sequence) and not isinstance(
+            direct_refs, str | bytes | bytearray
+        ):
+            refs.extend(str(ref) for ref in direct_refs)
+        direct_provenance = direct.get("provenance", ())
+        if isinstance(direct_provenance, Sequence) and not isinstance(
+            direct_provenance, str | bytes | bytearray
+        ):
+            provenance.extend(
+                item for item in direct_provenance if isinstance(item, Provenance)
+            )
+        direct_reasons = direct.get("reason_codes", ())
+        if isinstance(direct_reasons, str | ReasonCode):
+            direct_reasons = (direct_reasons,)
+        if isinstance(direct_reasons, Sequence):
+            for item in direct_reasons:
+                try:
+                    reasons.append(item if isinstance(item, ReasonCode) else ReasonCode(item))
+                except (TypeError, ValueError):
+                    continue
         for source in sources.values():
             raw_refs = _source_value(source, "evidence_refs")
             if isinstance(raw_refs, Sequence) and not isinstance(raw_refs, str | bytes | bytearray):
@@ -239,11 +285,13 @@ class FastSafetyGate:
             ):
                 provenance.extend(item for item in raw_provenance if isinstance(item, Provenance))
 
+        authority_flags: dict[str, bool | None] = {}
         for key, reason in (
             ("mint_authority_safe", "MINT_AUTHORITY_UNSAFE"),
             ("freeze_authority_safe", "FREEZE_AUTHORITY_UNSAFE"),
         ):
             flag = _boolean(value(key))
+            authority_flags[key] = flag
             if flag is None:
                 critical.append(f"{key.upper()}_UNKNOWN")
             elif not flag:
@@ -257,7 +305,9 @@ class FastSafetyGate:
                 "canonical_protocol_verified",
             )
         )
-        if protocol_verified is False:
+        if protocol_verified is None:
+            critical.append("PROTOCOL_IDENTITY_UNKNOWN")
+        elif protocol_verified is False:
             critical.append("PROTOCOL_IDENTITY_UNVERIFIED")
 
         liquidity = _decimal(
@@ -295,6 +345,13 @@ class FastSafetyGate:
                 blocks.append("SELL_IMPACT_HIGH")
                 reasons.append(ReasonCode("SELL_IMPACT_HIGH"))
 
+        raw_quote_semantics = value("quote_semantics", "price_semantics")
+        quote_semantics = str(
+            getattr(raw_quote_semantics, "value", raw_quote_semantics)
+        ).upper()
+        if quote_semantics != PriceSemantics.EXECUTION_QUOTE.value:
+            critical.append("EXECUTION_QUOTE_UNKNOWN")
+
         risk_disposition = value("risk_disposition", "disposition")
         try:
             disposition = None if risk_disposition is None else RiskDisposition(risk_disposition)
@@ -330,6 +387,8 @@ class FastSafetyGate:
                     noncritical.append("SOCIAL_EVIDENCE_UNKNOWN")
             except (TypeError, ValueError):
                 noncritical.append("SOCIAL_EVIDENCE_UNKNOWN")
+
+        reasons.extend(ReasonCode(code) for code in (*critical, *noncritical))
 
         status = (
             FastSafetyStatus.BLOCK
@@ -369,8 +428,12 @@ class FastSafetyGate:
             latency_ms=elapsed_ms,
             liquidity=liquidity,
             sellability=sellability,
+            mint_authority_safe=authority_flags["mint_authority_safe"],
+            freeze_authority_safe=authority_flags["freeze_authority_safe"],
+            protocol_identity_verified=protocol_verified,
             buy_impact_bps=buy_impact,
             sell_impact_bps=sell_impact,
+            quote_semantics=None if quote_semantics == "NONE" else quote_semantics,
             raw_smart_wallet_count=None if raw_smart is None else int(raw_smart),
             independent_smart_wallet_count=None if independent is None else int(independent),
             shared_funder_ratio=_decimal(value("shared_funder_ratio"), "shared_funder_ratio"),

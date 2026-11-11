@@ -16,6 +16,7 @@ import httpx
 
 from memeradar_application.provider_contracts import (
     ProviderRequestContext,
+    QuoteAmountUnit,
     QuotePort,
     QuoteRequest,
     QuoteSnapshot,
@@ -304,6 +305,13 @@ class JupiterAdapter(QuotePort):
             ),
             price_semantics=PriceSemantics.EXECUTION_QUOTE,
             chain="solana",
+            amount_unit=(
+                QuoteAmountUnit.RAW_BASE_UNITS
+                if request.input_decimals is not None and request.output_decimals is not None
+                else QuoteAmountUnit.UNKNOWN
+            ),
+            input_decimals=request.input_decimals,
+            output_decimals=request.output_decimals,
         )
 
     async def quote(self, request: QuoteRequest) -> QuoteSnapshot:

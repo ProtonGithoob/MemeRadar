@@ -6,6 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.lock ./requirements.lock
 RUN pip install --no-cache-dir --disable-pip-version-check -r requirements.lock
 

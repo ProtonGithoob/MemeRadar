@@ -192,6 +192,23 @@ def test_agreement_uses_internal_score_and_collapses_graph_clusters() -> None:
     assert result.execution_eligible(NOW) is False
 
 
+def test_same_mint_provider_signals_and_graph_survive_distinct_storage_ids() -> None:
+    requested_token = token()
+    rehydrated_token = token()
+
+    result = ExternalWalletReconciler().reconcile(
+        requested_token,
+        labels=(),
+        token_signals=(signal(rehydrated_token),),
+        wallet_graph=graph(rehydrated_token),
+        now=NOW,
+        config_hash="external-wallet-test",
+    )
+
+    assert result.tracked_supply_pct == Decimal("0.25")
+    assert result.side_wallet_cluster_confidence == Decimal("0.80")
+
+
 def test_stale_and_disagreeing_labels_never_add_positive_confidence() -> None:
     token_value = token()
     stale = label(

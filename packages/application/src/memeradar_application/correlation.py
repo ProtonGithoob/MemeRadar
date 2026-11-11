@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
+from hashlib import sha256
 from types import MappingProxyType
 
 from memeradar_domain import (
@@ -72,6 +73,11 @@ from .signal_hardening import (
 from .wallet_tracking import WalletAction, WalletActivity
 
 CORRELATION_VERSION = "correlation-window-v1"
+CALLER_CONDUCT_RESEARCH_VERSION = "caller-conduct-research-v1"
+_CALLER_CONDUCT_RESEARCH_CONFIG_HASH = sha256(
+    f"{CALLER_CONDUCT_RESEARCH_VERSION}:caller-conduct-v1".encode()
+).hexdigest()
+_MAX_CALLER_CONDUCT_RESEARCH_CALLS = 250
 ULTRA_EARLY_CORRELATION_WINDOWS: tuple[tuple[str, timedelta], ...] = (
     ("1s", timedelta(seconds=1)),
     ("5s", timedelta(seconds=5)),
@@ -869,7 +875,7 @@ class CallerMarketConductAnalyzer:
             for raw in activity_values:
                 if not isinstance(raw, WalletActivity):
                     raise TypeError("wallet_activities must contain WalletActivity values")
-                if raw.token != token:
+                if raw.token.canonical_id != token.canonical_id:
                     continue
                 self._append_evidence(
                     provenance,
@@ -901,7 +907,7 @@ class CallerMarketConductAnalyzer:
         for raw in related_values:
             if not isinstance(raw, SocialCallObservation):
                 raise TypeError("related_calls must contain SocialCallObservation values")
-            if token is None or raw.asset != token:
+            if token is None or raw.asset is None or raw.asset.canonical_id != token.canonical_id:
                 continue
             self._append_evidence(provenance, evidence_refs, raw.provenance, raw.evidence_refs)
             related_state, related_future = _conduct_quality_at(
@@ -1127,6 +1133,198 @@ class CallerMarketConductAnalyzer:
             evidence_refs=evidence_refs,
             reason_codes=reasons,
         )
+
+
+def build_caller_conduct_research_projection(
+    token: TokenIdentity,
+    calls: Sequence[SocialCallObservation],
+    *,
+    as_of: datetime,
+) -> Mapping[str, object]:
+    """Build a bounded, point-in-time caller feature for shadow research."""
+
+    if not isinstance(token, TokenIdentity):
+        raise TypeError("token must be a TokenIdentity")
+    checkpoint = ensure_utc(as_of, "as_of")
+    if isinstance(calls, str | bytes | bytearray):
+        raise TypeError("calls must be a sequence")
+    values = tuple(calls)
+    if any(not isinstance(value, SocialCallObservation) for value in values):
+        raise TypeError("calls must contain SocialCallObservation values")
+    matching = tuple(
+        sorted(
+            (
+                value
+                for value in values
+                if value.asset is not None
+                and value.asset.canonical_id == token.canonical_id
+                and value.published_at <= checkpoint
+                and value.observed_at <= checkpoint
+                and value.ingested_at <= checkpoint
+            ),
+            key=lambda value: (
+                value.published_at,
+                value.ingested_at,
+                value.caller_identity.canonical_id,
+                value.source,
+                value.message_id,
+            ),
+        )[-_MAX_CALLER_CONDUCT_RESEARCH_CALLS:]
+    )
+    deduplicated: dict[tuple[object, ...], SocialCallObservation] = {}
+    for value in matching:
+        logical_key = (
+            value.caller_identity.canonical_id,
+            value.asset.canonical_id if value.asset is not None else None,
+            value.published_at,
+            getattr(value.intent, "value", value.intent),
+            value.declared_entry,
+            value.declared_targets,
+            value.edited,
+            value.deleted,
+        )
+        prior = deduplicated.get(logical_key)
+        if prior is None:
+            deduplicated[logical_key] = value
+            continue
+        provenance = tuple(dict.fromkeys((*prior.provenance, *value.provenance)))
+        quality_states = {QualityState(prior.quality_state), QualityState(value.quality_state)}
+        quality = next(
+            (
+                state
+                for state in (
+                    QualityState.INVALID,
+                    QualityState.CONFLICTED,
+                    QualityState.STALE,
+                    QualityState.UNKNOWN,
+                )
+                if state in quality_states
+            ),
+            QualityState.FRESH,
+        )
+        deduplicated[logical_key] = replace(
+            prior,
+            observed_at=max(prior.observed_at, value.observed_at),
+            ingested_at=max(prior.ingested_at, value.ingested_at),
+            provenance=provenance,
+            evidence_refs=tuple(dict.fromkeys((*prior.evidence_refs, *value.evidence_refs))),
+            confidence=min(prior.confidence, value.confidence),
+            quality_state=quality,
+        )
+
+    logical_calls = tuple(deduplicated.values())
+    analyzer = CallerMarketConductAnalyzer()
+    results = tuple(
+        analyzer.analyze(
+            call,
+            related_calls=logical_calls,
+            now=checkpoint,
+            config_hash=_CALLER_CONDUCT_RESEARCH_CONFIG_HASH,
+        )
+        for call in logical_calls
+    )
+    classification_counts = {
+        value.value: sum(value in result.classifications for result in results)
+        for value in CallerMarketConductClassification
+    }
+    fresh_signal = any(
+        result.quality_state is QualityState.FRESH
+        and any(
+            item is not CallerMarketConductClassification.INSUFFICIENT_EVIDENCE
+            for item in result.classifications
+        )
+        for result in results
+    )
+    quality_state = (
+        QualityState.INVALID
+        if any(result.quality_state is QualityState.INVALID for result in results)
+        else QualityState.STALE
+        if any(result.quality_state is QualityState.STALE for result in results)
+        else QualityState.FRESH
+        if fresh_signal
+        else QualityState.UNKNOWN
+    )
+    all_provenance = tuple(
+        sorted(
+            {
+                (item.provider, item.source_id, item.observed_at, item.parser_version): item
+                for call in matching
+                for item in call.provenance
+            }.values(),
+            key=lambda item: (item.provider, item.source_id, item.observed_at),
+        )
+    )
+    evidence_refs = tuple(
+        sorted(
+            {
+                ref
+                for call in matching
+                for ref in (
+                    *call.evidence_refs,
+                    *(item.source_id for item in call.provenance),
+                )
+            }
+        )
+    )
+    reasons = tuple(
+        dict.fromkeys(
+            str(reason)
+            for result in results
+            for reason in result.reason_codes
+        )
+    ) or (("CALLER_CONDUCT_SOCIAL_CALLS_MISSING",) if not logical_calls else ())
+    provenance_values = tuple(
+        MappingProxyType(
+            {
+                "provider": item.provider,
+                "source_id": item.source_id,
+                "observed_at": item.observed_at,
+                "parser_version": item.parser_version,
+            }
+        )
+        for item in all_provenance
+    )
+    assessments = tuple(
+        MappingProxyType(
+            {
+                "call_id": f"{result.call.source}:{result.call.message_id}",
+                "caller_id": result.call.caller_identity.canonical_id,
+                "classifications": tuple(
+                    value.value
+                    if isinstance(value, CallerMarketConductClassification)
+                    else value
+                    for value in result.classifications
+                ),
+                "confidence": result.confidence,
+                "quality_state": result.quality_state.value,
+                "no_lookahead_verified": result.no_lookahead_verified,
+                "reason_codes": tuple(str(value) for value in result.reason_codes),
+                "evidence_refs": result.evidence_refs,
+            }
+        )
+        for result in results
+    )
+    return MappingProxyType(
+        {
+            "version": CALLER_CONDUCT_RESEARCH_VERSION,
+            "config_hash": _CALLER_CONDUCT_RESEARCH_CONFIG_HASH,
+            "as_of": checkpoint,
+            "available_at": max((call.ingested_at for call in logical_calls), default=None),
+            "quality_state": quality_state.value,
+            "source_coverage": "UNKNOWN",
+            "sample_size": len(logical_calls),
+            "caller_count": len({call.caller_identity.canonical_id for call in logical_calls}),
+            "duplicate_count": len(matching) - len(logical_calls),
+            "classification_counts": MappingProxyType(classification_counts),
+            "assessments": assessments,
+            "provenance": provenance_values,
+            "evidence_refs": evidence_refs,
+            "reason_codes": reasons,
+            "no_lookahead_verified": all(
+                result.no_lookahead_verified for result in results
+            ),
+        }
+    )
 
 
 CallerConductAnalyzer = CallerMarketConductAnalyzer
@@ -1407,7 +1605,7 @@ class CorrelationWindowBuilder:
         for value in wallet_activities:
             if not isinstance(value, WalletActivity):
                 raise TypeError("wallet_activities must contain WalletActivity values")
-            if value.token != token:
+            if value.token.canonical_id != token.canonical_id:
                 continue
             state, future = self._quality_at(
                 quality_state=value.quality_state,
@@ -1449,7 +1647,7 @@ class CorrelationWindowBuilder:
         for value in smart_money_scores:
             if not isinstance(value, TokenSmartMoneyScore):
                 raise TypeError("smart_money_scores must contain TokenSmartMoneyScore values")
-            if value.token != token:
+            if value.token.canonical_id != token.canonical_id:
                 continue
             score_state = value.freshness.state_at(now)
             add_metadata(value.provenance, value.evidence_refs)
@@ -1479,7 +1677,10 @@ class CorrelationWindowBuilder:
                     value.evidence_refs,
                 )
             for event in value.events:
-                if not isinstance(event, SmartMoneyEvent) or event.token != token:
+                if (
+                    not isinstance(event, SmartMoneyEvent)
+                    or event.token.canonical_id != token.canonical_id
+                ):
                     continue
                 event_state = event.freshness.state_at(now)
                 state = (

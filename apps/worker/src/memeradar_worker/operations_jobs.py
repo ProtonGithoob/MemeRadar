@@ -13,7 +13,7 @@ from memeradar_application.alert_pipeline import AlertDeliveryService, AlertPoli
 from memeradar_application.config import Settings
 from memeradar_application.early_alpha_alert import EarlyAlphaAlertRenderer
 from memeradar_application.event_processing import EventDispatcher, OutboxProcessor, OutboxWorker
-from memeradar_domain import EventEnvelope, Observation, Provenance, QualityState
+from memeradar_domain import AlertType, EventEnvelope, Observation, Provenance, QualityState
 from memeradar_persistence import (
     SqlAlchemyAlertStore,
     SqlAlchemyOutboxStore,
@@ -26,6 +26,39 @@ from memeradar_providers.telegram import TelegramNotificationAdapter
 LOGGER = logging.getLogger(__name__)
 
 Sleep = Callable[[float], Awaitable[None]]
+
+
+def _is_relevant_token_alert(event: EventEnvelope, *, now: datetime | None = None) -> bool:
+    checked_at = now or datetime.now(UTC)
+    age = checked_at - event.ingested_at
+    return (
+        event.kind == "CandidateStateChanged"
+        and timedelta(0) <= age <= timedelta(minutes=5)
+        and event.payload.get("notification_eligible") is True
+        and event.payload.get("safety_status") == "PASS"
+        and event.payload.get("to_state") in (
+            "EARLY_WATCH", "STRONG_SETUP", "HIGH_CONFLUENCE", "ENTRY_READY"
+        )
+    )
+
+
+async def _handle_alert_event(
+    event: EventEnvelope,
+    service: AlertDeliveryService,
+    *,
+    now: datetime | None = None,
+) -> None:
+    checked_at = now or datetime.now(UTC)
+    if _is_relevant_token_alert(event, now=checked_at):
+        await service.handle_event(event)
+    elif event.kind == "CandidateStateChanged":
+        age = checked_at - event.ingested_at
+        reason = (
+            "ALERT_DECISION_IN_FUTURE" if age < timedelta(0)
+            else "ALERT_EXPIRED" if age > timedelta(minutes=5)
+            else "ALERT_INELIGIBLE"
+        )
+        await service.suppress_event(event, reason)
 
 
 async def _run_solana_ingestion_health(
@@ -151,13 +184,17 @@ async def _run_alert_outbox(
         policy=AlertPolicy(
             max_messages=settings.alert_max_messages_per_window,
             window=timedelta(seconds=settings.alert_rate_limit_window_seconds),
+            enabled_types=frozenset({
+                AlertType.EARLY_WATCH, AlertType.STRONG_SETUP,
+                AlertType.HIGH_CONFLUENCE, AlertType.ENTRY_READY,
+            }),
         ),
         destination=settings.telegram_chat_id,
         early_alpha_renderer=EarlyAlphaAlertRenderer(),
     )
 
     async def handle_alert_event(event: EventEnvelope) -> None:
-        await service.handle_event(event)
+        await _handle_alert_event(event, service)
 
     dispatcher = EventDispatcher(
         {

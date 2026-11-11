@@ -23,5 +23,20 @@ def test_make_and_ci_use_the_same_coverage_command():
     makefile = (ROOT / "Makefile").read_text()
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
 
-    assert "$(PYTHON) -m pytest -q --cov=apps --cov=packages --cov-report=term-missing" in makefile
-    assert "python -m pytest -q --cov=apps --cov=packages --cov-report=term-missing" in workflow
+    expected_make_test = (
+        '$(PYTHON) -m pytest -q -m "not integration" '
+        "--cov=apps --cov=packages --cov-report=term-missing"
+    )
+    assert expected_make_test in makefile
+    assert "run: make test PYTHON=python" in workflow
+    assert workflow.index("name: Migration upgrade") < workflow.index(
+        "name: PostgreSQL integration acceptance"
+    )
+
+
+def test_integration_runbooks_keep_test_database_separate_from_runtime_database():
+    for name in ("RELIABILITY.md", "RELEASE.md"):
+        runbook = (ROOT / "docs" / "RUNBOOKS" / name).read_text()
+
+        assert 'MEMERADAR_TEST_DATABASE_URL="$MEMERADAR_DATABASE_URL"' not in runbook
+        assert "disposable" in runbook.lower()

@@ -4,7 +4,7 @@ import { PARITY_MANIFEST } from "./parity-manifest";
 import type { ParityOmissionStatus } from "./parity-manifest";
 
 const ROUTES = [
-  "/", "/radar", "/ultra-early", "/opportunities", "/positions", "/wallets",
+  "/", "/radar", "/scan-monitor", "/ultra-early", "/opportunities", "/positions", "/wallets",
   "/wallets/[address]", "/wallet-graph", "/callers", "/tokens/[tokenId]", "/providers",
   "/operations", "/audit", "/settings", "/readiness"
 ];

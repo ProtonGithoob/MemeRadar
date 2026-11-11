@@ -52,6 +52,7 @@ class AlertState(str, Enum):
     DELIVERED = "DELIVERED"
     FAILED = "FAILED"
     SUPPRESSED = "SUPPRESSED"
+    DELIVERY_UNKNOWN = "DELIVERY_UNKNOWN"
 
 
 @dataclass(slots=True)
@@ -92,7 +93,7 @@ class Alert:
         if self.state is AlertState.REQUESTED and self.delivered_at is not None:
             raise ValueError("requested alerts cannot have delivered_at")
         if (
-            self.state in {AlertState.FAILED, AlertState.SUPPRESSED}
+            self.state in {AlertState.FAILED, AlertState.SUPPRESSED, AlertState.DELIVERY_UNKNOWN}
             and self.delivered_at is not None
         ):
             raise ValueError("undelivered alerts cannot have delivered_at")
@@ -100,7 +101,7 @@ class Alert:
     def mark_delivered(self, delivered_at: datetime) -> None:
         """Record a successful delivery exactly once."""
 
-        if self.state not in {AlertState.REQUESTED, AlertState.FAILED}:
+        if self.state not in {AlertState.REQUESTED, AlertState.FAILED, AlertState.DELIVERY_UNKNOWN}:
             raise ValueError("only requested or failed alerts can be delivered")
         normalized_time = ensure_utc(delivered_at, "delivered_at")
         if normalized_time < self.requested_at:
@@ -112,10 +113,16 @@ class Alert:
     def mark_failed(self) -> None:
         """Record a failed attempt without losing the dedupe identity."""
 
-        if self.state not in {AlertState.REQUESTED, AlertState.FAILED}:
+        if self.state not in {AlertState.REQUESTED, AlertState.FAILED, AlertState.DELIVERY_UNKNOWN}:
             raise ValueError("only requested or failed alerts can fail")
         self.attempts += 1
         self.state = AlertState.FAILED
+
+    def mark_delivery_unknown(self) -> None:
+        """Persist a send attempt before an external acknowledgement exists."""
+        if self.state not in {AlertState.REQUESTED, AlertState.FAILED}:
+            raise ValueError("only requested or failed alerts can start delivery")
+        self.state = AlertState.DELIVERY_UNKNOWN
 
     def mark_suppressed(self, reason_codes: tuple[ReasonCode | str, ...] = ()) -> None:
         """Record a policy suppression without treating it as a successful delivery."""

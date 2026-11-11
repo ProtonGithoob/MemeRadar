@@ -497,8 +497,39 @@ def build_forward_report(
     *,
     generated_at: str | None = None,
     telegram_configured: bool | None = None,
+    verified_launch_ids: frozenset[str] = frozenset(),
 ) -> dict[str, object]:
-    """Aggregate all launches and research rows without survivorship filtering."""
+    """Aggregate caller-verified source IDs; absent verification yields an empty cohort.
+
+    Callers must verify each ID against the canonical program and instruction registry.
+    """
+
+    verified_mints = {
+        mint
+        for row in rows
+        if row.get("kind") == "chain.event"
+        and isinstance(row.get("id"), str)
+        and row["id"] in verified_launch_ids
+        and (mint := _mint(row)) is not None
+    }
+    rows = tuple(
+        row
+        for row in rows
+        if (
+            row.get("kind") == "chain.event"
+            and isinstance(row.get("id"), str)
+            and row["id"] in verified_launch_ids
+            and _mint(row) in verified_mints
+        )
+        or (
+            row.get("kind") != "chain.event"
+            and (
+                _mint(row) in verified_mints
+                or row.get("kind") in {"provider.ingestion_health", "research.telegram_delivery"}
+                or str(row.get("kind", "")).startswith("alert.")
+            )
+        )
+    )
 
     launches: dict[str, Mapping[str, object]] = {}
     stages: dict[str, set[str]] = defaultdict(set)

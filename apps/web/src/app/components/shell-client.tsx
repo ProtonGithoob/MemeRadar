@@ -17,6 +17,7 @@ const NAV_SECTIONS: Array<{
     items: [
       { href: "/", label: "Overview", glyph: "OV" },
       { href: "/radar", label: "Radar", glyph: "RD" },
+      { href: "/scan-monitor", label: "Scan Monitor", glyph: "SM" },
       { href: "/ultra-early", label: "Ultra Early", glyph: "UE" }
     ]
   },

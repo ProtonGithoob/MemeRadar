@@ -473,6 +473,18 @@ opt-in Postgres round trip. Production protocol identities remain explicitly
 `TODO_VERIFY`/`SUPPORTED_NEEDS_REVERIFY` until authoritative corroboration;
 Rust/Yellowstone remains conditional on E11.1 measurement.
 
+### Reliability continuation — 2026-11-11
+
+P24/P25 local implementation adds startup and idle-timer gap recovery, bounded
+batches, and database claim UUID/expiry fencing (migration `0014`). The P29
+recovery slice passed 62 tests with 2 PostgreSQL-only skips, and full local
+`make verify` passed 1,648 backend and 86 frontend tests. The two-engine
+PostgreSQL claim race, migration execution, and worker restart remain blocked
+by unavailable PostgreSQL/Docker access. Current source coverage remains
+UNKNOWN; a locally verified range is not proof of complete subscription
+capture. Current-source browser E2E and production build are also blocked by
+sandbox listener/child-process restrictions; see `docs/STATUS.md`.
+
 ---
 
 ## Phase 9 — Paper Trading and Exit Intelligence
@@ -569,7 +581,9 @@ Sprint 10.2 keyless state: complete. The provider-free
 `memeradar_application.backtesting` projection consumes only immutable Phase
 10.1 replay results, selects fresh advisory PASS signals, evaluates
 configurable target/stop/safety/horizon exits independently, and reuses the
-`paper-fill-v1` fee/slippage model. Deterministic JSON/CSV reports include
+`paper-fill-v2` fee/slippage model. Synthetic replay quotes use explicit
+`DISPLAY_UNITS`; executable paper orders still require raw base units and
+explicit mint decimals. Deterministic JSON/CSV reports include
 explicit unknown/skip reasons, precision/hit rate/expectancy, fixed-notional
 drawdown and profit factor, score-bucket calibration, and venue/liquidity/
 token-age/market-regime/social/smart-wallet segments. The keyless CLI and

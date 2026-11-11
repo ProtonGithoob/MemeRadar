@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 
@@ -160,6 +161,8 @@ def coordinator(
     timeout_seconds: float = 10,
     handoff: BoundedEventHandoff | None = None,
     slot_continuity_expected: bool = True,
+    provider_id: str | None = None,
+    program_scope: str | None = None,
 ) -> StreamIntegrityCoordinator:
     return StreamIntegrityCoordinator(
         chain=Chain.SOLANA,
@@ -177,6 +180,8 @@ def coordinator(
         ),
         handoff=handoff,
         slot_continuity_expected=slot_continuity_expected,
+        provider_id=provider_id,
+        program_scope=program_scope,
         clock=lambda: NOW + timedelta(seconds=30),
     )
 
@@ -282,7 +287,14 @@ def test_overlapping_live_gap_detections_merge_deterministically() -> None:
 
 
 def test_skipped_slot_is_not_missing_when_backfill_reports_produced_slots() -> None:
-    store = InMemoryStreamStateStore()
+    class StrictStore(InMemoryStreamStateStore):
+        async def save_gap(self, gap: StreamGap) -> None:
+            previous = await self.get_gap(gap.id)
+            if previous is not None:
+                previous.transition(gap.status)
+            await super().save_gap(gap)
+
+    store = StrictStore()
     decoder = FixtureDecoder()
     request_placeholder = None
     blocks = (
@@ -296,7 +308,13 @@ def test_skipped_slot_is_not_missing_when_backfill_reports_produced_slots() -> N
         RawChainBlock(slot=102, produced=False, transport="fixture-rpc"),
     )
     backfill = FixtureBackfill()
-    service = coordinator(store, decoder, backfill)
+    service = coordinator(
+        store,
+        decoder,
+        backfill,
+        provider_id="fixture-rpc-provider",
+        program_scope="program:11111111111111111111111111111111",
+    )
     run(service.ingest_live(raw(100)))
     run(service.ingest_live(raw(103)))
     gap = run(store.list_gaps())[0]
@@ -306,16 +324,140 @@ def test_skipped_slot_is_not_missing_when_backfill_reports_produced_slots() -> N
         blocks=blocks,
         source="fixture-rpc",
         completed_at=NOW + timedelta(seconds=32),
+        commitment=CommitmentState.FINALIZED,
     )
 
     result = run(service.recover_gap(gap.id))
     cursor = run(store.load_cursor(Chain.SOLANA, "fixture-live", "stream-1"))
 
     assert result.verification.verification_status.value == "PASS"
+    assert result.verification.provider_id == "fixture-rpc-provider"
+    assert result.verification.program_scope == "program:11111111111111111111111111111111"
+    assert result.verification.commitment is CommitmentState.FINALIZED
+    assert result.verification.verification_method == "canonical_event_set_v1"
+    assert result.verification.recovery_attempt == 1
     assert result.gap.status.value == "VERIFIED"
     assert cursor is not None
     assert cursor.last_contiguous_slot == 103
     assert result.events[0].recovery_state is RecoveryState.RECOVERED_VERIFIED
+
+
+def test_two_coordinators_do_not_fetch_the_same_gap_concurrently() -> None:
+    async def scenario() -> None:
+        store = InMemoryStreamStateStore()
+        gap = StreamGap(
+            chain=Chain.SOLANA,
+            transport="fixture-live",
+            stream_id="stream-1",
+            from_slot=101,
+            to_slot=101,
+            detected_at=NOW,
+            detection_method="FIXTURE",
+        )
+        await store.save_gap(gap)
+
+        class BlockingBackfill:
+            def __init__(self) -> None:
+                self.calls = 0
+                self.started = asyncio.Event()
+                self.release = asyncio.Event()
+
+            async def fetch(self, request: BackfillRequest) -> BackfillResult:
+                self.calls += 1
+                self.started.set()
+                await self.release.wait()
+                block = RawChainBlock(
+                    slot=101,
+                    produced=True,
+                    transactions=(raw(101, transport="fixture-rpc"),),
+                    transport="fixture-rpc",
+                    fetched_at=NOW + timedelta(seconds=31),
+                )
+                return BackfillResult(
+                    request=request,
+                    produced_slots=(101,),
+                    blocks=(block,),
+                    source="fixture-rpc",
+                    completed_at=NOW + timedelta(seconds=32),
+                )
+
+        backfill = BlockingBackfill()
+        first = coordinator(store, FixtureDecoder(), backfill)
+        second = coordinator(store, FixtureDecoder(), backfill)
+        first_task = asyncio.create_task(first.recover_gap(gap.id))
+        await asyncio.wait_for(backfill.started.wait(), timeout=1)
+        second_task = asyncio.create_task(second.recover_active_gaps())
+        for _ in range(8):
+            await asyncio.sleep(0)
+        concurrent_calls = backfill.calls
+        backfill.release.set()
+        first_result = await first_task
+        second_results = await second_task
+
+        assert concurrent_calls == 1
+        assert first_result.gap.status is StreamGapStatus.VERIFIED
+        assert second_results == ()
+
+    run(scenario())
+
+
+def test_expired_gap_claim_fences_the_previous_recovery_worker() -> None:
+    async def scenario() -> None:
+        store = InMemoryStreamStateStore()
+        gap = StreamGap(
+            chain=Chain.SOLANA,
+            transport="fixture-live",
+            stream_id="stream-1",
+            from_slot=101,
+            to_slot=101,
+            detected_at=NOW,
+            detection_method="FIXTURE",
+        )
+        await store.save_gap(gap)
+        first_claim = uuid4()
+        second_claim = uuid4()
+
+        first = await store.claim_gap(
+            gap.id,
+            claim_id=first_claim,
+            now=NOW,
+            lease_expires_at=NOW + timedelta(seconds=5),
+        )
+        assert first is not None
+        assert await store.claim_gap(
+            gap.id,
+            claim_id=second_claim,
+            now=NOW + timedelta(seconds=4),
+            lease_expires_at=NOW + timedelta(seconds=9),
+        ) is None
+        assert not await store.save_claimed_gap(
+            first,
+            claim_id=first_claim,
+            now=NOW + timedelta(seconds=5),
+            lease_expires_at=NOW + timedelta(seconds=20),
+        )
+
+        reclaimed = await store.claim_gap(
+            gap.id,
+            claim_id=second_claim,
+            now=NOW + timedelta(seconds=6),
+            lease_expires_at=NOW + timedelta(seconds=11),
+        )
+        assert reclaimed is not None
+        assert not await store.save_claimed_gap(
+            first,
+            claim_id=first_claim,
+            now=NOW + timedelta(seconds=6),
+            lease_expires_at=NOW + timedelta(seconds=20),
+        )
+        assert await store.save_claimed_gap(
+            reclaimed,
+            claim_id=second_claim,
+            now=NOW + timedelta(seconds=6),
+            lease_expires_at=NOW + timedelta(seconds=20),
+        )
+
+    run(scenario())
 
 
 def test_restart_resumes_from_persisted_cursor_without_false_gap() -> None:
@@ -506,29 +648,45 @@ def test_stream_quality_impact_reduces_confidence_and_never_adds_score() -> None
     assert impact.execution_eligible() is False
 
 
-def test_live_observation_reconciles_a_gap_without_leaving_false_missing_slots() -> None:
+def test_live_observation_does_not_prove_missing_slot_is_complete() -> None:
     store = InMemoryStreamStateStore()
     service = coordinator(store, FixtureDecoder())
 
     run(service.ingest_live(raw(100)))
     run(service.ingest_live(raw(104)))
     run(service.ingest_live(raw(102)))
-    assert [(gap.from_slot, gap.to_slot) for gap in run(store.list_gaps())] == [
-        (101, 101),
-        (103, 103),
-    ]
+    assert [(gap.from_slot, gap.to_slot) for gap in run(store.list_gaps())] == [(101, 103)]
 
     run(service.ingest_live(raw(101)))
     run(service.ingest_live(raw(103)))
-    assert run(store.list_gaps()) == ()
+    assert [(gap.from_slot, gap.to_slot) for gap in run(store.list_gaps())] == [(101, 103)]
     cursor = run(store.load_cursor(Chain.SOLANA, "fixture-live", "stream-1"))
     assert cursor is not None
-    assert cursor.last_contiguous_slot == 104
-    assert run(store.list_gaps(include_superseded=True))
-    assert all(
-        gap.status is StreamGapStatus.SUPERSEDED
-        for gap in run(store.list_gaps(include_superseded=True))
+    assert cursor.last_contiguous_slot == 100
+
+
+def test_explicit_failed_slot_remains_open_without_prior_cursor() -> None:
+    store = InMemoryStreamStateStore()
+    service = coordinator(store, FixtureDecoder())
+    run(service.record_observation_gap(100, detected_at=NOW))
+    run(service.ingest_live(raw(101)))
+    gaps = run(service.active_gaps())
+    assert [(gap.from_slot, gap.to_slot) for gap in gaps] == [(100, 100)]
+    cursor = run(store.load_cursor(Chain.SOLANA, "fixture-live", "stream-1"))
+    assert cursor is not None
+    assert cursor.last_contiguous_slot == 99
+
+
+def test_active_gaps_exclude_other_streams() -> None:
+    store = InMemoryStreamStateStore()
+    service = coordinator(store, FixtureDecoder())
+    other = StreamIntegrityCoordinator(
+        chain=Chain.SOLANA, transport="fixture-live", stream_id="other-stream",
+        decoder=FixtureDecoder(), state_store=store,
     )
+    run(other.record_observation_gap(100, detected_at=NOW))
+    assert run(service.active_gaps()) == ()
+    assert len(run(other.active_gaps())) == 1
 
 
 def test_backfill_timeout_is_enforced_by_the_coordinator() -> None:

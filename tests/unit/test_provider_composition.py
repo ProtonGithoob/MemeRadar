@@ -149,6 +149,7 @@ def test_jupiter_quote_selection_uses_bounded_fallback_to_dexscreener() -> None:
         {
             "PAPER_QUOTE_PROVIDER": "jupiter",
             "JUPITER_API_BASE_URL": "https://api.jup.ag/swap/v2",
+            "JUPITER_API_KEY": "fixture-key",
         }
     )
     bundle = build_provider_bundle(settings)
@@ -156,6 +157,18 @@ def test_jupiter_quote_selection_uses_bounded_fallback_to_dexscreener() -> None:
         assert bundle.jupiter is not None
         assert bundle.route_plan.quote.providers == ("jupiter", "dexscreener")
         assert bundle.quote.provider_name == "fallback:jupiter-swap-v2,dexscreener"
+    finally:
+        asyncio.run(bundle.aclose())
+
+
+def test_jupiter_without_api_key_remains_unconfigured() -> None:
+    settings = Settings.from_env(
+        {"PAPER_QUOTE_PROVIDER": "jupiter", "JUPITER_API_BASE_URL": "https://api.jup.ag/swap/v2"}
+    )
+    bundle = build_provider_bundle(settings)
+    try:
+        assert bundle.jupiter is None
+        assert bundle.optional["jupiter"] == "UNCONFIGURED_OPTIONAL"
     finally:
         asyncio.run(bundle.aclose())
 

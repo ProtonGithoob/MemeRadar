@@ -160,7 +160,7 @@ class ReadQueryPort(Protocol):
 
 def _candidate_cursor(value: CandidateView) -> tuple[str, ...]:
     return (
-        "" if value.score is None else str(value.score),
+        "~" if value.score is None else str(value.score),
         value.state_changed_at.isoformat(),
         str(value.id),
     )
@@ -168,7 +168,7 @@ def _candidate_cursor(value: CandidateView) -> tuple[str, ...]:
 
 def _early_radar_cursor(value: EarlyRadarView) -> tuple[str, ...]:
     return (
-        "" if value.early_score is None else str(value.early_score),
+        "~" if value.early_score is None else str(value.early_score),
         value.first_seen_at.isoformat(),
         str(value.candidate_id),
     )
@@ -191,7 +191,7 @@ def _timeline_cursor(value: TimelineEntryView) -> tuple[str, ...]:
 
 
 def _wallet_cursor(value: WalletView) -> tuple[str, ...]:
-    return ("" if value.score is None else str(value.score), value.address)
+    return ("~" if value.score is None else str(value.score), value.address)
 
 
 def _caller_profile_cursor(value: CallerProfileView) -> tuple[str, ...]:
@@ -227,7 +227,7 @@ def _config_cursor(value: ConfigVersionView) -> tuple[str, ...]:
 def _position_cursor(value: PositionView) -> tuple[str, ...]:
     return (
         "0" if value.state is not PositionState.CLOSED else "1",
-        "" if value.latest_activity_at is None else value.latest_activity_at.isoformat(),
+        "~" if value.latest_activity_at is None else value.latest_activity_at.isoformat(),
         str(value.id),
     )
 
@@ -345,6 +345,9 @@ class InMemoryReadQueryService:
     async def list_early_radar(self, query: EarlyRadarQuery) -> Page[EarlyRadarView]:
         if not isinstance(query, EarlyRadarQuery):
             raise TypeError("query must be an EarlyRadarQuery")
+        if query.qualified_only:
+            return _page("early-radar", (), limit=query.limit, cursor=query.cursor,
+                         cursor_values=_early_radar_cursor)
         values = [
             value
             for value in self.early_radar

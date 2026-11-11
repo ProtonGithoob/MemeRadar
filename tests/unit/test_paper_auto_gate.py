@@ -14,7 +14,7 @@ from memeradar_application.paper_execution import (
     PaperAutoExecutionDecision,
     PaperAutoExecutionGate,
 )
-from memeradar_application.provider_contracts import QuoteSnapshot
+from memeradar_application.provider_contracts import QuoteAmountUnit, QuoteSnapshot
 from memeradar_domain import Chain, Freshness, PriceSemantics, Provenance, QualityState
 
 NOW = datetime(2026, 9, 7, 12, 0, tzinfo=UTC)
@@ -56,6 +56,9 @@ def quote(
         chain=chain,
         minimum_output_amount=Decimal("99"),
         slippage_bps=25,
+        amount_unit=QuoteAmountUnit.RAW_BASE_UNITS,
+        input_decimals=0,
+        output_decimals=0,
     )
 
 
@@ -83,6 +86,9 @@ def decision(
         or {
             "disposition": "PASS",
             "critical_evidence_state": "FRESH",
+            "freshness": Freshness(
+                as_of=NOW, expires_at=NOW + timedelta(minutes=1), quality_state=QualityState.FRESH
+            ),
             "evidence_refs": ("risk:fixture",),
         },
     )
@@ -112,6 +118,26 @@ def test_paper_auto_allows_only_hard_safe_paper_candidate(chain: Chain) -> None:
     )
 
 
+def test_paper_auto_prefers_structured_risk_snapshot_to_display_risk_label() -> None:
+    candidate = vars(decision())
+    candidate["risk"] = "PASS"
+    candidate["risk_snapshot"] = {
+        "risk_disposition": "PASS",
+        "quality_state": "FRESH",
+        "as_of": NOW.isoformat(),
+        "expires_at": (NOW + timedelta(minutes=1)).isoformat(),
+        "evidence_refs": ("risk:fixture",),
+    }
+
+    result = PaperAutoExecutionGate().evaluate(
+        candidate,
+        quote=quote(),
+        at=NOW,
+    )
+
+    assert result.allowed is True
+
+
 @pytest.mark.parametrize(
     ("name", "candidate", "candidate_quote", "expected"),
     (
@@ -137,6 +163,15 @@ def test_paper_auto_allows_only_hard_safe_paper_candidate(chain: Chain) -> None:
             "stale quote",
             decision(),
             quote(as_of=NOW - timedelta(minutes=2)),
+            "PAPER_AUTO_QUOTE_NOT_FRESH",
+        ),
+        (
+            "quote observed in future",
+            decision(),
+            replace(
+                quote(),
+                provenance=replace(quote().provenance, observed_at=NOW + timedelta(seconds=1)),
+            ),
             "PAPER_AUTO_QUOTE_NOT_FRESH",
         ),
         (
@@ -234,6 +269,41 @@ def test_paper_auto_blocks_missing_route() -> None:
 
     assert result.allowed is False
     assert "PAPER_AUTO_ROUTE_UNKNOWN" in result.reason_code_values
+
+
+def test_paper_auto_requires_measured_liquidity_even_with_boolean_approval() -> None:
+    candidate = decision(liquidity_usd=None)
+    candidate.liquidity_ok = True
+    result = PaperAutoExecutionGate().evaluate(candidate, quote=quote(), at=NOW)
+    assert result.allowed is False
+    assert "PAPER_AUTO_LIQUIDITY_UNKNOWN" in result.reason_code_values
+
+
+def test_paper_auto_rejects_explicit_liquidity_failure_despite_high_measurement() -> None:
+    candidate = decision(liquidity_usd=Decimal("10000"))
+    candidate.liquidity_ok = False
+    result = PaperAutoExecutionGate().evaluate(candidate, quote=quote(), at=NOW)
+    assert result.allowed is False
+    assert "PAPER_AUTO_LIQUIDITY_TOO_LOW" in result.reason_code_values
+
+
+def test_paper_auto_rejects_unbounded_fresh_risk_state() -> None:
+    candidate = decision(risk_snapshot={"disposition": "PASS", "critical_evidence_state": "FRESH"})
+    result = PaperAutoExecutionGate().evaluate(candidate, quote=quote(), at=NOW)
+    assert result.allowed is False
+    assert "PAPER_AUTO_RISK_EVIDENCE_UNKNOWN" in result.reason_code_values
+
+
+@pytest.mark.parametrize("offset", (timedelta(seconds=1), timedelta(minutes=-2)))
+def test_paper_auto_rejects_risk_outside_serialized_freshness_window(offset: timedelta) -> None:
+    start = NOW + offset
+    candidate = decision(risk_snapshot={
+        "disposition": "PASS", "critical_evidence_state": "FRESH",
+        "as_of": start.isoformat(), "expires_at": (start + timedelta(minutes=1)).isoformat(),
+    })
+    result = PaperAutoExecutionGate().evaluate(candidate, quote=quote(), at=NOW)
+    assert result.allowed is False
+    assert "PAPER_AUTO_RISK_EVIDENCE_NOT_FRESH" in result.reason_code_values
 
 
 def test_paper_auto_modes_are_immutable_and_serializable() -> None:

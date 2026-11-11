@@ -28,6 +28,8 @@ from .early_discovery import _run_provider_shadow as _run_provider_shadow
 from .forward_evidence import PumpFunForwardEvidenceCollector
 from .operations_jobs import LOGGER, Sleep, _run_alert_outbox
 from .operations_jobs import _run_solana_ingestion_health as _run_solana_ingestion_health
+from .paper_execution import _run_paper_auto
+from .social_collection import run_social_collection
 
 
 async def run_worker(
@@ -56,6 +58,10 @@ async def run_worker(
         workers.append(_run_early_alpha_shadow(stop_event, settings, sleeper=sleeper))
     if _pumpfun_forward_is_configured(settings):
         workers.append(_run_pumpfun_forward_evidence(stop_event, settings, sleeper=sleeper))
+    if _social_collection_is_configured(settings):
+        workers.append(run_social_collection(stop_event, settings, sleeper=sleeper))
+    if settings.paper_auto_policy is not None:
+        workers.append(_run_paper_auto(stop_event, settings, sleeper=sleeper))
     if workers:
         await asyncio.gather(*workers)
     else:
@@ -113,6 +119,14 @@ def _pumpfun_forward_is_configured(settings: Settings) -> bool:
         settings.database_url
         and Chain.SOLANA.value in settings.enabled_chains
         and settings.dexscreener_api_url
+    )
+
+
+def _social_collection_is_configured(settings: Settings) -> bool:
+    return bool(
+        settings.social_collection_enabled and settings.database_url
+        and settings.social_api_url and settings.social_api_key
+        and Chain.SOLANA.value in settings.enabled_chains
     )
 
 

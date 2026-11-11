@@ -68,6 +68,17 @@ test("radar and ultra-early routes render read-only discovery workspaces", async
   await expectProtectedShell(page);
 });
 
+test("scan monitor shows recorded activity and notification status", async ({ page }) => {
+  const response = await page.goto("/scan-monitor");
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Scan Monitor" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Scanned candidates" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rejected or blocked" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Telegram" })).toBeVisible();
+  await expect(page.getByText(/not a complete ignored-event log/)).toBeVisible();
+  await expectProtectedShell(page);
+});
+
 test("operator intelligence routes render server-side evidence boundaries", async ({ page }) => {
   const routes = [
     ["/wallets", "Smart wallets"],

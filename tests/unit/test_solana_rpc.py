@@ -12,7 +12,6 @@ from memeradar_application.provider_contracts import OnChainRequest, ProviderReq
 from memeradar_domain import TokenIdentity
 from memeradar_providers.solana_rpc import SolanaRpcAdapter
 from memeradar_providers.transport import (
-    CapabilityUnavailableError,
     ProviderError,
     ProviderRateLimitedError,
     ProviderTransport,
@@ -76,7 +75,7 @@ def test_standard_rpc_enriches_account_without_helius_das() -> None:
             await client.aclose()
 
         assert observations[0].provenance.provider == "solana-public-rpc"
-        assert observations[0].provenance.parser_version == "solana-rpc-v1"
+        assert observations[0].provenance.parser_version == "solana-rpc-v2"
         assert observations[0].kind == "onchain.account_info"
         assert observations[0].normalized_payload["address"] == ACCOUNT
         assert observations[0].normalized_payload["lamports"] == 42
@@ -84,20 +83,27 @@ def test_standard_rpc_enriches_account_without_helius_das() -> None:
     asyncio.run(scenario())
 
 
-def test_standard_rpc_rejects_helius_only_token_metadata_without_http_call() -> None:
-    class FailingClient:
-        calls = 0
-
-        async def post(self, *_args: object, **_kwargs: object) -> None:
-            self.calls += 1
-            raise AssertionError("standard RPC must not emulate getAsset")
+def test_standard_rpc_reads_mint_authorities() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["method"] == "getAccountInfo"
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": body["id"], "result": {"value": {
+            "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "data": {"parsed": {"type": "mint", "info": {
+                "mintAuthority": None, "freezeAuthority": None, "decimals": 6, "supply": "100"
+            }}}
+        }}})
 
     async def scenario() -> None:
-        client = FailingClient()
-        adapter = SolanaRpcAdapter("https://fixture.solana.example", client=client)  # type: ignore[arg-type]
-        with pytest.raises(CapabilityUnavailableError):
-            await adapter.enrich(OnChainRequest(context=context(), token=TokenIdentity(MINT)))
-        assert client.calls == 0
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            adapter = SolanaRpcAdapter(
+                "https://fixture.solana.example", client=client, clock=lambda: NOW
+            )
+            (observation,) = await adapter.enrich(
+                OnChainRequest(context=context(), token=TokenIdentity(MINT))
+            )
+            assert observation.normalized_payload["mint_authority"]["state"] == "REVOKED"
+            assert observation.normalized_payload["freeze_authority"]["state"] == "REVOKED"
 
     asyncio.run(scenario())
 
@@ -243,6 +249,7 @@ def test_standard_rpc_can_fetch_full_block_transactions_for_bounded_backfill() -
         body = json.loads(request.content)
         assert body["method"] == "getBlock"
         assert body["params"][1]["transactionDetails"] == "full"
+        assert body["params"][1]["maxSupportedTransactionVersion"] == 1
         return httpx.Response(200, json=block_payload)
 
     async def scenario() -> None:

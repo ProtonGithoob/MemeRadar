@@ -69,7 +69,7 @@ typecheck:
 	$(PYTHON) -m mypy
 
 test:
-	$(PYTHON) -m pytest -q --cov=apps --cov=packages --cov-report=term-missing
+	$(PYTHON) -m pytest -q -m "not integration" --cov=apps --cov=packages --cov-report=term-missing
 
 mcp:
 	PYTHONPATH=apps/mcp/src:apps/api/src:packages/application/src:packages/domain/src:packages/persistence/src:packages/providers/src:packages/telemetry/src \

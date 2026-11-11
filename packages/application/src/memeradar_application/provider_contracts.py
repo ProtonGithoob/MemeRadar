@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -41,6 +42,39 @@ from memeradar_domain.events import normalize_reason_codes
 
 if TYPE_CHECKING:
     from .price_integrity import ReferencePriceEvidence
+
+
+class NotificationOutcomeUnknown(RuntimeError):
+    """A send may have succeeded but its acknowledgement was not received."""
+
+
+class NotificationNotSent(RuntimeError):
+    """The adapter can prove no notification request was submitted."""
+
+
+class NotificationRateLimited(RuntimeError):
+    """The destination explicitly rejected a request until a bounded retry time."""
+
+    def __init__(self, retry_after_seconds: float | None = None) -> None:
+        if retry_after_seconds is not None and (
+            isinstance(retry_after_seconds, bool)
+            or not isinstance(retry_after_seconds, int | float)
+            or not math.isfinite(retry_after_seconds)
+            or not 0 <= retry_after_seconds <= 86400
+        ):
+            raise ValueError("retry_after_seconds must be between 0 and 86400")
+        self.retry_after_seconds = (
+            None if retry_after_seconds is None else float(retry_after_seconds)
+        )
+        super().__init__("notification destination rate limited the request")
+
+
+class NotificationRejected(RuntimeError):
+    """The destination returned a definite non-acceptance for one request."""
+
+    def __init__(self, error_class: str | None = None) -> None:
+        self.error_class = require_text(error_class or "NotificationRejected", "error_class")
+        super().__init__("notification provider rejected the delivery")
 
 
 class ProviderCapability(str, Enum):
@@ -493,9 +527,11 @@ class QuoteRequest:
     context: ProviderRequestContext
     input_mint: str
     output_mint: str
-    amount: Decimal | int | float | str
+    amount: Decimal | int | str
     slippage_bps: int
     chain: Chain | str = Chain.SOLANA
+    input_decimals: int | None = None
+    output_decimals: int | None = None
 
     def __post_init__(self) -> None:
         chain = normalize_chain(self.chain)
@@ -503,9 +539,15 @@ class QuoteRequest:
         output_mint = require_chain_address(self.output_mint, chain, "output_mint")
         if input_mint == output_mint:
             raise ValueError("input_mint and output_mint must differ")
+        if isinstance(self.amount, bool) or not isinstance(self.amount, Decimal | int | str):
+            raise TypeError("amount must be an exact raw integer, Decimal, or string")
         amount = to_decimal(self.amount, "amount")
         if amount <= 0:
             raise ValueError("amount must be positive")
+        _validate_token_decimals(self.input_decimals, "input_decimals")
+        _validate_token_decimals(self.output_decimals, "output_decimals")
+        if self.input_decimals is not None and amount != amount.to_integral_value():
+            raise ValueError("amount must be raw integer base units when input_decimals is set")
         if not isinstance(self.slippage_bps, int) or isinstance(self.slippage_bps, bool):
             raise TypeError("slippage_bps must be an integer")
         if not 0 <= self.slippage_bps <= 10_000:
@@ -516,6 +558,60 @@ class QuoteRequest:
         object.__setattr__(self, "output_mint", output_mint)
         object.__setattr__(self, "amount", amount)
         object.__setattr__(self, "chain", chain)
+
+
+class QuoteAmountUnit(str, Enum):
+    """Unit carried by quote amounts; unknown values cannot authorize paper fills."""
+
+    RAW_BASE_UNITS = "RAW_BASE_UNITS"
+    DISPLAY_UNITS = "DISPLAY_UNITS"
+    UNKNOWN = "UNKNOWN"
+
+
+def _validate_token_decimals(value: int | None, field_name: str) -> None:
+    if value is not None and (
+        isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255
+    ):
+        raise ValueError(f"{field_name} must be an integer between 0 and 255")
+
+
+def decimal_to_base_units(amount: Decimal | int | str, decimals: int) -> Decimal:
+    """Convert an exact human amount to integer base units without float rounding."""
+
+    _validate_token_decimals(decimals, "decimals")
+    if isinstance(amount, bool) or not isinstance(amount, Decimal | int | str):
+        raise TypeError("amount must be an exact Decimal, integer, or decimal string")
+    value = to_decimal(amount, "amount")
+    if value <= 0:
+        raise ValueError("amount must be positive")
+    sign, digits, exponent = value.as_tuple()
+    if not isinstance(exponent, int):
+        raise ValueError("amount must be finite")
+    coefficient = int("".join(str(digit) for digit in digits) or "0")
+    if sign:
+        coefficient = -coefficient
+    scaled_exponent = exponent + decimals
+    if scaled_exponent >= 0:
+        raw_amount = coefficient * 10**scaled_exponent
+    else:
+        divisor = 10 ** (-scaled_exponent)
+        if coefficient % divisor:
+            raise ValueError("amount cannot be represented at the supplied decimals")
+        raw_amount = coefficient // divisor
+    if raw_amount <= 0:
+        raise ValueError("amount is smaller than one base unit")
+    return Decimal(raw_amount)
+
+
+def _base_units_to_decimal(amount: Decimal, decimals: int) -> Decimal:
+    if amount != amount.to_integral_value():
+        raise ValueError("raw quote amount must be an integer")
+    raw_amount = int(amount)
+    if decimals == 0:
+        return Decimal(raw_amount)
+    sign = "-" if raw_amount < 0 else ""
+    digits = str(abs(raw_amount)).rjust(decimals + 1, "0")
+    return Decimal(f"{sign}{digits[:-decimals]}.{digits[-decimals:]}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -920,6 +1016,9 @@ class QuoteSnapshot:
     chain: Chain | str = Chain.SOLANA
     minimum_output_amount: Decimal | int | float | str | None = None
     slippage_bps: Decimal | int | float | str | None = None
+    amount_unit: QuoteAmountUnit = QuoteAmountUnit.UNKNOWN
+    input_decimals: int | None = None
+    output_decimals: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.provenance, Provenance):
@@ -929,16 +1028,47 @@ class QuoteSnapshot:
         output_mint = require_chain_address(self.output_mint, chain, "output_mint")
         if input_mint == output_mint:
             raise ValueError("input_mint and output_mint must differ")
+        amount_unit = QuoteAmountUnit(self.amount_unit)
+        if amount_unit is QuoteAmountUnit.RAW_BASE_UNITS and any(
+            isinstance(value, bool) or not isinstance(value, Decimal | int | str)
+            for value in (self.input_amount, self.output_amount)
+        ):
+            raise TypeError("raw quote amounts must be exact integers, Decimals, or strings")
         for field_name in ("input_amount", "output_amount", "price_impact_bps"):
             value = to_decimal(getattr(self, field_name), field_name)
             if value < 0:
                 raise ValueError(f"{field_name} must not be negative")
             object.__setattr__(self, field_name, value)
         if self.minimum_output_amount is not None:
+            if amount_unit is QuoteAmountUnit.RAW_BASE_UNITS and (
+                isinstance(self.minimum_output_amount, bool)
+                or not isinstance(self.minimum_output_amount, Decimal | int | str)
+            ):
+                raise TypeError("raw minimum output must be an exact integer, Decimal, or string")
             minimum_output = to_decimal(self.minimum_output_amount, "minimum_output_amount")
             if minimum_output < 0:
                 raise ValueError("minimum_output_amount must not be negative")
             object.__setattr__(self, "minimum_output_amount", minimum_output)
+        _validate_token_decimals(self.input_decimals, "input_decimals")
+        _validate_token_decimals(self.output_decimals, "output_decimals")
+        if amount_unit is QuoteAmountUnit.RAW_BASE_UNITS:
+            if self.input_decimals is None or self.output_decimals is None:
+                raise ValueError("raw base-unit quotes require decimals for both assets")
+            input_amount = to_decimal(self.input_amount, "input_amount")
+            output_amount = to_decimal(self.output_amount, "output_amount")
+            if any(
+                value != value.to_integral_value() for value in (input_amount, output_amount)
+            ):
+                raise ValueError("raw base-unit quote amounts must be integers")
+            raw_minimum_output = (
+                None
+                if self.minimum_output_amount is None
+                else to_decimal(self.minimum_output_amount, "minimum_output_amount")
+            )
+            if raw_minimum_output is not None and (
+                raw_minimum_output != raw_minimum_output.to_integral_value()
+            ):
+                raise ValueError("raw minimum_output_amount must be an integer")
         if self.slippage_bps is not None:
             slippage = to_decimal(self.slippage_bps, "slippage_bps")
             if slippage < 0 or slippage > Decimal("10000"):
@@ -964,16 +1094,44 @@ class QuoteSnapshot:
         object.__setattr__(self, "input_mint", input_mint)
         object.__setattr__(self, "output_mint", output_mint)
         object.__setattr__(self, "chain", chain)
+        object.__setattr__(self, "amount_unit", amount_unit)
         object.__setattr__(self, "route", normalize_texts(self.route, "route", max_item_length=128))
 
     @property
-    def execution_quote_price(self) -> Decimal:
-        """Quote-implied execution price, never an independent market mark."""
+    def human_input_amount(self) -> Decimal | None:
+        if self.amount_unit is QuoteAmountUnit.RAW_BASE_UNITS:
+            assert self.input_decimals is not None
+            return _base_units_to_decimal(
+                to_decimal(self.input_amount, "input_amount"), self.input_decimals
+            )
+        if self.amount_unit is QuoteAmountUnit.DISPLAY_UNITS:
+            return to_decimal(self.input_amount, "input_amount")
+        return None
 
-        return to_decimal(self.input_amount, "input_amount") / to_decimal(
-            self.output_amount,
-            "output_amount",
-        )
+    @property
+    def human_output_amount(self) -> Decimal | None:
+        if self.amount_unit is QuoteAmountUnit.RAW_BASE_UNITS:
+            assert self.output_decimals is not None
+            return _base_units_to_decimal(
+                to_decimal(self.output_amount, "output_amount"), self.output_decimals
+            )
+        if self.amount_unit is QuoteAmountUnit.DISPLAY_UNITS:
+            return to_decimal(self.output_amount, "output_amount")
+        return None
+
+    def is_fresh_at(self, at: datetime) -> bool:
+        """Require both a valid freshness window and an observation known at the checkpoint."""
+        return self.freshness.is_fresh(at) and self.provenance.observed_at <= at
+
+    @property
+    def execution_quote_price(self) -> Decimal | None:
+        """Human-unit quote price, or None when its amount units are unknown."""
+
+        input_amount = self.human_input_amount
+        output_amount = self.human_output_amount
+        if input_amount is None or output_amount is None or output_amount <= 0:
+            return None
+        return input_amount / output_amount
 
 
 @dataclass(frozen=True, slots=True)
@@ -1159,7 +1317,10 @@ __all__ = [
     "NarrativePort",
     "NarrativeSentiment",
     "NarrativeSnapshot",
+    "NotificationNotSent",
     "NotificationPort",
+    "NotificationRateLimited",
+    "NotificationRejected",
     "NotificationRequest",
     "OnChainPort",
     "OnChainRequest",
@@ -1168,9 +1329,11 @@ __all__ = [
     "provider_capability_status",
     "ProviderRequestContext",
     "QuoteMarketContext",
+    "QuoteAmountUnit",
     "QuotePort",
     "QuoteRequest",
     "QuoteSnapshot",
+    "decimal_to_base_units",
     "RiskDataPort",
     "RiskDataRequest",
     "RiskFinding",

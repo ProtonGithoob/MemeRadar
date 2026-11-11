@@ -6,19 +6,31 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from memeradar_application.early_worker import EarlyRuntimeStreamWorker
+from memeradar_application.provider_contracts import (
+    QuoteAmountUnit,
+    QuoteSnapshot,
+)
 from memeradar_application.stream_integrity import (
     BackfillResult,
+    BackfillUnavailableError,
     InMemoryStreamStateStore,
     RawChainBlock,
     RawChainTransaction,
     StreamIntegrityCoordinator,
+    StreamIntegrityPolicy,
 )
 from memeradar_domain import (
     Chain,
+    Freshness,
     NormalizedChainEvent,
+    Observation,
+    PriceSemantics,
     Provenance,
+    QualityState,
     RecoveryState,
+    StreamGap,
 )
+from memeradar_worker import early_discovery
 
 NOW = datetime(2026, 9, 19, 12, 0, tzinfo=UTC)
 MINT = "So11111111111111111111111111111111111111112"
@@ -86,6 +98,147 @@ class Decoder:
         return self.decode_live(transaction)
 
 
+def test_future_market_observation_cannot_supply_liquidity(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    future = now + timedelta(days=1)
+    launch = Observation(
+        kind="chain.event",
+        provenance=Provenance(
+            provider="fixture", source_id="launch", observed_at=now, parser_version="v1"
+        ),
+        occurred_at=now, observed_at=now, ingested_at=now,
+        quality_state=QualityState.FRESH,
+        normalized_payload={"mint_address": MINT, "protocol_identity_verified": True},
+    )
+    market = Observation(
+        kind="market.market_snapshot",
+        provenance=Provenance(
+            provider="fixture", source_id="market", observed_at=future, parser_version="v1"
+        ),
+        occurred_at=future, observed_at=future, ingested_at=future,
+        quality_state=QualityState.FRESH,
+        normalized_payload={"mint_address": MINT, "liquidity_usd": "50000"},
+    )
+
+    class ChainProvider:
+        async def enrich(self, request):
+            return ()
+
+    class MarketProvider:
+        async def snapshot(self, request):
+            return (market,)
+
+    monkeypatch.setattr(early_discovery, "_observation_for_event", lambda event: launch)
+    bundle = SimpleNamespace(
+        chain=ChainProvider(), market_data=MarketProvider(), dexscreener=object(),
+        settings=SimpleNamespace(paper_quote_provider="none"),
+    )
+    _, evidence, _ = asyncio.run(
+        early_discovery._collect_early_candidate_evidence(bundle, object())
+    )
+    assert "liquidity" not in evidence
+
+
+def test_early_execution_quote_requests_use_observed_mint_decimals(monkeypatch) -> None:
+    token_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+    wrapped_sol = "So11111111111111111111111111111111111111112"
+    now = datetime.now(UTC)
+    launch = Observation(
+        kind="chain.event",
+        provenance=Provenance(
+            provider="fixture", source_id="launch", observed_at=now, parser_version="v1"
+        ),
+        occurred_at=now,
+        observed_at=now,
+        ingested_at=now,
+        quality_state=QualityState.FRESH,
+        normalized_payload={"mint_address": token_mint, "protocol_identity_verified": True},
+    )
+    metadata = Observation(
+        kind="onchain.token_metadata",
+        provenance=Provenance(
+            provider="fixture-rpc", source_id="metadata", observed_at=now, parser_version="v1"
+        ),
+        occurred_at=None,
+        observed_at=now,
+        ingested_at=now,
+        quality_state=QualityState.FRESH,
+        normalized_payload={"mint_address": token_mint, "decimals": 6},
+    )
+
+    class ChainProvider:
+        async def enrich(self, request):
+            return (metadata,)
+
+    class MarketProvider:
+        async def snapshot(self, request):
+            return ()
+
+    class QuoteProvider:
+        def __init__(self) -> None:
+            self.requests = []
+
+        async def quote(self, request):
+            self.requests.append(request)
+            is_buy = request.input_mint == wrapped_sol
+            output_amount = "1000" if is_buy else "9000000"
+            return QuoteSnapshot(
+                provenance=Provenance(
+                    provider="fixture-jupiter",
+                    source_id=f"quote-{len(self.requests)}",
+                    observed_at=request.context.requested_at,
+                    parser_version="v1",
+                ),
+                input_mint=request.input_mint,
+                output_mint=request.output_mint,
+                input_amount=request.amount,
+                output_amount=output_amount,
+                price_impact_bps="25",
+                route=("fixture",),
+                freshness=Freshness(
+                    as_of=request.context.requested_at,
+                    expires_at=request.context.requested_at + timedelta(minutes=1),
+                ),
+                price_semantics=PriceSemantics.EXECUTION_QUOTE,
+                chain=Chain.SOLANA,
+                minimum_output_amount=output_amount,
+                slippage_bps=100,
+                amount_unit=QuoteAmountUnit.RAW_BASE_UNITS,
+                input_decimals=request.input_decimals,
+                output_decimals=request.output_decimals,
+            )
+
+    quote_provider = QuoteProvider()
+    monkeypatch.setattr(early_discovery, "_observation_for_event", lambda event: launch)
+    bundle = SimpleNamespace(
+        chain=ChainProvider(),
+        market_data=MarketProvider(),
+        dexscreener=object(),
+        jupiter=quote_provider,
+        settings=SimpleNamespace(paper_quote_provider="jupiter"),
+    )
+
+    _, evidence, buy_quote = asyncio.run(
+        early_discovery._collect_early_candidate_evidence(bundle, object())
+    )
+
+    request_decimals = [
+        (request.input_decimals, request.output_decimals)
+        for request in quote_provider.requests
+    ]
+    assert request_decimals == [
+        (9, 6),
+        (6, 9),
+    ]
+    assert [request.amount for request in quote_provider.requests] == [
+        early_discovery._EARLY_QUOTE_PROBE_LAMPORTS,
+        1000,
+    ]
+    assert buy_quote is not None
+    assert buy_quote.amount_unit is QuoteAmountUnit.RAW_BASE_UNITS
+    assert evidence["sellability"] is True
+
+
 def run(coro):
     return asyncio.run(coro)
 
@@ -93,6 +246,8 @@ def run(coro):
 def coordinator(
     store: InMemoryStreamStateStore,
     backfill: object | None = None,
+    *,
+    policy: StreamIntegrityPolicy | None = None,
 ) -> StreamIntegrityCoordinator:
     return StreamIntegrityCoordinator(
         chain=Chain.SOLANA,
@@ -101,6 +256,7 @@ def coordinator(
         decoder=Decoder(),
         state_store=store,
         backfill_port=backfill,
+        policy=policy or StreamIntegrityPolicy(recovery_interval_seconds=0),
         clock=lambda: NOW + timedelta(minutes=1),
     )
 
@@ -140,6 +296,18 @@ class Backfill:
             source="fixture-rpc",
             completed_at=NOW + timedelta(minutes=2),
         )
+
+
+def unresolved_gap(slot: int) -> StreamGap:
+    return StreamGap(
+        chain=Chain.SOLANA,
+        transport="fixture-live",
+        stream_id="early-runtime",
+        from_slot=slot,
+        to_slot=slot,
+        detected_at=NOW,
+        detection_method="OBSERVATION_FAILURE",
+    )
 
 
 def test_worker_routes_canonical_events_and_keeps_duplicate_runtime_idempotency() -> None:
@@ -185,6 +353,100 @@ def test_worker_automatically_recovers_bounded_open_gaps_before_runtime_projecti
     assert report.gap_affected_events == 0
     assert gaps[0].status.value == "VERIFIED"
     assert processor.events[-1][1] is False
+
+
+def test_worker_recovers_persisted_gap_before_first_live_event() -> None:
+    store = InMemoryStreamStateStore()
+    service = coordinator(store, Backfill())
+    run(store.save_gap(unresolved_gap(101)))
+    processor = Processor()
+
+    report = run(EarlyRuntimeStreamWorker(service, processor).run(source()))
+
+    persisted = run(store.list_gaps())
+    assert report.received == 0
+    assert report.processed == 1
+    assert persisted[0].status.value == "VERIFIED"
+    assert [event.slot for event, _ in processor.events] == [101]
+    assert processor.events[0][1] is False
+
+
+def test_worker_bounds_recovery_batch_and_cadence_across_repeated_events() -> None:
+    class UnavailableBackfill:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def fetch(self, request: object) -> BackfillResult:
+            self.calls += 1
+            raise BackfillUnavailableError("fixture unavailable")
+
+    store = InMemoryStreamStateStore()
+    backfill = UnavailableBackfill()
+    service = coordinator(
+        store,
+        backfill,
+        policy=StreamIntegrityPolicy(
+            max_backfill_retries=0,
+            retry_delay_seconds=0,
+            max_gaps_per_recovery_batch=1,
+            recovery_interval_seconds=3600,
+        ),
+    )
+    run(store.save_gap(unresolved_gap(101)))
+    run(store.save_gap(unresolved_gap(102)))
+    processor = Processor()
+
+    run(
+        EarlyRuntimeStreamWorker(service, processor).run(
+            source(raw(100), raw(100), raw(100))
+        )
+    )
+
+    gaps = run(store.list_gaps())
+    assert backfill.calls == 1
+    assert sum(gap.attempt_count for gap in gaps) == 1
+    assert sum(gap.status.value == "OPEN" for gap in gaps) == 1
+
+
+def test_worker_recovers_new_persisted_gap_while_source_is_idle() -> None:
+    async def exercise() -> None:
+        stop_event = asyncio.Event()
+        recovery_attempted = asyncio.Event()
+
+        class UnavailableBackfill:
+            async def fetch(self, request: object) -> BackfillResult:
+                recovery_attempted.set()
+                raise BackfillUnavailableError("fixture unavailable")
+
+        async def idle_source():
+            await stop_event.wait()
+            if False:
+                yield raw(100)
+
+        store = InMemoryStreamStateStore()
+        service = coordinator(
+            store,
+            UnavailableBackfill(),
+            policy=StreamIntegrityPolicy(
+                max_backfill_retries=0,
+                retry_delay_seconds=0,
+                recovery_interval_seconds=0.01,
+            ),
+        )
+        worker_task = asyncio.create_task(
+            EarlyRuntimeStreamWorker(service, Processor()).run(
+                idle_source(), stop_event=stop_event
+            )
+        )
+        await asyncio.sleep(0)
+        await store.save_gap(unresolved_gap(101))
+        try:
+            await asyncio.wait_for(recovery_attempted.wait(), timeout=0.2)
+        finally:
+            stop_event.set()
+            await worker_task
+
+    run(exercise())
 
 
 def test_restart_reuses_durable_stream_cursor_without_losing_event_time_order() -> None:

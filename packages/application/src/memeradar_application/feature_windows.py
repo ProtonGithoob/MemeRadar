@@ -261,7 +261,7 @@ class FeatureWindowAggregator:
             ("liquidity_snapshot", liquidity_snapshot),
             ("organic_flow_score", organic_flow_score),
         ):
-            if value is not None and value.token != token:
+            if value is not None and value.token.canonical_id != token.canonical_id:
                 raise ValueError(f"{field_name} token does not match correlation token")
         if risk_assessment is not None and risk_assessment.candidate_id != candidate_id:
             raise ValueError("risk_assessment candidate_id does not match feature candidate")

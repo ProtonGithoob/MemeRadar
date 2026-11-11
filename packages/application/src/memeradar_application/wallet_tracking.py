@@ -780,7 +780,7 @@ class WalletTrackingAnalyzer:
         for activity in activities:
             if not isinstance(activity, WalletActivity):
                 raise TypeError("activities must contain WalletActivity values")
-            if activity.token != token:
+            if activity.token.canonical_id != token.canonical_id:
                 raise ValueError("wallet activity token does not match reconstruction token")
             registry.require_active(activity.wallet_address)
             prior = seen.get(activity.source_id)

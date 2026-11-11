@@ -384,7 +384,7 @@ class ExternalWalletIntelligenceResult:
         signals = tuple(self.token_signals)
         if any(not isinstance(value, ExternalWalletTokenSignal) for value in signals):
             raise TypeError("token_signals must contain ExternalWalletTokenSignal values")
-        if any(value.token != self.token for value in signals):
+        if any(value.token.canonical_id != self.token.canonical_id for value in signals):
             raise ValueError("token_signals must use the result token")
         object.__setattr__(self, "labels", labels)
         object.__setattr__(self, "token_signals", signals)
@@ -573,7 +573,7 @@ class ExternalWalletReconciliationSnapshot:
             raise TypeError("labels must contain ExternalWalletLabel values")
         if any(not isinstance(value, ExternalWalletTokenSignal) for value in signals):
             raise TypeError("token_signals must contain ExternalWalletTokenSignal values")
-        if any(value.token != self.token for value in signals):
+        if any(value.token.canonical_id != self.token.canonical_id for value in signals):
             raise ValueError("token_signals must use the snapshot token")
         object.__setattr__(self, "labels", labels)
         object.__setattr__(self, "token_signals", signals)
@@ -712,7 +712,7 @@ class ExternalWalletReconciler:
         normalized_signals = tuple(token_signals)
         if any(not isinstance(value, ExternalWalletTokenSignal) for value in normalized_signals):
             raise TypeError("token_signals must contain ExternalWalletTokenSignal values")
-        if any(value.token != token for value in normalized_signals):
+        if any(value.token.canonical_id != token.canonical_id for value in normalized_signals):
             raise ValueError("token_signals must use the requested token")
         normalized_scores = tuple(internal_scores)
         if any(not isinstance(value, SmartWalletScore) for value in normalized_scores):
@@ -720,7 +720,7 @@ class ExternalWalletReconciler:
         if wallet_graph is not None:
             if not isinstance(wallet_graph, WalletGraphSnapshot):
                 raise TypeError("wallet_graph must be a WalletGraphSnapshot")
-            if wallet_graph.token != token:
+            if wallet_graph.token.canonical_id != token.canonical_id:
                 raise ValueError("wallet_graph must use the requested token")
 
         labels_sorted, label_conflicts = self._dedupe_labels(normalized_labels)

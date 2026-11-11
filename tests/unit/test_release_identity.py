@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import subprocess
+import sys
 from pathlib import Path
 
 from scripts.release_identity import RELEASE_IDENTITY_SCHEMA_VERSION, build_release_identity
+from scripts.sbom import build_sbom, serialize_sbom
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -21,12 +24,15 @@ def test_release_identity_is_reproducible_and_binds_existing_release_inputs() ->
     assert identity["git_sha"] == git_sha
     assert identity["app_version"] == "0.1.0"
     assert identity["api_version"] == "0.1.0"
-    assert identity["migration_heads"] == ["0012_stream_gap_diagnostics"]
+    assert identity["migration_heads"] == ["0015_stream_verification_provenance"]
     assert identity["migration_table_count"] == 27
     assert identity["config_hash"].startswith("sha256:")
     assert identity["sbom_schema_version"] == "security-sbom-v1"
-    assert identity["sbom_component_count"] == 582
-    assert str(identity["sbom_digest"]).startswith("sha256:")
+    sbom = build_sbom(ROOT)
+    assert identity["sbom_component_count"] == len(sbom["components"])
+    assert identity["sbom_digest"] == "sha256:" + hashlib.sha256(
+        serialize_sbom(sbom).encode("utf-8")
+    ).hexdigest()
     assert identity["protected_modes"] == {
         "analysis_only": True,
         "paper_trading": True,
@@ -72,7 +78,7 @@ def test_release_identity_cli_writes_the_same_safe_artifact(tmp_path: Path) -> N
     output = tmp_path / "release-identity.json"
     subprocess.run(
         [
-            str(ROOT / ".venv" / "bin" / "python"),
+            sys.executable,
             str(ROOT / "scripts" / "release_identity.py"),
             "--output",
             str(output),

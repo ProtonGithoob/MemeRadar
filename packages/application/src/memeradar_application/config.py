@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
+from uuid import UUID
 
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 FALSE_VALUES = frozenset({"0", "false", "no", "off"})
@@ -56,6 +59,170 @@ class RuntimeSettingSpec:
 
 class RuntimeSettingValidationError(ValueError):
     """Raised when a runtime setting patch is invalid or unsafe."""
+
+
+@dataclass(frozen=True, slots=True)
+class PaperAutoPolicy:
+    """Explicit operator policy for an opt-in Solana paper research worker."""
+
+    portfolio_id: UUID
+    initial_balance_sol: Decimal
+    entry_size_sol: Decimal
+    max_risk_fraction: Decimal
+    max_position_fraction: Decimal
+    max_portfolio_exposure_fraction: Decimal
+    max_concurrent_positions: int
+    min_liquidity_usd: Decimal
+    max_price_impact_bps: Decimal
+    max_slippage_bps: int
+    quote_ttl_seconds: int
+    fee_bps: Decimal
+    fee_reserve_sol: Decimal
+    stop_loss_bps: Decimal
+    take_profit_bps: Decimal
+    take_profit_fraction: Decimal
+    holding_horizon_seconds: int
+    version: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.portfolio_id, UUID):
+            raise TypeError("PAPER_AUTO_PORTFOLIO_ID must be a UUID")
+        for name in (
+            "initial_balance_sol",
+            "entry_size_sol",
+            "min_liquidity_usd",
+            "fee_reserve_sol",
+        ):
+            value = _paper_decimal(getattr(self, name), name)
+            if value <= 0:
+                raise ValueError(f"{name} must be positive")
+            object.__setattr__(self, name, value)
+        for name in (
+            "max_risk_fraction",
+            "max_position_fraction",
+            "max_portfolio_exposure_fraction",
+            "take_profit_fraction",
+        ):
+            value = _paper_decimal(getattr(self, name), name)
+            if not 0 < value <= 1:
+                raise ValueError(f"{name} must be in (0, 1]")
+            object.__setattr__(self, name, value)
+        for name in ("max_price_impact_bps", "fee_bps", "stop_loss_bps", "take_profit_bps"):
+            value = _paper_decimal(getattr(self, name), name)
+            maximum = 9999 if name != "max_price_impact_bps" else 10000
+            if value < 0 or value > maximum:
+                raise ValueError(f"{name} must be between 0 and {maximum}")
+            object.__setattr__(self, name, value)
+        if self.stop_loss_bps <= 0 or self.take_profit_bps <= 0:
+            raise ValueError("paper exit stop and take-profit thresholds must be positive")
+        for name, maximum in (
+            ("max_slippage_bps", 9999),
+            ("quote_ttl_seconds", 3600),
+            ("max_concurrent_positions", 1000),
+            ("holding_horizon_seconds", 31_536_000),
+        ):
+            value = getattr(self, name)
+            minimum = (
+                1
+                if name
+                in {"quote_ttl_seconds", "max_concurrent_positions", "holding_horizon_seconds"}
+                else 0
+            )
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or not minimum <= value <= maximum
+            ):
+                raise ValueError(f"{name} must be between {minimum} and {maximum}")
+        if self.max_position_fraction > self.max_portfolio_exposure_fraction:
+            raise ValueError("max position fraction must not exceed total exposure fraction")
+        if self.entry_size_sol > self.initial_balance_sol * self.max_position_fraction:
+            raise ValueError("paper entry size exceeds configured maximum position fraction")
+        if self.entry_size_sol + self.fee_reserve_sol > self.initial_balance_sol:
+            raise ValueError("paper entry and fee reserve exceed configured initial balance")
+        modeled_loss_fraction = (
+            self.stop_loss_bps + Decimal(2 * self.max_slippage_bps) + Decimal(2) * self.fee_bps
+        ) / Decimal(10000)
+        if modeled_loss_fraction * self.entry_size_sol > (
+            self.initial_balance_sol * self.max_risk_fraction
+        ):
+            raise ValueError("configured entry size exceeds paper risk budget")
+        normalized_version = self.version.strip()
+        if not normalized_version or len(normalized_version) > 64:
+            raise ValueError("PAPER_AUTO_POLICY_VERSION must contain 1..64 characters")
+        object.__setattr__(self, "version", normalized_version)
+
+    @property
+    def config_hash(self) -> str:
+        return "sha256:" + hashlib.sha256(repr(self).encode("utf-8")).hexdigest()
+
+
+def _paper_decimal(value: object, name: str) -> Decimal:
+    try:
+        parsed = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"{name} must be a decimal") from exc
+    if not parsed.is_finite():
+        raise ValueError(f"{name} must be finite")
+    return parsed
+
+
+def _required_paper_value(values: Mapping[str, str], name: str) -> str:
+    value = _optional_value(values, name)
+    if value is None:
+        raise ValueError(f"{name} is required when PAPER_AUTO_ENABLED=true")
+    return value
+
+
+def _paper_policy_from_env(values: Mapping[str, str]) -> PaperAutoPolicy:
+    def decimal(name: str) -> Decimal:
+        return _paper_decimal(_required_paper_value(values, name), name)
+
+    portfolio_raw = _required_paper_value(values, "PAPER_AUTO_PORTFOLIO_ID")
+    try:
+        portfolio_id = UUID(portfolio_raw)
+    except ValueError as exc:
+        raise ValueError("PAPER_AUTO_PORTFOLIO_ID must be a UUID") from exc
+    return PaperAutoPolicy(
+        portfolio_id=portfolio_id,
+        initial_balance_sol=decimal("PAPER_AUTO_INITIAL_BALANCE_SOL"),
+        entry_size_sol=decimal("PAPER_AUTO_ENTRY_SIZE_SOL"),
+        max_risk_fraction=decimal("PAPER_AUTO_MAX_RISK_FRACTION"),
+        max_position_fraction=decimal("PAPER_AUTO_MAX_POSITION_FRACTION"),
+        max_portfolio_exposure_fraction=decimal("PAPER_AUTO_MAX_EXPOSURE_FRACTION"),
+        max_concurrent_positions=_parse_int(
+            "PAPER_AUTO_MAX_POSITIONS",
+            _required_paper_value(values, "PAPER_AUTO_MAX_POSITIONS"),
+            1,
+            1000,
+        ),
+        min_liquidity_usd=decimal("PAPER_AUTO_MIN_LIQUIDITY_USD"),
+        max_price_impact_bps=decimal("PAPER_AUTO_MAX_PRICE_IMPACT_BPS"),
+        max_slippage_bps=_parse_int(
+            "PAPER_AUTO_MAX_SLIPPAGE_BPS",
+            _required_paper_value(values, "PAPER_AUTO_MAX_SLIPPAGE_BPS"),
+            0,
+            10000,
+        ),
+        quote_ttl_seconds=_parse_int(
+            "PAPER_AUTO_QUOTE_TTL_SECONDS",
+            _required_paper_value(values, "PAPER_AUTO_QUOTE_TTL_SECONDS"),
+            1,
+            3600,
+        ),
+        fee_bps=decimal("PAPER_AUTO_FEE_BPS"),
+        fee_reserve_sol=decimal("PAPER_AUTO_FEE_RESERVE_SOL"),
+        stop_loss_bps=decimal("PAPER_AUTO_STOP_LOSS_BPS"),
+        take_profit_bps=decimal("PAPER_AUTO_TAKE_PROFIT_BPS"),
+        take_profit_fraction=decimal("PAPER_AUTO_TAKE_PROFIT_FRACTION"),
+        holding_horizon_seconds=_parse_int(
+            "PAPER_AUTO_HOLDING_HORIZON_SECONDS",
+            _required_paper_value(values, "PAPER_AUTO_HOLDING_HORIZON_SECONDS"),
+            1,
+            31_536_000,
+        ),
+        version=_required_paper_value(values, "PAPER_AUTO_POLICY_VERSION"),
+    )
 
 
 def _spec(
@@ -285,6 +452,7 @@ class Settings:
     paper_quote_provider: str = "dexscreener"
     paper_quote_url: str | None = None
     paper_quote_api_key: str | None = None
+    paper_auto_policy: PaperAutoPolicy | None = None
     rugcheck_api_url: str | None = None
     rugcheck_api_key: str | None = None
     wallet_intelligence_provider: str = "local"
@@ -294,6 +462,7 @@ class Settings:
     social_metadata_provider: str = "dexscreener"
     social_api_url: str | None = None
     social_api_key: str | None = None
+    social_collection_enabled: bool = False
     narrative_provider: str = "ollama"
     narrative_api_url: str = "http://host.docker.internal:11434"
     narrative_api_key: str | None = None
@@ -334,6 +503,10 @@ class Settings:
         """
 
         values: Mapping[str, str] = os.environ if environ is None else environ
+        paper_auto_enabled = _parse_bool(
+            "PAPER_AUTO_ENABLED", values.get("PAPER_AUTO_ENABLED", "false")
+        )
+        paper_auto_policy = _paper_policy_from_env(values) if paper_auto_enabled else None
         protected_modes = (
             ("ANALYSIS_ONLY", True),
             ("PAPER_TRADING", True),
@@ -432,6 +605,29 @@ class Settings:
             if not require_redis_for_readiness:
                 raise ValueError("REQUIRE_REDIS_FOR_READINESS must be true in production")
         enabled_chains = _chain_list(values, "ENABLED_CHAINS")
+        paper_quote_provider = _provider_choice(
+            values,
+            "PAPER_QUOTE_PROVIDER",
+            "dexscreener",
+            frozenset({"custom", "dexscreener", "birdeye", "jupiter"}),
+        )
+        paper_quote_url = _first_optional_value(
+            values,
+            ("MEMERADAR_PAPER_QUOTE_URL", "JUPITER_QUOTE_URL", "JUPITER_API_BASE_URL"),
+        )
+        paper_quote_api_key = _first_optional_value(
+            values,
+            ("MEMERADAR_PAPER_QUOTE_API_KEY", "JUPITER_API_KEY"),
+        )
+        if paper_auto_policy is not None:
+            if database_url is None:
+                raise ValueError("DATABASE_URL is required when PAPER_AUTO_ENABLED=true")
+            if "solana" not in enabled_chains:
+                raise ValueError("ENABLED_CHAINS must include solana for PAPER_AUTO")
+            if paper_quote_provider != "jupiter":
+                raise ValueError("PAPER_QUOTE_PROVIDER must be jupiter for PAPER_AUTO")
+            if paper_quote_url is None or paper_quote_api_key is None:
+                raise ValueError("PAPER_AUTO requires configured Jupiter quote URL and API key")
         bnb_rpc_url = _optional_value(values, "BNB_RPC_URL")
         robinhood_rpc_url = _default_value(
             values,
@@ -510,20 +706,10 @@ class Settings:
             ),
             birdeye_api_url=_optional_value(values, "BIRDEYE_API_URL"),
             birdeye_api_key=_optional_value(values, "BIRDEYE_API_KEY"),
-            paper_quote_provider=_provider_choice(
-                values,
-                "PAPER_QUOTE_PROVIDER",
-                "dexscreener",
-                frozenset({"custom", "dexscreener", "birdeye", "jupiter"}),
-            ),
-            paper_quote_url=_first_optional_value(
-                values,
-                ("MEMERADAR_PAPER_QUOTE_URL", "JUPITER_QUOTE_URL", "JUPITER_API_BASE_URL"),
-            ),
-            paper_quote_api_key=_first_optional_value(
-                values,
-                ("MEMERADAR_PAPER_QUOTE_API_KEY", "JUPITER_API_KEY"),
-            ),
+            paper_quote_provider=paper_quote_provider,
+            paper_quote_url=paper_quote_url,
+            paper_quote_api_key=paper_quote_api_key,
+            paper_auto_policy=paper_auto_policy,
             rugcheck_api_url=_optional_value(values, "RUGCHECK_API_URL"),
             rugcheck_api_key=_optional_value(values, "RUGCHECK_API_KEY"),
             wallet_intelligence_provider=_provider_choice(
@@ -543,6 +729,9 @@ class Settings:
             ),
             social_api_url=_optional_value(values, "SOCIAL_API_URL"),
             social_api_key=_optional_value(values, "SOCIAL_API_KEY"),
+            social_collection_enabled=_parse_bool(
+                "SOCIAL_COLLECTION_ENABLED", values.get("SOCIAL_COLLECTION_ENABLED", "false")
+            ),
             narrative_provider=configured_narrative_provider,
             narrative_api_url=legacy_narrative_url or "http://host.docker.internal:11434",
             narrative_api_key=legacy_narrative_key,
@@ -1542,6 +1731,7 @@ def runtime_configured_state(value: object) -> str:
 
 
 __all__ = [
+    "PaperAutoPolicy",
     "RUNTIME_SETTING_SPECS",
     "RUNTIME_SETTING_SPEC_BY_KEY",
     "RuntimeSettingSpec",

@@ -10,11 +10,11 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import copy
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal, localcontext
 from typing import Protocol
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from memeradar_application.provider_contracts import QuoteSnapshot
+from memeradar_application.provider_contracts import QuoteAmountUnit, QuoteSnapshot
 from memeradar_domain import (
     CashLedgerEntry,
     CashLedgerEntryType,
@@ -23,6 +23,7 @@ from memeradar_domain import (
     PaperFill,
     PaperOrder,
     PaperOrderSide,
+    PaperOrderState,
     PaperPortfolio,
     Position,
     PositionMode,
@@ -334,7 +335,7 @@ class PaperExecutionPolicy:
         )
 
 
-PAPER_AUTO_GATE_VERSION = "paper-auto-gate-v1"
+PAPER_AUTO_GATE_VERSION = "paper-auto-gate-v2"
 _PAPER_AUTO_CHAINS = frozenset({Chain.SOLANA, Chain.BNB, Chain.ROBINHOOD})
 
 
@@ -516,9 +517,9 @@ class PaperAutoExecutionGate:
 
         risk_source = risk
         if risk_source is None:
-            risk_source = _paper_auto_source(decision, "risk")
-        if risk_source is None:
             risk_source = _paper_auto_source(decision, "risk_snapshot")
+        if risk_source is None:
+            risk_source = _paper_auto_source(decision, "risk")
         risk_disposition, risk_quality = self._risk_state(risk_source, checked_at)
         refs.extend(_paper_auto_refs(risk_source))
         if risk_disposition is not RiskDisposition.PASS:
@@ -556,8 +557,18 @@ class PaperAutoExecutionGate:
         if not isinstance(quote, QuoteSnapshot):
             reasons.append(_reason("PAPER_AUTO_QUOTE_REQUIRED"))
         else:
-            if not quote.freshness.is_fresh(checked_at):
+            if not quote.is_fresh_at(checked_at):
                 reasons.append(_reason("PAPER_AUTO_QUOTE_NOT_FRESH", refs=(quote_ref or "",)))
+            if (
+                quote.amount_unit is not QuoteAmountUnit.RAW_BASE_UNITS
+                or quote.input_decimals is None
+                or quote.output_decimals is None
+                or quote.input_decimals > 18
+                or quote.output_decimals > 18
+            ):
+                reasons.append(
+                    _reason("PAPER_AUTO_QUOTE_AMOUNT_UNITS_UNKNOWN", refs=(quote_ref or "",))
+                )
             quote_input: Decimal | None
             quote_output: Decimal | None
             quote_impact: Decimal | None
@@ -639,12 +650,11 @@ class PaperAutoExecutionGate:
             market_context = quote.market_context
             if market_context is not None:
                 resolved_liquidity = market_context.liquidity_usd
+        liquidity_flag = _paper_auto_bool(_paper_auto_source(decision, "liquidity_ok"))
+        if liquidity_flag is False:
+            reasons.append(_reason("PAPER_AUTO_LIQUIDITY_TOO_LOW"))
         if resolved_liquidity is None:
-            liquidity_flag = _paper_auto_bool(_paper_auto_source(decision, "liquidity_ok"))
-            if liquidity_flag is False:
-                reasons.append(_reason("PAPER_AUTO_LIQUIDITY_TOO_LOW"))
-            elif liquidity_flag is not True:
-                reasons.append(_reason("PAPER_AUTO_LIQUIDITY_UNKNOWN"))
+            reasons.append(_reason("PAPER_AUTO_LIQUIDITY_UNKNOWN"))
         else:
             try:
                 normalized_liquidity = to_decimal(resolved_liquidity, "liquidity_usd")
@@ -727,6 +737,23 @@ class PaperAutoExecutionGate:
         freshness = _paper_auto_source(risk, "freshness")
         if isinstance(freshness, Freshness):
             states.append(freshness.state_at(at))
+        else:
+            raw_as_of = _paper_auto_source(risk, "as_of")
+            raw_expires_at = _paper_auto_source(risk, "expires_at")
+            try:
+                as_of = (
+                    datetime.fromisoformat(raw_as_of) if isinstance(raw_as_of, str) else raw_as_of
+                )
+                expires_at = (
+                    datetime.fromisoformat(raw_expires_at)
+                    if isinstance(raw_expires_at, str)
+                    else raw_expires_at
+                )
+                if not isinstance(as_of, datetime) or not isinstance(expires_at, datetime):
+                    raise ValueError("risk freshness window is unavailable")
+                states.append(Freshness(as_of=as_of, expires_at=expires_at).state_at(at))
+            except (TypeError, ValueError):
+                states.append(QualityState.UNKNOWN)
         if not states:
             return disposition, QualityState.UNKNOWN
         for state in (
@@ -875,6 +902,85 @@ class PaperExecutionResult:
             raise TypeError("duplicate must be a boolean")
 
 
+def reject_paper_execution(
+    result: PaperExecutionResult,
+    *,
+    portfolio: PaperPortfolio,
+    position: Position | None,
+    reason_code: str,
+) -> PaperExecutionResult:
+    """Replace an uncommitted simulated fill with one durable rejection."""
+
+    order = replace(
+        result.order,
+        state=PaperOrderState.REJECTED,
+        filled_quantity=Decimal("0"),
+        filled_input_amount=Decimal("0"),
+        average_fill_price=None,
+        reason_codes=normalize_reason_codes((*result.order.reason_codes, _reason(reason_code))),
+    )
+    return replace(
+        result,
+        order=order,
+        fills=(),
+        ledger_entries=(),
+        portfolio=copy(portfolio),
+        position=copy(position) if position is not None else None,
+    )
+
+
+def paper_entry_limit_rejection(
+    result: PaperExecutionResult,
+    *,
+    portfolio: PaperPortfolio,
+    active_positions: Sequence[Position],
+    sizing_policy: PaperSizingPolicy,
+) -> str | None:
+    """Return the first configured position/exposure limit exceeded by a BUY."""
+
+    projected = result.position
+    if (
+        result.order.side is not PaperOrderSide.BUY
+        or not result.fills
+        or projected is None
+        or projected.state not in _ACTIVE_POSITION_STATES
+    ):
+        return None
+    existing = next(
+        (
+            position
+            for position in active_positions
+            if position.token_id == projected.token_id
+            and position.state in _ACTIVE_POSITION_STATES
+        ),
+        None,
+    )
+    existing_exposure = sum(
+        (
+            position.quantity * position.average_entry
+            for position in active_positions
+            if position.state in _ACTIVE_POSITION_STATES
+        ),
+        Decimal("0"),
+    )
+    projected_exposure = projected.quantity * projected.average_entry
+    if projected_exposure > portfolio.initial_balance * sizing_policy.max_position_fraction:
+        return "PAPER_POSITION_EXPOSURE_LIMIT"
+    total_exposure = existing_exposure
+    if existing is not None:
+        total_exposure -= existing.quantity * existing.average_entry
+    total_exposure += projected_exposure
+    if total_exposure > portfolio.initial_balance * sizing_policy.max_portfolio_exposure_fraction:
+        return "PAPER_PORTFOLIO_EXPOSURE_LIMIT"
+    current_count = sum(
+        position.state in _ACTIVE_POSITION_STATES for position in active_positions
+    )
+    projected_count = current_count + (0 if existing is not None else 1)
+    if projected_count > sizing_policy.max_concurrent_positions:
+        return "PAPER_CONCURRENT_POSITION_LIMIT"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class PaperReplayResult:
     """Deterministic event-time paper outcomes and excluded future requests."""
@@ -966,7 +1072,12 @@ class PaperLedgerStore(Protocol):
         self, idempotency_key: str
     ) -> PaperExecutionResult | None: ...
 
-    async def save_execution(self, result: PaperExecutionResult) -> None: ...
+    async def save_execution(
+        self,
+        result: PaperExecutionResult,
+        *,
+        sizing_policy: PaperSizingPolicy,
+    ) -> PaperExecutionResult: ...
 
     async def list_orders(self, portfolio_id: UUID) -> Sequence[PaperOrder]: ...
 
@@ -1030,16 +1141,66 @@ class InMemoryPaperLedgerStore:
         value = self._orders_by_key.get(idempotency_key)
         return None if value is None else _clone_result(value, duplicate=False)
 
-    async def save_execution(self, result: PaperExecutionResult) -> None:
+    async def save_execution(
+        self,
+        result: PaperExecutionResult,
+        *,
+        sizing_policy: PaperSizingPolicy,
+    ) -> PaperExecutionResult:
         async with self._write_lock:
             existing = self._orders_by_key.get(result.order.idempotency_key)
             if existing is not None:
                 if existing.request_fingerprint != result.request_fingerprint:
                     raise PaperIdempotencyConflict("idempotency key has conflicting material input")
-                return
+                return _clone_result(existing, duplicate=False)
             portfolio = self._portfolios.get(result.portfolio.id)
             if portfolio is None:
                 raise PaperLedgerConflict("portfolio does not exist")
+            current_position = self._positions.get(
+                (result.order.portfolio_id, result.order.token_id)
+            )
+            active_positions = tuple(
+                position
+                for position in self._positions.values()
+                if position.portfolio_id == result.order.portfolio_id
+                and position.state in _ACTIVE_POSITION_STATES
+            )
+            if result.fills:
+                expected_sequence = portfolio.ledger_sequence + len(result.ledger_entries)
+                assert portfolio.current_balance is not None
+                expected_balance = portfolio.current_balance + sum(
+                    (entry.cash_delta for entry in result.ledger_entries), Decimal("0")
+                )
+                limit_reason = paper_entry_limit_rejection(
+                    result,
+                    portfolio=portfolio,
+                    active_positions=active_positions,
+                    sizing_policy=sizing_policy,
+                )
+                if limit_reason is not None:
+                    result = reject_paper_execution(
+                        result,
+                        portfolio=portfolio,
+                        position=current_position,
+                        reason_code=limit_reason,
+                    )
+                elif (
+                    result.portfolio.ledger_sequence != expected_sequence
+                    or result.portfolio.current_balance is None
+                    or abs(result.portfolio.current_balance - expected_balance) > _CASH_TOLERANCE
+                ):
+                    result = reject_paper_execution(
+                        result,
+                        portfolio=portfolio,
+                        position=current_position,
+                        reason_code="PAPER_PORTFOLIO_CHANGED",
+                    )
+            else:
+                result = replace(
+                    result,
+                    portfolio=copy(portfolio),
+                    position=copy(current_position) if current_position is not None else None,
+                )
             if result.order.candidate_id is not None:
                 existing_claim = next(
                     (
@@ -1090,6 +1251,7 @@ class InMemoryPaperLedgerStore:
             self._orders_by_key[result.order.idempotency_key] = _clone_result(
                 result, duplicate=False
             )
+            return _clone_result(result, duplicate=False)
 
     async def list_orders(self, portfolio_id: UUID) -> Sequence[PaperOrder]:
         return tuple(
@@ -1124,7 +1286,12 @@ def _quote_payload(quote: QuoteSnapshot) -> Mapping[str, object]:
         "output_mint": quote.output_mint,
         "input_amount": str(quote.input_amount),
         "output_amount": str(quote.output_amount),
-        "execution_quote_price": str(quote.execution_quote_price),
+        "execution_quote_price": (
+            None if quote.execution_quote_price is None else str(quote.execution_quote_price)
+        ),
+        "amount_unit": quote.amount_unit.value,
+        "input_decimals": quote.input_decimals,
+        "output_decimals": quote.output_decimals,
         "price_semantics": quote.price_semantics.value,
         "price_impact_bps": str(quote.price_impact_bps),
         "minimum_output_amount": (
@@ -1167,7 +1334,7 @@ def _quote_payload(quote: QuoteSnapshot) -> Mapping[str, object]:
 class PaperFillModel:
     """Apply one deterministic adverse-slippage and fee model to a quote."""
 
-    version = "paper-fill-v1"
+    version = "paper-fill-v2"
 
     def simulate(
         self,
@@ -1183,8 +1350,10 @@ class PaperFillModel:
         fee_currency: str,
         fill_id: UUID | None = None,
     ) -> PaperFill:
-        quote_input = to_decimal(quote.input_amount, "quote.input_amount")
-        quote_output = to_decimal(quote.output_amount, "quote.output_amount")
+        quote_input = quote.human_input_amount
+        quote_output = quote.human_output_amount
+        if quote_input is None or quote_output is None:
+            raise PaperExecutionRejected("quote amount units are unknown")
         if quote_input <= 0 or quote_output <= 0:
             raise PaperExecutionRejected("quote output is not positive")
         if fill_ratio <= 0:
@@ -1194,11 +1363,28 @@ class PaperFillModel:
             effective_price = quoted_price * (Decimal("1") + slippage_bps / Decimal("10000"))
             gross_cash = input_amount * fill_ratio
             quantity = gross_cash / effective_price
+            quantity_decimals = quote.output_decimals
         else:
             quoted_price = quote_output / quote_input
             effective_price = quoted_price * (Decimal("1") - slippage_bps / Decimal("10000"))
             quantity = input_amount * fill_ratio
             gross_cash = quantity * effective_price
+            quantity_decimals = quote.input_decimals
+        if quote.amount_unit is QuoteAmountUnit.RAW_BASE_UNITS:
+            if quantity_decimals is None:
+                raise PaperExecutionRejected("quote token decimals are unknown")
+            quantum = Decimal(1).scaleb(-quantity_decimals)
+            quantity_exponent = quantity.as_tuple().exponent
+            if not isinstance(quantity_exponent, int):
+                raise PaperExecutionRejected("fill quantity was not finite")
+            with localcontext() as context:
+                context.prec = max(
+                    context.prec,
+                    len(quantity.as_tuple().digits) + abs(quantity_exponent) + 4,
+                )
+                quantity = quantity.quantize(quantum, rounding=ROUND_DOWN)
+        elif quote.amount_unit is not QuoteAmountUnit.DISPLAY_UNITS:
+            raise PaperExecutionRejected("quote amount units are unknown")
         if effective_price <= 0 or quantity <= 0 or gross_cash <= 0:
             raise PaperExecutionRejected("fill arithmetic produced a non-positive result")
         fee_amount = gross_cash * fee_bps / Decimal("10000")
@@ -1301,8 +1487,7 @@ class PaperExecutionEngine:
                 position=await self.store.get_position(request.portfolio_id, request.token_id),
                 request_fingerprint=request_fingerprint,
             )
-            await self.store.save_execution(result)
-            return result
+            return await self.store.save_execution(result, sizing_policy=self.policy.sizing)
         try:
             fill = self.fill_model.simulate(
                 order_id=order.id,
@@ -1326,8 +1511,7 @@ class PaperExecutionEngine:
                 position=await self.store.get_position(request.portfolio_id, request.token_id),
                 request_fingerprint=request_fingerprint,
             )
-            await self.store.save_execution(result)
-            return result
+            return await self.store.save_execution(result, sizing_policy=self.policy.sizing)
         position = await self.store.get_position(request.portfolio_id, request.token_id)
         if position is not None:
             position = copy(position)
@@ -1342,8 +1526,7 @@ class PaperExecutionEngine:
                     position=position,
                     request_fingerprint=request_fingerprint,
                 )
-                await self.store.save_execution(result)
-                return result
+                return await self.store.save_execution(result, sizing_policy=self.policy.sizing)
             if position is None or position.state is PositionState.CLOSED:
                 position = Position(
                     portfolio_id=request.portfolio_id,
@@ -1425,8 +1608,7 @@ class PaperExecutionEngine:
             position=position,
             request_fingerprint=request_fingerprint,
         )
-        await self.store.save_execution(result)
-        return result
+        return await self.store.save_execution(result, sizing_policy=self.policy.sizing)
 
     async def replay(
         self,
@@ -1513,14 +1695,28 @@ class PaperExecutionEngine:
     ) -> ReasonCode | None:
         if portfolio.mode is not PositionMode.PAPER:
             return _reason("PAPER_MODE_REQUIRED")
-        if not request.quote.freshness.is_fresh(request.requested_at):
+        if not request.quote.is_fresh_at(request.requested_at):
             return _reason("QUOTE_NOT_FRESH")
-        quote_input = to_decimal(request.quote.input_amount, "quote.input_amount")
-        quote_output = to_decimal(request.quote.output_amount, "quote.output_amount")
-        if quote_input <= 0 or quote_output <= 0:
+        if (
+            request.quote.amount_unit is not QuoteAmountUnit.RAW_BASE_UNITS
+            or request.quote.input_decimals is None
+            or request.quote.output_decimals is None
+        ):
+            return _reason("QUOTE_AMOUNT_UNITS_UNKNOWN")
+        if request.quote.input_decimals > 18 or request.quote.output_decimals > 18:
+            return _reason("QUOTE_DECIMALS_UNSUPPORTED")
+        quote_input = request.quote.human_input_amount
+        quote_output = request.quote.human_output_amount
+        if quote_input is None or quote_output is None or quote_input <= 0 or quote_output <= 0:
             return _reason("QUOTE_INVALID")
-        disposition = str(request.risk_snapshot.get("disposition", "UNKNOWN")).upper()
-        if disposition != "PASS":
+        if quote_input != request.amount:
+            return _reason("QUOTE_INPUT_AMOUNT_MISMATCH")
+        disposition = str(
+            request.risk_snapshot.get(
+                "disposition", request.risk_snapshot.get("risk_disposition", "UNKNOWN")
+            )
+        ).upper()
+        if request.side is PaperOrderSide.BUY and disposition != "PASS":
             return _reason("PAPER_RISK_NOT_PASS")
         if (
             request.side is PaperOrderSide.BUY
@@ -1559,8 +1755,7 @@ class PaperExecutionEngine:
             position=position,
             request_fingerprint=self._execution_fingerprint(request),
         )
-        await self.store.save_execution(result)
-        return result
+        return await self.store.save_execution(result, sizing_policy=self.policy.sizing)
 
     async def reconcile(self, portfolio_id: UUID, *, as_of: datetime) -> ReconciliationReport:
         return await PaperReconciler(self.store).reconcile(portfolio_id, as_of=as_of)

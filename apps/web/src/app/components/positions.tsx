@@ -118,7 +118,7 @@ function ClosedTrade({ position }: { position: PositionRecord }) {
 }
 
 function PositionCard({ position }: { position: PositionRecord }) {
-  const displayName = position.symbol || position.name || "UNNAMED POSITION";
+  const displayName = position.symbol || position.name || shortIdentity(position.mintAddress, 10);
   return (
     <article className={`position-card position-card--${position.state.toLowerCase()}`}>
       <div className="position-card__heading">

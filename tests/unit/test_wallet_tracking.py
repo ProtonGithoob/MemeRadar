@@ -337,6 +337,38 @@ def test_unmatched_or_missing_financial_evidence_is_nullable_and_fail_closed() -
     }
 
 
+def test_reconstruction_matches_rehydrated_activity_by_canonical_mint() -> None:
+    requested_token = token()
+    rehydrated_token = token()
+    registry = TrackedWalletRegistry()
+    registry.register(tracked_wallet())
+    normalized = observation(
+        rehydrated_token,
+        source_id="activity:rehydrated-token",
+        wallet=WALLET_A,
+        side="buy",
+        quantity="2",
+        quote_amount="5",
+        price=None,
+    )
+    activities = WalletTrackingAnalyzer().ingest_activities(
+        rehydrated_token,
+        (normalized,),
+        registry,
+        now=NOW,
+    )
+
+    result = WalletTrackingAnalyzer().reconstruct_positions(
+        requested_token,
+        activities,
+        registry,
+        now=NOW,
+        config_hash="wallet-tracking-test",
+    )
+
+    assert result[0].buy_count == 1
+
+
 def test_stale_future_and_missing_critical_evidence_never_look_fresh() -> None:
     token_value = token()
     registry = TrackedWalletRegistry()

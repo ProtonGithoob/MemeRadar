@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -12,7 +13,11 @@ from memeradar_application.paper_execution import (
     InMemoryPaperLedgerStore,
     PaperExecutionEngine,
 )
-from memeradar_application.provider_contracts import QuoteMarketContext, QuoteSnapshot
+from memeradar_application.provider_contracts import (
+    QuoteAmountUnit,
+    QuoteMarketContext,
+    QuoteSnapshot,
+)
 from memeradar_application.shadow_entry import (
     ShadowEntryPolicy,
     ShadowEntryService,
@@ -21,8 +26,8 @@ from memeradar_application.shadow_entry import (
 from memeradar_domain import Freshness, PaperOrderState, Provenance, QualityState
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
-TOKEN_MINT = "So11111111111111111111111111111111111111112"
-QUOTE_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+QUOTE_MINT = "So11111111111111111111111111111111111111112"
 
 
 class PoisonSigner:
@@ -63,7 +68,9 @@ class FakeQuotePort:
         self.calls += 1
         requested_at = request.context.requested_at
         quote_at = requested_at - timedelta(minutes=2) if self.stale else requested_at
-        input_amount = Decimal(self.drift) if self.drift is not None else Decimal("10")
+        input_human = Decimal(self.drift) if self.drift is not None else Decimal("10")
+        input_amount = input_human * Decimal(10**request.input_decimals)
+        output_amount = Decimal("100") * Decimal(10**request.output_decimals)
         return QuoteSnapshot(
             provenance=Provenance(
                 provider=self.provider_name,
@@ -74,7 +81,7 @@ class FakeQuotePort:
             input_mint=QUOTE_MINT,
             output_mint=TOKEN_MINT,
             input_amount=input_amount,
-            output_amount=Decimal("100"),
+            output_amount=output_amount,
             price_impact_bps=self.impact,
             route=("fixture-route",),
             freshness=Freshness(
@@ -85,8 +92,11 @@ class FakeQuotePort:
             price_semantics=(
                 "MARKET_REFERENCE" if self.market_reference else "EXECUTION_QUOTE"
             ),
-            minimum_output_amount=Decimal("99"),
+            minimum_output_amount=output_amount * Decimal("0.99"),
             slippage_bps=25,
+            amount_unit=QuoteAmountUnit.RAW_BASE_UNITS,
+            input_decimals=request.input_decimals,
+            output_decimals=request.output_decimals,
             market_context=(
                 QuoteMarketContext(
                     chain="solana",
@@ -122,19 +132,25 @@ def decision(
         token_id=token_id,
         input_mint=QUOTE_MINT,
         output_mint=TOKEN_MINT,
+        input_decimals=9,
+        output_decimals=6,
         paper_size_quote=amount,
         sellability=sellability,
         liquidity_ok=True,
+        liquidity_usd=Decimal("10000"),
         evaluated_at=NOW,
         evidence_refs=("decision:fixture",),
-        risk_snapshot={"disposition": "PASS", "critical_evidence_state": "FRESH"},
+        risk_snapshot={
+            "disposition": "PASS", "critical_evidence_state": "FRESH",
+            "as_of": NOW.isoformat(), "expires_at": (NOW + timedelta(minutes=1)).isoformat(),
+        },
     )
 
 
 def test_entry_ready_fills_paper_ledger_without_touching_poison_execution() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
-        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        portfolio = await store.create_portfolio(initial_balance=Decimal("1000"), currency="SOL")
         engine = PaperExecutionEngine(store)
         quote_port = FakeQuotePort()
         service = ShadowEntryService(policy=ShadowEntryPolicy(), clock=lambda: NOW)
@@ -160,10 +176,42 @@ def test_entry_ready_fills_paper_ledger_without_touching_poison_execution() -> N
     asyncio.run(scenario())
 
 
+def test_quote_received_after_request_is_used_only_at_response_time() -> None:
+    async def scenario() -> None:
+        store = InMemoryPaperLedgerStore()
+        portfolio = await store.create_portfolio(initial_balance=Decimal("1000"), currency="SOL")
+        timestamps = iter((NOW, NOW + timedelta(seconds=2)))
+
+        class DelayedQuote(FakeQuotePort):
+            async def quote(self, request: object) -> QuoteSnapshot:
+                original = await super().quote(request)
+                at = NOW + timedelta(seconds=1)
+                return replace(
+                    original,
+                    provenance=replace(original.provenance, observed_at=at),
+                    freshness=replace(
+                        original.freshness, as_of=at, expires_at=at + timedelta(minutes=1)
+                    ),
+                )
+
+        result = await ShadowEntryService(clock=lambda: next(timestamps)).on_entry_ready(
+            decision(portfolio_id=portfolio.id, token_id=uuid4()),
+            DelayedQuote(),
+            PaperExecutionEngine(store),
+        )
+        assert result.status is ShadowEntryStatus.SHADOW_FILLED
+        assert result.intended_at == NOW
+        assert result.quoted_at == NOW + timedelta(seconds=2)
+        assert result.paper_result is not None
+        assert result.paper_result.order.requested_at == NOW + timedelta(seconds=2)
+
+    asyncio.run(scenario())
+
+
 def test_stale_high_impact_and_non_sellable_entries_fail_closed() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
-        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        portfolio = await store.create_portfolio(initial_balance=Decimal("1000"), currency="SOL")
         engine = PaperExecutionEngine(store)
         service = ShadowEntryService(policy=ShadowEntryPolicy(), clock=lambda: NOW)
 
@@ -197,7 +245,7 @@ def test_stale_high_impact_and_non_sellable_entries_fail_closed() -> None:
 def test_quote_drift_is_a_missed_fill_and_duplicate_is_idempotent() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
-        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        portfolio = await store.create_portfolio(initial_balance=Decimal("1000"), currency="SOL")
         engine = PaperExecutionEngine(store)
         service = ShadowEntryService(policy=ShadowEntryPolicy(), clock=lambda: NOW)
         candidate = decision(portfolio_id=portfolio.id, token_id=uuid4())
@@ -216,10 +264,51 @@ def test_quote_drift_is_a_missed_fill_and_duplicate_is_idempotent() -> None:
     asyncio.run(scenario())
 
 
+def test_recreated_service_returns_persisted_entry_without_requesting_another_quote() -> None:
+    async def scenario() -> None:
+        store = InMemoryPaperLedgerStore()
+        portfolio = await store.create_portfolio(initial_balance=Decimal("1000"), currency="SOL")
+        candidate = decision(portfolio_id=portfolio.id, token_id=uuid4())
+        engine = PaperExecutionEngine(store)
+
+        first = await ShadowEntryService(clock=lambda: NOW).on_entry_ready(
+            candidate,
+            FakeQuotePort(),
+            engine,
+        )
+        assert first.status is ShadowEntryStatus.SHADOW_FILLED
+
+        class NoSecondQuote:
+            provider_name = "fixture.no-second-quote"
+            calls = 0
+
+            async def quote(self, _request: object) -> QuoteSnapshot:
+                self.calls += 1
+                raise AssertionError("a committed decision must not be quoted again")
+
+        retry_quote = NoSecondQuote()
+        recovered = await ShadowEntryService(
+            clock=lambda: NOW + timedelta(seconds=5)
+        ).on_entry_ready(
+            candidate,
+            retry_quote,
+            engine,
+        )
+
+        assert recovered.status is ShadowEntryStatus.DUPLICATE
+        assert recovered.duplicate is True
+        assert recovered.paper_result is not None
+        assert recovered.paper_result.order.id == first.paper_result.order.id
+        assert retry_quote.calls == 0
+        assert len(await store.list_fills(portfolio.id)) == 1
+
+    asyncio.run(scenario())
+
+
 def test_market_reference_quote_requires_pair_context_before_paper_fill() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
-        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        portfolio = await store.create_portfolio(initial_balance=Decimal("1000"), currency="SOL")
         engine = PaperExecutionEngine(store)
         service = ShadowEntryService(policy=ShadowEntryPolicy(), clock=lambda: NOW)
         result = await service.on_entry_ready(
@@ -238,7 +327,7 @@ def test_market_reference_quote_requires_pair_context_before_paper_fill() -> Non
 def test_shadow_entry_rejects_missing_risk_before_paper_auto_path() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
-        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        portfolio = await store.create_portfolio(initial_balance=Decimal("1000"), currency="SOL")
         engine = PaperExecutionEngine(store)
         candidate = decision(portfolio_id=portfolio.id, token_id=uuid4())
         del candidate.risk_snapshot

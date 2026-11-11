@@ -68,12 +68,18 @@ def test_paper_idempotency_and_ledger_sequence_constraints_are_physical() -> Non
 
 
 def test_paper_claim_constraints_are_physical() -> None:
-    assert any(
-        isinstance(constraint, UniqueConstraint)
-        and {column.name for column in constraint.columns}
-        == {"portfolio_id", "candidate_id", "mode", "side"}
-        for constraint in OrderRow.__table__.constraints
+    opportunity_claim = next(
+        index
+        for index in OrderRow.__table__.indexes
+        if index.name == "uq_orders_opportunity_claim"
     )
+    assert opportunity_claim.unique
+    assert {column.name for column in opportunity_claim.columns} == {
+        "portfolio_id",
+        "candidate_id",
+        "mode",
+        "side",
+    }
     assert any(
         index.name == "uq_positions_active_portfolio_token_mode" and index.unique
         for index in PositionRow.__table__.indexes

@@ -48,7 +48,7 @@ jobs:
       - name: Typecheck
         run: python -m mypy
       - name: Test
-        run: python -m pytest -q --cov=apps --cov=packages --cov-report=term-missing
+        run: make test PYTHON=python
       - name: Frontend CSS contract
         run: python scripts/check_frontend_css.py
       - name: Migration check

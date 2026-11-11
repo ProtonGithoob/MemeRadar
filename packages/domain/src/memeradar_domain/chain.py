@@ -510,6 +510,11 @@ class StreamVerification:
     verified_at: datetime | None = None
     reason_codes: Sequence[ReasonCode | str] = ()
     gap_id: UUID | None = None
+    provider_id: str | None = None
+    program_scope: str | None = None
+    commitment: CommitmentState | str = CommitmentState.UNKNOWN
+    verification_method: str | None = None
+    recovery_attempt: int | None = None
     id: UUID = field(default_factory=uuid4)
 
     def __post_init__(self) -> None:
@@ -550,6 +555,25 @@ class StreamVerification:
         object.__setattr__(self, "reason_codes", normalize_reason_codes(self.reason_codes))
         if self.gap_id is not None and not isinstance(self.gap_id, UUID):
             raise TypeError("gap_id must be a UUID")
+        object.__setattr__(self, "commitment", CommitmentState(self.commitment))
+        for field_name, max_length in (
+            ("provider_id", 128),
+            ("program_scope", 512),
+            ("verification_method", 128),
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    require_text(value, field_name, max_length=max_length),
+                )
+        if self.recovery_attempt is not None:
+            object.__setattr__(
+                self,
+                "recovery_attempt",
+                _positive_int(self.recovery_attempt, "recovery_attempt"),
+            )
         if not isinstance(self.id, UUID):
             raise TypeError("id must be a UUID")
 

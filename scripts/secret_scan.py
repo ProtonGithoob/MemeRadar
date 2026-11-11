@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
@@ -78,7 +79,7 @@ def scan_files(paths: Iterable[Path]) -> list[tuple[Path, SecretFinding]]:
     for path in paths:
         try:
             text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        except UnicodeDecodeError:
             continue
         findings.extend((path, finding) for finding in scan_text(text))
     return findings
@@ -91,19 +92,18 @@ def scan_artifacts(root: Path) -> list[tuple[Path, SecretFinding]]:
 
 
 @lru_cache(maxsize=4)
-def _scan_git_history_cached(root_text: str) -> tuple[tuple[Path, SecretFinding], ...]:
+def _scan_git_history_cached(
+    root_text: str, refs: bytes
+) -> tuple[tuple[Path, SecretFinding], ...]:
     """Scan reachable git blobs while returning only safe object/path metadata."""
 
     root = Path(root_text)
 
-    try:
-        objects = subprocess.run(
-            ["git", "-C", str(root), "rev-list", "--objects", "--all"],
-            check=True,
-            capture_output=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return ()
+    objects = subprocess.run(
+        ["git", "-C", str(root), "rev-list", "--objects", "--all"],
+        check=True,
+        capture_output=True,
+    )
     object_paths: list[tuple[str, str]] = []
     for raw_line in objects.stdout.splitlines():
         object_id, separator, raw_path = raw_line.partition(b" ")
@@ -111,49 +111,47 @@ def _scan_git_history_cached(root_text: str) -> tuple[tuple[Path, SecretFinding]
             object_paths.append((object_id.decode("ascii"), raw_path.decode("utf-8", "replace")))
     if not object_paths:
         return ()
-    try:
-        blobs = subprocess.run(
-            ["git", "-C", str(root), "cat-file", "--batch"],
-            input=("\n".join(object_id for object_id, _ in object_paths) + "\n").encode("ascii"),
-            check=True,
-            capture_output=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return ()
     by_id = dict(object_paths)
     findings: list[tuple[Path, SecretFinding]] = []
-    payload = blobs.stdout
-    offset = 0
-    while offset < len(payload):
-        header_end = payload.find(b"\n", offset)
-        if header_end < 0:
-            break
-        header = payload[offset:header_end].split()
-        if len(header) != 3:
-            break
-        object_id, object_type, raw_size = header
-        try:
-            size = int(raw_size)
-        except ValueError:
-            break
-        content_start = header_end + 1
-        content_end = content_start + size
-        content = payload[content_start:content_end]
-        offset = content_end + 1
-        if object_type != b"blob" or object_id.decode("ascii", "ignore") not in by_id:
-            continue
-        text = content.decode("utf-8", "ignore")
-        safe_path = root / "git-history" / object_id[:12].decode("ascii") / by_id[
-            object_id.decode("ascii")
-        ]
-        findings.extend((safe_path, finding) for finding in scan_text(text))
+    with tempfile.TemporaryFile() as requests:
+        requests.write(("\n".join(by_id) + "\n").encode("ascii"))
+        requests.seek(0)
+        with subprocess.Popen(
+            ["git", "-C", str(root), "cat-file", "--batch"],
+            stdin=requests,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        ) as process:
+            assert process.stdout is not None
+            for expected_id in by_id:
+                header = process.stdout.readline().split()
+                if len(header) != 3 or header[0].decode("ascii") != expected_id:
+                    raise RuntimeError("incomplete Git history scan")
+                size = int(header[2])
+                content = process.stdout.read(size)
+                if len(content) != size or process.stdout.read(1) != b"\n":
+                    raise RuntimeError("truncated Git history object")
+                if header[1] == b"blob":
+                    safe_path = root / "git-history" / expected_id[:12] / by_id[expected_id]
+                    findings.extend(
+                        (safe_path, finding)
+                        for finding in scan_text(content.decode("utf-8", "ignore"))
+                    )
+            if process.wait() != 0:
+                raise subprocess.CalledProcessError(process.returncode, process.args)
     return tuple(findings)
 
 
 def scan_git_history(root: Path) -> list[tuple[Path, SecretFinding]]:
     """Scan reachable git blobs while returning only safe object/path metadata."""
 
-    return list(_scan_git_history_cached(str(root.resolve())))
+    resolved = root.resolve()
+    refs = subprocess.run(
+        ["git", "-C", str(resolved), "for-each-ref", "--format=%(refname) %(objectname)"],
+        check=True,
+        capture_output=True,
+    ).stdout
+    return list(_scan_git_history_cached(str(resolved), refs))
 
 
 def main() -> int:

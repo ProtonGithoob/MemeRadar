@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 from memeradar_application.correlation import (
     CallerMarketConductAnalyzer,
@@ -272,3 +273,35 @@ def test_future_wallet_flow_is_excluded_and_invalidates_the_projection() -> None
     assert result.classifications == (CallerMarketConductClassification.INSUFFICIENT_EVIDENCE,)
     assert result.quality_state is QualityState.INVALID
     assert result.no_lookahead_verified is False
+
+
+def test_same_mint_with_distinct_storage_ids_still_correlates_calls_and_wallet_activity() -> None:
+    primary_token = TokenIdentity(mint_address=SOLANA_TOKEN, id=uuid4())
+    related_token = TokenIdentity(mint_address=SOLANA_TOKEN, id=uuid4())
+    primary = call(primary_token, called_at=NOW - timedelta(minutes=5))
+    related = call(
+        related_token,
+        author_id="beta",
+        called_at=primary.published_at + timedelta(seconds=5),
+        source_id="call-beta-distinct-token-id",
+    )
+
+    result = CallerMarketConductAnalyzer().analyze(
+        primary,
+        (linkage(primary_token, address=SOLANA_WALLET),),
+        (
+            activity(
+                related_token,
+                source_id="buy-before-call-distinct-token-id",
+                address=SOLANA_WALLET,
+                action=WalletAction.BUY,
+                occurred_at=primary.published_at - timedelta(seconds=10),
+            ),
+        ),
+        related_calls=(related,),
+        now=NOW,
+        config_hash="conduct-test-v1",
+    )
+
+    assert CallerMarketConductClassification.COORDINATED_CALL_CLUSTER in result.classifications
+    assert CallerMarketConductClassification.PRE_POSITIONING_CORRELATION in result.classifications

@@ -35,6 +35,7 @@ class EarlyRadarQueryParams(_StrictModel):
     min_score: Decimal | None = Field(default=None, ge=0, le=100)
     risk_quality_state: QualityState | None = None
     risk_disposition: _RISK_DISPOSITIONS | None = None
+    qualified_only: bool = False
 
 
 class PoolResponse(_StrictModel):
@@ -99,12 +100,17 @@ class EarlyRadarResponse(_StrictModel):
     unique_buyers: dict[str, object] = Field(default_factory=dict)
     quote_inflow: dict[str, object] = Field(default_factory=dict)
     liquidity_usd: Decimal | None = None
+    buy_impact_bps: Decimal | None = None
     price_impact_bps: Decimal | None = None
     creator_risk: str
     bundle_risk: str
     holder_risk: str
     smart_money_confluence: Decimal | None = None
     sellability: str
+    mint_authority_safe: bool | None = None
+    freeze_authority_safe: bool | None = None
+    protocol_identity_verified: bool | None = None
+    quote_semantics: str | None = None
     shadow_entry_status: str
     external_call_lead_time_ms: Decimal | None = None
     hard_block_reasons: list[str] = Field(default_factory=list)
@@ -182,12 +188,17 @@ def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
         unique_buyers=_mapping(value.unique_buyers),
         quote_inflow=_mapping(value.quote_inflow),
         liquidity_usd=cast(Decimal | None, value.liquidity_usd),
+        buy_impact_bps=cast(Decimal | None, value.buy_impact_bps),
         price_impact_bps=cast(Decimal | None, value.price_impact_bps),
         creator_risk=value.creator_risk,
         bundle_risk=value.bundle_risk,
         holder_risk=value.holder_risk,
         smart_money_confluence=cast(Decimal | None, value.smart_money_confluence),
         sellability=value.sellability,
+        mint_authority_safe=value.mint_authority_safe,
+        freeze_authority_safe=value.freeze_authority_safe,
+        protocol_identity_verified=value.protocol_identity_verified,
+        quote_semantics=value.quote_semantics,
         shadow_entry_status=value.shadow_entry_status,
         external_call_lead_time_ms=cast(Decimal | None, value.external_call_lead_time_ms),
         hard_block_reasons=list(value.hard_block_reasons),

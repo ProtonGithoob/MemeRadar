@@ -362,7 +362,9 @@ def build_provider_bundle(
     external_wallet_configured = external_wallet_port is not None
     custom_quote_configured = custom_quote_port is not None
     jupiter_configured = (
-        settings.paper_quote_provider == "jupiter" and _configured(settings.paper_quote_url)
+        settings.paper_quote_provider == "jupiter"
+        and _configured(settings.paper_quote_url)
+        and _configured(settings.paper_quote_api_key)
     )
     telegram_configured = (
         _configured(settings.telegram_api_url)

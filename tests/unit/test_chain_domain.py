@@ -273,7 +273,35 @@ def test_stream_verification_normalizes_event_sets_and_pass_status() -> None:
     assert verification.expected_relevant_events == ("event-a", "event-b")
     assert verification.missing_event_ids == ()
     assert verification.extra_event_ids == ()
+    assert verification.provider_id is None
+    assert verification.program_scope is None
+    assert verification.commitment is CommitmentState.UNKNOWN
+    assert verification.verification_method is None
+    assert verification.recovery_attempt is None
     assert verification.is_complete is True
+
+
+def test_stream_verification_carries_bounded_source_provenance() -> None:
+    verification = StreamVerification(
+        chain=Chain.SOLANA,
+        transport="solana-raw-stream",
+        stream_id="pumpfun-mainnet-v1",
+        from_slot=101,
+        to_slot=103,
+        expected_blocks=3,
+        fetched_blocks=3,
+        provider_id="solana-public-rpc",
+        program_scope="program:11111111111111111111111111111111",
+        commitment=CommitmentState.FINALIZED,
+        verification_method="canonical_event_set_v1",
+        recovery_attempt=2,
+    )
+
+    assert verification.provider_id == "solana-public-rpc"
+    assert verification.program_scope == "program:11111111111111111111111111111111"
+    assert verification.commitment is CommitmentState.FINALIZED
+    assert verification.verification_method == "canonical_event_set_v1"
+    assert verification.recovery_attempt == 2
 
 
 def test_domain_rejects_finalized_progress_above_contiguous() -> None:

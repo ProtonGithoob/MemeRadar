@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   RealtimeTransport,
@@ -27,6 +28,16 @@ export function useRealtimeStatus(url?: string): RealtimeStatusValue {
 }
 
 export function RealtimeStatus() {
-  const status = useRealtimeStatus(process.env.NEXT_PUBLIC_REALTIME_URL || undefined);
+  const url = process.env.NEXT_PUBLIC_REALTIME_URL || undefined;
+  const status = useRealtimeStatus(url);
+  const router = useRouter();
+  useEffect(() => {
+    if (url) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [router, url]);
+  if (!url) return <span className="chip chip--info" role="status">AUTO REFRESH · 30s</span>;
   return <ConnectionBadge {...status} />;
 }

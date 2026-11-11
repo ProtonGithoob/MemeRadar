@@ -184,6 +184,8 @@ _NETWORK_BLOCKERS = (
     "network is unreachable",
     "temporary failure in name resolution",
     "could not resolve",
+    "failed to resolve",
+    "name or service not known",
     "eai_again",
     "unable to fetch",
     "failed to fetch",
@@ -357,10 +359,13 @@ def check_container_contracts(root: Path) -> SecurityCheck:
 def check_secret_boundaries(root: Path) -> SecurityCheck:
     """Scan tracked files, bounded artifacts/logs and reachable git history."""
 
-    findings = list(scan_artifacts(root))
-    if (root / ".git").exists():
-        findings.extend(scan_files(tracked_files(root)))
-        findings.extend(scan_git_history(root))
+    try:
+        findings = list(scan_artifacts(root))
+        if (root / ".git").exists():
+            findings.extend(scan_files(tracked_files(root)))
+            findings.extend(scan_git_history(root))
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError):
+        return _fail("secret_boundary_scan", "secret scan could not complete")
     if findings:
         return _fail(
             "secret_boundary_scan",
@@ -552,7 +557,10 @@ def _external_command(command: Sequence[str], *, cwd: Path) -> CheckStatus:
 
 def _run_external_scans(root: Path) -> dict[str, CheckStatus]:
     return {
-        "pip_audit": _external_command(("pip-audit", "-r", "requirements.lock"), cwd=root),
+        "pip_audit": _external_command(
+            ("pip-audit", "--no-deps", "--disable-pip", "-r", "requirements.lock"),
+            cwd=root,
+        ),
         "npm_audit": _external_command(
             ("npm", "audit", "--audit-level=high", "--omit=dev"),
             cwd=root / "apps" / "web",

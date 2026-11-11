@@ -24,12 +24,11 @@ from memeradar_application.provider_contracts import (
     OnChainRequest,
     ProviderRequestContext,
 )
-from memeradar_domain import Observation, Provenance, QualityState
+from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
 from memeradar_domain.common import ensure_utc, require_text
 from memeradar_domain.identities import require_solana_address
 
 from .transport import (
-    CapabilityUnavailableError,
     ProviderAuthenticationError,
     ProviderError,
     ProviderRateLimitedError,
@@ -43,7 +42,7 @@ from .transport import (
 Clock = Callable[[], datetime]
 
 SOLANA_RPC_PROVIDER = "solana-public-rpc"
-SOLANA_RPC_PARSER_VERSION = "solana-rpc-v1"
+SOLANA_RPC_PARSER_VERSION = "solana-rpc-v2"
 SOLANA_CHAIN = "solana"
 _CREDENTIAL_QUERY_KEYS = {
     "api_key",
@@ -53,6 +52,8 @@ _CREDENTIAL_QUERY_KEYS = {
     "token",
 }
 _MISSING = object()
+_SPL_TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+_TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 
 
 def _mapping(value: object, field: str) -> Mapping[str, object]:
@@ -336,6 +337,7 @@ class SolanaRpcAdapter(OnChainPort):
             (normalized_address, {"encoding": "jsonParsed"}),
             context=context,
         )
+
         observed_at, ingested_at = self._now_pair()
         result_mapping = _mapping(result, "account")
         value = result_mapping.get("value")
@@ -388,6 +390,94 @@ class SolanaRpcAdapter(OnChainPort):
                 "data": data,
                 "collection_mode": "PRODUCTION",
             },
+        )
+
+
+    async def fetch_token_metadata(
+        self,
+        token: TokenIdentity,
+        *,
+        context: ProviderRequestContext,
+    ) -> Observation:
+        """Read SPL mint authorities through standard, parsed Solana RPC."""
+
+        if not isinstance(token, TokenIdentity):
+            raise TypeError("token must be a TokenIdentity")
+        result = await self._rpc(
+            "getAccountInfo",
+            (token.mint_address, {"encoding": "jsonParsed"}),
+            context=context,
+        )
+        observed_at, ingested_at = self._now_pair()
+        result_mapping = _mapping(result, "mint account")
+        account = result_mapping.get("value")
+        account_mapping = _mapping(account, "mint account value") if account is not None else {}
+        owner = account_mapping.get("owner")
+        data = account_mapping.get("data")
+        parsed = data.get("parsed") if isinstance(data, Mapping) else None
+        info = parsed.get("info") if isinstance(parsed, Mapping) else None
+        parsed_type = parsed.get("type") if isinstance(parsed, Mapping) else None
+
+        if owner == _SPL_TOKEN_PROGRAM_ID:
+            token_program = "spl-token"
+        elif owner == _TOKEN_2022_PROGRAM_ID:
+            token_program = "spl-token-2022"
+        else:
+            token_program = "unknown"
+
+        def authority_payload(field: str) -> dict[str, str | None]:
+            if not isinstance(info, Mapping) or parsed_type != "mint" or field not in info:
+                return {"state": "UNKNOWN", "address": None}
+            value = info[field]
+            if value is None:
+                return {"state": "REVOKED", "address": None}
+            if not isinstance(value, str) or not value.strip():
+                return {"state": "INVALID", "address": None}
+            try:
+                address = require_solana_address(value, field)
+            except (TypeError, ValueError):
+                return {"state": "INVALID", "address": None}
+            return {"state": "ACTIVE", "address": address}
+
+        mint_authority = authority_payload("mintAuthority")
+        freeze_authority = authority_payload("freezeAuthority")
+        authorities_known = all(
+            value["state"] in {"ACTIVE", "REVOKED"}
+            for value in (mint_authority, freeze_authority)
+        )
+        quality = (
+            QualityState.FRESH
+            if token_program != "unknown" and authorities_known
+            else QualityState.UNKNOWN
+        )
+        provenance = self._provenance(
+            f"getAccountInfo:mint-metadata:{token.mint_address}", observed_at, result
+        )
+        payload_info = info if isinstance(info, Mapping) else {}
+        decimals = payload_info.get("decimals")
+        supply = payload_info.get("supply")
+        return Observation(
+            kind="onchain.token_metadata",
+            provenance=provenance,
+            occurred_at=None,
+            observed_at=observed_at,
+            ingested_at=ingested_at,
+            quality_state=quality,
+            normalized_payload={
+                "mint_address": token.mint_address,
+                "token_program": token_program,
+                "mint_authority": mint_authority,
+                "freeze_authority": freeze_authority,
+                "decimals": (
+                    decimals if isinstance(decimals, int) and not isinstance(decimals, bool)
+                    else None
+                ),
+                "supply": supply,
+                "token_extensions": (),
+                "token_extensions_reported": False,
+                "collection_mode": "PRODUCTION",
+            },
+            token_id=token.id,
         )
 
     async def fetch_transaction(
@@ -626,7 +716,7 @@ class SolanaRpcAdapter(OnChainPort):
                     "encoding": "jsonParsed",
                     "transactionDetails": "full" if include_transactions else "signatures",
                     "rewards": False,
-                    "maxSupportedTransactionVersion": 0,
+                    "maxSupportedTransactionVersion": 1,
                 },
             ),
             context=context,
@@ -679,9 +769,7 @@ class SolanaRpcAdapter(OnChainPort):
         if not isinstance(request, OnChainRequest):
             raise TypeError("request must be an OnChainRequest")
         if request.token is not None:
-            raise CapabilityUnavailableError(
-                "standard Solana RPC does not provide enhanced asset metadata"
-            )
+            return (await self.fetch_token_metadata(request.token, context=request.context),)
         if request.signature is not None:
             return (await self.fetch_transaction(request.signature, context=request.context),)
         if request.address is not None:

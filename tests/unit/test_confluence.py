@@ -353,3 +353,56 @@ def test_non_smart_wallets_are_gated_and_policy_is_bounded() -> None:
     assert result.execution_eligible(NOW) is False
     with pytest.raises(ValueError, match="entry_window"):
         ConfluencePolicy(entry_window=timedelta(0))
+
+
+def test_round_trip_matches_snapshot_mint_across_storage_ids() -> None:
+    token_value = token()
+    rehydrated = TokenIdentity(mint_address=token_value.mint_address, id=uuid4())
+    trip = round_trip(
+        rehydrated,
+        wallet=WALLET_A,
+        source_id="trip:rehydrated",
+        buy_at=NOW - timedelta(minutes=5),
+        sell_at=NOW - timedelta(minutes=2),
+    )
+
+    result = ConfluenceAnalyzer().analyze(
+        (smart_score(WALLET_A),),
+        (snapshot(token_value, wallet=WALLET_A, trip=trip),),
+        now=NOW,
+        config_hash="canonical-token-test",
+    )[0]
+
+    assert "trip:rehydrated" in result.evidence_refs
+
+
+def test_confluence_groups_same_canonical_mint_across_storage_ids() -> None:
+    requested_token = token()
+    rehydrated = TokenIdentity(mint_address=requested_token.mint_address, id=uuid4())
+    first = round_trip(
+        requested_token,
+        wallet=WALLET_A,
+        source_id="trip:canonical-a",
+        buy_at=NOW - timedelta(minutes=5),
+        sell_at=NOW - timedelta(minutes=2),
+    )
+    second = round_trip(
+        rehydrated,
+        wallet=WALLET_B,
+        source_id="trip:canonical-b",
+        buy_at=NOW - timedelta(minutes=4),
+        sell_at=NOW - timedelta(minutes=1),
+    )
+
+    results = ConfluenceAnalyzer().analyze(
+        (smart_score(WALLET_A), smart_score(WALLET_B)),
+        (
+            snapshot(requested_token, wallet=WALLET_A, trip=first),
+            snapshot(rehydrated, wallet=WALLET_B, trip=second),
+        ),
+        now=NOW,
+        config_hash="canonical-token-grouping-test",
+    )
+
+    assert len(results) == 1
+    assert results[0].qualified_wallet_count == 2

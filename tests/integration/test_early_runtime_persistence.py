@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import func, select
 
 from memeradar_application.early_runtime import EarlyRuntimeService
+from memeradar_application.read_candidates import EarlyRadarQuery
 from memeradar_domain import Observation, Provenance, QualityState
 from memeradar_persistence import (
     DomainEventRow,
@@ -20,6 +21,7 @@ from memeradar_persistence import (
     OutboxRow,
     RiskAssessmentRow,
     ScoreSnapshotRow,
+    SqlAlchemyReadQueryService,
     SqlAlchemyUnitOfWork,
     create_database_engine,
 )
@@ -84,6 +86,49 @@ def test_early_runtime_round_trips_snapshots_and_outbox_dedupe() -> None:
     asyncio.run(_exercise(database_url))
 
 
+def test_discovery_queues_a_separate_notification_job() -> None:
+    database_url = os.environ.get("MEMERADAR_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("MEMERADAR_TEST_DATABASE_URL is not configured")
+
+    async def exercise() -> None:
+        engine = create_database_engine(database_url)
+        try:
+            async with SqlAlchemyUnitOfWork(engine) as uow:
+                service = EarlyRuntimeService(
+                    observation_store=uow.observations,
+                    candidate_store=uow.candidates,
+                    feature_store=uow.features,
+                    risk_store=uow.risks,
+                    score_store=uow.scores,
+                    outbox_store=uow.outbox,
+                )
+                source = _observation(_mint())
+                result = await service.process(
+                    source,
+                    observations=(source,),
+                    safety_evidence={
+                        "mint_authority_safe": True, "freeze_authority_safe": True,
+                        "liquidity": Decimal("25000"), "sellability": True,
+                        "buy_impact_bps": Decimal("120"), "sell_impact_bps": Decimal("140"),
+                        "protocol_identity_verified": True,
+                        "quote_semantics": "EXECUTION_QUOTE",
+                    },
+                    score_components=_components(),
+                )
+                assert result.lifecycle_event is not None
+                kinds = (await uow._session.scalars(
+                    select(OutboxRow.side_effect_kind).where(
+                        OutboxRow.event_id == result.lifecycle_event.id
+                    )
+                )).all()
+                assert set(kinds) == {"domain_event", "notification"}
+        finally:
+            await engine.dispose()
+
+    asyncio.run(exercise())
+
+
 async def _exercise(database_url: str) -> None:
     engine = create_database_engine(database_url)
     mint = _mint()
@@ -95,6 +140,8 @@ async def _exercise(database_url: str) -> None:
         "sellability": True,
         "buy_impact_bps": Decimal("120"),
         "sell_impact_bps": Decimal("140"),
+        "protocol_identity_verified": True,
+        "quote_semantics": "EXECUTION_QUOTE",
     }
     try:
         async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
@@ -167,11 +214,30 @@ async def _exercise(database_url: str) -> None:
             assert len(loaded.transitions) == len(first.candidate.transitions)
             assert snapshot_count == 4
             assert event_count == 1
-            assert outbox_count == 1
-            assert feature_count == 2
+            assert outbox_count == 2
+            # Initial and decision records share the same feature checkpoint.
+            assert feature_count == 1
             assert risk_count == 2
             assert score_count == 2
             assert loaded.latest_score_id == first.score.id
             assert loaded.latest_risk_id is not None
+        reader = SqlAlchemyReadQueryService(engine, clock=lambda: NOW + timedelta(seconds=5))
+        page = await reader.list_early_radar(EarlyRadarQuery(limit=100))
+        projected = next(item for item in page.items if item.candidate_id == first.candidate.id)
+        assert projected.early_state.value == "EARLY_WATCH"
+        assert projected.early_score == first.score.score
+        qualified_page = await reader.list_early_radar(
+            EarlyRadarQuery(limit=100, qualified_only=True)
+        )
+        assert any(item.candidate_id == first.candidate.id for item in qualified_page.items)
+        stale_reader = SqlAlchemyReadQueryService(engine, clock=lambda: NOW + timedelta(minutes=10))
+        stale_page = await stale_reader.list_early_radar(EarlyRadarQuery(limit=100))
+        stale = next(item for item in stale_page.items if item.candidate_id == first.candidate.id)
+        assert stale.first_seen_quality is QualityState.STALE
+        assert stale.risk_disposition == "UNKNOWN"
+        stale_qualified = await stale_reader.list_early_radar(
+            EarlyRadarQuery(limit=100, qualified_only=True)
+        )
+        assert all(item.candidate_id != first.candidate.id for item in stale_qualified.items)
     finally:
         await engine.dispose()

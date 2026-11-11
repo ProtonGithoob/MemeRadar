@@ -18,7 +18,11 @@ from memeradar_application.paper_execution import (
     PaperSizingInput,
     PaperSizingPolicy,
 )
-from memeradar_application.provider_contracts import QuoteMarketContext, QuoteSnapshot
+from memeradar_application.provider_contracts import (
+    QuoteAmountUnit,
+    QuoteMarketContext,
+    QuoteSnapshot,
+)
 from memeradar_domain import (
     Freshness,
     PaperOrderSide,
@@ -29,8 +33,18 @@ from memeradar_domain import (
 )
 
 NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
-TOKEN_MINT = "So11111111111111111111111111111111111111112"
-QUOTE_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+QUOTE_MINT = "So11111111111111111111111111111111111111112"
+
+
+def paper_engine(
+    store: InMemoryPaperLedgerStore,
+    policy: PaperExecutionPolicy | None = None,
+) -> PaperExecutionEngine:
+    fixture_policy = policy or PaperExecutionPolicy(
+        sizing=PaperSizingPolicy(max_position_fraction=Decimal("0.11"))
+    )
+    return PaperExecutionEngine(store, fixture_policy)
 
 
 def quote(
@@ -38,11 +52,16 @@ def quote(
     side: PaperOrderSide = PaperOrderSide.BUY,
     as_of: datetime = NOW,
     quality_state: QualityState = QualityState.FRESH,
+    input_human: Decimal = Decimal("10"),
 ) -> QuoteSnapshot:
     if side is PaperOrderSide.BUY:
         input_mint, output_mint = QUOTE_MINT, TOKEN_MINT
+        input_decimals, output_decimals = 9, 6
+        output_human = input_human * Decimal("10")
     else:
         input_mint, output_mint = TOKEN_MINT, QUOTE_MINT
+        input_decimals, output_decimals = 6, 9
+        output_human = input_human / Decimal("10")
     return QuoteSnapshot(
         provenance=Provenance(
             provider="fixture.quote",
@@ -52,8 +71,8 @@ def quote(
         ),
         input_mint=input_mint,
         output_mint=output_mint,
-        input_amount=Decimal("10"),
-        output_amount=Decimal("100"),
+        input_amount=input_human * Decimal(10**input_decimals),
+        output_amount=output_human * Decimal(10**output_decimals),
         price_impact_bps=Decimal("25"),
         route=("fixture-route",),
         freshness=Freshness(
@@ -61,6 +80,9 @@ def quote(
             expires_at=as_of + timedelta(minutes=1),
             quality_state=quality_state,
         ),
+        amount_unit=QuoteAmountUnit.RAW_BASE_UNITS,
+        input_decimals=input_decimals,
+        output_decimals=output_decimals,
     )
 
 
@@ -82,7 +104,7 @@ def request(
         amount=amount,
         requested_at=at,
         idempotency_key=key,
-        quote=quote(side=side, as_of=at),
+        quote=quote(side=side, as_of=at, input_human=amount),
         decision_ref=uuid4(),
         risk_snapshot=risk_snapshot or {"disposition": "PASS", "confidence": "0.9"},
         candidate_id=candidate_id,
@@ -129,7 +151,7 @@ def test_engine_rejects_buy_that_would_consume_chain_fee_reserve() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
         portfolio = await store.create_portfolio(initial_balance=Decimal("10.005"), currency="SOL")
-        engine = PaperExecutionEngine(store)
+        engine = paper_engine(store)
 
         rejected = await engine.execute(request(portfolio.id, amount=Decimal("10")))
 
@@ -137,6 +159,51 @@ def test_engine_rejects_buy_that_would_consume_chain_fee_reserve() -> None:
         assert any(reason.code == "CHAIN_FEE_RESERVE" for reason in rejected.order.reason_codes)
         assert len(await store.list_fills(portfolio.id)) == 0
         assert (await store.get_portfolio(portfolio.id)).current_balance == Decimal("10.005")
+
+    asyncio.run(scenario())
+
+
+def test_engine_accepts_runtime_risk_snapshot_disposition_alias() -> None:
+    async def scenario() -> None:
+        store = InMemoryPaperLedgerStore()
+        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        engine = paper_engine(store)
+
+        result = await engine.execute(
+            request(
+                portfolio.id,
+                amount=Decimal("10"),
+                risk_snapshot={"risk_disposition": "PASS", "quality_state": "FRESH"},
+            )
+        )
+
+        assert result.order.state is PaperOrderState.FILLED
+
+    asyncio.run(scenario())
+
+
+def test_paper_exit_is_not_blocked_by_missing_or_failed_entry_risk_snapshot() -> None:
+    async def scenario() -> None:
+        store = InMemoryPaperLedgerStore()
+        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        engine = paper_engine(store)
+        entry = await engine.execute(request(portfolio.id, amount=Decimal("10")))
+        assert entry.position is not None
+
+        exit_result = await engine.execute(
+            request(
+                portfolio.id,
+                side=PaperOrderSide.SELL,
+                amount=entry.position.quantity,
+                key="paper-exit-1",
+                token_id=entry.position.token_id,
+                risk_snapshot={"risk_disposition": "BLOCK"},
+            )
+        )
+
+        assert exit_result.order.state is PaperOrderState.FILLED
+        assert exit_result.position is not None
+        assert exit_result.position.state.value == "CLOSED"
 
     asyncio.run(scenario())
 
@@ -206,7 +273,11 @@ def test_engine_simulates_fill_and_duplicate_retry_without_duplicate_cash() -> N
         portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
         engine = PaperExecutionEngine(
             store,
-            PaperExecutionPolicy(fee_bps=Decimal("100"), slippage_bps=Decimal("50")),
+            PaperExecutionPolicy(
+                sizing=PaperSizingPolicy(max_position_fraction=Decimal("0.11")),
+                fee_bps=Decimal("100"),
+                slippage_bps=Decimal("50"),
+            ),
         )
         order_request = request(portfolio.id)
 
@@ -238,7 +309,7 @@ def test_concurrent_distinct_requests_cannot_create_two_active_positions() -> No
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
         portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
-        engine = PaperExecutionEngine(store)
+        engine = paper_engine(store)
         token_id = uuid4()
         candidate_id = uuid4()
 
@@ -277,7 +348,7 @@ def test_engine_rejects_stale_quote_without_mutating_ledger() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
         portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
-        engine = PaperExecutionEngine(store)
+        engine = paper_engine(store)
         stale_at = NOW - timedelta(minutes=2)
         stale_request = request(portfolio.id, at=NOW)
         stale_request = stale_request.__class__(
@@ -325,7 +396,7 @@ def test_sell_fill_closes_position_and_reconciles_cash_and_quantity() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
         portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
-        engine = PaperExecutionEngine(store)
+        engine = paper_engine(store)
         token_id = uuid4()
         buy = await engine.execute(request(portfolio.id, token_id=token_id, key="buy-1"))
         sell = await engine.execute(
@@ -354,7 +425,7 @@ def test_insufficient_cash_and_unknown_risk_are_explicit_rejections() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
         portfolio = await store.create_portfolio(initial_balance=Decimal("1"), currency="SOL")
-        engine = PaperExecutionEngine(store)
+        engine = paper_engine(store)
 
         insufficient = await engine.execute(
             request(portfolio.id, amount=Decimal("10"), key="cash-1")
@@ -381,7 +452,7 @@ def test_reconciler_reports_cash_mismatch_as_non_safe() -> None:
     async def scenario() -> None:
         store = InMemoryPaperLedgerStore()
         portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
-        engine = PaperExecutionEngine(store)
+        engine = paper_engine(store)
         await engine.execute(request(portfolio.id))
         await store.corrupt_current_balance(portfolio.id, Decimal("1"))
 
@@ -415,7 +486,7 @@ def test_paper_replay_is_deterministic_and_excludes_future_requests() -> None:
             as_of=NOW + timedelta(minutes=1),
             policy_version=policy.version,
             config_hash=policy.config_hash,
-            fill_model_version="paper-fill-v1",
+            fill_model_version=engine.fill_model.version,
         )
 
         replay = await engine.replay(
@@ -449,7 +520,7 @@ def test_paper_replay_rejects_policy_identity_mismatch() -> None:
             as_of=NOW,
             policy_version="different-policy",
             config_hash=policy.config_hash,
-            fill_model_version="paper-fill-v1",
+            fill_model_version=engine.fill_model.version,
         )
 
         with pytest.raises(ValueError, match="policy version"):
@@ -459,5 +530,25 @@ def test_paper_replay_rejects_policy_identity_mismatch() -> None:
                 initial_balance=Decimal("100"),
                 currency="SOL",
             )
+
+    asyncio.run(scenario())
+
+
+def test_paper_fill_rejects_quote_observed_after_order_time() -> None:
+    from dataclasses import replace
+
+    async def scenario() -> None:
+        store = InMemoryPaperLedgerStore()
+        portfolio = await store.create_portfolio(initial_balance=Decimal("100"), currency="SOL")
+        original = request(portfolio.id)
+        future_quote = replace(
+            original.quote,
+            provenance=replace(original.quote.provenance, observed_at=NOW + timedelta(seconds=1)),
+        )
+        result = await paper_engine(store).execute(replace(original, quote=future_quote))
+        assert result.order.state is PaperOrderState.REJECTED
+        assert not result.fills
+        assert result.portfolio.current_balance == Decimal("100")
+        assert any(reason.code == "QUOTE_NOT_FRESH" for reason in result.order.reason_codes)
 
     asyncio.run(scenario())

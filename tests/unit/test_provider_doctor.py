@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -37,7 +38,7 @@ def one_shot_transport() -> ProviderTransport:
 
 def test_supported_make_invocation_bootstraps_scripts_package() -> None:
     environment = os.environ.copy()
-    environment.update({"HELIUS_RPC_URL": "", "HELIUS_API_KEY": ""})
+    environment.update({"HELIUS_RPC_URL": "", "HELIUS_API_KEY": "", "PYTHON": sys.executable})
     result = subprocess.run(
         ["make", "provider-doctor"],
         cwd=ROOT,

@@ -381,3 +381,17 @@ def test_evaluation_before_correlation_boundary_fails_closed() -> None:
         "FEATURE_EVALUATION_BEFORE_AS_OF" in set(value.values["reason_codes"])
         for value in snapshots
     )
+
+
+def test_holder_evidence_matches_the_same_canonical_mint_across_storage_ids() -> None:
+    requested_token = token()
+    rehydrated_token = token()
+    snapshots = FeatureWindowAggregator().build(
+        CANDIDATE_ID,
+        correlation(requested_token),
+        holder_snapshot=holder(rehydrated_token),
+        now=NOW,
+        config_hash="feature-config",
+    )
+
+    assert all(value.values["families"]["holder"]["available"] is True for value in snapshots)

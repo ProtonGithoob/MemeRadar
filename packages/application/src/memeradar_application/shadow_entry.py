@@ -34,13 +34,16 @@ from .paper_execution import (
     PaperAutoExecutionGate,
     PaperExecutionEngine,
     PaperExecutionResult,
+    PaperIdempotencyConflict,
     PaperOrderRequest,
 )
 from .provider_contracts import (
     ProviderRequestContext,
+    QuoteAmountUnit,
     QuotePort,
     QuoteRequest,
     QuoteSnapshot,
+    decimal_to_base_units,
 )
 
 SHADOW_ENTRY_VERSION = "shadow-entry-v1"
@@ -91,6 +94,7 @@ class ShadowEntryPolicy:
     default_paper_size_quote: Decimal = Decimal("10")
     slippage_bps: int = 25
     max_price_impact_bps: Decimal = Decimal("500")
+    min_liquidity_usd: Decimal = Decimal("2000")
     max_quote_drift_bps: Decimal = Decimal("100")
     quote_ttl: timedelta = timedelta(minutes=1)
     version: str = SHADOW_ENTRY_VERSION
@@ -114,6 +118,10 @@ class ShadowEntryPolicy:
             "max_price_impact_bps",
             to_decimal(self.max_price_impact_bps, "max_price_impact_bps"),
         )
+        minimum_liquidity = to_decimal(self.min_liquidity_usd, "min_liquidity_usd")
+        if minimum_liquidity <= 0:
+            raise ValueError("min_liquidity_usd must be positive")
+        object.__setattr__(self, "min_liquidity_usd", minimum_liquidity)
         object.__setattr__(
             self,
             "max_quote_drift_bps",
@@ -260,6 +268,7 @@ class ShadowEntryService:
         self._completed: dict[str, ShadowEntryResult] = {}
         self._paper_auto_gate = PaperAutoExecutionGate(
             max_price_impact_bps=self.policy.max_price_impact_bps,
+            min_liquidity_usd=self.policy.min_liquidity_usd,
         )
 
     async def on_entry_ready(
@@ -334,6 +343,8 @@ class ShadowEntryService:
         amount = self._amount(decision)
         input_mint = _source_value(decision, "input_mint")
         output_mint = _source_value(decision, "output_mint")
+        input_decimals = self._asset_decimals(decision, "input_decimals")
+        output_decimals = self._asset_decimals(decision, "output_decimals")
         token_id = _uuid(decision, "token_id")
         portfolio_id = _uuid(decision, "portfolio_id")
         if amount is None or amount <= 0:
@@ -360,7 +371,61 @@ class ShadowEntryService:
                 evidence_refs=base_refs,
             )
 
+        if input_decimals is None or output_decimals is None:
+            return self._rejected(
+                idempotency_key=idempotency_key,
+                candidate_id=candidate_id,
+                decision_ref=decision_ref,
+                intended_at=now,
+                reason_codes=("SHADOW_QUOTE_DECIMALS_UNKNOWN",),
+                evidence_refs=base_refs,
+            )
+
+        persisted = await paper_engine.store.get_order_by_idempotency(idempotency_key)
+        if persisted is not None:
+            order = persisted.order
+            quote_input = order.quote_snapshot.get("input_mint")
+            quote_output = order.quote_snapshot.get("output_mint")
+            if (
+                order.portfolio_id != portfolio_id
+                or order.token_id != token_id
+                or order.candidate_id != candidate_id
+                or order.decision_ref != decision_ref
+                or order.side is not PaperOrderSide.BUY
+                or order.requested_amount != amount
+                or quote_input != input_mint
+                or quote_output != output_mint
+                or order.quote_snapshot.get("input_decimals") != input_decimals
+                or order.quote_snapshot.get("output_decimals") != output_decimals
+            ):
+                raise PaperIdempotencyConflict(
+                    "shadow-entry idempotency key conflicts with persisted order"
+                )
+            decision_at = _source_value(decision, "evaluated_at")
+            intended_at = (
+                ensure_utc(decision_at, "decision.evaluated_at")
+                if isinstance(decision_at, datetime)
+                else order.requested_at
+            )
+            return ShadowEntryResult(
+                status=ShadowEntryStatus.DUPLICATE,
+                idempotency_key=idempotency_key,
+                candidate_id=candidate_id,
+                decision_ref=decision_ref,
+                intended_at=intended_at,
+                quoted_at=None,
+                filled_at=persisted.fills[0].occurred_at if persisted.fills else None,
+                quote=None,
+                paper_result=replace(persisted, duplicate=True),
+                reason_codes=order.reason_codes or (_reason("SHADOW_PAPER_RESULT_RECOVERED"),),
+                evidence_refs=base_refs,
+                policy_version=order.policy_version,
+                config_hash=order.config_hash,
+                duplicate=True,
+            )
+
         try:
+            raw_amount = decimal_to_base_units(amount, input_decimals)
             request = QuoteRequest(
                 context=ProviderRequestContext(
                     correlation_id=f"shadow-entry:{idempotency_key}",
@@ -369,8 +434,10 @@ class ShadowEntryService:
                 ),
                 input_mint=input_mint,
                 output_mint=output_mint,
-                amount=amount,
+                amount=raw_amount,
                 slippage_bps=self.policy.slippage_bps,
+                input_decimals=input_decimals,
+                output_decimals=output_decimals,
             )
             quote = await quote_port.quote(request)
         except Exception as exc:  # provider failures become a bounded paper rejection
@@ -383,13 +450,33 @@ class ShadowEntryService:
                 evidence_refs=base_refs,
                 detail=type(exc).__name__,
             )
+        quoted_at = ensure_utc(self._clock(), "shadow_quote_received_at")
+        if quoted_at < now:
+            return self._rejected(
+                idempotency_key=idempotency_key,
+                candidate_id=candidate_id,
+                decision_ref=decision_ref,
+                intended_at=now,
+                reason_codes=("SHADOW_CLOCK_REGRESSION",),
+                evidence_refs=base_refs,
+            )
+        if quoted_at >= now + self.policy.quote_ttl:
+            return self._rejected(
+                idempotency_key=idempotency_key,
+                candidate_id=candidate_id,
+                decision_ref=decision_ref,
+                intended_at=now,
+                quoted_at=quoted_at,
+                reason_codes=("SHADOW_QUOTE_TIMEOUT",),
+                evidence_refs=base_refs,
+            )
         if not isinstance(quote, QuoteSnapshot):
             return self._rejected(
                 idempotency_key=idempotency_key,
                 candidate_id=candidate_id,
                 decision_ref=decision_ref,
                 intended_at=now,
-                quoted_at=now,
+                quoted_at=quoted_at,
                 quote=None,
                 reason_codes=("SHADOW_QUOTE_INVALID",),
                 evidence_refs=base_refs,
@@ -399,9 +486,11 @@ class ShadowEntryService:
         validation_reason = self._validate_quote(
             quote,
             amount,
-            now,
+            quoted_at,
             input_mint=input_mint,
             output_mint=output_mint,
+            input_decimals=input_decimals,
+            output_decimals=output_decimals,
         )
         if validation_reason is not None:
             return self._rejected(
@@ -409,20 +498,20 @@ class ShadowEntryService:
                 candidate_id=candidate_id,
                 decision_ref=decision_ref,
                 intended_at=now,
-                quoted_at=now,
+                quoted_at=quoted_at,
                 quote=quote,
                 reason_codes=(validation_reason,),
                 evidence_refs=quote_refs,
             )
 
-        paper_auto = self._paper_auto_gate.evaluate(decision, quote=quote, at=now)
+        paper_auto = self._paper_auto_gate.evaluate(decision, quote=quote, at=quoted_at)
         if not paper_auto.allowed:
             return self._rejected(
                 idempotency_key=idempotency_key,
                 candidate_id=candidate_id,
                 decision_ref=decision_ref,
                 intended_at=now,
-                quoted_at=now,
+                quoted_at=quoted_at,
                 quote=quote,
                 reason_codes=paper_auto.reason_code_values,
                 evidence_refs=tuple(dict.fromkeys((*quote_refs, *paper_auto.evidence_refs))),
@@ -440,7 +529,7 @@ class ShadowEntryService:
                 token_id=token_id,
                 side=PaperOrderSide.BUY,
                 amount=amount,
-                requested_at=now,
+                requested_at=quoted_at,
                 idempotency_key=idempotency_key,
                 quote=quote,
                 decision_ref=decision_ref,
@@ -454,7 +543,7 @@ class ShadowEntryService:
                 candidate_id=candidate_id,
                 decision_ref=decision_ref,
                 intended_at=now,
-                quoted_at=now,
+                quoted_at=quoted_at,
                 quote=quote,
                 reason_codes=("SHADOW_PAPER_ENGINE_FAILED",),
                 evidence_refs=quote_refs,
@@ -480,7 +569,7 @@ class ShadowEntryService:
             candidate_id=candidate_id,
             decision_ref=decision_ref,
             intended_at=now,
-            quoted_at=now,
+            quoted_at=quoted_at,
             filled_at=filled_at,
             quote=quote,
             paper_result=paper_result,
@@ -534,6 +623,13 @@ class ShadowEntryService:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _asset_decimals(decision: object, name: str) -> int | None:
+        value = _source_value(decision, name)
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 18:
+            return None
+        return value
+
     def _validate_quote(
         self,
         quote: QuoteSnapshot,
@@ -542,11 +638,21 @@ class ShadowEntryService:
         *,
         input_mint: str,
         output_mint: str,
+        input_decimals: int,
+        output_decimals: int,
     ) -> str | None:
-        if not quote.freshness.is_fresh(now):
+        if not quote.is_fresh_at(now):
+            return "SHADOW_QUOTE_NOT_FRESH"
+        if now - quote.freshness.as_of > self.policy.quote_ttl:
             return "SHADOW_QUOTE_NOT_FRESH"
         if quote.input_mint != input_mint or quote.output_mint != output_mint:
             return "SHADOW_QUOTE_MINT_MISMATCH"
+        if (
+            quote.amount_unit is not QuoteAmountUnit.RAW_BASE_UNITS
+            or quote.input_decimals != input_decimals
+            or quote.output_decimals != output_decimals
+        ):
+            return "SHADOW_QUOTE_AMOUNT_UNITS_UNKNOWN"
         if quote.price_semantics is PriceSemantics.UNKNOWN:
             return "SHADOW_QUOTE_PRICE_SEMANTICS_INVALID"
         if quote.price_semantics is PriceSemantics.MARKET_REFERENCE:
@@ -562,8 +668,10 @@ class ShadowEntryService:
                 return "SHADOW_QUOTE_LIQUIDITY_INVALID"
             if liquidity_usd <= 0:
                 return "SHADOW_QUOTE_LIQUIDITY_INVALID"
-        input_amount = to_decimal(quote.input_amount, "quote.input_amount")
-        output_amount = to_decimal(quote.output_amount, "quote.output_amount")
+        input_amount = quote.human_input_amount
+        output_amount = quote.human_output_amount
+        if input_amount is None or output_amount is None:
+            return "SHADOW_QUOTE_AMOUNT_UNITS_UNKNOWN"
         price_impact = to_decimal(quote.price_impact_bps, "quote.price_impact_bps")
         if input_amount <= 0 or output_amount <= 0:
             return "SHADOW_QUOTE_INVALID"
@@ -572,6 +680,8 @@ class ShadowEntryService:
         drift_bps = abs(input_amount - requested_amount) / requested_amount * Decimal("10000")
         if drift_bps > self.policy.max_quote_drift_bps:
             return "SHADOW_QUOTE_DRIFT"
+        if input_amount != requested_amount:
+            return "SHADOW_QUOTE_INPUT_AMOUNT_MISMATCH"
         return None
 
     def _rejected(

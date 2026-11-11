@@ -261,8 +261,8 @@ function TokenHeader({ token, early }: { token: TokenRecord; early: EarlyRadarRe
       <div className="tw-header__identity">
         <p className="eyebrow">Token workspace / read-only</p>
         <h2 id="token-overview-title">
-          {token.symbol || "UNNAMED"}
-          {token.name ? <span>{token.name}</span> : null}
+          {token.symbol || token.name || shortIdentity(token.mintAddress)}
+          {token.symbol && token.name ? <span>{token.name}</span> : null}
         </h2>
         <code title={token.mintAddress}>{token.mintAddress}</code>
         <div className="badge-row">

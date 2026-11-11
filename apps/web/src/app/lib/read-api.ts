@@ -104,12 +104,17 @@ export interface EarlyRadarRecord {
   uniqueBuyers: Record<string, unknown>;
   quoteInflow: Record<string, unknown>;
   liquidityUsd: number | null;
+  buyImpactBps?: number | null;
   priceImpactBps: number | null;
   creatorRisk: string;
   bundleRisk: string;
   holderRisk: string;
   smartMoneyConfluence: number | null;
   sellability: string;
+  mintAuthoritySafe?: boolean | null;
+  freezeAuthoritySafe?: boolean | null;
+  protocolIdentityVerified?: boolean | null;
+  quoteSemantics?: string | null;
   shadowEntryStatus: string;
   externalCallLeadTimeMs: number | null;
   hardBlockReasons: string[];
@@ -813,7 +818,7 @@ const MAX_RUNTIME_SETTINGS = 128;
 const MAX_PAYLOAD_KEYS = 64;
 const MAX_PAYLOAD_DEPTH = 4;
 const RUNTIME_SETTING_GROUPS = new Set([
-  "providers", "chains", "telegram", "x", "social", "website", "wallet", "security", "llm"
+  "providers", "chains", "telegram", "x", "social", "website", "wallet", "security", "llm", "research"
 ]);
 const RUNTIME_SETTING_STATES = new Set<RuntimeSettingState>([
   "CONFIGURED", "DEFAULTED", "UNCONFIGURED_OPTIONAL", "NOT_CONFIGURED", "UNKNOWN"
@@ -1063,12 +1068,19 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
   const uniqueBuyers = safePayload(value.unique_buyers ?? {});
   const quoteInflow = safePayload(value.quote_inflow ?? {});
   const liquidityUsd = optionalFiniteNumber(value.liquidity_usd, 0, 1e24);
+  const buyImpactBps = optionalFiniteNumber(value.buy_impact_bps, 0, 1e12);
   const priceImpactBps = optionalFiniteNumber(value.price_impact_bps, 0, 1e12);
   const creatorRisk = boundedString(value.creator_risk, 32);
   const bundleRisk = boundedString(value.bundle_risk, 32);
   const holderRisk = boundedString(value.holder_risk, 32);
   const smartMoneyConfluence = optionalFiniteNumber(value.smart_money_confluence, 0, 100);
   const sellability = boundedString(value.sellability, 32);
+  const mintAuthoritySafe = typeof value.mint_authority_safe === "boolean" ? value.mint_authority_safe : null;
+  const freezeAuthoritySafe = typeof value.freeze_authority_safe === "boolean" ? value.freeze_authority_safe : null;
+  const protocolIdentityVerified = typeof value.protocol_identity_verified === "boolean"
+    ? value.protocol_identity_verified
+    : null;
+  const quoteSemantics = boundedString(value.quote_semantics, 32);
   const shadowEntryStatus = boundedString(value.shadow_entry_status, 64);
   const externalCallLeadTimeMs = optionalFiniteNumber(value.external_call_lead_time_ms, 0, 1e12);
   const hardBlockReasons = stringArray(value.hard_block_reasons, 128);
@@ -1166,12 +1178,17 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
     uniqueBuyers,
     quoteInflow,
     liquidityUsd,
+    buyImpactBps: buyImpactBps ?? null,
     priceImpactBps,
     creatorRisk,
     bundleRisk,
     holderRisk,
     smartMoneyConfluence,
     sellability,
+    mintAuthoritySafe,
+    freezeAuthoritySafe,
+    protocolIdentityVerified,
+    quoteSemantics,
     shadowEntryStatus,
     externalCallLeadTimeMs,
     hardBlockReasons,
@@ -2451,7 +2468,7 @@ function parseControlState(value: unknown): ControlStateRecord | null {
 function parseControlConfig(value: unknown): ControlConfigRecord | null {
   if (!isRecord(value)) return null;
   const apiVersion = boundedString(value.api_version, 64);
-  const id = uuid(value.id);
+  const id = value.id === "00000000-0000-0000-0000-000000000000" ? value.id : uuid(value.id);
   const version = boundedString(value.version, 64);
   const createdAt = timestamp(value.created_at);
   const actor = boundedString(value.actor, 256);
@@ -2585,8 +2602,8 @@ function parseRuntimeSettings(value: unknown): RuntimeSettingsRecord | null {
       ? rawSettings.map(parseRuntimeSetting)
       : null;
   if (
-    apiVersion === null || asOf === null || groupEntries.length !== RUNTIME_SETTING_GROUPS.size ||
-    Object.keys(groups).length !== RUNTIME_SETTING_GROUPS.size ||
+    apiVersion === null || asOf === null ||
+    [...RUNTIME_SETTING_GROUPS].some((name) => name !== "research" && !(name in groups)) ||
     version === null || updatedAt === null || updatedBy === null || typeof canMutate !== "boolean" ||
     settings === null || settings.some((item): item is null => item === null) ||
     Object.values(protectedModes).some((mode) => typeof mode !== "boolean") ||
@@ -2940,8 +2957,10 @@ export async function fetchCandidates(
   return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parseCandidate));
 }
 
-export async function fetchEarlyRadar(): Promise<ReadResult<ReadPage<EarlyRadarRecord>>> {
-  const url = endpoint("/v1/early-radar", singleQuery());
+export async function fetchEarlyRadar(qualifiedOnly = false): Promise<ReadResult<ReadPage<EarlyRadarRecord>>> {
+  const query = singleQuery();
+  if (qualifiedOnly) query.set("qualified_only", "true");
+  const url = endpoint("/v1/early-radar", query);
   return url === null ? configuredFailure() : request(url, (value) => parsePage(value, parseEarlyRadar));
 }
 

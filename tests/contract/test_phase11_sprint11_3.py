@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,16 @@ def test_role_tokens_are_bearer_only_constant_time_and_permission_scoped() -> No
     with pytest.raises(HTTPException) as forbidden:
         authenticator.require("Bearer viewer-review-secret", ControlAction.MUTATE_CONFIG)
     assert forbidden.value.status_code == 403
+
+
+def test_authenticator_rejects_duplicate_role_tokens_in_direct_settings() -> None:
+    settings = replace(
+        Settings.from_env({"VIEWER_API_TOKEN": "shared-secret"}),
+        admin_api_token="shared-secret",
+    )
+
+    with pytest.raises(ValueError, match="role tokens must be unique"):
+        RoleTokenAuthenticator(settings)
 
 
 def test_security_review_source_contracts_cover_prompt_injection_and_execution_boundaries() -> None:

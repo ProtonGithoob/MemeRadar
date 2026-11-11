@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from time import perf_counter
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from memeradar_domain import (
@@ -54,10 +54,10 @@ from .early_scoring import (
 from .fast_safety import FastSafetyGate, FastSafetyResult, FastSafetyStatus
 from .organic_momentum import OrganicMomentumProjection
 
-EARLY_RUNTIME_VERSION = "early-runtime-v1"
+EARLY_RUNTIME_VERSION = "early-runtime-v3"
 EARLY_STAGE_SNAPSHOT_KIND = "early.stage_snapshot"
 _RUNTIME_NAMESPACE = "https://memeradar.local/early-runtime/"
-_SNAPSHOT_IDENTITY_VERSION = "snapshot-v2"
+_SNAPSHOT_IDENTITY_VERSION = "snapshot-v4"
 
 
 class ObservationSink(Protocol):
@@ -268,8 +268,11 @@ def _runtime_risk_id(candidate_id: UUID, state: CandidateState) -> UUID:
     return uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}risk:{candidate_id}:{state.value}")
 
 
-def _feature_values(snapshot: EarlyFeatureSnapshot) -> Mapping[str, object]:
-    return {
+def _feature_values(
+    snapshot: EarlyFeatureSnapshot,
+    research_features: Mapping[str, Mapping[str, object]] | None = None,
+) -> Mapping[str, object]:
+    values: dict[str, object] = {
         "windows": {
             label: {
                 "duration_seconds": Decimal(str(window.duration.total_seconds())),
@@ -286,6 +289,9 @@ def _feature_values(snapshot: EarlyFeatureSnapshot) -> Mapping[str, object]:
         "reason_codes": tuple(reason.code for reason in snapshot.reason_codes),
         "evidence_refs": snapshot.evidence_refs,
     }
+    if research_features:
+        values["research_features"] = research_features
+    return values
 
 
 def _feature_completeness(snapshot: EarlyFeatureSnapshot) -> Decimal:
@@ -326,6 +332,7 @@ class EarlyRuntimeService:
         risk_store: RiskAssessmentSink | None = None,
         score_store: ScoreSnapshotSink | None = None,
         outbox_store: EventSink | None = None,
+        paper_outbox_enabled: bool = False,
         git_revision: str = "unknown",
     ) -> None:
         snapshot_stores = (feature_store, risk_store, score_store)
@@ -348,6 +355,7 @@ class EarlyRuntimeService:
         self.risk_store = risk_store
         self.score_store = score_store
         self.outbox_store = outbox_store
+        self.paper_outbox_enabled = paper_outbox_enabled
         self.git_revision = str(git_revision)
         self._observations: dict[str, dict[UUID, Observation]] = {}
         self._checkpoints: dict[str, datetime] = {}
@@ -364,6 +372,8 @@ class EarlyRuntimeService:
         confluence: object | None = None,
         social: object | None = None,
         quote: object | None = None,
+        research_features: Mapping[str, Mapping[str, object]] | None = None,
+        research_provenance: Sequence[Provenance] = (),
         observed_at: datetime | None = None,
         ingested_at: datetime | None = None,
         as_of: datetime | None = None,
@@ -419,6 +429,65 @@ class EarlyRuntimeService:
             await self._save_observation(item)
 
         checkpoint = self._checkpoint(mint_key, as_of, bucket, detection)
+        if research_features is not None:
+            if not isinstance(research_features, Mapping):
+                raise TypeError("research_features must be a mapping")
+            for name, feature in research_features.items():
+                if not isinstance(name, str) or not isinstance(feature, Mapping):
+                    raise TypeError("research_features must map names to feature mappings")
+                feature_as_of = feature.get("as_of")
+                normalized_feature_as_of: datetime | None = None
+                if feature_as_of is not None:
+                    if not isinstance(feature_as_of, datetime):
+                        raise TypeError(f"{name}.as_of must be a datetime")
+                    normalized_feature_as_of = ensure_utc(feature_as_of, f"{name}.as_of")
+                    if normalized_feature_as_of > checkpoint:
+                        raise ValueError(
+                            "research feature is from after the decision checkpoint"
+                        )
+                available_at = feature.get("available_at")
+                if available_at is not None:
+                    if not isinstance(available_at, datetime):
+                        raise TypeError(f"{name}.available_at must be a datetime")
+                    available_at = ensure_utc(available_at, f"{name}.available_at")
+                    if available_at > checkpoint:
+                        raise ValueError(
+                            "research feature is not available at the decision checkpoint"
+                        )
+                    if (
+                        normalized_feature_as_of is not None
+                        and available_at > normalized_feature_as_of
+                    ):
+                        raise ValueError("research feature uses evidence from after its as_of")
+        if isinstance(research_provenance, str | bytes | bytearray):
+            raise TypeError("research_provenance must be a sequence")
+        normalized_research_provenance = tuple(research_provenance)
+        if any(not isinstance(value, Provenance) for value in normalized_research_provenance):
+            raise TypeError("research_provenance must contain Provenance values")
+        if any(value.observed_at > checkpoint for value in normalized_research_provenance):
+            raise ValueError("research provenance must be available at the decision checkpoint")
+        normalized_research_features = (
+            None
+            if research_features is None
+            else cast(
+                Mapping[str, Mapping[str, object]],
+                freeze_mapping(research_features, "research_features"),
+            )
+        )
+        load_stages = getattr(self.observation_store, "stage_snapshots", None)
+        if candidate.transitions and callable(load_stages) and not any(
+            key[0] == candidate.id for key in self._snapshots
+        ):
+            restore_at = (
+                checkpoint if as_of is not None
+                else max(checkpoint, detection.first_seen_at, candidate.state_changed_at)
+            )
+            for saved in await load_stages(candidate.id, as_of=restore_at):
+                try:
+                    saved_state = CandidateState(saved.normalized_payload.get("state"))
+                except (TypeError, ValueError):
+                    continue
+                self._snapshots.setdefault((candidate.id, saved_state), saved)
         feature_started = perf_counter()
         feature_snapshot = self.feature_engine.compute(
             detection.token_id,
@@ -535,6 +604,8 @@ class EarlyRuntimeService:
                 provider_available=provider_available,
                 stream_gap=stream_gap,
                 initial=True,
+                research_features=normalized_research_features,
+                research_provenance=normalized_research_provenance,
             )
         stage_at = max(checkpoint, detection.first_seen_at, candidate.state_changed_at)
         prior_transition_keys = {item.idempotency_key for item in candidate.transitions}
@@ -565,6 +636,8 @@ class EarlyRuntimeService:
                 transition=transition,
                 provider_available=provider_available,
                 stream_gap=stream_gap,
+                research_features=normalized_research_features,
+                research_provenance=normalized_research_provenance,
             )
         await self._save_candidate(candidate)
         latencies = {
@@ -608,17 +681,49 @@ class EarlyRuntimeService:
         await self._save_observation(snapshot)
         lifecycle_event = None
         alert = None
-        if transition is not None:
+        if transition_is_new and transition is not None:
+            notification_eligible = (
+                target in {
+                    CandidateState.EARLY_WATCH,
+                    CandidateState.STRONG_SETUP,
+                    CandidateState.HIGH_CONFLUENCE,
+                    CandidateState.ENTRY_READY,
+                }
+                and safety.status is FastSafetyStatus.PASS
+                and score.risk_quality_state is QualityState.FRESH
+                and provider_available
+                and not stream_gap
+            )
             lifecycle_event = self._lifecycle_event(
                 candidate,
                 transition.from_state,
                 target,
                 snapshot,
                 transition.idempotency_key,
+                notification_eligible=notification_eligible,
             )
             if self.outbox_store is not None:
                 await self.outbox_store.enqueue(lifecycle_event)
+                if (
+                    self.paper_outbox_enabled
+                    and target is CandidateState.ENTRY_READY
+                    and decision.entry_ready
+                    and safety.status is FastSafetyStatus.PASS
+                    and score.risk_quality_state is QualityState.FRESH
+                    and provider_available
+                    and not stream_gap
+                ):
+                    await self.outbox_store.enqueue(
+                        lifecycle_event,
+                        side_effect_kind="paper_execution",
+                    )
             alert = AlertEventProjector().project(lifecycle_event)
+            if (
+                alert is not None
+                and self.outbox_store is not None
+                and notification_eligible
+            ):
+                await self.outbox_store.enqueue(lifecycle_event, side_effect_kind="notification")
             latencies["decision_to_outbox"] = Decimal(str((perf_counter() - started) * 1000))
         return EarlyRuntimeResult(
             detection=detection,
@@ -682,6 +787,8 @@ class EarlyRuntimeService:
         provider_available: bool,
         stream_gap: bool,
         initial: bool = False,
+        research_features: Mapping[str, Mapping[str, object]] | None = None,
+        research_provenance: Sequence[Provenance] = (),
     ) -> None:
         if self.feature_store is None or self.risk_store is None or self.score_store is None:
             return
@@ -701,6 +808,9 @@ class EarlyRuntimeService:
             for source in window.provenance:
                 if source not in provenance:
                     provenance.append(source)
+        for source in research_provenance:
+            if source not in provenance:
+                provenance.append(source)
         feature = FeatureSnapshot(
             id=uuid5(
                 NAMESPACE_URL,
@@ -712,7 +822,7 @@ class EarlyRuntimeService:
             feature_version=feature_snapshot.version,
             completeness=_feature_completeness(feature_snapshot),
             confidence=_feature_confidence(feature_snapshot),
-            values=_feature_values(feature_snapshot),
+            values=_feature_values(feature_snapshot, research_features),
             provenance=tuple(provenance),
             config_hash=decision.config_hash,
             quality_state=feature_snapshot.quality_state,
@@ -975,9 +1085,10 @@ class EarlyRuntimeService:
         initial: bool = False,
     ) -> Observation:
         key = (candidate.id, state)
-        existing = self._snapshots.get(key)
-        if existing is not None:
-            return existing
+        # Rebuild the latest projection for this state on every evaluation.
+        # The content fingerprint below keeps identical writes idempotent while
+        # allowing a WATCH row to reflect newly collected evidence before its
+        # decision state changes.
         ordered = sorted(
             (item for item in observations if item.occurred_at is not None),
             key=lambda item: (item.occurred_at, str(item.id)),
@@ -1002,7 +1113,34 @@ class EarlyRuntimeService:
             if isinstance(detection.authority, DetectionAuthority)
             else str(detection.authority)
         )
-        snapshot_liquidity = metrics.get("liquidity", first_payload.get("liquidity_usd"))
+        token_metadata = max(
+            (
+                item
+                for item in observations
+                if item.kind == "onchain.token_metadata"
+                and item.normalized_payload.get("mint_address") == detection.mint_address
+                and item.quality_state is QualityState.FRESH
+                and item.observed_at <= stage_at
+                and item.ingested_at <= stage_at
+            ),
+            key=lambda item: (item.observed_at, item.ingested_at, str(item.id)),
+            default=None,
+        )
+        raw_token_decimals = (
+            None if token_metadata is None else token_metadata.normalized_payload.get("decimals")
+        )
+        token_decimals = (
+            raw_token_decimals
+            if isinstance(raw_token_decimals, int)
+            and not isinstance(raw_token_decimals, bool)
+            and 0 <= raw_token_decimals <= 18
+            else None
+        )
+        snapshot_liquidity = (
+            safety.liquidity
+            if safety is not None and safety.liquidity is not None
+            else metrics.get("liquidity", first_payload.get("liquidity_usd"))
+        )
         alpha_projection = (
             None
             if score is None
@@ -1019,6 +1157,11 @@ class EarlyRuntimeService:
         payload: dict[str, object] = {
             "chain": "solana",
             "mint": detection.mint_address,
+            "token_id": str(candidate.token_id),
+            "token_decimals": token_decimals,
+            "token_decimals_evidence_ref": (
+                None if token_metadata is None else token_metadata.provenance.source_id
+            ),
             "signature": first_payload.get("signature"),
             "slot": first_payload.get("slot"),
             "instruction_type": first_payload.get(
@@ -1075,7 +1218,32 @@ class EarlyRuntimeService:
             "critical_unknowns": () if safety is None else safety.critical_unknowns,
             "noncritical_unknowns": () if safety is None else safety.noncritical_unknowns,
             "hard_blocks": () if safety is None else safety.hard_blocks,
+            "mint_authority_safe": (
+                None if safety is None else safety.mint_authority_safe
+            ),
+            "freeze_authority_safe": (
+                None if safety is None else safety.freeze_authority_safe
+            ),
+            "protocol_identity_verified": (
+                None if safety is None else safety.protocol_identity_verified
+            ),
+            "quote_semantics": None if safety is None else safety.quote_semantics,
             "confidence": None if decision is None else decision.confidence,
+            "entry_ready": False if decision is None else decision.entry_ready,
+            "sellable": None if decision is None else decision.sellable,
+            "liquidity_ok": None if decision is None else decision.liquidity_ok,
+            "risk_snapshot": (
+                None
+                if decision is None
+                else {
+                    "risk_disposition": decision.risk_disposition.value,
+                    "quality_state": decision.risk_quality_state.value,
+                    "hard_blocks": () if safety is None else safety.hard_blocks,
+                    "evidence_refs": () if safety is None else safety.evidence_refs,
+                    "as_of": decision.evaluated_at.isoformat(),
+                    "expires_at": (decision.evaluated_at + timedelta(minutes=5)).isoformat(),
+                }
+            ),
             "AlphaIgnitionScore": (
                 None if alpha_projection is None else alpha_projection.alpha_ignition_score
             ),
@@ -1185,7 +1353,7 @@ class EarlyRuntimeService:
             else detection.quality_state
         )
         fingerprint_material = {
-            "payload": payload,
+            "payload": {key: value for key, value in payload.items() if key != "latencies_ms"},
             "quality_state": snapshot_quality_state.value,
         }
         fingerprint = hashlib.sha256(
@@ -1206,8 +1374,12 @@ class EarlyRuntimeService:
         if initial:
             snapshot_identity += ":initial"
             source_identity += ":initial"
+        snapshot_id = uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}snapshot:{snapshot_identity}")
+        existing = self._snapshots.get(key)
+        if existing is not None and existing.id == snapshot_id:
+            return existing
         snapshot = Observation(
-            id=uuid5(NAMESPACE_URL, f"{_RUNTIME_NAMESPACE}snapshot:{snapshot_identity}"),
+            id=snapshot_id,
             kind=EARLY_STAGE_SNAPSHOT_KIND,
             provenance=Provenance(
                 provider="memeradar.early-runtime",
@@ -1233,6 +1405,8 @@ class EarlyRuntimeService:
         to_state: CandidateState,
         snapshot: Observation,
         transition_key: str,
+        *,
+        notification_eligible: bool,
     ) -> EventEnvelope:
         payload = dict(snapshot.normalized_payload)
         payload.update(
@@ -1245,6 +1419,7 @@ class EarlyRuntimeService:
                 "stage_snapshot_source_id": snapshot.provenance.source_id,
                 "not_entry_ready": to_state is CandidateState.EARLY_WATCH,
                 "research_paper_signal": to_state is CandidateState.EARLY_WATCH,
+                "notification_eligible": notification_eligible,
             }
         )
         reasons = _reason_values(payload)

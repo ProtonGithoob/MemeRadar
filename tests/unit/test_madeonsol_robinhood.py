@@ -724,3 +724,22 @@ def test_readiness_report_counts_only_explicit_real_madeonsol_observations() -> 
     assert real_report.labeled_winner_count == 1
     assert real_report.labeled_rug_count == 0
     assert real_report.status == "READY_FOR_OUT_OF_SAMPLE_CALIBRATION"
+
+
+@pytest.mark.parametrize("outer,inner", [(True, False), (False, True)])
+def test_conflicting_bundle_completeness_never_claims_complete(outer: bool, inner: bool) -> None:
+    adapter = _adapter(lambda request: httpx.Response(200))
+    try:
+        observation = adapter._normalize_bundle(
+            {
+                "clusters_complete": outer,
+                "bundle": {"clusters_complete": inner, "bundled_pct_of_supply_now": "12"},
+            },
+            TOKEN,
+            "/bundle",
+            NOW,
+        )
+    finally:
+        asyncio.run(adapter.aclose())
+    assert observation.normalized_payload["bundle_clusters_complete"] is not True
+    assert observation.normalized_payload["bundle_cluster_share_pct_of_supply_now"] is None

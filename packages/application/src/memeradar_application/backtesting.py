@@ -40,7 +40,7 @@ from memeradar_domain.common import (
 from memeradar_domain.events import normalize_reason_codes
 
 from .paper_execution import PaperExecutionRejected, PaperFillModel
-from .provider_contracts import QuoteSnapshot
+from .provider_contracts import QuoteAmountUnit, QuoteSnapshot
 from .replay_harness import (
     OutcomeHorizonLabel,
     ReplayCheckpointResult,
@@ -1591,6 +1591,7 @@ class BacktestHarness:
             output_amount=output_amount,
             price_impact_bps=Decimal("0"),
             route=("replay",),
+            amount_unit=QuoteAmountUnit.DISPLAY_UNITS,
             freshness=Freshness(
                 as_of=at,
                 expires_at=at + timedelta(microseconds=1),

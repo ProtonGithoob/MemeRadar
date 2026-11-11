@@ -42,6 +42,54 @@ def test_sqlalchemy_stream_state_store_round_trip() -> None:
     asyncio.run(_exercise(database_url))
 
 
+def test_sqlalchemy_stream_gap_claim_is_exclusive_across_connections() -> None:
+    database_url = os.environ.get("MEMERADAR_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("MEMERADAR_TEST_DATABASE_URL is not configured")
+    asyncio.run(_exercise_concurrent_claims(database_url))
+
+
+async def _exercise_concurrent_claims(database_url: str) -> None:
+    first_engine = create_database_engine(database_url)
+    second_engine = create_database_engine(database_url)
+    stream_id = f"claim-test-{uuid4()}"
+    gap = StreamGap(
+        chain=Chain.SOLANA,
+        transport="fixture-live",
+        stream_id=stream_id,
+        from_slot=101,
+        to_slot=101,
+        detected_at=datetime.now(UTC),
+        detection_method="FIXTURE",
+    )
+    now = datetime.now(UTC)
+    first_store = SqlAlchemyStreamStateStore(first_engine)
+    second_store = SqlAlchemyStreamStateStore(second_engine)
+
+    try:
+        await first_store.save_gap(gap)
+        claims = await asyncio.gather(
+            first_store.claim_gap(
+                gap.id,
+                claim_id=uuid4(),
+                now=now,
+                lease_expires_at=now + timedelta(seconds=60),
+            ),
+            second_store.claim_gap(
+                gap.id,
+                claim_id=uuid4(),
+                now=now,
+                lease_expires_at=now + timedelta(seconds=60),
+            ),
+        )
+        assert sum(claim is not None for claim in claims) == 1
+    finally:
+        async with first_engine.begin() as connection:
+            await connection.execute(delete(StreamGapRow).where(StreamGapRow.id == gap.id))
+        await first_engine.dispose()
+        await second_engine.dispose()
+
+
 async def _exercise(database_url: str) -> None:
     engine = create_database_engine(database_url)
     stream_id = f"persistence-test-{uuid4()}"
@@ -111,7 +159,8 @@ async def _exercise(database_url: str) -> None:
         await store.save_cursor(cursor)
         assert await store.load_cursor(Chain.SOLANA, "fixture-live", stream_id) == cursor
         await store.save_gap(gap)
-        assert await store.get_gap(gap.id) == gap
+        # Storage records the effective provider, including the transport fallback.
+        assert await store.get_gap(gap.id) == replace(gap, provider_id=gap.provider)
         first = await store.append_event(event)
         duplicate = await store.append_event(event)
         assert first.status.value == "APPENDED"

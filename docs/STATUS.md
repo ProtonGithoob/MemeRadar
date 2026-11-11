@@ -1,53 +1,150 @@
 # MemeRadar Status
 
-Updated: 2026-10-18. This is current repository truth; earlier Git/runtime claims are superseded.
+Updated: 2026-11-11. This current checkpoint supersedes the chronological notes
+below; those entries remain as historical evidence.
 
-**CURRENT_PHASE:** deep-refactor completion and protected inherited-work integration.
-**STATUS:** `LOCAL_COMPLETION_IN_PROGRESS`.
-**CURRENT_HEAD:** resolve `git rev-parse HEAD`; the final literal value is recorded in the [verification binding](../artifacts/verification/memeradar-completion-loop-2026-10-18.json).
-**SOURCE_ID:** final HEAD-salted identity and scoped-content hash are recorded in that binding. Initial actual source was `sha256:cfef350a11768ab0ea6e93c33961d636410b80d9fa69b9fdead5de57e31a086c` (732 files), compared with supplied historical `sha256:29e7990941ba3a3f078fe34f80f51af37c90b09cf62d4f25038948e6251ac5e3` (731 files). The difference includes the operator's new `scripts/MemeRadar.md`, not an inferred source regression.
-**LOCAL_GIT_STATUS:** `LOCAL_GIT_WRITABLE / COMMITS_CREATED`. The sandbox's Git mount is read-only; approved host Git operations work. Empty September-26 index lock was preserved at `/tmp/memeradar-stale-index-lock-20260926`. Git is not a project blocker. No push/pull/fetch/remote mutation.
-**LOCAL_COMMITS:** complete final count/list is in the verification binding; preceding checkpoints are listed below. Commits reconstruct only HEAD-owned implementations and independently applicable hunks; inherited feature prerequisites remain unstaged.
-**TEST_STATUS:** focused full-worktree backend 221 PASS; frontend 78 PASS; scoped Ruff, mypy (205 files), ESLint and TypeScript PASS. Committed-snapshot reads 25 PASS, import migrations 30 PASS, worker 7 PASS, web 23 PASS, helper ownership 4 PASS / isolated-PG test skipped. Final aggregate/build/budget exits and totals are recorded in the binding; only completed successful exits count. First aggregate continuation was interrupted at 36% with no exit result; it is not PASS or FAIL and cannot count as acceptance; the subsequent complete run is recorded separately.
-**MIGRATION:** existing head `0022_cross_chain_evidence`, 40 tables; final graph check in binding. No schema migration introduced.
+**CURRENT_PHASE:** P30 local verification and report reconciliation complete. Bounded stream-verification provenance is persisted and exposed; source completeness remains unknown.
+**BRANCH / HEAD:** `main` / `c0fbd2217b7e09e9afd93efc1f9ccb54a40e80f5` (dirty). The local `origin/main` tracking ref points to this HEAD; no remote was queried in this run.
+**SOURCE CHECKPOINT:** P30 fingerprint `97e36f90571212c774b8827a2672a4f1a3137f5c39cdfaf3c12f4a1f2cbfe6e8` covers 641 source/config/test files (8,385,898 bytes); manifest: [`source-fingerprint-p30.json`](../artifacts/verification/2026-11-11-final/source-fingerprint-p30.json). The manifest was rechecked: 641 present, zero hash mismatches, zero missing files.
+**LATEST TEST STATUS:** `COVERAGE_FILE=/tmp/memeradar-final-verify-p30.coverage make verify > artifacts/verification/2026-11-11-final/make-verify-p30.log 2>&1` exited 0: backend 1,650 passed / 34 integration deselected / 7 warnings in 406.61s; frontend 86 passed / 25 files; Ruff, mypy (187 files), CSS contract, frontend lint/typecheck, Compose config, secret scan, local security review and SBOM passed. Migration graph head `0015_stream_verification_provenance`, 27 ORM tables. Log SHA-256: `9ab4ced53531fc3a24b1e62c24e03d97bd4bf7a9fca566641a2f60168d352c15`.
+**PERSISTENCE:** Verification rows now preserve provider, program scope, commitment, verification method and recovery attempt; the operations projection exposes those fields and evidence-reference counts. Migration graph check passes at `0015_stream_verification_provenance`. This is local code/migration-graph validation, not a PostgreSQL migration run. PostgreSQL integration remains blocked: test URL unset, local binaries absent, Docker API denied.
+**OPEN P0:** Overall source/subscription coverage is still `UNKNOWN`; bounded local recovered ranges do not prove full provider or subscription completeness. Provider-backed recovery, complete observable-universe denominators, verified historical inventory and genuine Telegram receipt remain unaccepted. Caller-conduct remains shadow-only.
+**OPEN P1:** Paper worker remains disabled unless explicit policy and a matching PAPER/SOL portfolio are configured. Current-source PostgreSQL worker recreation, portfolio concurrency and complete process restart remain unverified. Independent real alpha remains `NOT_PROVEN`.
+**SECURITY / BLOCKERS:** P30 local secret/security checks passed; external container/npm/pip scans were NOT_RUN. Historical Trivy scans found 47 HIGH Debian OS findings in each API/worker image; no current rescan was performed. Browser E2E was blocked before test execution by sandbox listener `EPERM`; production build compiled but Next's TypeScript subprocess output was unavailable in the sandbox. No authorized provider or Telegram recipient was used.
+**READINESS:** Local declared verification scope PASS; overall engineering/product readiness PARTIAL; operational acceptance BLOCKED where noted; predictive validation `NOT_PROVEN`. See [final readiness](audits/FINAL_PRODUCT_READINESS.md).
+**SAFETY:** `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`; no signing or real transaction submission was added.
 
-## Local repository debt and integration boundary
+## Historical status entries
 
-- All 518 historical retained paths have explicit dispositions: 457 KEEP, 61 EXTERNAL_OWNED. 516 have concrete purpose classes; two protected operator paths remain UNKNOWN in type, with known EXTERNAL_OWNED disposition. Zero unassigned paths; zero proved-unused/deleted source or tests.
-- Historical visual archive and manifest: 1,508 members, 1,492 originals archived, 16 intentional machine/human index copies retained. All member/index hashes verified; tar/nested-ZIP text secret scan has zero findings. Seven narrow output/operator-state ignores; no generated files deleted.
-- Current full-worktree application facade is 1,495 lines: eight unchanged token timeline helpers moved to existing read_tokens. Pure forward policy remains in application; worker collection stays cohesive I/O. 328 compatibility aliases retained. Production imports of relocated application aliases are zero; four modules import nine facade-owned port/service/query bindings. Tests and external/unknown compatibility remain intentional.
-- Page outcome coverage remains `LOADED_PAGE` (at most 100 valid returned rows), independence `NOT_ESTABLISHED`. Full-filter exact aggregation has neither a bounded population contract nor malformed-row parity; the UI states population coverage unavailable. No new query/store/metric engine or client recount.
-- Discover / Investigate / Validate / Operate remain correct. All 22 full-worktree routes/deep links retained; no route removed or demoted this pass. No additional same-render duplicated read found beyond the existing operations overview consolidation.
-- **Protected integration decision pending:** some inherited feature predecessors are absent HEAD, including the Outcomes component, forward-outcome query contracts and extended timeline models. Their dependent task hunks cannot be committed independently without also committing inherited feature work. They remain preserved and tested in the worktree; [reviewable backend dependency diff](../artifacts/verification/memeradar-pending-backend.patch) and [UI dependency diff](../artifacts/verification/memeradar-pending-outcome-ui.patch). This is an ownership/scope boundary from the user's Phase 2 rule, not a Git or runtime blocker. Dependency diffs include inherited prerequisites, not just this continuation’s hunks. Do not stage whole mixed files or claim all task changes are committed.
-- Committed HEAD baseline has an existing SQLite timezone fixture failure absent from the fuller inherited worktree's UTC persistence behavior; no unrelated persistence feature was silently staged. See the deep-refactor report. Do not equate worktree verification with a clean committed checkout.
+**OPEN_SOURCE_WATCH_2026-11-03:** MadeOnSol bundle-cluster completeness is now
+preserved and incomplete/unknown cluster shares remain null. Provider notes
+record why PumpData, CabalSpy ID, Pythia-specific tuning, Hood Synapse and Sol
+Parser were not wired into runtime. Checks were not run for this small delta.
 
-## External blockers and next external action
+**OPEN_SOURCE_WATCH_2026-10-31:** Solana RPC block backfill now requests
+transaction version 1, matching the transaction read path. The focused Solana
+RPC and raw-stream suites passed (22 tests). Relay router identities, payout
+matching, ShredStream ALT recovery, external risk adapters and real-data model
+comparisons remain unverified and are not claimed as implemented.
 
-**POSTGRESQL_RUNTIME:** `NEEDS_DATABASE_RUNTIME`. Current approved host Docker is available (29.1.3), but no running `compose-postgres-1` is visible after the execution-environment reset and the isolated test URL is unset. An earlier continuation observed that container healthy; that observation is historical, not current acceptance. No substitute database or new PostgreSQL runtime was created.
-**BROWSER_RUNTIME:** AVAILABLE: installed Chrome completed a bounded headless about:blank launch. Final-source credentialed workflows/screenshots/axe/performance remain unverified.
-**PROVIDER_ACCEPTANCE:** unverified; no fabricated sequencer/Relay frames, receipts/deployments, wallet economics/benchmark or launch/Jito evidence.
-**REAL_OOS_ALPHA:** evidence/time required for real independent mature cohorts, economics/copyability and chronological OOS.
-**NEXT_EXTERNAL_ACTION:** provide an authorized isolated PostgreSQL runtime/URL and final-source browser acceptance targets; collect verified provider and mature OOS evidence. Independently resolve the explicitly protected inherited-prerequisite integration scope.
+**LAUNCH_RISK_POINT_IN_TIME:** Launch-risk observation and supply calculations
+now exclude observations occurring, observed or ingested after the checkpoint;
+the supply calculation also respects the existing shadow-evidence filter.
+Focused launch-risk, fast-safety and Solana provider suites passed (35 tests).
+Externally supplied aggregate snapshots still require their own point-in-time
+guarantees; live provider and real-data validation remain outstanding.
 
-`READ_ONLY_SHADOW_READY = NOT ACCEPTED`; `ALPHA_VALIDATED = NO`; `REAL_WORLD_ALPHA_NOT_YET_PROVEN`; `PRODUCTION_READY=false`.
-Modes stay `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`, `CANARY=false`, `LIVE=false`. No scoring, safety, provider authority or no-lookahead change.
+**SCAN_MONITOR:** `/scan-monitor` displays bounded candidate records, recorded
+early-radar rejected/blocked decisions and provider health with timestamps.
+It refreshes every 30 seconds while visible. Pre-identity discarded events have
+no durable producer and are explicitly excluded from the displayed record.
+Focused frontend tests (4), TypeScript and touched-file ESLint passed; browser
+and live-provider validation were not performed.
 
-## Local commit ledger
+**LIVE_DISPLAY_REMEDIATION:** Candidate, token and position reads can recover
+missing names and symbols from fresh canonical create-event observations at or
+before the read checkpoint. The Solana stream now records subscription state;
+the operations API projects the latest bounded snapshot and leaves overall
+stack status UNKNOWN. Provider backfill errors are translated into the existing
+recovery contract. Local live reads showed 10 of 13 candidates with symbols;
+unavailable metadata remains unknown. Reevaluation no longer emits an alert for
+an already-existing WATCH transition, preventing the observed idempotency
+conflict; earlier failed reevaluation records remain preserved and were not
+replayed. Many risk/market fields lack live evidence.
 
-| SHA | Purpose |
-| --- | --- |
-| `0b88d3107e6f1abc1c779875f920f128dc8664a6` | refactor(application): split existing read contracts by product owner |
-| `020b25a368bdc2d2295b534eb161adb0a97dc7e3` | refactor(api): split existing read DTOs and serializers by domain |
-| `5fb7ce92101a944f42a6e33160523f6029aace12` | refactor(worker): separate discovery and operations orchestration |
-| `63b4650d805207d4a04978ffd6679266a313a1b8` | refactor(reads): migrate internal DTO imports to canonical owners |
-| `3ca338dbefe0d4247640b83af7120f6bdf5cb529` | refactor(outcomes): move pure forward policy into application owner |
-| `f24bfb745fd9e5284853b1db0695c75d0a7c95c6` | refactor(web): consolidate overview reads and group existing navigation |
-| `4b010b88d819eb4420e94b0477771ef72e9a65f4` | chore(repo): narrowly ignore generated reports and operator runtime state |
-| `4ada7421e303d1c2cc9a4e7fa0f3f1e1d309ba3b` | docs(repo): preserve historical visual evidence in verified archive |
-| `82e9b7b821d0f9f639745ad70544906229ca3541` | refactor(imports): migrate remaining control and acceptance aliases |
-| `d7bb1047ded2ac2505f7c1fa128b95c8eb45468e` | docs(repo): reconcile Git state, ownership audits and verification boundaries |
-| `26e0765a37f0ce2533cbc08330f6ac3d375a9ead` | test(reads): check all split modules in packaging safety contract |
+**TELEGRAM_DISCOVERY_FOCUS:** Candidate state changes now persist a separate
+notification outbox job only for EARLY_WATCH or stronger signals with passing,
+fresh safety evidence, available providers and no unresolved stream gap. The
+delivery worker independently enforces the same explicit eligibility marker
+and does not send ordinary WATCH, rejected, operational or legacy unmarked
+events; signals older than five minutes are also skipped. Existing rate limits
+and deduplication remain active. Telegram HTTP
+request logs no longer expose bot-token URLs. Scan Monitor displays configured
+status and database-backed delivery/queue counts without revealing credentials.
+The local Telegram bot and chat passed read-only checks; prior to the stricter
+filter two alerts were recorded delivered. No message has yet been verified
+under the stricter filter. Public Solana RPC returned 429 and unresolved gaps
+remain, so signal coverage is not accepted. Auto and manual execution remain
+disabled. Earlier failed reevaluation records were not replayed.
 
-This ledger records source/archive commits before the final documentation checkpoint; use local `git log 35274d2..HEAD` and the final binding for the complete count and final HEAD. HEAD-dependent source IDs cannot be embedded into their own commit without a self-reference; final binding is deliberately excluded verification output.
+Replay now restores previously persisted stage snapshots rather than generating
+new identities from timing measurements. Verified stream-gap recovery persists
+the required RECOVERED transition before VERIFIED. Null-score pagination and
+the Settings read contract were corrected. Focused Python checks (63 tests),
+PostgreSQL checks (3 tests), frontend tests (86 tests before the last focused
+22-test run), TypeScript, lint, and desktop browser checks (8 passed, 1 skipped)
+passed. These do not constitute complete acceptance of every page or live
+strategy; chain opportunities still has no persisted projection.
 
-[Deep refactor / all 40 answers](reports/memeradar-deep-refactor.md) · [Path audit](reports/memeradar-remaining-path-audit.md) · [Archive proof](reports/memeradar-dead-code-and-archive-report.md) · [Architecture](ARCHITECTURE.md) · [Security](SECURITY.md).
+**EARLY_RADAR_READ_PATH:** The database read service now projects persisted
+early-stage snapshots for current Solana candidates. Stale snapshot risk is
+UNKNOWN rather than PASS. Two focused PostgreSQL integration tests passed;
+the local API returned 50 early-radar records and the page rendered successfully.
+The 30-second frontend refresh remains a polling fallback, not a WebSocket.
+
+The full frontend suite was rerun with two workers: 86 passed. Local worker
+shutdown did not complete promptly while recovery was active, so the local
+worker was terminated and restarted with the five-minute notification filter;
+the durable recovery gap remains subject to reconciliation.
+
+Detailed evidence: [CI causes](audits/CI_ROOT_CAUSE_ANALYSIS.md),
+[stabilization changes](audits/STABILIZATION_CHANGES.md),
+[provider capabilities](audits/PROVIDER_CAPABILITY_MATRIX.md), and
+[runtime acceptance](audits/RUNTIME_ACCEPTANCE.md), plus the
+[duplicate-workspace audit](audits/DUPLICATE_WORKSPACE_AUDIT.md) and
+[2026-11-06 consolidation report](repository-consolidation/09_FINAL_EXECUTIVE_REPORT.md)
+and [recursive acceptance report](audits/RECURSIVE_ACCEPTANCE_REPORT.md). The
+machine-readable issue ledger is at
+[`artifacts/verification/RECURSIVE_ACCEPTANCE_LEDGER.json`](../artifacts/verification/RECURSIVE_ACCEPTANCE_LEDGER.json).
+
+**QUALIFIED ULTRA-EARLY VIEW:** Ultra-Early requests only current snapshots
+with a recent notification-eligible state transition and fresh PASS safety
+assessment. The Telegram column shows delivered only when a delivery record
+exists. The default grid now emphasizes available decision data. The live API
+and page returned HTTP 200 with zero qualified candidates at verification;
+no new delivery was verified under the stricter gate. Public RPC rate limits
+and unresolved stream gaps still limit timely coverage.
+
+**EARLY_CANDIDATE_EVIDENCE_REPAIR:** The live worker now gathers parsed SPL
+mint authority data, current liquidity and executable buy/sell quote evidence
+before evaluating a verified launch; the lifecycle reevaluator repeats the
+same evidence collection and rewrites the current stage snapshot when evidence
+changes without a state transition. Jupiter quote routing is configured only
+when both URL and API key are present. The 0.01 SOL route probe is read-only;
+DexScreener's market reference cannot satisfy sellability or impact gates.
+FastSafety now preserves direct evidence references and reports missing
+critical fields as reasons; the Ultra-Early inspection panel shows authority,
+protocol, quote and evidence-reference values. An unavailable raw transaction
+now forces a reconnect without marking its signature completed, so the stream
+coordinator can attempt gap recovery. These source changes were not executed
+or live-validated in this task; no test command was run. Public RPC rate limits,
+missing quote configuration, unresolved gaps and Telegram delivery remain
+external readiness constraints. Execution modes remain unchanged.
+
+**EARLY_CANDIDATE_FOLLOWUP:** Restored standard RPC account observations, imported
+worker event normalization, and kept snapshot identity stable across latency-only
+changes. Focused backend suite: 46 passed; web typecheck passed and focused web
+suite: 24 passed; Ruff passed for touched backend areas. Live RPC, Jupiter and
+Telegram delivery remain unverified and require configured provider access.
+Targeted mypy was interrupted after reporting unresolved local package imports;
+its result is incomplete and requires the repository's configured module path.
+
+**PRODUCT_BUG_AUDIT_2026-11-06:** MadeOnSol bundle normalization now marks conflicting nested and top-level completeness flags UNKNOWN, preventing incomplete cluster evidence from being reported complete. A Jupiter provider composition test now supplies the required fixture API key; a separate regression confirms missing-key configuration remains unavailable. Focused provider suite: 65 passed; launch-risk/safety suite: 61 passed; touched-file Ruff and `git diff --check` passed. The broader non-integration pytest run and mypy were interrupted after stalling without a final result; PostgreSQL, live providers and browser acceptance were not run. This is not a complete product audit.
+
+**PAPER_QUOTE_CAUSALITY_2026-11-06:** A fresh quote observed after the paper order time previously produced a fill. Quote consumers now require observation at or before their checkpoint; paper auto, shadow entry and discovery use the same check. The reproducing test failed before the change and passes afterward. Related paper, discovery, stream, wallet and provider suites: 103 passed; touched-file Ruff and `git diff --check` passed. The full non-integration pytest diagnostic timed out (exit 124) inside the Git-history secret scan; full mypy timed out (exit 124) without output. No runtime, live provider, PostgreSQL or alpha-performance acceptance is implied.
+
+**VERIFICATION_REMEDIATION_2026-11-06:** Git-history secret scanning now reads one object at a time, propagates Git/read failures, and keys its cache by refs. Regressions reproduced the previous false-clean results and now pass. The release-identity test now compares the SBOM count and digest to the actual lock-derived SBOM instead of a stale fixed count. The current dirty-worktree non-integration backend suite exited 0: 1,546 passed, 22 deselected, 7 warnings; frontend Vitest passed 86 tests, lint and typecheck exited 0. Current production build exited 1 after compilation: direct TypeScript `--showConfig` succeeded but Node synchronous child invocation reported EPERM and no output. Migration static check reports one head `0012_stream_gap_diagnostics` and 27 tables. PostgreSQL, browser, live providers, full mypy and worker wiring remain unaccepted.
+
+**VERIFICATION_FOLLOWUP_2026-11-06:** Standalone secret scan exited 0 with no findings; replay/backtesting/calibration fixture suite passed 27 tests. The social-call collector, caller conduct analyzer, shadow PAPER orchestration and pre-identity rejection/reconciliation still lack the requested operational path. No runtime wiring was added in this verification slice. PostgreSQL acceptance remains blocked by the missing isolated test URL and denied Docker socket; browser and live-provider acceptance remain unverified.
+
+**PRODUCT_AUDIT_2026-11-09:** The Pump.fun forward research and lifecycle reevaluation filters now require the canonical Pump.fun program ID instead of accepting a generic create/launch label alone. The new regression failed before the fix; focused worker tests passed (18), and touched-file Ruff passed. Previously collected research data was not reconciled. A fresh full non-integration test run and mypy were interrupted without final results; PostgreSQL, browser, providers and live shadow remain unaccepted. The [issue grid](audits/PRODUCT_ISSUE_GRID_2026-11-09.md) and [remediation plan](superpowers/plans/2026-11-09-product-audit-remediation.md) record open capability and evidence gaps. Existing uncommitted work and recovery material remain untouched.
+
+**PRODUCT_COMPLETION_AUDIT_2026-11-09:** A conflicting launch label could classify a Pump.fun trade as a launch; the shared predicate now requires the create instruction. Checkpointed social collection now saves calls before advancing its cursor; shared transaction atomicity and worker integration remain open. The live evidence path rejects future-dated market liquidity, and early stage snapshots retain safety-assessed liquidity, restoring qualified PostgreSQL reads. Reproducing tests failed before fixes. Focused suite: 42 passed; isolated PostgreSQL migrations succeeded and integration suite: 22 passed, 2 warnings; full mypy: 183 files clean; Ruff, frontend lint/typecheck and 86 frontend unit tests passed. Full non-integration diagnostic timed out after 240 seconds; live providers, browser E2E, operational crash recovery, social/paper worker composition and predictive validation remain unaccepted. Dedicated task test container `memeradar-codex-audit-pg-20261109` and its databases remain preserved; TCP access was set to reject after testing. See [issue register](audits/PRODUCT_ISSUE_GRID_LATEST.md) and [acceptance report](audits/E2E_ACCEPTANCE_REPORT.md).
+
+**BACKEND_VERIFICATION_FOLLOWUP_2026-11-09:** `timeout 600 .venv/bin/python -m pytest -q -m "not integration" --no-cov` exited 0: 1,550 passed, 22 deselected, 7 warnings. The separate PostgreSQL integration suite passed 22 tests. Standalone secret scan and security-review runs were interrupted and are not accepted for this checkpoint.
+
+**P0_P1_CONTINUATION_2026-11-09:** Added read-only launch identity inventory and fail-closed forward report filtering, opt-in bounded social worker with atomic page/cursor persistence, mock Telegram outbox integration and suppression reasons, bounded pre-identity rejection diagnostics, and paper quote response-time correction. The stream now reconnects rather than marking failed decodes seen, does not equate reconnect with recovery, retains gaps on late event receipt, records known failed slots, and scopes active gaps by chain/transport/stream. Full isolated PostgreSQL integration: 27 passed; non-integration suite: 1,566 passed, 26 deselected before final gap edits; final focused stream/pre-identity suite: 39 passed including the additional cross-stream regression. Ruff, mypy (185 files), SBOM and standalone secret scan passed. Social caller-conduct/scoring integration, fair polling, durable pre-identity reconciliation, paper worker wiring, live-provider recovery, real Telegram delivery and real alpha remain unaccepted. No production observations or prior volumes were modified.
+
+The task-owned `memeradar-p0-validation-20261109` PostgreSQL container and test database remain preserved; TCP authentication was changed to reject after testing. Standalone secret scan and an additional scan of new untracked source files reported no findings. Local HEAD and locally recorded `origin/main` matched (0/0); remote state was not fetched.
+
+**SECURITY_CONTINUATION_2026-11-09:** Standalone secret scan and local security review passed; SBOM check passed. A separate targeted scan found no high-confidence material in the new untracked source/test files. External container, npm and Python vulnerability scans remain unaccepted.

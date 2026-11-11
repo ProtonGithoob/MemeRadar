@@ -22,7 +22,9 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.types import Uuid
+from sqlalchemy.types import TypeDecorator, Uuid
+
+from memeradar_domain.common import ensure_utc
 
 
 def _now() -> datetime:
@@ -39,6 +41,28 @@ class Base(DeclarativeBase):
     """Declarative base kept inside the persistence package."""
 
 
+class UTCDateTime(TypeDecorator[datetime]):
+    """Store aware UTC timestamps and restore UTC awareness on every dialect."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def __init__(self) -> None:
+        super().__init__(timezone=True)
+
+    def process_bind_param(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        return ensure_utc(value, "timestamp")
+
+    def process_result_value(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=UTC)
+        return ensure_utc(value, "timestamp")
+
+
 class TokenRow(Base):
     __tablename__ = "tokens"
     __table_args__ = (
@@ -52,16 +76,16 @@ class TokenRow(Base):
     symbol: Mapped[str | None] = mapped_column(String(64))
     name: Mapped[str | None] = mapped_column(String(256))
     decimals: Mapped[int | None] = mapped_column(Integer)
-    created_onchain_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_onchain_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     metadata_uri: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="ACTIVE")
     creator_wallet: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now
+        UTCDateTime(), nullable=False, default=_now
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now, onupdate=_now
+        UTCDateTime(), nullable=False, default=_now, onupdate=_now
     )
 
     candidate: Mapped[CandidateRow | None] = relationship(back_populates="token")
@@ -98,6 +122,12 @@ class SocialCallObservationRow(Base):
         ),
         Index("ix_social_call_observations_caller_published", "caller_identity_id", "published_at"),
         Index("ix_social_call_observations_chain_published", "chain", "published_at"),
+        Index(
+            "ix_social_call_observations_asset_published",
+            "chain",
+            "asset_address",
+            "published_at",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -109,9 +139,9 @@ class SocialCallObservationRow(Base):
         ForeignKey("caller_identities.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    published_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     chain: Mapped[str | None] = mapped_column(String(32))
     asset_address: Mapped[str | None] = mapped_column(String(64))
     asset_token_program: Mapped[str | None] = mapped_column(String(64))
@@ -163,7 +193,7 @@ class CrossChainIdentityEvidenceRow(Base):
     wallet_address: Mapped[str | None] = mapped_column(String(64))
     cluster_id: Mapped[str | None] = mapped_column(String(256))
     confidence: Mapped[Decimal] = mapped_column(Numeric(6, 5), nullable=False)
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     quality_state: Mapped[str] = mapped_column(String(16), nullable=False)
     evidence_refs: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     provenance: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
@@ -183,8 +213,8 @@ class PoolRow(Base):
     venue: Mapped[str] = mapped_column(String(64), nullable=False)
     pool_address: Mapped[str] = mapped_column(String(64), nullable=False)
     quote_mint: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_onchain_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_onchain_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="ACTIVE")
 
     token: Mapped[TokenRow] = relationship(back_populates="pools")
@@ -202,11 +232,11 @@ class CandidateRow(Base):
         unique=True,
     )
     state: Mapped[str] = mapped_column(String(32), nullable=False)
-    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    discovered_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     discovery_source: Mapped[str] = mapped_column(String(128), nullable=False)
     latest_score_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
     latest_risk_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
-    state_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    state_changed_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     rejection_reason: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, nullable=False, default=list
     )
@@ -243,9 +273,9 @@ class ObservationRow(Base):
     kind: Mapped[str] = mapped_column(String(64), nullable=False)
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     source_id: Mapped[str] = mapped_column(String(256), nullable=False)
-    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurred_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
     quality_state: Mapped[str] = mapped_column(String(16), nullable=False)
     raw_payload_hash: Mapped[str | None] = mapped_column(String(128))
@@ -264,7 +294,7 @@ class ObservationRow(Base):
     commitment: Mapped[str | None] = mapped_column(String(32))
     recovery_state: Mapped[str | None] = mapped_column(String(32))
     backfill_source: Mapped[str | None] = mapped_column(String(128))
-    recovery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recovery_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     registry_version: Mapped[str | None] = mapped_column(String(128))
     event_schema_version: Mapped[int | None] = mapped_column(Integer)
     correction_of: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
@@ -306,7 +336,7 @@ class ChainCursorRow(Base):
     last_contiguous_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
     last_finalized_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
     last_signature: Mapped[str | None] = mapped_column(String(256))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     parser_registry_version: Mapped[str] = mapped_column(String(128), nullable=False)
 
 
@@ -322,7 +352,7 @@ class CollectionCheckpointRow(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     checkpoint_key: Mapped[str] = mapped_column(String(256), nullable=False)
     cursor: Mapped[str | None] = mapped_column(String(512))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
 
 
 class StreamGapRow(Base):
@@ -346,9 +376,9 @@ class StreamGapRow(Base):
     stream_id: Mapped[str] = mapped_column(String(256), nullable=False)
     from_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
     to_slot: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    gap_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    gap_resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    detected_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    gap_started_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    gap_resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     detection_method: Mapped[str] = mapped_column(String(128), nullable=False)
     missed_slot_start: Mapped[int] = mapped_column(BigInteger, nullable=False)
     missed_slot_end: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -358,6 +388,8 @@ class StreamGapRow(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     backfill_status: Mapped[str] = mapped_column(String(32), nullable=False)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    recovery_claim_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    recovery_claim_expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_error_class: Mapped[str | None] = mapped_column(String(128))
     recovered_event_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     events_recovered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -365,7 +397,7 @@ class StreamGapRow(Base):
     events_unrecoverable: Mapped[int | None] = mapped_column(Integer)
     merged_gap_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now
+        UTCDateTime(), nullable=False, default=_now
     )
 
 
@@ -379,6 +411,11 @@ class StreamVerificationRow(Base):
     gap_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("stream_gaps.id", ondelete="SET NULL")
     )
+    provider_id: Mapped[str | None] = mapped_column(String(128))
+    program_scope: Mapped[str | None] = mapped_column(String(512))
+    commitment: Mapped[str | None] = mapped_column(String(32))
+    verification_method: Mapped[str | None] = mapped_column(String(128))
+    recovery_attempt: Mapped[int | None] = mapped_column(Integer)
     chain: Mapped[str] = mapped_column(String(32), nullable=False)
     transport: Mapped[str] = mapped_column(String(128), nullable=False)
     stream_id: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -392,10 +429,10 @@ class StreamVerificationRow(Base):
     extra_event_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     conflicting_event_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     verification_status: Mapped[str] = mapped_column(String(32), nullable=False)
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     reason_codes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now
+        UTCDateTime(), nullable=False, default=_now
     )
 
 
@@ -407,8 +444,8 @@ class FeatureSnapshotRow(Base):
     candidate_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False
     )
-    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    as_of: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     feature_version: Mapped[str] = mapped_column(String(64), nullable=False)
     completeness: Mapped[Decimal] = mapped_column(Numeric(6, 5), nullable=False)
     confidence: Mapped[Decimal] = mapped_column(Numeric(6, 5), nullable=False)
@@ -431,8 +468,8 @@ class RiskAssessmentRow(Base):
     candidate_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False
     )
-    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    as_of: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     risk_version: Mapped[str] = mapped_column(String(64), nullable=False)
     disposition: Mapped[str] = mapped_column(String(16), nullable=False)
     hard_blocks: Mapped[list[str]] = mapped_column(JSON, nullable=False)
@@ -456,7 +493,7 @@ class ScoreSnapshotRow(Base):
     candidate_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False
     )
-    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    as_of: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     model_version: Mapped[str] = mapped_column(String(64), nullable=False)
     strategy_name: Mapped[str] = mapped_column(
         String(64), nullable=False, default="legacy", server_default="legacy"
@@ -475,7 +512,7 @@ class ScoreSnapshotRow(Base):
     risk_assessment_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("risk_assessments.id", ondelete="RESTRICT"), nullable=False
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     config_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     quality_state: Mapped[str] = mapped_column(String(16), nullable=False)
 
@@ -506,7 +543,7 @@ class StateTransitionRow(Base):
     risk_assessment_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("risk_assessments.id", ondelete="SET NULL")
     )
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(256), nullable=False)
     version: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -555,8 +592,8 @@ class PositionRow(Base):
     )
     mode: Mapped[str] = mapped_column(String(16), nullable=False)
     state: Mapped[str] = mapped_column(String(24), nullable=False)
-    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    opened_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     quantity: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
     average_entry: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
     average_exit: Mapped[Decimal | None] = mapped_column(Numeric(36, 18))
@@ -577,12 +614,13 @@ class OrderRow(Base):
     __tablename__ = "orders"
     __table_args__ = (
         UniqueConstraint("idempotency_key", name="uq_orders_idempotency_key"),
-        UniqueConstraint(
+        Index(
+            "uq_orders_opportunity_claim",
             "portfolio_id",
             "candidate_id",
             "mode",
             "side",
-            name="uq_orders_opportunity_claim",
+            unique=True,
         ),
         Index("ix_orders_portfolio_requested", "portfolio_id", "requested_at"),
     )
@@ -602,7 +640,7 @@ class OrderRow(Base):
     state: Mapped[str] = mapped_column(String(24), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(256), nullable=False)
     requested_amount: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
-    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     quote_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     risk_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -631,7 +669,7 @@ class FillRow(Base):
     order_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
     )
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     input_amount: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
     price: Mapped[Decimal] = mapped_column(Numeric(36, 18), nullable=False)
@@ -670,7 +708,7 @@ class CashLedgerRow(Base):
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     cash_delta: Mapped[Decimal] = mapped_column(Numeric(24, 9), nullable=False)
     balance_after: Mapped[Decimal] = mapped_column(Numeric(24, 9), nullable=False)
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     entry_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source: Mapped[str] = mapped_column(String(128), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -698,8 +736,8 @@ class AlertRow(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     dedupe_key: Mapped[str] = mapped_column(String(256), nullable=False)
     state: Mapped[str] = mapped_column(String(16), nullable=False)
-    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    requested_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     reason_codes: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
 
@@ -723,9 +761,9 @@ class DomainEventRow(Base):
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
     aggregate_type: Mapped[str] = mapped_column(String(64), nullable=False)
     aggregate_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
     causation_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
     producer: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -750,18 +788,18 @@ class OutboxRow(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(256), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now
+        UTCDateTime(), nullable=False, default=_now
     )
     available_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now
+        UTCDateTime(), nullable=False, default=_now
     )
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=OUTBOX_PENDING, server_default=OUTBOX_PENDING
     )
     claim_token: Mapped[str | None] = mapped_column(String(64))
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    delivered_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
@@ -777,7 +815,7 @@ class ControlStateRow(Base):
     analysis_paused: Mapped[bool] = mapped_column(Boolean, nullable=False)
     execution_kill_switch: Mapped[bool] = mapped_column(Boolean, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     updated_by: Mapped[str] = mapped_column(String(256), nullable=False)
     correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
 
@@ -789,7 +827,7 @@ class RuntimeSettingsRow(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     version: Mapped[str] = mapped_column(String(64), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     updated_by: Mapped[str] = mapped_column(String(256), nullable=False)
     effective_overrides: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     pending_values: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
@@ -806,7 +844,7 @@ class ConfigVersionRow(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     version: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     actor: Mapped[str] = mapped_column(String(256), nullable=False)
     config_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     decision_affecting: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -828,5 +866,5 @@ class AuditEventRow(Base):
     target: Mapped[str] = mapped_column(String(256), nullable=False)
     before: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     after: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)

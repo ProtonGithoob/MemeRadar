@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import cast
 from uuid import UUID
@@ -136,6 +137,37 @@ _RELATIONSHIP_OBSERVATION_KINDS = (
     "wallet.link",
 )
 _PRICE_KEYS = ("price", "price_usd", "token_price", "close")
+_EARLY_MINIMUM_LIQUIDITY_USD = Decimal("1000")
+_EARLY_MAXIMUM_QUOTE_IMPACT_BPS = Decimal("1000")
+
+
+def _qualified_early_safety(payload: Mapping[str, object]) -> bool:
+    if any(
+        payload.get(key) is not True
+        for key in (
+            "mint_authority_safe",
+            "freeze_authority_safe",
+            "protocol_identity_verified",
+            "sellability",
+        )
+    ):
+        return False
+    if payload.get("quote_semantics") != "EXECUTION_QUOTE":
+        return False
+    try:
+        liquidity = Decimal(str(payload.get("liquidity")))
+        buy_impact = Decimal(str(payload.get("buy_impact_bps")))
+        sell_impact = Decimal(str(payload.get("sell_impact_bps")))
+    except (ArithmeticError, TypeError, ValueError):
+        return False
+    return (
+        liquidity.is_finite()
+        and liquidity >= _EARLY_MINIMUM_LIQUIDITY_USD
+        and buy_impact.is_finite()
+        and Decimal("0") <= buy_impact <= _EARLY_MAXIMUM_QUOTE_IMPACT_BPS
+        and sell_impact.is_finite()
+        and Decimal("0") <= sell_impact <= _EARLY_MAXIMUM_QUOTE_IMPACT_BPS
+    )
 
 
 def _reason_codes(value: object) -> tuple[str, ...]:
@@ -677,6 +709,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         self,
         session: AsyncSession,
         row: CandidateRow,
+        metadata: Mapping[UUID, tuple[str | None, str | None]] | None = None,
     ) -> CandidateView:
         score = (
             None
@@ -688,7 +721,55 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             if row.latest_risk_id is None
             else await session.get(RiskAssessmentRow, row.latest_risk_id)
         )
-        return _candidate_view(row, score=score, risk=risk)
+        view = _candidate_view(row, score=score, risk=risk)
+        if metadata is None:
+            metadata = await self._token_display_metadata(session, (view.token_id,))
+        symbol, name = metadata.get(view.token_id, (None, None))
+        return replace(view, symbol=view.symbol or symbol, name=view.name or name)
+
+    async def _token_display_metadata(
+        self, session: AsyncSession, token_ids: Sequence[UUID], *, as_of: datetime | None = None
+    ) -> dict[UUID, tuple[str | None, str | None]]:
+        if not token_ids:
+            return {}
+        now = ensure_utc(as_of or self._clock(), "as_of")
+        rows = (await session.scalars(
+            select(ObservationRow).where(
+                ObservationRow.token_id.in_(token_ids),
+                ObservationRow.kind == "chain.event",
+                ObservationRow.provider == "chain.integrity",
+                ObservationRow.normalized_payload["instruction_type"].as_string().in_(
+                    ("create", "create_v2")
+                ),
+                ObservationRow.quality_state == QualityState.FRESH.value,
+                ObservationRow.observed_at <= now,
+                ObservationRow.ingested_at <= now,
+                or_(ObservationRow.occurred_at.is_(None), ObservationRow.occurred_at <= now),
+            ).order_by(ObservationRow.observed_at, ObservationRow.id).limit(MAX_STORAGE_ROWS)
+        )).all()
+        result: dict[UUID, tuple[str | None, str | None]] = {}
+
+        def field(payload: Mapping[str, object], name: str, limit: int) -> str | None:
+            value = payload.get(name)
+            if isinstance(value, str) and 0 < len(value.strip()) <= limit:
+                return value.strip()
+            return None
+
+        for row in rows:
+            payload = row.normalized_payload
+            instruction_type = payload.get("instruction_type")
+            if not isinstance(instruction_type, str) or instruction_type not in {
+                "create", "create_v2"
+            }:
+                continue
+
+            if row.token_id is not None:
+                previous = result.get(row.token_id, (None, None))
+                result[row.token_id] = (
+                    previous[0] or field(payload, "symbol", 64),
+                    previous[1] or field(payload, "name", 256),
+                )
+        return result
 
     async def _observations_for_token(
         self,
@@ -1108,13 +1189,190 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             raise TypeError("query must be a CandidateQuery")
         async with self._session_factory() as session:
             rows = await self._candidate_rows(session)
-            values = tuple([await self._candidate_view_for_row(session, row) for row in rows])
+            metadata = await self._token_display_metadata(
+                session, tuple(row.token_id for row in rows)
+            )
+            values = tuple(
+                [await self._candidate_view_for_row(session, row, metadata) for row in rows]
+            )
         return await InMemoryReadQueryService(candidates=values).list_candidates(query)
 
     async def list_early_radar(self, query: EarlyRadarQuery) -> Page[EarlyRadarView]:
-        """Return the optional bounded early-radar catalog without mutating storage."""
-
-        return await self._catalog.list_early_radar(query)
+        """Project persisted decision snapshots; absent measurements remain unknown."""
+        now = ensure_utc(self._clock(), "as_of")
+        async with self._session_factory() as session:
+            candidates = await self._candidate_rows(session)
+            eligible = {
+                row.id: row
+                for row in candidates
+                if row.token is not None and row.token.chain == "solana"
+            }
+            metadata = await self._token_display_metadata(
+                session, tuple(row.token_id for row in eligible.values())
+            )
+            qualified: set[tuple[str, str]] = set()
+            delivered: set[tuple[str, str]] = set()
+            if query.qualified_only and eligible:
+                events = (await session.scalars(
+                    select(DomainEventRow).where(
+                        DomainEventRow.kind == "CandidateStateChanged",
+                        DomainEventRow.producer == "memeradar.early-runtime",
+                        DomainEventRow.aggregate_id.in_(tuple(str(value) for value in eligible)),
+                        DomainEventRow.ingested_at >= now - timedelta(minutes=5),
+                        DomainEventRow.ingested_at <= now,
+                    ).order_by(DomainEventRow.ingested_at.desc()).limit(MAX_STORAGE_ROWS)
+                )).all()
+                for event in events:
+                    snapshot_id = event.payload.get("snapshot_id")
+                    if (
+                        event.payload.get("notification_eligible") is True
+                        and isinstance(snapshot_id, str)
+                    ):
+                        qualified.add((event.aggregate_id, snapshot_id))
+                alerts = (await session.scalars(
+                    select(AlertRow).where(
+                        AlertRow.candidate_id.in_(tuple(eligible)),
+                        AlertRow.state == "DELIVERED",
+                        AlertRow.delivered_at <= now,
+                    ).order_by(AlertRow.delivered_at.desc()).limit(MAX_STORAGE_ROWS)
+                )).all()
+                for alert in alerts:
+                    snapshot_id = alert.payload.get("snapshot_id")
+                    if alert.candidate_id is not None and isinstance(snapshot_id, str):
+                        delivered.add((str(alert.candidate_id), snapshot_id))
+            rows = (
+                (
+                    await session.scalars(
+                        select(ObservationRow)
+                        .where(
+                            ObservationRow.kind == "early.stage_snapshot",
+                            ObservationRow.provider == "memeradar.early-runtime",
+                            ObservationRow.candidate_id.in_(tuple(eligible)),
+                            ObservationRow.observed_at <= now,
+                            ObservationRow.ingested_at <= now,
+                        )
+                        .order_by(ObservationRow.observed_at.desc(), ObservationRow.id.desc())
+                        .limit(MAX_STORAGE_ROWS)
+                    )
+                ).all()
+                if eligible
+                else []
+            )
+            views: list[EarlyRadarView] = []
+            seen: set[UUID] = set()
+            for snapshot in rows:
+                if snapshot.candidate_id is None:
+                    continue
+                candidate = eligible.get(snapshot.candidate_id)
+                if candidate is None or candidate.id in seen:
+                    continue
+                payload = snapshot.normalized_payload
+                state = payload.get("state")
+                if state != candidate.state:
+                    continue
+                early_state = "REJECT/LOW" if state == "RISK_REJECTED" else state
+                if early_state not in {
+                    "REJECT/LOW",
+                    "WATCH",
+                    "EARLY_WATCH",
+                    "STRONG_SETUP",
+                    "HIGH_CONFLUENCE",
+                    "ENTRY_READY",
+                }:
+                    continue
+                token = candidate.token
+                symbol, name = metadata.get(token.id, (None, None))
+                risk = payload.get("safety_status")
+                risk = (
+                    {"PASS": "PASS", "CAUTION": "WARN", "BLOCK": "BLOCK"}.get(risk, "UNKNOWN")
+                    if isinstance(risk, str)
+                    else "UNKNOWN"
+                )
+                quality = _quality_state(snapshot.quality_state)
+                if (
+                    quality is QualityState.FRESH
+                    and now >= snapshot.observed_at + timedelta(minutes=5)
+                ):
+                    quality = QualityState.STALE
+                if quality is not QualityState.FRESH:
+                    risk = "UNKNOWN"
+                key = (str(candidate.id), str(snapshot.id))
+                if query.qualified_only and (
+                    key not in qualified or quality is not QualityState.FRESH or risk != "PASS"
+                    or not _qualified_early_safety(payload)
+                    or early_state not in {
+                        "EARLY_WATCH", "STRONG_SETUP", "HIGH_CONFLUENCE", "ENTRY_READY"
+                    }
+                ):
+                    continue
+                try:
+                    view = EarlyRadarView(
+                        candidate_id=candidate.id,
+                        token_id=token.id,
+                        mint_address=token.mint_address,
+                        symbol=token.symbol or symbol,
+                        name=token.name or name,
+                        launch_age_seconds=payload.get("token_age_seconds"),
+                        first_seen_at=candidate.discovered_at,
+                        first_seen_source=candidate.discovery_source,
+                        first_seen_latency_ms=None,
+                        first_seen_quality=quality,
+                        early_score=payload.get("early_score"),
+                        early_score_confidence=payload.get("confidence"),
+                        early_state=early_state,
+                        risk_disposition=risk,
+                        alerted=True if key in delivered else None,
+                        liquidity_usd=payload.get("liquidity"),
+                        buy_impact_bps=payload.get("buy_impact_bps"),
+                        price_impact_bps=payload.get("sell_impact_bps"),
+                        sellability=(
+                            "YES" if payload.get("sellability") is True
+                            else "NO" if payload.get("sellability") is False
+                            else "UNKNOWN"
+                        ),
+                        mint_authority_safe=(
+                            payload.get("mint_authority_safe")
+                            if isinstance(payload.get("mint_authority_safe"), bool)
+                            else None
+                        ),
+                        freeze_authority_safe=(
+                            payload.get("freeze_authority_safe")
+                            if isinstance(payload.get("freeze_authority_safe"), bool)
+                            else None
+                        ),
+                        protocol_identity_verified=(
+                            payload.get("protocol_identity_verified")
+                            if isinstance(payload.get("protocol_identity_verified"), bool)
+                            else None
+                        ),
+                        quote_semantics=(
+                            payload.get("quote_semantics")
+                            if isinstance(payload.get("quote_semantics"), str)
+                            else None
+                        ),
+                        organic_momentum=payload.get("organic_momentum_score"),
+                        raw_smart_wallet_count=payload.get("raw_smart_wallet_count"),
+                        independent_smart_wallet_count=payload.get("independent_smart_wallet_count"),
+                        evidence_refs=tuple(
+                            x for x in payload.get("evidence_refs", ()) if isinstance(x, str)
+                        ),
+                        venue=str(payload.get("venue") or "UNKNOWN"),
+                        first_seen_market_cap=payload.get("first_seen_market_cap"),
+                        current_market_cap=payload.get("market_cap"),
+                        reason_codes=tuple(
+                            x for x in payload.get("reason_codes", ()) if isinstance(x, str)
+                        ),
+                        hard_block_reasons=tuple(
+                            x for x in payload.get("hard_blocks", ()) if isinstance(x, str)
+                        ),
+                    )
+                except (TypeError, ValueError):
+                    continue
+                seen.add(candidate.id)
+                views.append(view)
+        return await InMemoryReadQueryService(early_radar=views).list_early_radar(
+            replace(query, qualified_only=False)
+        )
 
     async def list_chain_opportunities(
         self, query: ChainOpportunityQuery
@@ -1145,20 +1403,25 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             )
             if row is None:
                 return None
+            metadata = await self._token_display_metadata(session, (row.id,))
             candidate = (
                 None
                 if row.candidate is None
-                else await self._candidate_view_for_row(session, row.candidate)
+                else await self._candidate_view_for_row(session, row.candidate, metadata)
             )
             lifecycle = await self._launch_lifecycle_for_tokens(
                 session, (row,), as_of=self._clock()
             )
             observations = await self._observations_for_token(session, row, as_of=self._clock())
-            return _token_view(
+            token_view = _token_view(
                 row,
                 candidate,
                 launch_lifecycle=lifecycle.get(row.id, {}),
                 insider_evidence=_insider_evidence(row, observations, now=self._clock()),
+            )
+            symbol, name = metadata.get(row.id, (None, None))
+            return replace(
+                token_view, symbol=token_view.symbol or symbol, name=token_view.name or name
             )
 
     async def _position_mark_for_token(
@@ -1234,6 +1497,8 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         token = await session.get(TokenRow, row.token_id)
         if token is None:
             raise ValueError("position row is missing its token")
+        metadata = await self._token_display_metadata(session, (token.id,), as_of=as_of)
+        symbol, name = metadata.get(token.id, (None, None))
         mark = await self._position_mark_for_token(session, row.token_id, as_of=as_of)
         evaluations = await self._position_exit_evaluations(
             session,
@@ -1243,8 +1508,8 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
         return build_position_view(
             _position_from_row(row),
             mint_address=token.mint_address,
-            symbol=token.symbol,
-            name=token.name,
+            symbol=token.symbol or symbol,
+            name=token.name or name,
             mark=mark,
             exit_evaluations=evaluations,
         )

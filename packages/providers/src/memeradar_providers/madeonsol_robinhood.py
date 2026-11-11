@@ -853,6 +853,19 @@ class MadeOnSolRobinhoodAdapter(CandidateDiscoveryPort, OnChainPort):
         event_time, event_text = _optional_timestamp_text(data, "as_of", "as_of", "observed_at")
         bundle = _mapping_field(data, "bundle")
         source = bundle or data
+        cluster_source = {**source, **data}
+        clusters_complete = _optional_bool(cluster_source, "clusters_complete")
+        nested_complete = _optional_bool(bundle, "clusters_complete")
+        outer_complete = _optional_bool(data, "clusters_complete")
+        if (
+            nested_complete is not None
+            and outer_complete is not None
+            and nested_complete != outer_complete
+        ):
+            clusters_complete = None
+        cluster_share = _optional_decimal(cluster_source, "bundled_pct_of_supply_now")
+        if clusters_complete is not True:
+            cluster_share = None
         wallets: list[dict[str, object]] = []
         for index, row in enumerate(_rows(data, "bundle_wallets", "wallets"), start=1):
             rank = _optional_count(row, "rank")
@@ -881,6 +894,16 @@ class MadeOnSolRobinhoodAdapter(CandidateDiscoveryPort, OnChainPort):
             "bundle_fully_exited": _optional_bool(source, "bundle_fully_exited", "fully_exited"),
             "bundle_buy_volume": _optional_decimal(source, "bundle_buy_volume", "buy_volume"),
             "bundle_tokens_held": _optional_decimal(source, "bundle_tokens_held", "tokens_held"),
+            "bundle_clusters_complete": clusters_complete,
+            "bundle_clusters_limit": _optional_count(cluster_source, "clusters_limit"),
+            "bundle_cluster_coverage": (
+                "COMPLETE"
+                if clusters_complete is True
+                else "INCOMPLETE"
+                if clusters_complete is False
+                else "UNKNOWN"
+            ),
+            "bundle_cluster_share_pct_of_supply_now": cluster_share,
             "bundle_signal": _optional_text(data, "bundle_signal", "signal"),
             "bundle_wallets": tuple(wallets),
             "event_time": event_text,

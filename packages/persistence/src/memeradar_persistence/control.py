@@ -8,6 +8,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from memeradar_application.control import (
@@ -432,6 +433,23 @@ class SqlAlchemyControlPlane(ControlPlanePort):
         authorize(principal, ControlAction.MUTATE_CONFIG)
         patch = _runtime_patch(changes, clear)
         async with self._session_factory() as session, session.begin():
+            now = ensure_utc(self._clock(), "clock timestamp")
+            get_bind = getattr(session, "get_bind", None)
+            bind = get_bind() if callable(get_bind) else None
+            dialect = getattr(getattr(bind, "dialect", None), "name", None)
+            if patch and dialect == "postgresql":
+                await session.execute(
+                    postgres_insert(RuntimeSettingsRow)
+                    .values(
+                        id=RUNTIME_SETTINGS_KEY,
+                        version=f"{RUNTIME_SETTINGS_VERSION_PREFIX}0",
+                        updated_at=now,
+                        updated_by="system",
+                        effective_overrides={},
+                        pending_values={},
+                    )
+                    .on_conflict_do_nothing(index_elements=[RuntimeSettingsRow.id])
+                )
             row = cast(
                 RuntimeSettingsRow | None,
                 await session.scalar(
@@ -440,7 +458,6 @@ class SqlAlchemyControlPlane(ControlPlanePort):
                     .with_for_update()
                 ),
             )
-            now = ensure_utc(self._clock(), "clock timestamp")
             current = _runtime_snapshot(row, now=now)
             if expected_version is not None and expected_version != current.version:
                 raise ControlVersionConflictError("runtime settings version conflict")

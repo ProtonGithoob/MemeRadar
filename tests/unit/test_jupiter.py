@@ -80,9 +80,14 @@ def test_jupiter_v2_quote_normalizes_route_price_impact_and_sell_route() -> None
                     output_mint=OUTPUT,
                     amount=Decimal("1000000"),
                     slippage_bps=100,
+                    input_decimals=6,
+                    output_decimals=6,
                 )
             )
             assert quote.output_amount == Decimal("950000")
+            assert quote.amount_unit.value == "RAW_BASE_UNITS"
+            assert quote.human_input_amount == Decimal("1")
+            assert quote.human_output_amount == Decimal("0.95")
             assert quote.price_impact_bps == Decimal("125.0000")
             assert quote.price_semantics is PriceSemantics.EXECUTION_QUOTE
             assert quote.route == ("Raydium", "pool")

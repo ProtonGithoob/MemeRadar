@@ -32,11 +32,11 @@ Future enrichment evaluates T0 decisions; it never rewrites their evidence.
 | CallerIntelligenceOwner | CallPerformanceAnalyzer / caller/social analyzers | Timing and source evidence, not execution authority |
 | AlphaDecisionOwner | EarlyScorer / EarlyDecisionEngine; AlphaScoreRecomputer / DecisionEngine | Versioned immutable advisory decisions |
 | OutcomeOwner | PaperExecutionEngine / PumpFunForwardEvidenceCollector / outcome labelers | Later outcomes separate from decision-time inputs |
-| StreamReliabilityOwner | StreamIntegrityCoordinator / NamedStream / OperationsProjector | Gaps reduce trust; observed health cannot raise rank |
+| StreamReliabilityOwner | StreamIntegrityCoordinator / NamedStream / OperationsProjector | Gaps reduce trust; durable recovery claim ID/expiry fence concurrent workers; observed health cannot raise rank |
 | RuntimeConfigOwner | RuntimeSettingSpec registry / control plane adapters | Admin RBAC, audit, version, pending and external secrets |
 
-The [purpose refactor report](reports/memeradar-purpose-refactor.md) records module,
-class, consumer, metric and route classifications. Provider classes remain
+The [current gap analysis](audits/MEMERADAR_GAP_ANALYSIS.md) records verified
+integration gaps and owner dispositions. Provider classes remain
 transport/normalization adapters; repositories/read views remain projections.
 The sole shared TTL policy for the existing flow/holder/token-security analyzers
 is `evidence_helpers.observation_quality_at`; each analyzer retains its own TTL.
@@ -800,7 +800,9 @@ Phase 10.2 implements the downstream
 It consumes only the immutable replay result, uses fresh advisory strategy
 snapshots with explicit PASS risk evidence for entry selection, and evaluates
 exit rules independently from entry thresholds. Both trade legs reuse the
-existing `paper-fill-v1` model with bounded fee/slippage assumptions. Reports
+existing `paper-fill-v2` model with bounded fee/slippage assumptions. Synthetic
+replay quotes are explicitly display-unit research inputs; executable paper
+orders still require raw units and explicit mint decimals. Reports
 are fixed-notional research artifacts with explicit unknown/skip states,
 score-bucket calibration and deterministic segment metrics for venue,
 liquidity, token age, market regime, social velocity and smart-wallet

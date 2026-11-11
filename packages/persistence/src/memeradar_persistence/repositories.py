@@ -33,6 +33,7 @@ from memeradar_domain import (
     IdentityLinkState,
     Observation,
     PoolIdentity,
+    Provenance,
     QualityState,
     ReasonCode,
     RiskAssessment,
@@ -543,6 +544,32 @@ class ObservationRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def stage_snapshots(
+        self, candidate_id: UUID, *, as_of: datetime
+    ) -> tuple[Observation, ...]:
+        checkpoint = ensure_utc(as_of, "as_of")
+        rows = (await self._session.scalars(
+            select(ObservationRow).where(
+                ObservationRow.candidate_id == candidate_id,
+                ObservationRow.kind == "early.stage_snapshot",
+                ObservationRow.provider == "memeradar.early-runtime",
+                ObservationRow.observed_at <= checkpoint,
+                ObservationRow.ingested_at <= checkpoint,
+            ).order_by(ObservationRow.observed_at, ObservationRow.id).limit(64)
+        )).all()
+        return tuple(Observation(
+            id=row.id, kind=row.kind,
+            provenance=Provenance(
+                provider=row.provider, source_id=row.source_id, observed_at=row.observed_at,
+                parser_version=row.parser_version, raw_payload_hash=row.raw_payload_hash,
+                raw_payload_ref=row.raw_payload_ref,
+            ),
+            occurred_at=row.occurred_at, observed_at=row.observed_at, ingested_at=row.ingested_at,
+            quality_state=QualityState(row.quality_state),
+            normalized_payload=row.normalized_payload,
+            candidate_id=row.candidate_id, token_id=row.token_id,
+        ) for row in rows)
+
     async def add(self, observation: Observation) -> ObservationRow:
         mapped = observation_to_row(observation)
         get = getattr(self._session, "get", None)
@@ -755,6 +782,44 @@ class SocialCallObservationRepository:
         if caller_row is None:
             raise ValueError("social call row is missing its caller identity")
         return social_call_observation_from_row(row, caller_identity_from_row(caller_row))
+
+    async def list_for_asset(
+        self,
+        token: TokenIdentity,
+        *,
+        as_of: datetime,
+        limit: int = 250,
+    ) -> tuple[SocialCallObservation, ...]:
+        """Load a bounded, point-in-time page for one canonical token mint."""
+
+        if not isinstance(token, TokenIdentity):
+            raise TypeError("token must be a TokenIdentity")
+        checkpoint = ensure_utc(as_of, "as_of")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 250:
+            raise ValueError("limit must be between 1 and 250")
+        result = await self._session.execute(
+            select(SocialCallObservationRow, CallerIdentityRow)
+            .join(
+                CallerIdentityRow,
+                CallerIdentityRow.id == SocialCallObservationRow.caller_identity_id,
+            )
+            .where(
+                SocialCallObservationRow.chain == normalize_chain(token.chain).value,
+                SocialCallObservationRow.asset_address == token.mint_address,
+                SocialCallObservationRow.published_at <= checkpoint,
+                SocialCallObservationRow.observed_at <= checkpoint,
+                SocialCallObservationRow.ingested_at <= checkpoint,
+            )
+            .order_by(
+                SocialCallObservationRow.published_at.desc(),
+                SocialCallObservationRow.id.desc(),
+            )
+            .limit(limit)
+        )
+        return tuple(
+            social_call_observation_from_row(row, caller_identity_from_row(caller))
+            for row, caller in result.all()
+        )
 
 
 class CrossChainIdentityEvidenceRepository:

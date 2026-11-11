@@ -12,7 +12,7 @@ Run the keyless checks from a checkout with the protected modes loaded:
 ```bash
 make reliability-doctor
 make reliability-benchmark RELIABILITY_ITERATIONS=1000 \
-  RELIABILITY_OUTPUT=/tmp/memeradar-reliability.json
+  RELIABILITY_OUTPUT=artifacts/verification/memeradar-reliability.json
 ```
 
 The doctor reports `BLOCKED_EXTERNAL` when live provider checks are not run;
@@ -38,7 +38,7 @@ Run the keyless failure matrix with an explicitly bounded load:
 
 ```bash
 make reliability-benchmark RELIABILITY_ITERATIONS=1000 \
-  RELIABILITY_OUTPUT=/tmp/memeradar-reliability.json
+  RELIABILITY_OUTPUT=artifacts/verification/memeradar-reliability.json
 ```
 
 The report is a synthetic local failure matrix. It covers provider
@@ -59,7 +59,7 @@ MEMERADAR_STACK_VIEWER_API_TOKEN="$MEMERADAR_VIEWER_API_TOKEN" \
   make production-soak STACK_SOAK_ITERATIONS=100 \
   STACK_SOAK_INTERVAL_SECONDS=1 \
   STACK_CONTAINER_NAMES=compose-api-1,compose-worker-1,compose-postgres-1,compose-redis-1,compose-web-1 \
-  STACK_SOAK_OUTPUT=/tmp/memeradar-production-stack-soak.json
+  STACK_SOAK_OUTPUT=artifacts/verification/memeradar-production-stack-soak.json
 ```
 
 This emits `production-stack-soak-v1` with the candidate Git SHA, request
@@ -129,8 +129,13 @@ managed-service procedure. After it is reachable:
 
 ```bash
 make migrate
-MEMERADAR_TEST_DATABASE_URL="$MEMERADAR_DATABASE_URL" make integration-test
+export MEMERADAR_TEST_DATABASE_URL="${MEMERADAR_TEST_DATABASE_URL:?set a separate disposable test database URL}"
+make integration-test
 ```
+
+The integration suite writes and removes test rows. Keep this URL pointed at a
+disposable database with the current migrations applied; never copy the runtime
+or production `MEMERADAR_DATABASE_URL` into it.
 
 Readiness must remain failed while a required database is unavailable. After
 reconnect, verify that cursors/gaps, normalized observations and pending

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -133,6 +134,17 @@ def test_missing_graph_evidence_is_unknown_not_a_clean_pass() -> None:
     assert snapshot.risk_disposition is RiskDisposition.UNKNOWN
     assert snapshot.confidence == Decimal("0")
     assert "LAUNCH_RISK_EVIDENCE_UNKNOWN" in snapshot.reason_code_values
+
+
+def test_future_ingestion_cannot_leak_into_launch_or_supply_metrics() -> None:
+    base = wallet_observation("later", creator=True, extra={"creator_pct": "0.9"})
+    delayed = replace(base, ingested_at=NOW + timedelta(seconds=1))
+
+    snapshot = LaunchRiskAnalyzer().evaluate((delayed,), as_of=NOW)
+
+    assert snapshot.creator_related_ratio is None
+    assert snapshot.creator_pct is None
+    assert snapshot.risk_disposition is RiskDisposition.UNKNOWN
 
 
 def test_stale_or_reverted_first_block_evidence_cannot_improve_risk() -> None:

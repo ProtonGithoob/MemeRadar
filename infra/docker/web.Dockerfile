@@ -15,6 +15,8 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+RUN rm -f /usr/local/bin/npm /usr/local/bin/npx && rm -rf /usr/local/lib/node_modules/npm
+
 COPY --from=builder --chown=node:node /app/apps/web/.next/standalone ./
 USER node
 

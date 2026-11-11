@@ -53,6 +53,38 @@ def test_worker_package_exposes_a_module_entrypoint():
     assert callable(entrypoint.main)
 
 
+def test_social_collection_requires_explicit_opt_in_and_provider():
+    values = {
+        "DATABASE_URL": "sqlite+aiosqlite:///./memeradar-test.db",
+        "SOCIAL_API_URL": "https://social.example",
+        "SOCIAL_API_KEY": "test-key",
+    }
+    assert not worker_main._social_collection_is_configured(Settings.from_env(values))
+    assert worker_main._social_collection_is_configured(
+        Settings.from_env({**values, "SOCIAL_COLLECTION_ENABLED": "true"})
+    )
+
+
+def test_worker_starts_opted_in_social_collection(monkeypatch):
+    started = []
+
+    async def collect(stop_event, settings, *, sleeper):
+        started.append(settings.social_collection_enabled)
+        stop_event.set()
+
+    monkeypatch.setattr(worker_main, "run_social_collection", collect)
+    monkeypatch.setattr(worker_main, "_early_alpha_shadow_is_configured", lambda _: False)
+    monkeypatch.setattr(worker_main, "_pumpfun_forward_is_configured", lambda _: False)
+    settings = Settings.from_env({
+        "DATABASE_URL": "sqlite+aiosqlite:///./memeradar-test.db",
+        "SOCIAL_API_URL": "https://social.example",
+        "SOCIAL_API_KEY": "test-key",
+        "SOCIAL_COLLECTION_ENABLED": "true",
+    })
+    asyncio.run(run_worker(asyncio.Event(), settings))
+    assert started == [True]
+
+
 def test_madeonsol_collection_health_distinguishes_empty_success_from_rate_limit() -> None:
     context = ProviderRequestContext("health-test", NOW)
     empty = _madeonsol_collection_health(

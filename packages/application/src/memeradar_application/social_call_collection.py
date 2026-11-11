@@ -154,6 +154,7 @@ class SocialCallCollector:
         if not isinstance(request, SocialDataRequest):
             raise TypeError("request must be a SocialDataRequest")
         normalized_mode = CollectionMode(mode)
+        persist_each_page = persist_each_page or checkpoint_store is not None
         if (
             isinstance(max_pages, bool)
             or not isinstance(max_pages, int)

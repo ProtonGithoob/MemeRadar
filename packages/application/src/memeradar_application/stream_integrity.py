@@ -12,17 +12,18 @@ import inspect
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Protocol, cast
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from memeradar_domain import (
     Chain,
     ChainCursor,
     CommitmentState,
     NormalizedChainEvent,
+    Observation,
     QualityState,
     RecoveryState,
     StreamGap,
@@ -40,6 +41,8 @@ from memeradar_domain.events import ReasonCode
 from memeradar_domain.identities import require_solana_address
 
 from .reliability import emit_latency
+
+_STREAM_VERIFICATION_METHOD = "canonical_event_set_v1"
 
 
 def _chain(value: Chain | str) -> Chain:
@@ -95,12 +98,20 @@ class BackfillUnavailableError(BackfillError):
     error_class = "BACKFILL_UNAVAILABLE"
 
 
+class BackfillUnsupportedDataError(BackfillUnavailableError):
+    error_class = "BACKFILL_UNSUPPORTED_DATA"
+
+
 class BackfillBoundsError(BackfillError):
     error_class = "BACKFILL_BOUNDS"
 
 
 class BackpressureError(RuntimeError):
     """Raised when bounded handoff cannot accept an event without loss."""
+
+
+class GapRecoveryClaimUnavailable(RuntimeError):
+    """Raised when another recovery worker owns or replaced this gap claim."""
 
 
 class EventAppendStatus(str, Enum):
@@ -275,6 +286,7 @@ class BackfillResult:
     source: str
     completed_at: datetime
     attempts: int = 1
+    commitment: CommitmentState | str = CommitmentState.UNKNOWN
 
     def __post_init__(self) -> None:
         if not isinstance(self.request, BackfillRequest):
@@ -297,6 +309,7 @@ class BackfillResult:
         object.__setattr__(self, "blocks", blocks)
         object.__setattr__(self, "source", require_text(self.source, "source", max_length=128))
         object.__setattr__(self, "completed_at", ensure_utc(self.completed_at, "completed_at"))
+        object.__setattr__(self, "commitment", CommitmentState(self.commitment))
         if (
             not isinstance(self.attempts, int)
             or isinstance(self.attempts, bool)
@@ -410,6 +423,45 @@ class StreamStateStore(Protocol):
 
     async def save_gap(self, gap: StreamGap) -> None:
         """Persist a gap projection."""
+
+    async def claim_gap(
+        self,
+        gap_id: UUID,
+        *,
+        claim_id: UUID,
+        now: datetime,
+        lease_expires_at: datetime,
+    ) -> StreamGap | None:
+        """Atomically claim an eligible gap or reclaim an expired lease."""
+
+    async def save_claimed_gap(
+        self,
+        gap: StreamGap,
+        *,
+        claim_id: UUID,
+        now: datetime,
+        lease_expires_at: datetime,
+    ) -> bool:
+        """Heartbeat and persist recovery progress only for the claim owner."""
+
+    async def finish_claimed_gap(
+        self,
+        gap: StreamGap,
+        verification: StreamVerification,
+        *,
+        claim_id: UUID,
+        now: datetime,
+    ) -> bool:
+        """Atomically persist verification and its gap state for the claim owner."""
+
+    async def save_gap_with_observation(
+        self,
+        *,
+        superseded_gaps: Sequence[StreamGap],
+        merged_gap: StreamGap,
+        observation: Observation,
+    ) -> None:
+        """Commit one source diagnostic with the gap that records its loss."""
 
     async def append_event(self, event: NormalizedChainEvent) -> EventAppendResult:
         """Append or reconcile a normalized event."""
@@ -533,6 +585,9 @@ class InMemoryStreamStateStore:
     def __init__(self) -> None:
         self._cursors: dict[tuple[Chain, str, str], ChainCursor] = {}
         self._gaps: dict[UUID, StreamGap] = {}
+        self._gap_claims: dict[UUID, UUID] = {}
+        self._gap_claim_expirations: dict[UUID, datetime] = {}
+        self._gap_observations: dict[UUID, Observation] = {}
         self._events: dict[str, NormalizedChainEvent] = {}
         self._event_history: dict[str, list[NormalizedChainEvent]] = defaultdict(list)
         self._conflicts: dict[str, list[NormalizedChainEvent]] = defaultdict(list)
@@ -570,6 +625,96 @@ class InMemoryStreamStateStore:
 
     async def save_gap(self, gap: StreamGap) -> None:
         self._gaps[gap.id] = gap
+        if gap.status is not StreamGapStatus.RECOVERING:
+            self._gap_claims.pop(gap.id, None)
+            self._gap_claim_expirations.pop(gap.id, None)
+
+    async def claim_gap(
+        self,
+        gap_id: UUID,
+        *,
+        claim_id: UUID,
+        now: datetime,
+        lease_expires_at: datetime,
+    ) -> StreamGap | None:
+        current = self._gaps.get(gap_id)
+        if current is None:
+            return None
+        if current.status is StreamGapStatus.RECOVERING:
+            expiration = self._gap_claim_expirations.get(gap_id)
+            if expiration is not None and expiration > now:
+                return None
+        elif current.status not in {
+            StreamGapStatus.OPEN,
+            StreamGapStatus.FAILED,
+            StreamGapStatus.RECOVERED,
+        }:
+            return None
+        else:
+            current = current.transition(StreamGapStatus.RECOVERING)
+        self._gaps[gap_id] = current
+        self._gap_claims[gap_id] = claim_id
+        self._gap_claim_expirations[gap_id] = lease_expires_at
+        return current
+
+    async def save_claimed_gap(
+        self,
+        gap: StreamGap,
+        *,
+        claim_id: UUID,
+        now: datetime,
+        lease_expires_at: datetime,
+    ) -> bool:
+        if (
+            self._gap_claims.get(gap.id) != claim_id
+            or gap.status is not StreamGapStatus.RECOVERING
+            or self._gap_claim_expirations.get(gap.id) is None
+            or self._gap_claim_expirations[gap.id] <= now
+        ):
+            return False
+        self._gaps[gap.id] = gap
+        self._gap_claim_expirations[gap.id] = lease_expires_at
+        return True
+
+    async def finish_claimed_gap(
+        self,
+        gap: StreamGap,
+        verification: StreamVerification,
+        *,
+        claim_id: UUID,
+        now: datetime,
+    ) -> bool:
+        current = self._gaps.get(gap.id)
+        if (
+            current is None
+            or self._gap_claims.get(gap.id) != claim_id
+            or current.status is not StreamGapStatus.RECOVERING
+            or self._gap_claim_expirations.get(gap.id) is None
+            or self._gap_claim_expirations[gap.id] <= now
+            or verification.gap_id != gap.id
+        ):
+            return False
+        if gap.status is StreamGapStatus.VERIFIED:
+            current.transition(StreamGapStatus.RECOVERED).transition(StreamGapStatus.VERIFIED)
+        else:
+            current.transition(gap.status)
+        self._gaps[gap.id] = gap
+        self._gap_claims.pop(gap.id, None)
+        self._gap_claim_expirations.pop(gap.id, None)
+        self._verifications[gap.id].append(verification)
+        return True
+
+    async def save_gap_with_observation(
+        self,
+        *,
+        superseded_gaps: Sequence[StreamGap],
+        merged_gap: StreamGap,
+        observation: Observation,
+    ) -> None:
+        for gap in superseded_gaps:
+            self._gaps[gap.id] = gap
+        self._gaps[merged_gap.id] = merged_gap
+        self._gap_observations[observation.id] = observation
 
     async def append_event(self, event: NormalizedChainEvent) -> EventAppendResult:
         key = event.canonical_identity
@@ -804,6 +949,10 @@ class StreamIntegrityVerifier:
         conflicting_event_ids: Sequence[str] = (),
         verified_at: datetime | None = None,
         reason_codes: Sequence[str] = (),
+        provider_id: str | None = None,
+        program_scope: str | None = None,
+        commitment: CommitmentState | str = CommitmentState.UNKNOWN,
+        recovery_attempt: int | None = None,
     ) -> StreamVerification:
         expected_block_set = tuple(
             sorted(set(_slot(item, "expected_block") for item in expected_blocks))
@@ -854,6 +1003,11 @@ class StreamIntegrityVerifier:
             verification_status=status,
             verified_at=verified_at,
             reason_codes=reason_codes,
+            provider_id=provider_id,
+            program_scope=program_scope,
+            commitment=commitment,
+            verification_method=_STREAM_VERIFICATION_METHOD,
+            recovery_attempt=recovery_attempt,
         )
 
 
@@ -866,6 +1020,8 @@ class StreamIntegrityPolicy:
     max_backfill_range: int = 1_000
     backfill_timeout_seconds: float = 10.0
     max_backfill_concurrency: int = 4
+    max_gaps_per_recovery_batch: int = 4
+    recovery_interval_seconds: float = 30.0
     analysis_only: bool = True
     paper_trading: bool = True
     manual_execution: bool = False
@@ -876,12 +1032,23 @@ class StreamIntegrityPolicy:
             "max_backfill_retries",
             "max_backfill_range",
             "max_backfill_concurrency",
+            "max_gaps_per_recovery_batch",
         ):
             value = getattr(self, field_name)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
-        if self.max_backfill_range == 0 or self.max_backfill_concurrency == 0:
-            raise ValueError("backfill range and concurrency must be positive")
+        if (
+            self.max_backfill_range == 0
+            or self.max_backfill_concurrency == 0
+            or self.max_gaps_per_recovery_batch == 0
+        ):
+            raise ValueError("backfill range, concurrency and recovery batch must be positive")
+        if isinstance(self.recovery_interval_seconds, bool) or not isinstance(
+            self.recovery_interval_seconds, int | float
+        ):
+            raise TypeError("recovery_interval_seconds must be numeric")
+        if not 0 <= float(self.recovery_interval_seconds) <= 3600:
+            raise ValueError("recovery_interval_seconds must be between 0 and 3600")
         if isinstance(self.retry_delay_seconds, bool) or not isinstance(
             self.retry_delay_seconds, int | float
         ):
@@ -1033,6 +1200,7 @@ class StreamIntegrityCoordinator:
         handoff: BoundedEventHandoff | None = None,
         slot_continuity_expected: bool = True,
         provider_id: str | None = None,
+        program_scope: str | None = None,
         connection_id: str | None = None,
         reconnect_reason: str | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -1053,6 +1221,11 @@ class StreamIntegrityCoordinator:
             require_text(provider_id, "provider_id", max_length=128)
             if provider_id is not None
             else self.transport
+        )
+        self.program_scope = (
+            require_text(program_scope, "program_scope", max_length=512)
+            if program_scope is not None
+            else None
         )
         self.connection_id = (
             require_text(connection_id, "connection_id", max_length=256)
@@ -1114,48 +1287,6 @@ class StreamIntegrityCoordinator:
             await self.handoff.put(result.event)
         return result
 
-    async def _reconcile_observed_slot(self, slot: int) -> None:
-        """Remove a durably observed live slot from any explicit missing ranges."""
-
-        for gap in await self._active_gaps():
-            if (
-                gap.chain is not self.chain
-                or gap.transport != self.transport
-                or gap.stream_id != self.stream_id
-                or not gap.from_slot <= slot <= gap.to_slot
-            ):
-                continue
-            await self.state_store.save_gap(gap.transition(StreamGapStatus.SUPERSEDED))
-            residuals: list[StreamGap] = []
-            if gap.from_slot < slot:
-                residuals.append(
-                    StreamGap(
-                        chain=self.chain,
-                        transport=self.transport,
-                        stream_id=self.stream_id,
-                        from_slot=gap.from_slot,
-                        to_slot=slot - 1,
-                        detected_at=gap.detected_at,
-                        detection_method="LIVE_SLOT_RECONCILIATION",
-                        merged_gap_ids=gap.merged_gap_ids,
-                    )
-                )
-            if slot < gap.to_slot:
-                residuals.append(
-                    StreamGap(
-                        chain=self.chain,
-                        transport=self.transport,
-                        stream_id=self.stream_id,
-                        from_slot=slot + 1,
-                        to_slot=gap.to_slot,
-                        detected_at=gap.detected_at,
-                        detection_method="LIVE_SLOT_RECONCILIATION",
-                        merged_gap_ids=gap.merged_gap_ids,
-                    )
-                )
-            for residual in residuals:
-                await self.state_store.save_gap(residual)
-
     async def _refresh_metric_gauges(self) -> None:
         """Expose current progress and gap lag when the telemetry sink supports gauges."""
 
@@ -1177,10 +1308,25 @@ class StreamIntegrityCoordinator:
         setter("open_gap_count", len(gaps))
         setter("oldest_gap_age_seconds", oldest_age)
 
-    async def _record_gap(self, detected: StreamGap) -> StreamGap:
+    async def _record_gap(
+        self,
+        detected: StreamGap,
+        *,
+        observation: Observation | None = None,
+    ) -> StreamGap:
+        existing = await self.state_store.list_gaps()
+        exact = next(
+            (gap for gap in existing if detected.id in gap.merged_gap_ids),
+            None,
+        )
+        if exact is not None:
+            if observation is not None:
+                await self.state_store.save_gap_with_observation(
+                    superseded_gaps=(), merged_gap=exact, observation=observation
+                )
+            return exact
         self.telemetry.increment("gaps_detected")
         self.telemetry.increment("slots_missing", detected.slot_count)
-        existing = await self.state_store.list_gaps()
         candidates = [
             gap
             for gap in existing
@@ -1192,8 +1338,18 @@ class StreamIntegrityCoordinator:
         merged = detected
         for gap in candidates:
             merged = merged.merge(gap)
-            await self.state_store.save_gap(gap.transition(StreamGapStatus.SUPERSEDED))
-        await self.state_store.save_gap(merged)
+        if observation is not None:
+            await self.state_store.save_gap_with_observation(
+                superseded_gaps=tuple(
+                    gap.transition(StreamGapStatus.SUPERSEDED) for gap in candidates
+                ),
+                merged_gap=merged,
+                observation=observation,
+            )
+        else:
+            for gap in candidates:
+                await self.state_store.save_gap(gap.transition(StreamGapStatus.SUPERSEDED))
+            await self.state_store.save_gap(merged)
         return merged
 
     async def _active_gaps(self) -> tuple[StreamGap, ...]:
@@ -1201,7 +1357,10 @@ class StreamIntegrityCoordinator:
         return tuple(
             gap
             for gap in gaps
-            if gap.status not in {StreamGapStatus.VERIFIED, StreamGapStatus.SUPERSEDED}
+            if gap.chain is self.chain
+            and gap.transport == self.transport
+            and gap.stream_id == self.stream_id
+            and gap.status not in {StreamGapStatus.VERIFIED, StreamGapStatus.SUPERSEDED}
             and (
                 self.slot_continuity_expected
                 or gap.detection_method
@@ -1214,14 +1373,53 @@ class StreamIntegrityCoordinator:
 
         return await self._active_gaps()
 
+    async def record_observation_gap(
+        self,
+        slot: int,
+        *,
+        detected_at: datetime,
+        observation: Observation | None = None,
+    ) -> StreamGap:
+        """Persist a known failed observation until bounded backfill verifies its slot."""
+        missing_slot = _slot(slot)
+        if observation is not None and not isinstance(observation, Observation):
+            raise TypeError("observation must be an Observation or None")
+        identity = (
+            str(observation.id)
+            if observation is not None
+            else f"{missing_slot}:{ensure_utc(detected_at, 'detected_at').isoformat()}"
+        )
+        return await self._record_gap(StreamGap(
+            chain=self.chain,
+            transport=self.transport,
+            stream_id=self.stream_id,
+            from_slot=missing_slot,
+            to_slot=missing_slot,
+            detected_at=ensure_utc(detected_at, "detected_at"),
+            detection_method="FAILED_OBSERVATION",
+            provider_id=self.provider_id,
+            id=uuid5(
+                NAMESPACE_URL,
+                f"memeradar:failed-observation:{self.chain.value}:{self.transport}:"
+                f"{self.stream_id}:{identity}",
+            ),
+        ), observation=observation)
+
     async def recover_active_gaps(self) -> tuple[GapRecoveryResult, ...]:
         """Boundedly reconcile active gaps when a backfill port is configured."""
 
         if self.backfill_port is None:
             return ()
         results: list[GapRecoveryResult] = []
-        for gap in await self._active_gaps():
-            results.append(await self.recover_gap(gap.id))
+        eligible = sorted(
+            await self._active_gaps(),
+            key=lambda gap: (gap.attempt_count, gap.detected_at, gap.from_slot, str(gap.id)),
+        )
+        for gap in eligible[: self.policy.max_gaps_per_recovery_batch]:
+            try:
+                results.append(await self.recover_gap(gap.id))
+            except GapRecoveryClaimUnavailable:
+                continue
         return tuple(results)
 
     async def _save_cursor_after_event(
@@ -1232,6 +1430,10 @@ class StreamIntegrityCoordinator:
         initial: bool = False,
     ) -> ChainCursor:
         if cursor is None or initial:
+            active = await self._active_gaps()
+            contiguous = min(
+                (max(0, gap.from_slot - 1) for gap in active), default=event.slot
+            )
             finalized = event.slot if event.commitment is CommitmentState.FINALIZED else 0
             next_cursor = ChainCursor(
                 chain=self.chain,
@@ -1239,7 +1441,7 @@ class StreamIntegrityCoordinator:
                 stream_id=self.stream_id,
                 commitment=event.commitment,
                 last_observed_slot=event.slot,
-                last_contiguous_slot=event.slot,
+                last_contiguous_slot=min(event.slot, contiguous),
                 last_finalized_slot=finalized,
                 last_signature=event.signature,
                 updated_at=max(event.ingested_at, self.clock()),
@@ -1297,7 +1499,6 @@ class StreamIntegrityCoordinator:
             raise
         result = await self._persist_decoded(event)
         if result.status is not EventAppendStatus.CONFLICTED:
-            await self._reconcile_observed_slot(result.event.slot)
             await self._save_cursor_after_event(cursor, result.event, initial=cursor is None)
         await self._refresh_metric_gauges()
         return result
@@ -1388,10 +1589,28 @@ class StreamIntegrityCoordinator:
         except ValueError as exc:
             raise BackfillBoundsError(str(exc)) from exc
 
+    async def _save_claimed_gap(
+        self,
+        gap: StreamGap,
+        *,
+        claim_id: UUID,
+        lease_seconds: float,
+    ) -> None:
+        now = self.clock()
+        lease_expires_at = now + timedelta(seconds=max(1.0, lease_seconds))
+        if not await self.state_store.save_claimed_gap(
+            gap,
+            claim_id=claim_id,
+            now=now,
+            lease_expires_at=lease_expires_at,
+        ):
+            raise GapRecoveryClaimUnavailable("recovery claim expired or changed owners")
+
     async def _failed_recovery(
         self,
         gap: StreamGap,
         *,
+        claim_id: UUID,
         error_class: str,
         attempts: int,
     ) -> GapRecoveryResult:
@@ -1401,7 +1620,6 @@ class StreamIntegrityCoordinator:
             attempt_count=attempts,
             last_error_class=error_class,
         )
-        await self.state_store.save_gap(failed)
         verification = StreamVerification(
             gap_id=gap.id,
             chain=self.chain,
@@ -1414,8 +1632,17 @@ class StreamIntegrityCoordinator:
             verification_status=StreamVerificationStatus.FAIL,
             verified_at=self.clock(),
             reason_codes=(ReasonCode(error_class),),
+            provider_id=self.provider_id,
+            program_scope=self.program_scope,
+            recovery_attempt=attempts,
         )
-        await self.state_store.save_verification(verification)
+        if not await self.state_store.finish_claimed_gap(
+            failed,
+            verification,
+            claim_id=claim_id,
+            now=self.clock(),
+        ):
+            raise GapRecoveryClaimUnavailable("recovery claim expired or changed owners")
         self.telemetry.increment("recovery_failures")
         self.telemetry.increment("verification_failures")
         await self._refresh_metric_gauges()
@@ -1432,28 +1659,50 @@ class StreamIntegrityCoordinator:
             if verification is None:
                 raise ValueError("verified gap has no verification report")
             return GapRecoveryResult(gap, verification, (), gap.attempt_count)
+        claim_id = uuid4()
+        claimed_at = self.clock()
+        recovering = await self.state_store.claim_gap(
+            gap.id,
+            claim_id=claim_id,
+            now=claimed_at,
+            lease_expires_at=claimed_at
+            + timedelta(seconds=max(30.0, self.policy.backfill_timeout_seconds + 30.0)),
+        )
+        if recovering is None:
+            latest = await self.state_store.get_gap(gap.id)
+            if latest is not None and latest.status is StreamGapStatus.VERIFIED:
+                verification = await self.state_store.latest_verification(gap.id)
+                if verification is None:
+                    raise ValueError("verified gap has no verification report")
+                return GapRecoveryResult(latest, verification, (), latest.attempt_count)
+            raise GapRecoveryClaimUnavailable("gap is claimed by another recovery worker")
         if self.backfill_port is None:
             return await self._failed_recovery(
-                gap,
+                recovering,
+                claim_id=claim_id,
                 error_class=BackfillUnavailableError.error_class,
-                attempts=gap.attempt_count + 1,
+                attempts=recovering.attempt_count + 1,
             )
         try:
-            request = await self.make_backfill_request(gap)
+            request = await self.make_backfill_request(recovering)
         except BackfillError as exc:
             return await self._failed_recovery(
-                gap,
+                recovering,
+                claim_id=claim_id,
                 error_class=exc.error_class,
-                attempts=gap.attempt_count + 1,
+                attempts=recovering.attempt_count + 1,
             )
-        recovering = gap.transition(StreamGapStatus.RECOVERING)
-        await self.state_store.save_gap(recovering)
         result: BackfillResult | None = None
-        attempts = gap.attempt_count
+        attempts = recovering.attempt_count
+        current = recovering
         for retry_number in range(self.policy.max_backfill_retries + 1):
             attempts += 1
             current = replace(recovering, attempt_count=attempts)
-            await self.state_store.save_gap(current)
+            await self._save_claimed_gap(
+                current,
+                claim_id=claim_id,
+                lease_seconds=self.policy.backfill_timeout_seconds + 30.0,
+            )
             self.telemetry.increment("backfill_attempts")
             started = self.clock()
             try:
@@ -1477,6 +1726,7 @@ class StreamIntegrityCoordinator:
             except BackfillBoundsError as exc:
                 return await self._failed_recovery(
                     current,
+                    claim_id=claim_id,
                     error_class=exc.error_class,
                     attempts=attempts,
                 )
@@ -1485,11 +1735,21 @@ class StreamIntegrityCoordinator:
                     self.telemetry.increment("rate_limit_events")
                 if retry_number < self.policy.max_backfill_retries:
                     self.telemetry.increment("backfill_retries")
+                    await self._save_claimed_gap(
+                        current,
+                        claim_id=claim_id,
+                        lease_seconds=(
+                            self.policy.retry_delay_seconds
+                            + self.policy.backfill_timeout_seconds
+                            + 30.0
+                        ),
+                    )
                     if self.policy.retry_delay_seconds:
                         await asyncio.sleep(self.policy.retry_delay_seconds)
                     continue
                 return await self._failed_recovery(
                     current,
+                    claim_id=claim_id,
                     error_class=exc.error_class,
                     attempts=attempts,
                 )
@@ -1498,10 +1758,17 @@ class StreamIntegrityCoordinator:
                 self.telemetry.observe_latency("backfill_latency_ms", elapsed)
         if result is None:
             return await self._failed_recovery(
-                recovering,
+                current,
+                claim_id=claim_id,
                 error_class=BackfillUnavailableError.error_class,
                 attempts=attempts,
             )
+
+        await self._save_claimed_gap(
+            current,
+            claim_id=claim_id,
+            lease_seconds=self.policy.backfill_timeout_seconds + 30.0,
+        )
 
         decoded: list[NormalizedChainEvent] = []
         recovered_output: list[NormalizedChainEvent] = []
@@ -1514,7 +1781,13 @@ class StreamIntegrityCoordinator:
         )
         persisted_candidates: list[NormalizedChainEvent] = list(existing_before_recovery)
         recovery_at = max(result.completed_at, self.clock())
-        for transaction in result.transactions:
+        for index, transaction in enumerate(result.transactions):
+            if index and index % 32 == 0:
+                await self._save_claimed_gap(
+                    current,
+                    claim_id=claim_id,
+                    lease_seconds=self.policy.backfill_timeout_seconds + 30.0,
+                )
             try:
                 event = self.decoder.decode_backfill(
                     transaction,
@@ -1554,6 +1827,10 @@ class StreamIntegrityCoordinator:
             conflicting_event_ids=conflict_ids,
             verified_at=result.completed_at,
             reason_codes=("BACKFILL_DECODER_UNSUPPORTED",) if unsupported else (),
+            provider_id=self.provider_id,
+            program_scope=self.program_scope,
+            commitment=result.commitment,
+            recovery_attempt=attempts,
         )
         verification = replace(verification, gap_id=gap.id)
         if unsupported and verification.verification_status is StreamVerificationStatus.PASS:
@@ -1562,7 +1839,7 @@ class StreamIntegrityCoordinator:
                 verification_status=StreamVerificationStatus.INCOMPLETE,
                 reason_codes=(ReasonCode("BACKFILL_DECODER_UNSUPPORTED"),),
             )
-        await self.state_store.save_verification(verification)
+        verified_output: list[NormalizedChainEvent] = []
         if verification.verification_status is StreamVerificationStatus.PASS:
             verified_gap = replace(
                 recovering,
@@ -1573,7 +1850,6 @@ class StreamIntegrityCoordinator:
                 last_error_class=None,
                 events_unrecoverable=0,
             )
-            verified_output: list[NormalizedChainEvent] = []
             recovered_ids = {event.canonical_identity for event in recovered_for_update}
             for event in recovered_output:
                 if event.canonical_identity not in recovered_ids:
@@ -1584,17 +1860,7 @@ class StreamIntegrityCoordinator:
                     recovery_state=RecoveryState.RECOVERED_VERIFIED,
                     quality_state=QualityState.FRESH,
                 )
-                if verified_event != event:
-                    await self.state_store.update_event(verified_event)
                 verified_output.append(verified_event)
-            self.telemetry.increment("recovery_successes")
-            self.telemetry.increment("verification_passes")
-            self.telemetry.increment("backfill_successes")
-            self.telemetry.increment("recovered_slots", len(expected_blocks))
-            self.telemetry.increment(
-                "recovered_events",
-                len({event.canonical_identity for event in (*existing_before_recovery, *decoded)}),
-            )
         elif verification.verification_status is StreamVerificationStatus.CONFLICTED:
             verified_gap = replace(
                 recovering,
@@ -1624,7 +1890,26 @@ class StreamIntegrityCoordinator:
                 ),
             )
             self.telemetry.increment("verification_incomplete")
-        await self.state_store.save_gap(verified_gap)
+        if not await self.state_store.finish_claimed_gap(
+            verified_gap,
+            verification,
+            claim_id=claim_id,
+            now=self.clock(),
+        ):
+            raise GapRecoveryClaimUnavailable("recovery claim expired or changed owners")
+        if verification.verification_status is StreamVerificationStatus.PASS:
+            recovered_ids = {event.canonical_identity for event in recovered_for_update}
+            for event in verified_output:
+                if event.canonical_identity in recovered_ids:
+                    await self.state_store.update_event(event)
+            self.telemetry.increment("recovery_successes")
+            self.telemetry.increment("verification_passes")
+            self.telemetry.increment("backfill_successes")
+            self.telemetry.increment("recovered_slots", len(expected_blocks))
+            self.telemetry.increment(
+                "recovered_events",
+                len({event.canonical_identity for event in (*existing_before_recovery, *decoded)}),
+            )
         await self._refresh_metric_gauges()
         if verified_gap.status is StreamGapStatus.VERIFIED:
             cursor = await self._cursor()
@@ -1664,6 +1949,7 @@ __all__ = [
     "ChainBackfillPort",
     "EventAppendResult",
     "EventAppendStatus",
+    "GapRecoveryClaimUnavailable",
     "GapDetector",
     "GapRecoveryResult",
     "InMemoryStreamStateStore",

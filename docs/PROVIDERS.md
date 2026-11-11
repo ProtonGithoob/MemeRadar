@@ -68,17 +68,22 @@ distinct in operator projections.
 
 ### Research-only wallet, social and Robinhood extensions
 
-The optional `ExternalWalletEventStreamAdapter` accepts an injected
-CabalSpy-style stream for Solana, BNB and Robinhood (and rejects other chains
-through canonical identity validation). It emits the existing normalized wallet
+The optional `ExternalWalletEventStreamAdapter` accepts an injected generic
+wallet stream for Solana, BNB and Robinhood (and rejects other chains through
+canonical identity validation). It emits the existing normalized wallet
 observation shape with chain-qualified source IDs, event-time timestamps,
 deduplication, sequence-gap evidence, bounded reconnect/backoff, bounded event
-count, provider health and optional RPC/provider fallback. The thin
-`CabalSpyWebSocketSource` uses the documented subscription envelope but remains
-optional and doctor-gated; credentials never enter normalized payloads.
-External labels or scores are retained as advisory payload evidence only; local
-wallet history, graph and conduct calculations remain authoritative. An
-unresolved sequence gap is `DEGRADED`, never fully healthy/fresh.
+count, provider health and optional RPC/provider fallback. The existing
+`CabalSpyWebSocketSource` implements a legacy generic subscription envelope; it
+is not an integration with the current CabalSpy ID app-user trade-feed API. That
+API requires an application instance, an identified user and explicit
+`trade_feed` consent. MemeRadar has no user identity/consent binding for it, so
+the current CabalSpy ID feed is not wired. If added, trades and theses remain
+read-only corroboration; they must never trigger copy-trading or execution.
+Credentials never enter normalized payloads. External labels or scores remain
+advisory; local wallet history, graph and conduct calculations remain
+authoritative. An unresolved sequence gap is `DEGRADED`, never fully
+healthy/fresh.
 
 `HistoricalSocialBackfillProvider` extends the existing `SocialCallPort` with a
 bounded time window. `SocialRestAdapter.backfill` reuses
@@ -112,6 +117,32 @@ was imported. The optional GMGN adapter is independently implemented against
 the audited server-side read contract and remains `LIVE_SHADOW` with weight
 zero. Live provider credentials and compliant historical real-data cohorts
 remain external validation blockers.
+
+### 2–3 November 2026 open-source watch
+
+The [MadeOnSol Robinhood SDK](https://github.com/MadeOnSol/robinhood-chain-sdk)
+adapter remains read-only. Its current enrichment requests do not call the
+SDK's newer PRO+ bundle-cluster endpoints. If cluster metadata is present in a
+response, the normalizer now preserves `clusters_complete` and `clusters_limit`
+and exposes `bundled_pct_of_supply_now` only when the provider explicitly says
+the cluster set is complete. The existing `bundle_held_share` field remains a
+separate legacy measurement. `kol_net_eth` means net ETH flow, not realized
+profit or loss; the documented LP-events coverage is removals only. No extra
+PRO+ calls or score inputs were enabled.
+
+[PumpData's daily graduation files](https://pumpdata.fun/llms.txt) are
+retrospective research evidence, not a launch feed: graduation-speed and
+same-second outcomes become valid only at graduation time. MemeRadar has no
+PumpData adapter or post-graduation comparison consumer yet, so these fields
+must not enter launch-time discovery or scoring. The shared provider transport
+already applies bounded retry/backoff and rate-limit handling; no Pythia-specific
+adapter was found. Replay memory optimization is deferred until a real large
+dataset is available to profile. The [Hood Synapse API](https://github.com/hoodsynapse/hood-synapse)
+samples every hundredth block, making it suitable only for daily/history
+regime research, not real-time launch detection. No Hood Synapse path was added.
+The named Sol Parser package/version was not present in the repository; the
+reported README/release version mismatch remains an adoption blocker until an
+authoritative release is aligned.
 
 ### Opportunity discovery evidence
 
@@ -164,18 +195,18 @@ All provider ports operate under strict fail-closed boundaries:
 - Third-party risk scores are corroborating evidence only and never override MemeRadar's deterministic risk hard gates.
 - `AUTO_EXECUTION=false` and `MANUAL_EXECUTION=false` remain permanently locked.
 
-The application `SocialCallCollector` is the shared bounded orchestration seam
-for historical and live call ingestion. It consumes the existing
-`SocialCallPort`/`SocialDataRequest`, paginates historical cursors only up to a
-configured page bound, keeps live collection to one resumable batch, orders
-calls by published/observed/ingested event time, replaces an earlier record
-only when a later provider observation explicitly marks it edited, and rejects
-conflicting duplicate identities. It writes through the existing
-`SocialCallObservationRepository`-compatible sink, so provider payloads and
-database details do not enter application logic. Reports expose bounded page,
-duplicate, persistence, cursor and ingestion-lag metrics; social and Telegram
-doctors expose `collector=UNKNOWN` until a collection run exists, or
-`CONFIGURATION_MISSING` when required access is absent.
+The application `SocialCallCollector` is a reusable bounded orchestration
+contract for historical and one-batch live call collection. It consumes
+`SocialCallPort`/`SocialDataRequest`, bounds pagination, orders calls by
+published/observed/ingested time, accepts only explicit provider edits, rejects
+conflicting identities, and writes through a repository-compatible sink.
+However, the current provider bundle and worker do not invoke this collector;
+the social call producer is therefore not operationally wired. A persisted
+social-call table/repository and read query exist, but no configured collection
+run was accepted. Caller conduct analysis is also deterministic-only: the
+`CallerMarketConductAnalyzer` has no production producer, persistence owner or
+read projection. Do not interpret these classes as live caller intelligence.
+The doctor reports collector state UNKNOWN until a collection run exists.
 
 ## Paper execution boundary
 
@@ -499,6 +530,17 @@ latency samples. Those samples must be classified `LIVE_VERIFIED` by the
 early observability projection; synthetic benchmark output never establishes a
 production SLO. The doctor has no quote, signer, transaction or live-money
 execution dependency.
+
+The worker's candidate gate separately requires fresh parsed mint-authority
+evidence, a current market snapshot, and fresh executable buy and sell quotes.
+Standard Solana `getAccountInfo(jsonParsed)` supplies SPL mint authority
+fields when the RPC parser recognizes the mint. The Jupiter Swap V2 quote read
+is enabled only when its URL and API key are configured; a DexScreener
+market-reference quote is never treated as executable or as zero-impact proof.
+The route check uses a read-only 0.01 SOL probe and never builds, signs or
+submits a swap. Missing inputs remain UNKNOWN and cannot create a Telegram
+notification. Re-evaluations persist updated same-state snapshots so new
+evidence appears before a candidate changes state.
 
 ## Correlation / launch micro-feature seam
 

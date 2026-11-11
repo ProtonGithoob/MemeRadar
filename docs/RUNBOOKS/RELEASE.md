@@ -58,7 +58,7 @@ broader closure boundary separately:
 
 ```bash
 make deterministic-release-gates
-MEMERADAR_TEST_DATABASE_URL="$MEMERADAR_DATABASE_URL" \
+export MEMERADAR_TEST_DATABASE_URL="${MEMERADAR_TEST_DATABASE_URL:?set a separate disposable test database URL}"
 MEMERADAR_E2E_BASE_URL="https://the-tested-production-build.example" \
   make prod-read-only-verify
 ```
@@ -66,8 +66,10 @@ MEMERADAR_E2E_BASE_URL="https://the-tested-production-build.example" \
 `make deterministic-release-gates` is keyless/deterministic. The stricter
 `prod-read-only-verify` requires both an explicit PostgreSQL test URL and
 `MEMERADAR_E2E_BASE_URL` for an already-running production build; it fails
-closed instead of starting the development Playwright server. Keep ordinary
-`make frontend-e2e` for developer-only browser checks.
+closed instead of starting the development Playwright server. The PostgreSQL
+URL must point to a separate disposable test database with the candidate
+migrations applied; never reuse the application runtime or production URL.
+Keep ordinary `make frontend-e2e` for developer-only browser checks.
 
 ## Reproducible local production-read-only acceptance
 
@@ -83,7 +85,7 @@ make production-images
 docker compose -f infra/compose/docker-compose.yml \
   -f infra/compose/docker-compose.prod.yml up -d --wait
 
-MEMERADAR_TEST_DATABASE_URL="$MEMERADAR_DATABASE_URL" \
+export MEMERADAR_TEST_DATABASE_URL="${MEMERADAR_TEST_DATABASE_URL:?set a separate disposable test database URL}"
 MEMERADAR_E2E_BASE_URL="http://127.0.0.1:13000" \
   make prod-read-only-verify
 

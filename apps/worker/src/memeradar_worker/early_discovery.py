@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterable
+from collections.abc import AsyncIterable, Mapping
 from contextlib import suppress
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
+from hashlib import sha256
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -17,13 +20,22 @@ from memeradar_application.discovery_collection import (
     CandidateDiscoveryCollector,
     DiscoveryCollectionReport,
 )
-from memeradar_application.early_runtime import EarlyRuntimeResult, EarlyRuntimeService
+from memeradar_application.early_runtime import (
+    EarlyRuntimeResult,
+    EarlyRuntimeService,
+    _observation_for_event,
+)
 from memeradar_application.early_worker import EarlyRuntimeStreamReport, EarlyRuntimeStreamWorker
 from memeradar_application.historical_dataset import MADEONSOL_REAL_EVIDENCE_CLASS
 from memeradar_application.provider_contracts import (
     CandidateDiscoveryPort,
     DiscoveryRequest,
+    MarketDataRequest,
+    OnChainRequest,
     ProviderRequestContext,
+    QuoteAmountUnit,
+    QuoteRequest,
+    QuoteSnapshot,
 )
 from memeradar_application.pumpfun_forward import (
     EARLY_REEVALUATION_OFFSETS_SECONDS,
@@ -36,6 +48,7 @@ from memeradar_application.stream_integrity import (
     RawChainTransaction,
     StreamIntegrityCoordinator,
 )
+from memeradar_application.token_security import TokenSecurityEvaluator
 from memeradar_domain import (
     Candidate,
     Chain,
@@ -43,10 +56,12 @@ from memeradar_domain import (
     FeatureSnapshot,
     NormalizedChainEvent,
     Observation,
+    PriceSemantics,
     Provenance,
     QualityState,
     RiskAssessment,
     ScoreSnapshot,
+    TokenIdentity,
 )
 from memeradar_persistence import (
     ObservationRow,
@@ -54,13 +69,14 @@ from memeradar_persistence import (
     SqlAlchemyUnitOfWork,
     create_database_engine,
 )
-from memeradar_providers.composition import build_provider_bundle
+from memeradar_providers.composition import ProviderBundle, build_provider_bundle
 from memeradar_providers.protocol_registry import (
     DEFAULT_PROTOCOL_REGISTRY,
     CanonicalProtocolDecoder,
 )
 from memeradar_providers.solana_raw_stream import (
     SOLANA_PUBLIC_WEBSOCKET_URL,
+    SolanaLogsNotification,
     SolanaRawTransactionSource,
     SolanaRpcBackfillAdapter,
 )
@@ -72,7 +88,57 @@ from memeradar_providers.transport import (
     ProviderUnavailableError,
 )
 
+from .caller_conduct_research import process_with_caller_conduct_research
 from .operations_jobs import LOGGER, Sleep, _run_solana_ingestion_health
+from .pre_identity_rejection import (
+    build_pre_identity_rejection_observation,
+    reconcile_pre_identity_page,
+)
+
+_EARLY_QUOTE_PROBE_LAMPORTS = Decimal("10000000")  # 0.01 SOL; read-only route probe.
+_EARLY_QUOTE_PROBE_SLIPPAGE_BPS = 100
+_WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112"
+_EARLY_TOKEN_SECURITY_CONFIG_HASH = sha256(b"memeradar-early-token-security-v1").hexdigest()
+
+
+def _caller_research_token(event: object) -> TokenIdentity | None:
+    if isinstance(event, NormalizedChainEvent):
+        payload = event.normalized_payload
+        chain_value: object = event.chain
+        token_id = event.token_id
+    elif isinstance(event, Observation):
+        payload = event.normalized_payload
+        chain_value = payload.get("chain", Chain.SOLANA)
+        token_id = event.token_id
+    else:
+        return None
+    if not isinstance(chain_value, Chain | str):
+        return None
+    try:
+        normalized_chain = Chain(chain_value)
+    except ValueError:
+        return None
+    if normalized_chain is not Chain.SOLANA:
+        return None
+    mint = next(
+        (
+            value
+            for key in ("mint_address", "mint", "token_mint", "base_mint")
+            if isinstance(value := payload.get(key), str)
+        ),
+        None,
+    )
+    if not isinstance(mint, str):
+        return None
+    token_program = payload.get("token_program", "spl-token")
+    if not isinstance(token_program, str):
+        return None
+    return TokenIdentity(
+        mint_address=mint,
+        chain=Chain.SOLANA,
+        token_program=token_program,
+        id=token_id or uuid5(NAMESPACE_URL, f"memeradar:chain-token:{mint}"),
+    )
 
 
 class _BoundRuntimeRepositories:
@@ -112,6 +178,11 @@ class _BoundRuntimeRepositories:
 
     async def get(self, candidate_id: UUID) -> Candidate | None:
         return await self._uow().candidates.get(candidate_id)
+
+    async def stage_snapshots(
+        self, candidate_id: UUID, *, as_of: datetime
+    ) -> tuple[Observation, ...]:
+        return await self._uow().observations.stage_snapshots(candidate_id, as_of=as_of)
 
     async def enqueue(
         self,
@@ -348,6 +419,29 @@ async def _run_gmgn_shadow(
     )
 
 
+async def _run_pre_identity_reconciliation(
+    stop_event: asyncio.Event, engine: AsyncEngine, *, sleeper: Sleep
+) -> None:
+    cursor: UUID | None = None
+    while not stop_event.is_set():
+        try:
+            result = await reconcile_pre_identity_page(
+                engine, as_of=datetime.now(UTC), after=cursor
+            )
+            if result.get("recovered"):
+                LOGGER.info(
+                    "pre_identity_reconciliation_linked",
+                    extra={"linked_count": result["recovered"]},
+                )
+            next_cursor = result["next_cursor"]
+            cursor = UUID(next_cursor) if isinstance(next_cursor, str) else None
+        except Exception as error:  # noqa: BLE001 - retry from the same page.
+            LOGGER.warning(
+                "pre_identity_reconciliation_failed", extra={"error_class": type(error).__name__}
+            )
+        await sleeper(30.0)
+
+
 async def _run_early_alpha_shadow(
     stop_event: asyncio.Event,
     settings: Settings,
@@ -364,16 +458,33 @@ async def _run_early_alpha_shadow(
 
     generated_source: SolanaRawTransactionSource | None = None
     provider_bundle = None
+    assert settings.database_url is not None
+    engine = create_database_engine(settings.database_url)
     if source is None:
         provider_bundle = build_provider_bundle(settings)
+
+        async def record_rejection(
+            notification: SolanaLogsNotification, program_id: str, reason: str
+        ) -> None:
+            await coordinator.record_observation_gap(
+                notification.slot,
+                detected_at=notification.observed_at,
+                observation=build_pre_identity_rejection_observation(
+                    notification,
+                    program_id,
+                    reason,
+                    transport="solana-raw-stream",
+                    stream_id="early-alpha-v1",
+                ),
+            )
+
         generated_source = SolanaRawTransactionSource(
             provider_bundle.solana_rpc,
             websocket_url=settings.solana_stream_url or SOLANA_PUBLIC_WEBSOCKET_URL,
             stop_event=stop_event,
+            rejection_sink=record_rejection,
         )
         source = generated_source
-    assert settings.database_url is not None
-    engine = create_database_engine(settings.database_url)
     stores = _BoundRuntimeRepositories()
     runtime = EarlyRuntimeService(
         observation_store=stores,
@@ -382,6 +493,7 @@ async def _run_early_alpha_shadow(
         risk_store=stores,
         score_store=stores,
         outbox_store=stores,
+        paper_outbox_enabled=settings.paper_auto_policy is not None,
     )
     stream_store = SqlAlchemyStreamStateStore(engine)
     coordinator = StreamIntegrityCoordinator(
@@ -396,6 +508,9 @@ async def _run_early_alpha_shadow(
             else None
         ),
         provider_id="solana-public-rpc",
+        program_scope=(
+            f"program:{generated_source.program_id}" if generated_source is not None else None
+        ),
         # logsSubscribe is program-scoped and the source only emits launch
         # transactions. A slot jump is not evidence of a missing Pump.fun event.
         slot_continuity_expected=False,
@@ -403,6 +518,7 @@ async def _run_early_alpha_shadow(
     runtime_lock = asyncio.Lock()
     health_task: asyncio.Task[None] | None = None
     reevaluation_task: asyncio.Task[None] | None = None
+    reconciliation_task: asyncio.Task[None] | None = None
     if generated_source is not None:
         health_task = asyncio.create_task(
             _run_solana_ingestion_health(
@@ -420,9 +536,15 @@ async def _run_early_alpha_shadow(
                 runtime,
                 stores,
                 runtime_lock,
+                provider_bundle,
+                coordinator,
                 sleeper=sleeper,
             ),
             name="early-lifecycle-reevaluation",
+        )
+        reconciliation_task = asyncio.create_task(
+            _run_pre_identity_reconciliation(stop_event, engine, sleeper=sleeper),
+            name="pre-identity-reconciliation",
         )
 
     async def process_event(
@@ -430,10 +552,39 @@ async def _run_early_alpha_shadow(
         *,
         stream_gap: bool,
     ) -> EarlyRuntimeResult:
+        evidence_observations: tuple[Observation, ...] = ()
+        safety_evidence: dict[str, object] = {}
+        quote: QuoteSnapshot | None = None
+        if provider_bundle is not None:
+            evidence_observations, safety_evidence, quote = (
+                await _collect_early_candidate_evidence(provider_bundle, event)
+            )
+        decision_as_of = datetime.now(UTC)
+        caller_token = _caller_research_token(event)
         async with runtime_lock, SqlAlchemyUnitOfWork(engine) as unit_of_work:
             stores.bind(unit_of_work)
             try:
-                result = await runtime.process(event, stream_gap=stream_gap)
+                if caller_token is None:
+                    result = await runtime.process(
+                        event,
+                        observations=evidence_observations,
+                        safety_evidence=safety_evidence,
+                        quote=quote,
+                        as_of=decision_as_of,
+                        stream_gap=stream_gap,
+                    )
+                else:
+                    result = await process_with_caller_conduct_research(
+                        runtime,
+                        unit_of_work,
+                        event,
+                        caller_token,
+                        as_of=decision_as_of,
+                        observations=evidence_observations,
+                        safety_evidence=safety_evidence,
+                        quote=quote,
+                        stream_gap=stream_gap,
+                    )
                 await unit_of_work.commit()
                 return result
             finally:
@@ -456,6 +607,10 @@ async def _run_early_alpha_shadow(
         )
         return report
     finally:
+        if reconciliation_task is not None:
+            reconciliation_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await reconciliation_task
         if reevaluation_task is not None:
             reevaluation_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -495,15 +650,343 @@ def _observation_from_row(row: ObservationRow) -> Observation:
     )
 
 
-def _pumpfun_launch_row(row: ObservationRow) -> bool:
-    if row.kind != "chain.event":
+def _safe_authority_flag(payload: object, field: str) -> bool | None:
+    if not isinstance(payload, Mapping):
+        return None
+    authority = payload.get(field)
+    if not isinstance(authority, Mapping):
+        return None
+    state = authority.get("state")
+    if state == "REVOKED":
+        return True
+    if state == "ACTIVE":
         return False
-    payload = row.normalized_payload
-    instruction = str(payload.get("instruction_type", payload.get("event_type", ""))).lower()
-    return (
-        instruction in {"create", "create_v2"}
-        or str(payload.get("protocol_event_type", "")).lower() == "launch"
+    return None
+
+
+def _nonnegative_decimal(value: object) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        normalized = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return normalized if normalized.is_finite() and normalized >= 0 else None
+
+
+def _quote_observation(
+    quote: QuoteSnapshot,
+    *,
+    candidate_id: UUID,
+    token_id: UUID,
+    checked_at: datetime,
+) -> Observation:
+    freshness = quote.freshness.state_at(checked_at)
+    if freshness is QualityState.FRESH and not quote.is_fresh_at(checked_at):
+        freshness = QualityState.STALE
+    return Observation(
+        kind="execution.quote_snapshot",
+        provenance=quote.provenance,
+        occurred_at=quote.freshness.as_of,
+        observed_at=quote.provenance.observed_at,
+        ingested_at=quote.provenance.observed_at,
+        quality_state=freshness,
+        normalized_payload={
+            "chain": Chain(quote.chain).value,
+            "input_mint": quote.input_mint,
+            "output_mint": quote.output_mint,
+            "input_amount": quote.input_amount,
+            "output_amount": quote.output_amount,
+            "price_impact_bps": quote.price_impact_bps,
+            "price_semantics": quote.price_semantics.value,
+            "route": quote.route,
+            "as_of": quote.freshness.as_of.isoformat(),
+            "expires_at": quote.freshness.expires_at.isoformat(),
+        },
+        candidate_id=candidate_id,
+        token_id=token_id,
     )
+
+
+async def _collect_early_candidate_evidence(
+    provider_bundle: ProviderBundle,
+    event: object,
+) -> tuple[tuple[Observation, ...], dict[str, object], QuoteSnapshot | None]:
+    """Collect bounded read-only evidence used by the real-time safety gate."""
+
+    event_observation = _observation_for_event(event)
+    if event_observation is None:
+        return (), {}, None
+    payload = event_observation.normalized_payload
+    mint = payload.get("mint_address", payload.get("mint"))
+    verified_protocol = any(
+        payload.get(key) is True
+        for key in (
+            "protocol_identity_verified",
+            "verified_protocol_identity",
+            "canonical_protocol_verified",
+        )
+    )
+    if not isinstance(mint, str) or not verified_protocol:
+        return (), {"protocol_identity_verified": False}, None
+
+    candidate_id = uuid5(NAMESPACE_URL, f"memeradar:early-candidate:{mint}")
+    token_id = event_observation.token_id or uuid5(
+        NAMESPACE_URL, f"memeradar:early-token:{mint}"
+    )
+    token = TokenIdentity(mint_address=mint, id=token_id)
+    requested_at = datetime.now(UTC)
+    context = ProviderRequestContext(
+        correlation_id=f"early-candidate:{mint}:{requested_at.timestamp()}",
+        requested_at=requested_at,
+        deadline_at=requested_at + timedelta(seconds=15),
+    )
+
+    async def token_metadata() -> Observation | None:
+        try:
+            observations = await provider_bundle.chain.enrich(
+                OnChainRequest(context=context, token=token)
+            )
+            for observation in observations:
+                if (
+                    isinstance(observation, Observation)
+                    and observation.kind == "onchain.token_metadata"
+                    and observation.normalized_payload.get("mint_address") == mint
+                ):
+                    return replace(
+                        observation,
+                        candidate_id=candidate_id,
+                        token_id=token_id,
+                    )
+        except Exception as error:  # noqa: BLE001 - missing evidence blocks qualification.
+            LOGGER.info(
+                "early_candidate_token_metadata_unavailable",
+                extra={"error_class": type(error).__name__},
+            )
+        return None
+
+    async def market_snapshot() -> Observation | None:
+        try:
+            register = getattr(provider_bundle.dexscreener, "register_token", None)
+            if callable(register):
+                register(token)
+            observations = await provider_bundle.market_data.snapshot(
+                MarketDataRequest(context=context, token_ids=(token.id,))
+            )
+            for observation in observations:
+                if (
+                    isinstance(observation, Observation)
+                    and observation.kind == "market.market_snapshot"
+                    and observation.normalized_payload.get(
+                        "mint_address", observation.normalized_payload.get("address")
+                    ) == mint
+                ):
+                    return replace(
+                        observation,
+                        candidate_id=candidate_id,
+                        token_id=token_id,
+                    )
+        except Exception as error:  # noqa: BLE001 - market data is an optional gate input.
+            LOGGER.info(
+                "early_candidate_market_unavailable",
+                extra={"error_class": type(error).__name__},
+            )
+        return None
+
+    async def execution_quotes(
+        token_decimals: int | None,
+        quote_context: ProviderRequestContext,
+    ) -> tuple[QuoteSnapshot | None, QuoteSnapshot | None]:
+        selected_quote_provider = provider_bundle.settings.paper_quote_provider
+        quote_port = (
+            provider_bundle.jupiter
+            if selected_quote_provider == "jupiter"
+            else provider_bundle.quote
+            if selected_quote_provider == "custom"
+            else None
+        )
+        if quote_port is None or token_decimals is None:
+            return None, None
+        try:
+            buy = await quote_port.quote(
+                QuoteRequest(
+                    context=quote_context,
+                    input_mint=_WRAPPED_SOL_MINT,
+                    output_mint=mint,
+                    amount=_EARLY_QUOTE_PROBE_LAMPORTS,
+                    slippage_bps=_EARLY_QUOTE_PROBE_SLIPPAGE_BPS,
+                    input_decimals=9,
+                    output_decimals=token_decimals,
+                )
+            )
+        except Exception as error:  # noqa: BLE001 - no quote means no notification.
+            LOGGER.info(
+                "early_candidate_buy_quote_unavailable",
+                extra={"error_class": type(error).__name__},
+            )
+            return None, None
+        if (
+            not isinstance(buy, QuoteSnapshot)
+            or buy.input_mint != _WRAPPED_SOL_MINT
+            or buy.output_mint != mint
+            or buy.input_amount != _EARLY_QUOTE_PROBE_LAMPORTS
+            or buy.amount_unit is not QuoteAmountUnit.RAW_BASE_UNITS
+            or buy.input_decimals != 9
+            or buy.output_decimals != token_decimals
+            or buy.price_semantics is not PriceSemantics.EXECUTION_QUOTE
+            or not buy.is_fresh_at(datetime.now(UTC))
+            or cast(Decimal, buy.output_amount) <= 0
+        ):
+            return None, None
+        try:
+            sell = await quote_port.quote(
+                QuoteRequest(
+                    context=quote_context,
+                    input_mint=mint,
+                    output_mint=_WRAPPED_SOL_MINT,
+                    amount=cast(Decimal, buy.output_amount),
+                    slippage_bps=_EARLY_QUOTE_PROBE_SLIPPAGE_BPS,
+                    input_decimals=token_decimals,
+                    output_decimals=9,
+                )
+            )
+        except Exception as error:  # noqa: BLE001 - a buy-only route is not sellable proof.
+            LOGGER.info(
+                "early_candidate_sell_quote_unavailable",
+                extra={"error_class": type(error).__name__},
+            )
+            return buy, None
+        if (
+            not isinstance(sell, QuoteSnapshot)
+            or sell.input_mint != mint
+            or sell.output_mint != _WRAPPED_SOL_MINT
+            or sell.input_amount != buy.output_amount
+            or sell.amount_unit is not QuoteAmountUnit.RAW_BASE_UNITS
+            or sell.input_decimals != token_decimals
+            or sell.output_decimals != 9
+            or sell.price_semantics is not PriceSemantics.EXECUTION_QUOTE
+            or not sell.is_fresh_at(datetime.now(UTC))
+        ):
+            return buy, None
+        return buy, sell
+
+    metadata = await token_metadata()
+    token_decimals_value = (
+        None if metadata is None else metadata.normalized_payload.get("decimals")
+    )
+    token_decimals = (
+        token_decimals_value
+        if isinstance(token_decimals_value, int)
+        and not isinstance(token_decimals_value, bool)
+        and 0 <= token_decimals_value <= 18
+        and metadata is not None
+        and metadata.quality_state is QualityState.FRESH
+        else None
+    )
+    quote_requested_at = datetime.now(UTC)
+    quote_context = ProviderRequestContext(
+        correlation_id=f"{context.correlation_id}:execution-quote",
+        requested_at=quote_requested_at,
+        deadline_at=quote_requested_at + timedelta(seconds=15),
+    )
+    if metadata is not None and (
+        metadata.observed_at > quote_requested_at
+        or metadata.ingested_at > quote_requested_at
+        or quote_requested_at - metadata.observed_at > timedelta(minutes=2)
+    ):
+        token_decimals = None
+    market, quotes = await asyncio.gather(
+        market_snapshot(), execution_quotes(token_decimals, quote_context)
+    )
+    checked_at = datetime.now(UTC)
+    buy_quote, sell_quote = quotes
+    observations: list[Observation] = []
+    evidence_refs: list[str] = []
+    provenance: list[Provenance] = []
+    evidence: dict[str, object] = {
+        "protocol_identity_verified": True,
+    }
+    for observation in (metadata, market):
+        if observation is not None:
+            observations.append(observation)
+            evidence_refs.append(observation.provenance.source_id)
+            provenance.append(observation.provenance)
+
+    if metadata is not None:
+        evidence["token_decimals"] = token_decimals
+        evidence["token_decimals_source_id"] = metadata.provenance.source_id
+        authority_payload = metadata.normalized_payload
+        evidence["mint_authority_safe"] = _safe_authority_flag(
+            authority_payload, "mint_authority"
+        )
+        evidence["freeze_authority_safe"] = _safe_authority_flag(
+            authority_payload, "freeze_authority"
+        )
+        security = TokenSecurityEvaluator().evaluate(
+            candidate_id,
+            token,
+            (metadata,),
+            now=checked_at,
+            config_hash=_EARLY_TOKEN_SECURITY_CONFIG_HASH,
+        )
+        evidence["risk_disposition"] = security.disposition
+        evidence_refs.extend(security.evidence_refs)
+        evidence["reason_codes"] = tuple(reason.code for reason in security.reason_codes)
+
+    if (
+        market is not None
+        and market.quality_state is QualityState.FRESH
+        and timedelta(0) <= checked_at - market.observed_at <= timedelta(minutes=2)
+        and market.ingested_at <= checked_at
+        and (market.occurred_at is None or market.occurred_at <= checked_at)
+    ):
+        liquidity = _nonnegative_decimal(
+            market.normalized_payload.get(
+                "liquidity_usd", market.normalized_payload.get("liquidity")
+            )
+        )
+        if liquidity is not None:
+            evidence["liquidity"] = liquidity
+
+    valid_buy = (
+        buy_quote is not None
+        and buy_quote.price_semantics is PriceSemantics.EXECUTION_QUOTE
+        and buy_quote.is_fresh_at(checked_at)
+    )
+    valid_sell = (
+        sell_quote is not None
+        and sell_quote.price_semantics is PriceSemantics.EXECUTION_QUOTE
+        and sell_quote.is_fresh_at(checked_at)
+    )
+    if valid_buy and buy_quote is not None:
+        evidence["buy_impact_bps"] = buy_quote.price_impact_bps
+    if valid_sell and sell_quote is not None:
+        evidence["sell_impact_bps"] = sell_quote.price_impact_bps
+    if valid_buy and valid_sell:
+        evidence["sellability"] = True
+        evidence["quote_semantics"] = PriceSemantics.EXECUTION_QUOTE.value
+    for quote in (buy_quote, sell_quote):
+        if quote is None or quote.price_semantics is not PriceSemantics.EXECUTION_QUOTE:
+            continue
+        observation = _quote_observation(
+            quote,
+            candidate_id=candidate_id,
+            token_id=token_id,
+            checked_at=checked_at,
+        )
+        observations.append(observation)
+        evidence_refs.append(quote.provenance.source_id)
+        provenance.append(quote.provenance)
+
+    evidence["evidence_refs"] = tuple(dict.fromkeys(evidence_refs))
+    evidence["provenance"] = tuple(provenance)
+    return tuple(observations), evidence, buy_quote if valid_buy else None
+
+
+def _pumpfun_launch_row(row: ObservationRow) -> bool:
+    from memeradar_worker.forward_evidence import is_pumpfun_launch
+
+    return row.kind == "chain.event" and is_pumpfun_launch(row)
 
 
 def _row_timestamp(row: ObservationRow, key: str) -> datetime:
@@ -681,6 +1164,8 @@ async def _run_early_lifecycle_reevaluation(
     runtime: EarlyRuntimeService,
     stores: _BoundRuntimeRepositories,
     runtime_lock: asyncio.Lock,
+    provider_bundle: ProviderBundle | None = None,
+    coordinator: StreamIntegrityCoordinator | None = None,
     *,
     sleeper: Sleep,
 ) -> None:
@@ -734,19 +1219,54 @@ async def _run_early_lifecycle_reevaluation(
                     and row.occurred_at <= scheduled_at
                     and row.observed_at <= scheduled_at
                 )
+                safety_observations: tuple[Observation, ...] = ()
+                safety_evidence: dict[str, object] = {}
+                quote: QuoteSnapshot | None = None
+                if provider_bundle is not None:
+                    safety_observations, safety_evidence, quote = (
+                        await _collect_early_candidate_evidence(
+                            provider_bundle,
+                            launch_observation,
+                        )
+                    )
                 evaluated_at = datetime.now(UTC)
+                caller_token = _caller_research_token(launch_observation)
+                stream_gap = (
+                    coordinator is not None and bool(await coordinator.active_gaps())
+                )
                 try:
                     async with runtime_lock, SqlAlchemyUnitOfWork(engine) as unit_of_work:
                         stores.bind(unit_of_work)
                         try:
-                            result = await runtime.process(
-                                launch_observation,
-                                observations=market_observations,
-                                observed_at=launch_observation.observed_at,
-                                ingested_at=launch_observation.ingested_at,
-                                as_of=scheduled_at,
-                                stream_gap=False,
+                            process_observations = (
+                                *market_observations,
+                                *safety_observations,
                             )
+                            if caller_token is None:
+                                result = await runtime.process(
+                                    launch_observation,
+                                    observations=process_observations,
+                                    safety_evidence=safety_evidence,
+                                    quote=quote,
+                                    observed_at=launch_observation.observed_at,
+                                    ingested_at=launch_observation.ingested_at,
+                                    as_of=evaluated_at,
+                                    stream_gap=stream_gap,
+                                )
+                            else:
+                                result = await process_with_caller_conduct_research(
+                                    runtime,
+                                    unit_of_work,
+                                    launch_observation,
+                                    caller_token,
+                                    observations=process_observations,
+                                    safety_evidence=safety_evidence,
+                                    quote=quote,
+                                    observed_at=launch_observation.observed_at,
+                                    ingested_at=launch_observation.ingested_at,
+                                    as_of=evaluated_at,
+                                    stream_gap=stream_gap,
+                                )
                             reevaluation = _reevaluation_observation(
                                 launch=launch,
                                 market_observations=market_observations,

@@ -12,7 +12,7 @@ import asyncio
 import json
 import random
 from collections import deque
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -20,9 +20,13 @@ from typing import Any, cast
 
 from memeradar_application.provider_contracts import ProviderRequestContext
 from memeradar_application.stream_integrity import (
+    BackfillBoundsError,
+    BackfillRateLimitError,
     BackfillRequest,
     BackfillResult,
+    BackfillTimeoutError,
     BackfillUnavailableError,
+    BackfillUnsupportedDataError,
     RawChainBlock,
     RawChainTransaction,
 )
@@ -41,6 +45,7 @@ from .transport import (
     ProviderError,
     ProviderRateLimitedError,
     ProviderSchemaError,
+    ProviderTimeoutError,
     ProviderUnavailableError,
 )
 
@@ -55,6 +60,10 @@ except ImportError:  # pragma: no cover - doctor path for minimal installations
 
 Clock = Callable[[], datetime]
 Sleeper = Callable[[float], Any]
+
+
+class UnsupportedPumpFunInstructionError(ProviderSchemaError):
+    """A launch-shaped Pump.fun transaction uses an unrecognized instruction."""
 
 SOLANA_RAW_TRANSPORT = "solana-public-rpc"
 SOLANA_PUBLIC_WEBSOCKET_URL = "wss://api.mainnet-beta.solana.com"
@@ -285,16 +294,19 @@ def map_transaction_to_raw_events(
     transport: str = SOLANA_RAW_TRANSPORT,
     connection_id: str | None = None,
     reconnect_reason: str | None = None,
+    fail_on_unknown_create: bool = False,
 ) -> tuple[RawChainTransaction, ...]:
     """Map one fetched RPC transaction to verified-candidate raw events.
 
-    Only known Pump.fun instruction discriminators are emitted.  Unknown
-    instructions remain observable in provider telemetry but fail closed before
-    the canonical protocol registry.
+    Only known Pump.fun instruction discriminators are emitted. Recovery can
+    fail closed on unknown create-shaped instructions instead of verifying an
+    incomplete range.
     """
 
     if not isinstance(transaction, Mapping):
         raise ProviderSchemaError("getTransaction result was invalid")
+    if not isinstance(fail_on_unknown_create, bool):
+        raise TypeError("fail_on_unknown_create must be a boolean")
     slot = _nonnegative_int(transaction.get("slot"), "transaction.slot")
     if slot != notification.slot:
         raise ProviderSchemaError("WebSocket slot and HTTP transaction slot differed")
@@ -361,6 +373,10 @@ def map_transaction_to_raw_events(
         )
 
     events: list[RawChainTransaction] = []
+    create_logged = any(
+        "Instruction: Create" in log or "Instruction: create" in log
+        for log in notification.logs
+    )
     for event_index, instruction in raw_instructions:
         if _instruction_program_id(instruction, account_keys) != program_id:
             continue
@@ -368,6 +384,10 @@ def map_transaction_to_raw_events(
         tag = decoded[:8]
         name = _PUMP_INSTRUCTION_NAMES.get(tag.hex())
         if name is None:
+            if fail_on_unknown_create and create_logged:
+                raise UnsupportedPumpFunInstructionError(
+                    "unsupported Pump.fun create instruction"
+                )
             continue
         accounts = _instruction_accounts(instruction.get("accounts", ()), account_keys=account_keys)
         payload = _instruction_payload(
@@ -417,8 +437,20 @@ class SolanaRpcBackfillAdapter:
         self.rpc = rpc
 
     async def fetch(self, request: BackfillRequest) -> BackfillResult:
+        try:
+            return await self._fetch(request)
+        except ProviderTimeoutError as exc:
+            raise BackfillTimeoutError from exc
+        except ProviderRateLimitedError as exc:
+            raise BackfillRateLimitError from exc
+        except ProviderError as exc:
+            raise BackfillUnavailableError from exc
+
+    async def _fetch(self, request: BackfillRequest) -> BackfillResult:
         if request.chain is not Chain.SOLANA:
             raise BackfillUnavailableError("Solana backfill received a non-Solana request")
+        if request.to_slot - request.from_slot > 500:
+            raise BackfillBoundsError("Solana RPC backfill supports at most 501 slots per range")
         requested_at = datetime.now(UTC)
         context = ProviderRequestContext(
             correlation_id=f"solana-backfill:{request.stream_id}:{request.from_slot}:{request.to_slot}",
@@ -492,8 +524,13 @@ class SolanaRpcBackfillAdapter:
                             notification,
                             ingested_at=max(block.observed_at, requested_at),
                             transport="solana-rpc-backfill",
+                            fail_on_unknown_create=True,
                         )
                     )
+                except UnsupportedPumpFunInstructionError as exc:
+                    raise BackfillUnsupportedDataError(
+                        "unsupported Pump.fun create instruction"
+                    ) from exc
                 except (ProviderSchemaError, ValueError) as exc:
                     raise BackfillUnavailableError(
                         f"canonical backfill decode failed for slot {slot}"
@@ -513,6 +550,7 @@ class SolanaRpcBackfillAdapter:
             blocks=tuple(blocks),
             source="solana-rpc-backfill",
             completed_at=max(requested_at, block_observation.observed_at),
+            commitment=CommitmentState.FINALIZED,
         )
 
 
@@ -529,6 +567,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         clock: Clock | None = None,
         stop_event: asyncio.Event | None = None,
         seen_signature_limit: int = 20_000,
+        rejection_sink: Callable[[SolanaLogsNotification, str, str], Awaitable[None]] | None = None,
     ) -> None:
         if not isinstance(rpc, SolanaRpcAdapter):
             raise TypeError("rpc must be a SolanaRpcAdapter")
@@ -540,11 +579,13 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         self.commitment = CommitmentState(commitment)
         self._clock = clock or (lambda: datetime.now(UTC))
         self._stop_event = stop_event or asyncio.Event()
+        self._rejection_sink = rejection_sink
         self._seen: deque[str] = deque(maxlen=seen_signature_limit)
         self._seen_set: set[str] = set()
         self._queue: asyncio.Queue[RawChainTransaction] = asyncio.Queue(maxsize=256)
         self._task: asyncio.Task[None] | None = None
         self._closed = False
+        self._subscription_connected = False
         self._subscription: int | None = None
         self._connection_sequence = 0
         self._connection_id: str | None = None
@@ -568,6 +609,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
             "queue_depth_max": 0,
             "dropped_events": 0,
             "stream_reconnects": 0,
+            "subscription_reconnects": 0,
             "subscription_disconnects": 0,
             "slot_discontinuities": 0,
             "recovery_required": 0,
@@ -643,8 +685,9 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                     if not isinstance(subscription, int):
                         raise ProviderSchemaError("logsSubscribe did not return a subscription id")
                     self._subscription = subscription
+                    self._subscription_connected = True
                     if recovery_pending:
-                        self.metrics["recovery_succeeded"] += 1
+                        self.metrics["subscription_reconnects"] += 1
                         recovery_pending = False
                     subscribed = True
                     while not self._stop_event.is_set() and not self._closed:
@@ -667,10 +710,10 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                         if notification.signature in self._seen_set:
                             self.metrics["signatures_deduplicated"] += 1
                             continue
-                        self._remember(notification.signature)
                         if notification.error is not None or not self._is_launch_notification(
                             notification
                         ):
+                            self._remember(notification.signature)
                             continue
                         context = ProviderRequestContext(
                             correlation_id=f"solana:{notification.signature}",
@@ -687,10 +730,18 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                         self.metrics["transactions_fetched"] += 1
                         if transaction is None:
                             self.metrics["transactions_unavailable"] += 1
-                            self.metrics["recovery_required"] += 1
-                            self.metrics["recovery_failed"] += 1
-                            self.metrics["unknown_loss"] += 1
-                            continue
+                            if self._rejection_sink is not None:
+                                await self._rejection_sink(
+                                    notification, self.program_id, "TRANSACTION_UNAVAILABLE"
+                                )
+                            # Force a reconnect so the next event carries a
+                            # recovery boundary and the coordinator can backfill
+                            # the missing slot range. The signature is not
+                            # remembered as completed while its transaction is
+                            # unavailable.
+                            raise ProviderUnavailableError(
+                                f"getTransaction unavailable at slot {notification.slot}"
+                            )
                         try:
                             events = map_transaction_to_raw_events(
                                 transaction,
@@ -700,9 +751,17 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                                 connection_id=self._connection_id,
                                 reconnect_reason=reconnect_reason,
                             )
+                            if not events:
+                                raise ProviderSchemaError(
+                                    "launch notification has no decoded event"
+                                )
                         except (ProviderSchemaError, ValueError):
                             self.metrics["decoder_failures"] += 1
-                            continue
+                            if self._rejection_sink is not None:
+                                await self._rejection_sink(
+                                    notification, self.program_id, "TRANSACTION_DECODE_FAILED"
+                                )
+                            raise
                         for event in events:
                             await self._queue.put(event)
                             self.metrics["raw_events_emitted"] += 1
@@ -720,11 +779,14 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                             if latency_ms >= 0:
                                 self._latency_samples_ms.append(latency_ms)
                             self._launch_observed_at.append(event.observed_at)
+                        self._remember(notification.signature)
                         if events and reconnect_reason is not None:
                             self._pending_reconnect_reason = None
             except asyncio.CancelledError:
+                self._subscription_connected = False
                 raise
             except Exception as exc:
+                self._subscription_connected = False
                 if not isinstance(
                     exc,
                     (
@@ -748,6 +810,8 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                 if self._stop_event.is_set() or self._closed:
                     return
                 await asyncio.sleep(1.0)
+            finally:
+                self._subscription_connected = False
 
     async def _fetch_transaction_with_retry(
         self,
@@ -795,6 +859,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
 
         return {
             **self.metrics,
+            "subscription_connected": self._subscription_connected,
             "launches_per_hour": len(self._launch_observed_at),
             "latency_p50_ms": percentile(0.50),
             "latency_p90_ms": percentile(0.90),

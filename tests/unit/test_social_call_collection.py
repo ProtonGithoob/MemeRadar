@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from memeradar_application.provider_contracts import ProviderRequestContext, SocialDataRequest
 from memeradar_application.social_call_collection import (
     CollectionMode,
@@ -162,6 +164,23 @@ def test_live_collection_is_one_bounded_batch_and_leaves_cursor_for_resume() -> 
     assert report.next_cursor == "next"
     assert source.cursors == [None]
     assert report.persisted_count == 1
+
+
+def test_checkpoint_does_not_advance_when_call_persistence_fails() -> None:
+    class FailingSink:
+        async def save(self, observation: SocialCallObservation) -> object:
+            raise RuntimeError("persistence failed")
+
+    source = _Source({None: ((_call("1", "2026-09-07T03:59:00Z", "BUY $MEME"),), "next")})
+    checkpoint = _CheckpointStore()
+    with pytest.raises(RuntimeError, match="persistence failed"):
+        asyncio.run(
+            SocialCallCollector(clock=lambda: NOW).collect(
+                source, FailingSink(), _request(), mode=CollectionMode.LIVE,
+                checkpoint_store=checkpoint,
+            )
+        )
+    assert checkpoint.saved == []
 
 
 def test_historical_backfill_resumes_from_checkpoint_and_reports_all_cohorts() -> None:

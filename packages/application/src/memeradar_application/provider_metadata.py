@@ -20,6 +20,11 @@ class ProviderMetadata:
 
 
 _REGISTRY: dict[str, ProviderMetadata] = {
+    "pump.fun.solana-raw-stream": ProviderMetadata(
+        "pump.fun.solana-raw-stream", "Pump.fun Solana stream", ("solana",),
+        ("pumpfun_launch_ingestion",), True, True,
+        ("solana_stream_url", "solana_rpc_url"), "NOT_REQUIRED", "UNKNOWN", 0,
+    ),
     "helius": ProviderMetadata(
         "helius", "Helius", ("solana",), ("chain_events", "market_data"), False, True,
         ("helius_api_key", "helius_rpc_url"), "UNKNOWN", "UNKNOWN", 0,

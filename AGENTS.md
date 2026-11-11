@@ -177,3 +177,10 @@ Do not stop merely because one provider, credential, rate limit, paid feature, A
 - Never force-push shared history.
 - Never discard unrelated user changes.
 - Before final handoff run `git status`, compare local HEAD/origin when possible, and document sync state.
+
+## Temporary validation workspace lifecycle
+
+- Reuse the canonical checkout when it is suitable; do not create persistent sibling clones named `MemeRadar-*` under the project directory.
+- For clean-source validation, use one task-scoped temporary checkout created from an existing local commit. Reuse it only when its HEAD matches the requested SHA; do not overwrite a mismatched checkout.
+- Before removing a task-owned temporary checkout, save command results, exit codes, source identity and checksums under `artifacts/verification/`; verify that no process or container uses it and preserve any unique ignored or untracked data.
+- If validation fails, retain that checkout and update its checkpoint before creating another. Do not remove sibling directories outside the current writable project boundary.

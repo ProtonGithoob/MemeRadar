@@ -301,6 +301,12 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .section-heading h3 { font-size: 0.98rem; font-weight: 720; letter-spacing: -0.01em; margin: 0; }
 .section-note { color: var(--faint); font-size: 0.62rem; margin-bottom: 2px; text-align: right; }
 .section-block { margin-top: 26px; }
+.scan-monitor { min-width: 0; }
+.scan-header { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; align-items: start; }
+.scan-header h1 { margin: 4px 0 10px; }
+.scan-list { display: grid; gap: 10px; margin-top: 16px; }
+.scan-row { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.scan-row p { margin: 6px 0; }
 
 /* ------------------------------------------------------------------ */
 /* Panels, cards, states                                               */
@@ -671,6 +677,20 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .opportunity-details__grid { display: grid; gap: 7px 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 9px; }
 .opportunity-details__grid span { color: var(--muted); font-size: 0.58rem; line-height: 1.4; overflow-wrap: anywhere; }
 .opportunity-details__grid b { color: var(--ink); display: block; font-family: var(--font-mono); font-weight: 600; }
+.early-evidence summary { color: var(--accent); cursor: pointer; font-size: 0.62rem; font-weight: 700; }
+.early-evidence__panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-soft); max-height: 260px; min-width: 300px; overflow: auto; padding: 12px; width: min(420px, calc(100vw - 40px)); }
+.early-evidence__panel dl { display: grid; gap: 6px; margin: 0 0 10px; }
+.early-evidence__panel dl div { display: grid; gap: 4px; grid-template-columns: 120px minmax(0, 1fr); }
+.early-evidence__panel dt,
+.early-evidence__panel dd,
+.early-evidence__panel p,
+.early-evidence__panel li { font-size: 0.62rem; line-height: 1.45; overflow-wrap: anywhere; }
+.early-evidence__panel dt { color: var(--muted); }
+.early-evidence__panel dd { color: var(--ink); margin: 0; }
+.early-evidence__panel strong { display: block; font-size: 0.62rem; margin-top: 9px; }
+.early-evidence__panel ul { margin: 4px 0 0; padding-left: 16px; }
+.early-evidence__panel code { color: var(--muted); font-size: 0.58rem; }
+.early-evidence__panel p { color: var(--muted); margin: 4px 0 0; }
 .permission-list { display: grid; gap: 0; margin-top: 12px; }
 .permission-row { border-top: 1px solid var(--line); display: grid; gap: 12px; grid-template-columns: 90px minmax(0, 1fr); padding: 10px 0; }
 .permission-row strong { color: var(--accent); font-size: 0.64rem; letter-spacing: 0.08em; }

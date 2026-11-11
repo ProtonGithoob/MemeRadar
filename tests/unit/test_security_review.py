@@ -99,6 +99,41 @@ def test_external_scans_without_installed_tools_are_blocked_not_passed(monkeypat
     assert report.external_acceptance is CheckStatus.BLOCKED_EXTERNAL
 
 
+def test_python_audit_uses_pinned_lock_without_dependency_resolution(monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def record(command, *, cwd):
+        calls.append(tuple(command))
+        return CheckStatus.PASS
+
+    monkeypatch.setattr(security_review, "_external_command", record)
+
+    scans = security_review._run_external_scans(ROOT)
+
+    assert scans["pip_audit"] is CheckStatus.PASS
+    assert calls[0] == (
+        "pip-audit", "--no-deps", "--disable-pip", "-r", "requirements.lock"
+    )
+
+
+def test_external_scan_classifies_dns_failure_as_blocked(monkeypatch) -> None:
+    class FailedCommand:
+        returncode = 1
+        stdout = ""
+        stderr = "Name or service not known"
+
+    monkeypatch.setattr(security_review.shutil, "which", lambda _: "/usr/bin/fake-scan")
+    monkeypatch.setattr(
+        security_review.subprocess,
+        "run",
+        lambda *_args, **_kwargs: FailedCommand(),
+    )
+
+    result = security_review._external_command(("fake-scan",), cwd=ROOT)
+
+    assert result is CheckStatus.BLOCKED_EXTERNAL
+
+
 def test_protected_mode_override_fails_closed() -> None:
     report = run_review(ROOT, environ={"AUTO_EXECUTION": "true"})
 
@@ -141,3 +176,16 @@ def test_deployment_review_rejects_publicly_bound_compose_port(tmp_path: Path) -
 
     assert check.status is CheckStatus.FAIL
     assert "port" in check.detail.lower() or "cors" in check.detail.lower()
+
+
+def test_secret_boundary_review_fails_when_history_scan_cannot_complete(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr(security_review, "tracked_files", lambda root: ())
+
+    def fail_history(root):
+        raise OSError("unavailable")
+
+    monkeypatch.setattr(security_review, "scan_git_history", fail_history)
+    check = check_secret_boundaries(tmp_path)
+    assert check.status is CheckStatus.FAIL
+    assert "could not complete" in check.detail

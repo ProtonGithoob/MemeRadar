@@ -270,7 +270,7 @@ class PaperOrder:
     reason_codes: tuple[ReasonCode, ...] = ()
     policy_version: str = "paper-execution-v1"
     config_hash: str = "paper-execution-v1"
-    fill_model_version: str = "paper-fill-v1"
+    fill_model_version: str = "paper-fill-v2"
     id: UUID = field(default_factory=uuid4)
 
     def __post_init__(self) -> None:

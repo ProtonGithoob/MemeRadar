@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from decimal import Decimal
 from typing import cast
 from uuid import UUID, uuid4
@@ -15,6 +16,9 @@ from memeradar_application.paper_execution import (
     PaperIdempotencyConflict,
     PaperLedgerConflict,
     PaperLedgerStore,
+    PaperSizingPolicy,
+    paper_entry_limit_rejection,
+    reject_paper_execution,
 )
 from memeradar_domain import (
     CashLedgerEntry,
@@ -345,7 +349,12 @@ class SqlAlchemyPaperLedgerStore:
             )
             return None if row is None else await _load_result(session, row)
 
-    async def save_execution(self, result: PaperExecutionResult) -> None:
+    async def save_execution(
+        self,
+        result: PaperExecutionResult,
+        *,
+        sizing_policy: PaperSizingPolicy,
+    ) -> PaperExecutionResult:
         async with self._session_factory() as session, session.begin():
             existing = await session.scalar(
                 select(OrderRow).where(OrderRow.idempotency_key == result.order.idempotency_key)
@@ -353,12 +362,14 @@ class SqlAlchemyPaperLedgerStore:
             if existing is not None:
                 if existing.request_fingerprint != result.request_fingerprint:
                     raise PaperIdempotencyConflict("idempotency key has conflicting material input")
-                return
+                return await _load_result(session, existing)
             portfolio_row = await session.scalar(
                 select(PortfolioRow).where(PortfolioRow.id == result.portfolio.id).with_for_update()
             )
             if portfolio_row is None:
                 raise PaperLedgerConflict("portfolio does not exist")
+            if portfolio_row.current_balance is None:
+                raise PaperLedgerConflict("portfolio has no current balance")
             if result.portfolio.current_balance is None:
                 raise PaperLedgerConflict("portfolio has no current balance")
             # The engine reads before entering this transaction.  Re-check the
@@ -370,7 +381,81 @@ class SqlAlchemyPaperLedgerStore:
             if existing is not None:
                 if existing.request_fingerprint != result.request_fingerprint:
                     raise PaperIdempotencyConflict("idempotency key has conflicting material input")
-                return
+                return await _load_result(session, existing)
+            current_portfolio = _portfolio_from_row(portfolio_row)
+            active_rows = tuple(
+                (
+                    await session.scalars(
+                        select(PositionRow)
+                        .where(
+                            PositionRow.portfolio_id == result.order.portfolio_id,
+                            PositionRow.state.in_(("PENDING", "OPEN", "EXIT_SIGNALLED")),
+                        )
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            active_positions = tuple(_position_from_row(row) for row in active_rows)
+            current_position_row = next(
+                (
+                    row
+                    for row in active_rows
+                    if row.token_id == result.order.token_id
+                ),
+                None,
+            )
+            if current_position_row is None:
+                current_position_row = await session.scalar(
+                    select(PositionRow)
+                    .where(
+                        PositionRow.portfolio_id == result.order.portfolio_id,
+                        PositionRow.token_id == result.order.token_id,
+                    )
+                    .order_by(PositionRow.opened_at.desc(), PositionRow.id.desc())
+                    .limit(1)
+                )
+            current_position = (
+                None
+                if current_position_row is None
+                else _position_from_row(current_position_row)
+            )
+            if result.fills:
+                expected_sequence = portfolio_row.ledger_sequence + len(result.ledger_entries)
+                expected_balance = portfolio_row.current_balance + sum(
+                    (entry.cash_delta for entry in result.ledger_entries), Decimal("0")
+                )
+                result_balance = result.portfolio.current_balance
+                limit_reason = paper_entry_limit_rejection(
+                    result,
+                    portfolio=current_portfolio,
+                    active_positions=active_positions,
+                    sizing_policy=sizing_policy,
+                )
+                if limit_reason is not None:
+                    result = reject_paper_execution(
+                        result,
+                        portfolio=current_portfolio,
+                        position=current_position,
+                        reason_code=limit_reason,
+                    )
+                elif (
+                    result.portfolio.ledger_sequence != expected_sequence
+                    or result.portfolio.current_balance is None
+                    or abs(result_balance - expected_balance)
+                    > Decimal("0.000000001")
+                ):
+                    result = reject_paper_execution(
+                        result,
+                        portfolio=current_portfolio,
+                        position=current_position,
+                        reason_code="PAPER_PORTFOLIO_CHANGED",
+                    )
+            else:
+                result = replace(
+                    result,
+                    portfolio=current_portfolio,
+                    position=current_position,
+                )
             if result.order.candidate_id is not None:
                 existing_claim = await session.scalar(
                     select(OrderRow)
@@ -390,7 +475,10 @@ class SqlAlchemyPaperLedgerStore:
             expected_balance = portfolio_row.current_balance + sum(
                 (entry.cash_delta for entry in result.ledger_entries), Decimal("0")
             )
-            if abs(result.portfolio.current_balance - expected_balance) > Decimal("0.000000001"):
+            committed_balance = result.portfolio.current_balance
+            if committed_balance is None:
+                raise PaperLedgerConflict("portfolio has no current balance")
+            if abs(committed_balance - expected_balance) > Decimal("0.000000001"):
                 raise PaperLedgerConflict("portfolio cash projection does not continue")
             position_row = None
             if result.position is not None:
@@ -414,7 +502,7 @@ class SqlAlchemyPaperLedgerStore:
                     )
                     if active_position is not None and active_position.id != result.position.id:
                         raise PaperLedgerConflict("active position claim already exists")
-            portfolio_row.current_balance = result.portfolio.current_balance
+            portfolio_row.current_balance = committed_balance
             portfolio_row.ledger_sequence = result.portfolio.ledger_sequence
             session.add(
                 _order_to_row(
@@ -435,6 +523,7 @@ class SqlAlchemyPaperLedgerStore:
                     session.add(_position_to_row(result.position))
                 else:
                     _apply_position(position_row, result.position)
+        return result
 
     async def list_orders(self, portfolio_id: UUID) -> Sequence[PaperOrder]:
         async with self._session_factory() as session:

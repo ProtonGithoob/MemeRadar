@@ -377,10 +377,16 @@ class LaunchRiskAnalyzer:
         provenance: list[Provenance] = []
         evidence_refs: list[str] = []
         quality_states: list[QualityState] = []
+        eligible: list[Observation] = []
         for observation in normalized:
-            if observation.occurred_at is not None and observation.occurred_at > checkpoint:
+            if (
+                (observation.occurred_at is not None and observation.occurred_at > checkpoint)
+                or observation.observed_at > checkpoint
+                or observation.ingested_at > checkpoint
+            ):
                 quality_states.append(QualityState.INVALID)
                 continue
+            eligible.append(observation)
             quality = QualityState(observation.quality_state)
             if quality is QualityState.FRESH and checkpoint >= (
                 observation.observed_at + self.policy.evidence_ttl
@@ -420,7 +426,7 @@ class LaunchRiskAnalyzer:
                             quality_states.append(QualityState.UNKNOWN)
 
         explicit = self._explicit_metrics(launch_footprint, deployer_activity, holder_graph)
-        supply = self._supply_quality(observations, holder_graph, launch_footprint)
+        supply = self._supply_quality(eligible, holder_graph, launch_footprint)
         total = len(actors)
         metrics: dict[str, Decimal | None] = {
             "bundle_concentration": explicit.get("bundle_concentration")
