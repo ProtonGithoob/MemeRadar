@@ -1,3 +1,4 @@
+aiosqlite==0.22.1
 alembic==1.14.1
 asyncpg==0.30.0
 fastapi==0.141.1

@@ -22,6 +22,20 @@ PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("aws_access_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("github_token", re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b")),
     ("openai_token", re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")),
+    ("anthropic_token", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}")),
+    # A Solana CLI keypair file (``id.json``) is a JSON array of 64 byte values.
+    # Base58-encoded secret keys are not matched because they are
+    # indistinguishable from 88-character transaction signatures.
+    (
+        "solana_keypair_json",
+        re.compile(r"\[\s*(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*,\s*){63}(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*\]"),
+    ),
+    (
+        "api_key_query_uuid",
+        re.compile(
+            r"(?i)[?&]api[-_]?key=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"
+        ),
+    ),
     ("telegram_bot_token", re.compile(r"\b\d{8,10}:[A-Za-z0-9_-]{35}\b")),
     ("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b")),
 )

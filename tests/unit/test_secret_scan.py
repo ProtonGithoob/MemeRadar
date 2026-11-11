@@ -22,6 +22,28 @@ def test_secret_scan_rejects_private_key_material():
     assert findings[0].rule == "private_key_block"
 
 
+def test_secret_scan_rejects_solana_cli_keypair_array():
+    keypair = "[" + ",".join(str((index * 37) % 256) for index in range(64)) + "]"
+
+    assert [finding.rule for finding in scan_text(keypair)] == ["solana_keypair_json"]
+
+
+def test_secret_scan_ignores_short_byte_arrays_and_transaction_signatures():
+    discriminator = "[24, 30, 200, 40, 5, 28, 7, 119]"
+    signature = "5" * 88
+
+    assert scan_text(discriminator) == []
+    assert scan_text(signature) == []
+
+
+def test_secret_scan_rejects_anthropic_style_and_query_api_keys():
+    anthropic = "sk-" + "ant-api03-" + "a" * 32
+    rpc_url = "https://rpc.example/?api-key=" + "0123abcd-0000-4000-8000-0123456789ab"
+
+    assert "anthropic_token" in {finding.rule for finding in scan_text(anthropic)}
+    assert [finding.rule for finding in scan_text(rpc_url)] == ["api_key_query_uuid"]
+
+
 def test_secret_scan_rejects_release_artifact_material(tmp_path):
     artifact = tmp_path / "dist" / "bundle.js"
     artifact.parent.mkdir()
