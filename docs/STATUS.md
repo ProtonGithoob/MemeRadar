@@ -16,6 +16,25 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**AUDIT_REMEDIATION_PHASE2_2026-11-11:** Research validity and paper
+realism fixes, each with a regression test verified failing before the
+change:
+- unexecutable paper positions are written off at total loss after the
+  time stop plus `PAPER_AUTO_UNEXECUTABLE_GRACE_SECONDS`;
+- backtest `worst_case_expectancy` books unresolved exits as losses, and
+  calibration ranks on it with a minimum-sample guard;
+- calibration splits support an embargo (24h default in `calibrate_score.py`);
+- outcome horizons past the dataset end are `OUTCOME_HORIZON_TRUNCATED`;
+- timed exits precede horizon safety labels, and stop/label drawdown
+  fractions must match;
+- one simulated position per token;
+- `OrganicFlowAcceleration` is fed from tape-corroborated organic momentum.
+
+Ruff, mypy (187 files) and the non-integration suite (1,673 passed) passed.
+Live `ENTRY_READY` still requires live trade tape, which is not ingested
+(only launches are). Large-gap recovery needs signature-based backfill.
+Protected modes are unchanged.
+
 **AUDIT_REMEDIATION_2026-11-11:** Independent SWOT/defect audit recorded in
 [SWOT and defect audit](audits/SWOT_AND_DEFECT_AUDIT_2026-11-11.md). A clean
 bootstrap from `requirements.lock` failed the unit suite because `aiosqlite`

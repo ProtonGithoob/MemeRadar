@@ -352,10 +352,34 @@ Sonda Ruff, mypy (187 fayl) və tam non-integration suite (1664 passed) keçir.
 | I2/I3 | `c8e90da` | Candidate və position read-ləri newest-first sıralanır (N+1 hələ qalır). |
 | S1 | `114be06` | Yeni mənbənin ilk event-i `PROCESS_START` boundary daşıyır. Coordinator restart downtime-ını durable cursor-a nisbətən gap kimi qeyd edir. |
 
+### 9.1 İkinci mərhələ (operator qərarı: "tövsiyə etdiyin kimi et", əsas məqsəd prioritetdir)
+
+| Tapıntı | Commit | Nə dəyişdi |
+| --- | --- | --- |
+| P2/P3 (zombi pozisiyalar) | `fd5c45b` | Exit quote olmadıqda və ya etibarsız olduqda, holding horizon + `PAPER_AUTO_UNEXECUTABLE_GRACE_SECONDS` (default 300 s) keçəndən sonra pozisiya exit=0 ilə bağlanır. Zərər realizə olunur, `UNEXECUTABLE_EXIT_WRITE_OFF` log-a yazılır. Reconciler write-off-u sell fill olmadan qəbul edir. In-memory və SQL ledger-də işləyir. |
+| P4 + P12 (survivorship, kiçik nümunə) | `ef2a5e5` | `BacktestMetrics`-ə `unresolved_exit_count` və `worst_case_expectancy` əlavə olundu: həll olunmayan exit −100% sayılır. Calibration worst-case obyektivlə sıralayır və minimum train nümunəsindən az olan namizədi sona salır. Promotion review mənfi worst-case-i bayraqlayır. |
+| P6 (label leakage) | `a94adcf` | `CalibrationTimeSplit.embargo` hər partition sonundan əvvəlki checkpoint-ləri çıxarır (purge). `calibrate_score.py`-da default embargo 24 saatdır (`--embargo-hours`), default split isə partition-ların boş qalmaması üçün genişləndirilib. |
+| P5 (kəsik horizon) | `2e8851a` | Datasetin son event-indən sonra bitən horizon `OUTCOME_HORIZON_TRUNCATED` olur: forward_return yoxdur, keyfiyyət UNKNOWN. Müşahidə olunmuş rug, dump və MFE/MAE sərhədləri saxlanılır. |
+| P7 + P8 (exit lookahead, stop uyğunsuzluğu) | `51e846f` | Zaman damğalı TP/stop exit-i horizon səviyyəli safety label-dən üstündür. Horizon label ölçüldüyü `drawdown_fraction`-u saxlayır. Fərqli `stop_loss_fraction` verilərsə backtest səhv verib dayanır. |
+| P10 (korrelyasiyalı təkrar girişlər) | `366eb57` | `one_position_per_token` (default true): token üzrə açıq simulyasiya varsa, yeni giriş `POSITION_ALREADY_OPEN` ilə rədd edilir. |
+| ENTRY_READY əlçatmazlığı | `9d16f7a` | `OrganicFlowAcceleration` komponenti `OrganicMomentumProjection`-dan qidalanır. Bunun şərtləri: projection FRESH olmalıdır, pozitiv sübutu olmalıdır və ≥1 trade ilə ≥2 unikal alıcıdan ibarət tape tərəfindən dəstəklənməlidir. Bu şərtlər ödənmədikdə komponent UNKNOWN qalır. |
+
+**Vacib qeyd (ENTRY_READY).** Kod yolu indi açıqdır. Lakin live stream hələ yalnız launch tranzaksiyalarını çəkir (S9), yəni live trade tape yoxdur. Ona görə canlı rejimdə komponent yenə UNKNOWN qalacaq. Bu, invariantlara uyğun dürüst nəticədir: tape-siz momentum yoxdur.
+
+**S5 qərarı.** Böyük gap-ləri public RPC ilə slot-slot `getBlock` çağıraraq bərpa etmək praktikada mümkün deyil: 1 saatlıq downtime ~9000 sorğu deməkdir. Bunu chunk-lara bölmək problemi həll etmir. Düzgün həll Pump.fun proqramı üzrə `getSignaturesForAddress` pagination + `getTransaction` əsaslı bərpadır, ya da ödənişli/gRPC provider. Bu dəyişiklik edilmədi.
+
 **Açıq qalanlar (növbəti prioritet):**
-- P2/P3 — zombi pozisiyalar və quote olmadıqda TIME_STOP. Bunun üçün unexecutable pozisiyanın hansı qiymətlə bağlanacağına dair policy qərarı lazımdır.
-- D1 — checkpoint semantikasının knowledge-time-a keçirilməsi.
-- §3.2/§3.3-dəki backtest və calibration bias-ları (P4–P12).
-- S4–S12 — stream recovery etibarlılığı. Xüsusilə gap-in ≤500 slotluq chunk-lara bölünməsi (S5) vacibdir: S1-dən sonra uzun downtime gap-ləri artıq görünür, amma 501 slotdan böyük olduqda bərpa oluna bilmir.
-- I4–I11 — API, CI və infra.
-- `ENTRY_READY` əlçatmazlığı (`OrganicFlowAcceleration` qoşulmayıb).
+1. **Live trade tape (S9).** Bu, əsas məqsəd üçün ən böyük boşluqdur. İki yol var:
+   - (a) logsSubscribe-dakı Pump.fun trade event-lərini birbaşa log-dan decode etmək. Bunun üçün event discriminator və layout-u müstəqil şəkildə verify edilməlidir (`TODO_VERIFY` qaydası);
+   - (b) bounded worker pool ilə izlənən mint-lər üzrə `getTransaction` çağırmaq.
+
+   Hər iki yol real provider məlumatı ilə yoxlama tələb edir.
+2. **Signature əsaslı gap bərpası (S5)** və live/backfill payload bərabərliyi (S4).
+3. **Worker etibarlılığı:**
+   - task supervisor (S6);
+   - "processed" marker (S7);
+   - forward_evidence tam scan-ları (S8);
+   - inline recovery (S10).
+4. **D1:** checkpoint-in knowledge-time-a keçirilməsi.
+5. **Backtest fill realizmi (P9):** gap-through və impact modeli.
+6. **API, CI və infra (I3–I15).**
