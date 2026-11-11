@@ -1093,6 +1093,12 @@ class PaperLedgerStore(Protocol):
         """Monotonically update an open position's high-watermark, MFE and MAE."""
         ...
 
+    async def save_position_write_off(
+        self, position_id: UUID, occurred_at: datetime
+    ) -> Position | None:
+        """Close an unexecutable open position at total loss; None if not open."""
+        ...
+
 
 def _clone_result(result: PaperExecutionResult, *, duplicate: bool) -> PaperExecutionResult:
     return PaperExecutionResult(
@@ -1289,6 +1295,22 @@ class InMemoryPaperLedgerStore:
             if position is None or position.state is not PositionState.OPEN:
                 return None
             position.mark_price(price)
+            return copy(position)
+
+    async def save_position_write_off(
+        self, position_id: UUID, occurred_at: datetime
+    ) -> Position | None:
+        async with self._write_lock:
+            position = next(
+                (value for value in self._positions.values() if value.id == position_id),
+                None,
+            )
+            if position is None or position.state not in {
+                PositionState.OPEN,
+                PositionState.EXIT_SIGNALLED,
+            }:
+                return None
+            position.write_off(occurred_at=occurred_at)
             return copy(position)
 
     async def corrupt_current_balance(self, portfolio_id: UUID, value: Decimal) -> None:
@@ -1845,7 +1867,14 @@ class PaperReconciler:
         for token_id, quantity in reconstructed.items():
             position = positions.get(token_id)
             recorded_quantity = Decimal("0") if position is None else position.quantity
-            if recorded_quantity != quantity:
+            written_off = (
+                position is not None
+                and position.state is PositionState.CLOSED
+                and position.average_exit == 0
+                and recorded_quantity == 0
+            )
+            # A write-off removes remaining quantity without a sell fill.
+            if recorded_quantity != quantity and not written_off:
                 reasons.append("POSITION_QUANTITY_MISMATCH")
         status = "CONFLICTED" if reasons else "PASS"
         return ReconciliationReport(

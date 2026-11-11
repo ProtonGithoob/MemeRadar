@@ -16,6 +16,7 @@ from memeradar_application.paper_execution import (
     PaperExecutionEngine,
     PaperExecutionPolicy,
     PaperOrderState,
+    PaperReconciler,
 )
 from memeradar_application.provider_contracts import QuoteAmountUnit, QuoteSnapshot
 from memeradar_application.shadow_entry import (
@@ -580,3 +581,51 @@ def test_worker_starts_paper_consumer_only_for_explicit_policy(monkeypatch) -> N
     enabled = Settings.from_env(paper_values())
     asyncio.run(worker_main.run_worker(asyncio.Event(), enabled))
     assert started == [True]
+
+
+def test_unexecutable_position_is_held_until_time_stop_then_written_off_at_total_loss() -> None:
+    async def scenario() -> None:
+        values = paper_values()
+        values["PAPER_AUTO_HOLDING_HORIZON_SECONDS"] = "60"
+        values["PAPER_AUTO_UNEXECUTABLE_GRACE_SECONDS"] = "30"
+        configured = Settings.from_env(values).paper_auto_policy
+        assert isinstance(configured, PaperAutoPolicy)
+        assert configured.unexecutable_grace_seconds == 30
+        token_candidate = candidate()
+        ledger, execution, position = await _open_paper_fixture(configured, token_candidate)
+        quotes = _ExitQuotes(position, fail=True)
+        evaluations = InMemoryExitEvaluationStore()
+
+        async def candidate_lookup(candidate_id):
+            return token_candidate if candidate_id == token_candidate.id else None
+
+        async def cycle(at):
+            return await process_paper_exits_once(
+                configured,
+                quote_port=quotes,
+                paper_engine=execution,
+                ledger=ledger,
+                exit_engine=ExitEngine(build_paper_exit_policy(configured)),
+                exit_store=evaluations,
+                candidate_lookup=candidate_lookup,
+                now=at,
+            )
+
+        assert position.opened_at is not None
+        assert await cycle(position.opened_at + timedelta(seconds=89)) == ()
+        held = await ledger.get_position(position.portfolio_id, position.token_id)
+        assert held is not None and held.state.value == "OPEN"
+
+        assert await cycle(position.opened_at + timedelta(seconds=90)) == ()
+        closed = await ledger.get_position(position.portfolio_id, position.token_id)
+        assert closed is not None
+        assert closed.state.value == "CLOSED"
+        assert closed.quantity == 0
+        assert closed.average_exit == 0
+        assert closed.realized_pnl == -(position.quantity * position.average_entry)
+        report = await PaperReconciler(ledger).reconcile(
+            configured.portfolio_id, as_of=position.opened_at + timedelta(seconds=91)
+        )
+        assert report.status == "PASS", report.reason_codes
+
+    asyncio.run(scenario())

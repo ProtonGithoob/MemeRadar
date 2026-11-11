@@ -376,6 +376,17 @@ async def _exercise(database_url: str) -> None:
         # Numeric(36, 18) storage rounds the computed price.
         assert abs(persisted.high_watermark - entry * 2) < Decimal("1e-15")
         assert abs(persisted.mfe - entry) < Decimal("1e-15")
+        written_off = await resumed_store.save_position_write_off(
+            first.position.id, NOW + timedelta(hours=1)
+        )
+        assert written_off is not None
+        closed = await resumed_store.get_position(portfolio_id, token_id)
+        assert closed is not None
+        assert closed.state.value == "CLOSED"
+        assert closed.quantity == 0
+        assert closed.average_exit == 0
+        assert closed.realized_pnl < 0
+        assert await resumed_store.save_position_write_off(first.position.id, NOW) is None
     finally:
         async with engine.begin() as connection:
             await connection.execute(

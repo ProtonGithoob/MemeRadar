@@ -83,6 +83,7 @@ class PaperAutoPolicy:
     take_profit_fraction: Decimal
     holding_horizon_seconds: int
     version: str
+    unexecutable_grace_seconds: int = 300
 
     def __post_init__(self) -> None:
         if not isinstance(self.portfolio_id, UUID):
@@ -120,6 +121,7 @@ class PaperAutoPolicy:
             ("quote_ttl_seconds", 3600),
             ("max_concurrent_positions", 1000),
             ("holding_horizon_seconds", 31_536_000),
+            ("unexecutable_grace_seconds", 86_400),
         ):
             value = getattr(self, name)
             minimum = (
@@ -222,6 +224,12 @@ def _paper_policy_from_env(values: Mapping[str, str]) -> PaperAutoPolicy:
             31_536_000,
         ),
         version=_required_paper_value(values, "PAPER_AUTO_POLICY_VERSION"),
+        unexecutable_grace_seconds=_parse_int(
+            "PAPER_AUTO_UNEXECUTABLE_GRACE_SECONDS",
+            _optional_value(values, "PAPER_AUTO_UNEXECUTABLE_GRACE_SECONDS") or "300",
+            0,
+            86_400,
+        ),
     )
 
 

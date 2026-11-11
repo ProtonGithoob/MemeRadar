@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import replace
+from datetime import datetime
 from decimal import Decimal
 from typing import cast
 from uuid import UUID, uuid4
@@ -574,6 +575,23 @@ class SqlAlchemyPaperLedgerStore:
             row.high_watermark = position.high_watermark
             row.mfe = position.mfe
             row.mae = position.mae
+            return position
+
+    async def save_position_write_off(
+        self, position_id: UUID, occurred_at: datetime
+    ) -> Position | None:
+        async with self._session_factory() as session, session.begin():
+            row = await session.scalar(
+                select(PositionRow).where(PositionRow.id == position_id).with_for_update()
+            )
+            if row is None or row.state not in {
+                PositionState.OPEN.value,
+                PositionState.EXIT_SIGNALLED.value,
+            }:
+                return None
+            position = _position_from_row(row)
+            position.write_off(occurred_at=occurred_at)
+            _apply_position(row, position)
             return position
 
     async def list_positions(self, portfolio_id: UUID) -> Sequence[Position]:

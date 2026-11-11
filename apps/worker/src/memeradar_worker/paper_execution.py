@@ -402,6 +402,40 @@ def _evaluate_paper_exit(
     )
 
 
+async def _write_off_if_unexecutable(
+    policy: PaperAutoPolicy,
+    ledger: PaperLedgerStore,
+    position: Position,
+    *,
+    now: datetime,
+) -> Position | None:
+    """Book a total loss once the time stop is due and no executable exit exists.
+
+    Without this, a rugged token whose sell route vanished stays OPEN at cost
+    basis forever and paper PnL silently excludes the loss.
+    """
+
+    if position.opened_at is None:
+        return None
+    deadline = position.opened_at + timedelta(
+        seconds=policy.holding_horizon_seconds + policy.unexecutable_grace_seconds
+    )
+    if now < deadline:
+        return None
+    written_off = await ledger.save_position_write_off(position.id, now)
+    if written_off is not None:
+        LOGGER.warning(
+            "paper_position_written_off_unexecutable",
+            extra={
+                "position_id": str(position.id),
+                "token_id": str(position.token_id),
+                "realized_pnl": str(written_off.realized_pnl),
+                "reason_code": "UNEXECUTABLE_EXIT_WRITE_OFF",
+            },
+        )
+    return written_off
+
+
 async def process_paper_exits_once(
     policy: PaperAutoPolicy,
     *,
@@ -476,6 +510,7 @@ async def process_paper_exits_once(
                 "paper_exit_quote_unavailable",
                 extra={"position_id": str(position.id), "error_class": type(exc).__name__},
             )
+            await _write_off_if_unexecutable(policy, ledger, position, now=checked_at)
             continue
 
         if not _exit_quote_is_valid(
@@ -488,6 +523,7 @@ async def process_paper_exits_once(
             policy=policy,
             now=checked_at,
         ):
+            await _write_off_if_unexecutable(policy, ledger, position, now=checked_at)
             continue
         assert isinstance(quote, QuoteSnapshot)
 

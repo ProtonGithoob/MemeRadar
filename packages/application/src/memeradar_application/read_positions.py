@@ -218,8 +218,8 @@ class ClosedTradeExplanationView:
             raise TypeError("evaluation_id must be a UUID or None")
         object.__setattr__(self, "closed_at", ensure_utc(self.closed_at, "closed_at"))
         object.__setattr__(self, "average_exit", to_decimal(self.average_exit, "average_exit"))
-        if self.average_exit <= 0:
-            raise ValueError("average_exit must be positive")
+        if self.average_exit < 0:
+            raise ValueError("average_exit must not be negative")
         object.__setattr__(self, "realized_pnl", to_decimal(self.realized_pnl, "realized_pnl"))
         object.__setattr__(
             self, "action", require_text(self.action, "action", max_length=16).upper()
@@ -298,8 +298,8 @@ class PositionView:
             raise ValueError("position quantity must be non-negative and entry must be positive")
         if self.average_exit is not None:
             average_exit = to_decimal(self.average_exit, "average_exit")
-            if average_exit <= 0:
-                raise ValueError("average_exit must be positive")
+            if average_exit < 0:
+                raise ValueError("average_exit must not be negative")
             object.__setattr__(self, "average_exit", average_exit)
         for field_name in ("opened_at", "closed_at", "latest_activity_at"):
             value = getattr(self, field_name)

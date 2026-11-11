@@ -243,8 +243,9 @@ class Position:
             raise ValueError("high_watermark must not be below average_entry")
         if self.average_exit is not None:
             self.average_exit = to_decimal(self.average_exit, "average_exit")
-            if self.average_exit <= 0:
-                raise ValueError("average_exit must be positive")
+            # Zero is reserved for an unexecutable write-off at total loss.
+            if self.average_exit < 0:
+                raise ValueError("average_exit must not be negative")
         if self.closed_at is not None:
             self.closed_at = ensure_utc(self.closed_at, "closed_at")
             if self.opened_at is not None and self.closed_at < self.opened_at:
@@ -336,6 +337,26 @@ class Position:
             self.average_exit = normalized_proceeds / normalized_quantity
             self.exit_decision_ref = decision_ref
             self.state = PositionState.CLOSED
+
+    def write_off(self, *, occurred_at: datetime) -> None:
+        """Close an unexecutable position at a total loss of its remaining cost.
+
+        Used when no executable exit quote exists after the holding horizon;
+        the remaining quantity is booked at zero proceeds instead of being
+        left open at cost basis.
+        """
+
+        if self.state not in {PositionState.OPEN, PositionState.EXIT_SIGNALLED}:
+            raise ValueError("only open or exit-signalled positions can be written off")
+        normalized_time = ensure_utc(occurred_at, "occurred_at")
+        if self.opened_at is not None and normalized_time < self.opened_at:
+            raise ValueError("write-off must not precede opened_at")
+        self.realized_pnl -= self.quantity * self.average_entry
+        self.mae = min(self.mae, -self.average_entry)
+        self.quantity = Decimal("0")
+        self.closed_at = normalized_time
+        self.average_exit = Decimal("0")
+        self.state = PositionState.CLOSED
 
     def signal_exit(self, signal: ExitSignal) -> None:
         """Move an open position to an explainable exit-signal state."""
