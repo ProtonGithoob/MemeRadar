@@ -502,3 +502,42 @@ def test_unverified_stream_gap_does_not_queue_telegram_alert() -> None:
         stream_gap=True,
     ))
     assert all(kind != "notification" for kind, _ in outbox.events)
+
+
+def test_stream_gap_overrides_caller_supplied_verified_protocol_identity() -> None:
+    service = EarlyRuntimeService()
+    first = observation("sig-gap-identity", NOW)
+
+    result = run(
+        service.process(
+            first,
+            observations=(first,),
+            safety_evidence=BASE_SAFETY,
+            score_components=components("95"),
+            stream_gap=True,
+        )
+    )
+
+    assert BASE_SAFETY["protocol_identity_verified"] is True
+    assert result.safety.protocol_identity_verified is False
+    assert result.safety.status.value != "PASS"
+    assert "PROTOCOL_IDENTITY_UNVERIFIED" in result.safety.critical_unknowns
+    assert result.decision.entry_ready is False
+
+
+def test_unavailable_provider_overrides_caller_supplied_verified_protocol_identity() -> None:
+    service = EarlyRuntimeService()
+    first = observation("sig-provider-identity", NOW)
+
+    result = run(
+        service.process(
+            first,
+            observations=(first,),
+            safety_evidence=BASE_SAFETY,
+            score_components=components("95"),
+            provider_available=False,
+        )
+    )
+
+    assert result.safety.protocol_identity_verified is False
+    assert result.safety.status.value != "PASS"

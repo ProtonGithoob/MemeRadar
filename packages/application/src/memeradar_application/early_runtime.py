@@ -497,12 +497,15 @@ class EarlyRuntimeService:
         feature_ms = Decimal(str((perf_counter() - feature_started) * 1000))
 
         evidence = dict(safety_evidence or {})
-        if detection.authority is not DetectionAuthority.DIRECT_CHAIN:
-            evidence.setdefault("protocol_identity_verified", False)
-        if not provider_available:
-            evidence.setdefault("protocol_identity_verified", False)
-        if stream_gap:
-            evidence.setdefault("protocol_identity_verified", False)
+        # A non-direct detection, an unavailable provider or an unresolved
+        # stream gap must fail closed even when the caller supplied a verified
+        # identity flag; ``setdefault`` would let that caller value win.
+        if (
+            detection.authority is not DetectionAuthority.DIRECT_CHAIN
+            or not provider_available
+            or stream_gap
+        ):
+            evidence["protocol_identity_verified"] = False
         safety_started = perf_counter()
         safety = self.safety_gate.evaluate(evidence, confluence=confluence)
         safety_ms = Decimal(str((perf_counter() - safety_started) * 1000))
