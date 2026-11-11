@@ -201,3 +201,19 @@ def test_idl_decoder_rejects_untrusted_or_malformed_input(
 def test_create_v2_rejects_partial_quote_remaining_accounts() -> None:
     with pytest.raises(ValueError, match="quote"):
         decode_pump_fun_instruction("create_v2", _create_v2_data(), _v2_accounts() + [USDC])
+
+
+@pytest.mark.parametrize("extension_count", (4, 8))
+def test_create_v2_unrecognized_remaining_extension_keeps_launch_with_unknown_quote(
+    extension_count: int,
+) -> None:
+    extension = ["pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"] * extension_count
+
+    decoded = decode_pump_fun_instruction(
+        "create_v2", _create_v2_data(), _v2_accounts() + extension
+    )
+
+    assert decoded["mint"] == MINT
+    assert decoded["quote_mint"] is None
+    assert decoded["quote_mint_semantics"] == "UNKNOWN"
+    assert decoded["remaining_account_count"] == extension_count

@@ -183,10 +183,17 @@ def _quote_fields(name: str, accounts: Sequence[str]) -> tuple[str | None, str]:
     if name != "create_v2":
         return None, "SOL"
     remaining = len(accounts) - len(PUMP_FUN_CREATE_V2_ACCOUNT_NAMES)
-    if remaining not in (0, len(PUMP_FUN_CREATE_V2_REMAINING_ACCOUNT_NAMES)):
-        raise ValueError("quote remaining accounts must contain all three accounts")
+    quote_count = len(PUMP_FUN_CREATE_V2_REMAINING_ACCOUNT_NAMES)
     if remaining == 0:
         return None, "SOL"
+    if remaining > quote_count:
+        # Mainnet create_v2 now also carries 4- and 8-account remaining
+        # extensions that are not the pinned quote layout. The verified fixed
+        # accounts still decode; the quote denomination is UNKNOWN rather
+        # than assumed to be SOL, and the launch is not discarded.
+        return None, "UNKNOWN"
+    if remaining != quote_count:
+        raise ValueError("quote remaining accounts must contain all three accounts")
     quote_mint = require_solana_address(
         accounts[len(PUMP_FUN_CREATE_V2_ACCOUNT_NAMES)], "quote_mint"
     )
@@ -253,6 +260,12 @@ def decode_pump_fun_instruction(
         "is_holder_reward_present": optional_presence["is_holder_reward"],
         "quote_mint": quote_mint,
         "quote_mint_semantics": quote_semantics,
+        "remaining_account_count": max(
+            0,
+            len(accounts) - len(PUMP_FUN_CREATE_V2_ACCOUNT_NAMES)
+            if name == "create_v2"
+            else 0,
+        ),
         "idl_source": PUMP_FUN_IDL_SOURCE,
         "idl_raw_source": PUMP_FUN_IDL_RAW_SOURCE,
         "idl_revision": PUMP_FUN_IDL_REVISION,

@@ -724,3 +724,64 @@ def test_launch_classification_ignores_create_named_instructions_of_other_progra
     assert source._is_launch_notification(_logs_notification(ordinary_buy)) is False
     assert source._is_launch_notification(_logs_notification(fee_config)) is False
     assert source._is_launch_notification(_logs_notification(aggregated_launch)) is True
+
+
+def test_reconnect_is_immediate_after_a_healthy_connection_and_backs_off_otherwise() -> None:
+    async def scenario() -> None:
+        now = asyncio.get_running_loop().time()
+        delay = SolanaRawTransactionSource._reconnect_delay
+        assert delay(now - 30, 0) == 0.0
+        assert delay(now - 1, 0) == 0.5
+        assert delay(None, 3) == 4.0
+        assert delay(None, 10) == 5.0
+
+    asyncio.run(scenario())
+
+
+def test_zero_signature_notification_is_skipped_without_fetch_or_reconnect(monkeypatch) -> None:
+    zero = _notification()
+    zero["params"]["result"]["value"]["signature"] = "1" * 64  # type: ignore[index]
+
+    class Session:
+        def __init__(self) -> None:
+            self.messages = [
+                json.dumps({"result": 7}),
+                json.dumps(zero),
+                json.dumps(_notification()),
+            ]
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+        async def send(self, _value: str) -> None:
+            pass
+
+        async def recv(self) -> str:
+            if self.messages:
+                return self.messages.pop(0)
+            raise ConnectionError("fixture websocket closed")
+
+    monkeypatch.setattr(solana_raw_stream.websockets, "connect", lambda *_a, **_k: Session())
+    source = SolanaRawTransactionSource(
+        SolanaRpcAdapter("https://fixture.solana.example"),
+        stop_event=asyncio.Event(),
+    )
+    fetched: list[str] = []
+
+    async def fetch(signature: str, **_kwargs: object):
+        fetched.append(signature)
+        return _transaction()
+
+    async def scenario() -> None:
+        source.rpc.fetch_transaction_payload = fetch  # type: ignore[method-assign]
+        event = await asyncio.wait_for(source.__anext__(), 5)
+        assert event.signature == SIGNATURE
+        assert fetched == [SIGNATURE]
+        assert source.metrics["zero_signature_notifications"] == 1
+        assert event.connection_id == "solana-ws-1"
+        await source.aclose()
+
+    asyncio.run(scenario())

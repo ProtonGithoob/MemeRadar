@@ -73,6 +73,9 @@ class UnsupportedPumpFunInstructionError(ProviderSchemaError):
 SOLANA_RAW_TRANSPORT = "solana-public-rpc"
 # Anchor instruction log names Pump.fun emits for a launch.
 _LAUNCH_LOG_NAMES = frozenset({"Create", "CreateV2"})
+_ZERO_SIGNATURE = "1" * 64
+_HEALTHY_CONNECTION_SECONDS = 5.0
+_MAX_RECONNECT_DELAY_SECONDS = 5.0
 SOLANA_PUBLIC_WEBSOCKET_URL = "wss://api.mainnet-beta.solana.com"
 PUMP_FUN_BUY_TAG = bytes.fromhex("66063d1201daebea")
 PUMP_FUN_BUY_V2_TAG = bytes.fromhex("b817ee6167c5d33d")
@@ -678,6 +681,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
             "trade_event_decode_failures": 0,
             "trade_logs_truncated": 0,
             "trade_events_capped": 0,
+            "zero_signature_notifications": 0,
         }
 
     def __aiter__(self) -> SolanaRawTransactionSource:
@@ -714,6 +718,8 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
             raise ProviderUnavailableError("websockets dependency is unavailable")
         subscribed = False
         recovery_pending = False
+        subscribed_at: float | None = None
+        rapid_failures = 0
         while not self._stop_event.is_set() and not self._closed:
             try:
                 self.metrics["stream_reconnects"] += 1
@@ -750,6 +756,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                         self.metrics["subscription_reconnects"] += 1
                         recovery_pending = False
                     subscribed = True
+                    subscribed_at = asyncio.get_running_loop().time()
                     while not self._stop_event.is_set() and not self._closed:
                         try:
                             raw = await asyncio.wait_for(websocket.recv(), 30)
@@ -767,6 +774,12 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                             self._last_slot or notification.slot,
                             notification.slot,
                         )
+                        if notification.signature == _ZERO_SIGNATURE:
+                            # The node reports some transactions before a
+                            # signature exists; getTransaction cannot resolve
+                            # them, and treating that as loss forced reconnects.
+                            self.metrics["zero_signature_notifications"] += 1
+                            continue
                         if notification.signature in self._seen_set:
                             self.metrics["signatures_deduplicated"] += 1
                             continue
@@ -910,9 +923,27 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                 self.metrics["stream_errors"] += 1
                 if self._stop_event.is_set() or self._closed:
                     return
-                await asyncio.sleep(1.0)
+                delay = self._reconnect_delay(subscribed_at, rapid_failures)
+                rapid_failures = 0 if delay == 0.0 else rapid_failures + 1
+                subscribed_at = None
+                await asyncio.sleep(delay)
             finally:
                 self._subscription_connected = False
+
+    @staticmethod
+    def _reconnect_delay(subscribed_at: float | None, rapid_failures: int) -> float:
+        """Reconnect at once after a healthy connection drops; back off otherwise.
+
+        The public endpoint closes busy subscriptions every few seconds. A
+        fixed pause after each close widened every gap; repeated quick
+        failures still back off exponentially.
+        """
+
+        if subscribed_at is not None:
+            lived = asyncio.get_running_loop().time() - subscribed_at
+            if lived >= _HEALTHY_CONNECTION_SECONDS:
+                return 0.0
+        return float(min(_MAX_RECONNECT_DELAY_SECONDS, 0.5 * (2.0**rapid_failures)))
 
     async def _fetch_transaction_with_retry(
         self,
