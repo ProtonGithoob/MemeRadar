@@ -227,14 +227,20 @@ def test_early_execution_quote_requests_use_observed_mint_decimals(monkeypatch) 
         (request.input_decimals, request.output_decimals)
         for request in quote_provider.requests
     ]
-    assert request_decimals == [
+    # The sellability probe comes first; executable-depth liquidity probes
+    # (SOL/USD reference, depth buy, depth sell) may follow.
+    assert request_decimals[:2] == [
         (9, 6),
         (6, 9),
     ]
-    assert [request.amount for request in quote_provider.requests] == [
+    assert [request.amount for request in quote_provider.requests][:2] == [
         early_discovery._EARLY_QUOTE_PROBE_LAMPORTS,
         1000,
     ]
+    assert all(
+        request.input_decimals in {6, 9} and request.output_decimals in {6, 9}
+        for request in quote_provider.requests[2:]
+    )
     assert buy_quote is not None
     assert buy_quote.amount_unit is QuoteAmountUnit.RAW_BASE_UNITS
     assert evidence["sellability"] is True

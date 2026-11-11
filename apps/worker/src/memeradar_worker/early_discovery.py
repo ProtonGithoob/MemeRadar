@@ -7,7 +7,7 @@ from collections.abc import AsyncIterable, Mapping
 from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from hashlib import sha256
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -38,6 +38,7 @@ from memeradar_application.provider_contracts import (
     OnChainRequest,
     ProviderRequestContext,
     QuoteAmountUnit,
+    QuotePort,
     QuoteRequest,
     QuoteSnapshot,
 )
@@ -724,6 +725,112 @@ def _quote_observation(
     )
 
 
+# Bonding-curve tokens have no published pool liquidity, so liquidity is
+# proven by executable depth: a round trip of this USD value (buy, then sell
+# everything bought) must stay within the fast-safety impact limit. The value
+# equals the default FastSafetyGate minimum liquidity.
+_EARLY_DEPTH_PROBE_USD = Decimal("1000")
+_EARLY_DEPTH_MAX_IMPACT_BPS = Decimal("1000")
+_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+_SOL_USD_CACHE_SECONDS = 60
+_sol_usd_cache: tuple[datetime, Decimal] | None = None
+
+
+async def _sol_usd_reference(
+    quote_port: QuotePort, context: ProviderRequestContext
+) -> Decimal | None:
+    """SOL/USD from an executable 1 SOL -> USDC quote, cached briefly."""
+
+    global _sol_usd_cache
+    now = datetime.now(UTC)
+    if _sol_usd_cache is not None and now - _sol_usd_cache[0] <= timedelta(
+        seconds=_SOL_USD_CACHE_SECONDS
+    ):
+        return _sol_usd_cache[1]
+    try:
+        quote = await quote_port.quote(
+            QuoteRequest(
+                context=context,
+                input_mint=_WRAPPED_SOL_MINT,
+                output_mint=_USDC_MINT,
+                amount=Decimal(1_000_000_000),
+                slippage_bps=_EARLY_QUOTE_PROBE_SLIPPAGE_BPS,
+                input_decimals=9,
+                output_decimals=6,
+            )
+        )
+    except Exception:  # noqa: BLE001 - no reference means liquidity stays unknown.
+        return None
+    price = quote.human_output_amount if isinstance(quote, QuoteSnapshot) else None
+    checked_at = datetime.now(UTC)
+    if price is None or price <= 0 or not quote.is_fresh_at(checked_at):
+        return None
+    _sol_usd_cache = (checked_at, price)
+    return price
+
+
+async def _executable_depth_liquidity(
+    quote_port: QuotePort,
+    *,
+    mint: str,
+    token_decimals: int,
+    context: ProviderRequestContext,
+    probe_usd: Decimal = _EARLY_DEPTH_PROBE_USD,
+    max_impact_bps: Decimal = _EARLY_DEPTH_MAX_IMPACT_BPS,
+) -> tuple[Decimal | None, tuple[QuoteSnapshot, ...]]:
+    """Prove ``probe_usd`` of executable round-trip depth, or return None.
+
+    Returns the proven USD depth only when both the buy and the full sell-back
+    are fresh execution quotes within ``max_impact_bps``; anything else leaves
+    liquidity UNKNOWN instead of estimating it.
+    """
+
+    sol_usd = await _sol_usd_reference(quote_port, context)
+    if sol_usd is None:
+        return None, ()
+    probe_lamports = (probe_usd / sol_usd * Decimal(1_000_000_000)).to_integral_value(
+        rounding=ROUND_CEILING
+    )
+    try:
+        buy = await quote_port.quote(
+            QuoteRequest(
+                context=context,
+                input_mint=_WRAPPED_SOL_MINT,
+                output_mint=mint,
+                amount=probe_lamports,
+                slippage_bps=_EARLY_QUOTE_PROBE_SLIPPAGE_BPS,
+                input_decimals=9,
+                output_decimals=token_decimals,
+            )
+        )
+        if not isinstance(buy, QuoteSnapshot) or cast(Decimal, buy.output_amount) <= 0:
+            return None, ()
+        sell = await quote_port.quote(
+            QuoteRequest(
+                context=context,
+                input_mint=mint,
+                output_mint=_WRAPPED_SOL_MINT,
+                amount=cast(Decimal, buy.output_amount),
+                slippage_bps=_EARLY_QUOTE_PROBE_SLIPPAGE_BPS,
+                input_decimals=token_decimals,
+                output_decimals=9,
+            )
+        )
+    except Exception:  # noqa: BLE001 - unproven depth is UNKNOWN liquidity.
+        return None, ()
+    now = datetime.now(UTC)
+    quotes = (buy, sell) if isinstance(sell, QuoteSnapshot) else (buy,)
+    if not isinstance(sell, QuoteSnapshot) or any(
+        quote.price_semantics is not PriceSemantics.EXECUTION_QUOTE
+        or not quote.is_fresh_at(now)
+        or quote.price_impact_bps is None
+        or Decimal(str(quote.price_impact_bps)) > max_impact_bps
+        for quote in quotes
+    ):
+        return None, quotes
+    return probe_usd, quotes
+
+
 async def _collect_early_candidate_evidence(
     provider_bundle: ProviderBundle,
     event: object,
@@ -981,7 +1088,29 @@ async def _collect_early_candidate_evidence(
     if valid_buy and valid_sell:
         evidence["sellability"] = True
         evidence["quote_semantics"] = PriceSemantics.EXECUTION_QUOTE.value
-    for quote in (buy_quote, sell_quote):
+    depth_quotes: tuple[QuoteSnapshot, ...] = ()
+    depth_port = (
+        provider_bundle.jupiter
+        if provider_bundle.settings.paper_quote_provider == "jupiter"
+        else None
+    )
+    if (
+        "liquidity" not in evidence
+        and valid_buy
+        and valid_sell
+        and depth_port is not None
+        and token_decimals is not None
+    ):
+        depth_usd, depth_quotes = await _executable_depth_liquidity(
+            depth_port,
+            mint=mint,
+            token_decimals=token_decimals,
+            context=quote_context,
+        )
+        if depth_usd is not None:
+            evidence["liquidity"] = depth_usd
+            evidence["liquidity_source"] = "EXECUTABLE_QUOTE_DEPTH"
+    for quote in (buy_quote, sell_quote, *depth_quotes):
         if quote is None or quote.price_semantics is not PriceSemantics.EXECUTION_QUOTE:
             continue
         observation = _quote_observation(
