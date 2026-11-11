@@ -173,3 +173,29 @@ def test_transport_reports_bounded_rate_limit_retry_and_request_latency() -> Non
         "rate_limit_events": 1,
     }
     assert snapshot.latencies["provider_request_ms"]["provider_network"]["count"] == 2
+
+
+def test_rate_limiter_paces_requests_by_minimum_interval() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from memeradar_providers.transport import RateLimiter
+
+    clock_now = [datetime(2026, 11, 11, tzinfo=UTC)]
+    waits: list[float] = []
+
+    async def sleeper(seconds: float) -> None:
+        waits.append(seconds)
+        clock_now[0] += timedelta(seconds=seconds)
+
+    limiter = RateLimiter(clock=lambda: clock_now[0], sleeper=sleeper, min_interval_seconds=1.5)
+
+    async def scenario() -> None:
+        await limiter.acquire()
+        await limiter.acquire()
+        clock_now[0] += timedelta(seconds=5)
+        await limiter.acquire()
+
+    import asyncio
+
+    asyncio.run(scenario())
+    assert waits == [1.5]

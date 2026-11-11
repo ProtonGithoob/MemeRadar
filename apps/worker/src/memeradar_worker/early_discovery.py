@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterable, Mapping
+from collections.abc import AsyncIterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -563,7 +563,11 @@ async def _run_early_alpha_shadow(
         quote: QuoteSnapshot | None = None
         if provider_bundle is not None:
             evidence_observations, safety_evidence, quote = (
-                await _collect_early_candidate_evidence(provider_bundle, event)
+                # A token seconds old has no trade tape and is often not yet
+                # routable; executable quotes are spent at reevaluation.
+                await _collect_early_candidate_evidence(
+                    provider_bundle, event, collect_quotes=False
+                )
             )
         decision_as_of = datetime.now(UTC)
         caller_token = _caller_research_token(event)
@@ -831,9 +835,28 @@ async def _executable_depth_liquidity(
     return probe_usd, quotes
 
 
+_MIN_TAPE_BUYERS_FOR_QUOTES = 5
+
+
+def _tape_unique_buyers(observations: Sequence[Observation]) -> int:
+    """Distinct buying wallets in decoded trade tape (quote budget gate)."""
+
+    return len(
+        {
+            observation.normalized_payload.get("buyer_wallet")
+            for observation in observations
+            if observation.normalized_payload.get("event_type") == "trade_event"
+            and observation.normalized_payload.get("side") == "buy"
+            and isinstance(observation.normalized_payload.get("buyer_wallet"), str)
+        }
+    )
+
+
 async def _collect_early_candidate_evidence(
     provider_bundle: ProviderBundle,
     event: object,
+    *,
+    collect_quotes: bool = True,
 ) -> tuple[tuple[Observation, ...], dict[str, object], QuoteSnapshot | None]:
     """Collect bounded read-only evidence used by the real-time safety gate."""
 
@@ -928,7 +951,7 @@ async def _collect_early_candidate_evidence(
             if selected_quote_provider == "custom"
             else None
         )
-        if quote_port is None or token_decimals is None:
+        if not collect_quotes or quote_port is None or token_decimals is None:
             return None, None
         try:
             buy = await quote_port.quote(
@@ -1393,6 +1416,10 @@ async def _run_early_lifecycle_reevaluation(
                         await _collect_early_candidate_evidence(
                             provider_bundle,
                             launch_observation,
+                            collect_quotes=(
+                                _tape_unique_buyers(market_observations)
+                                >= _MIN_TAPE_BUYERS_FOR_QUOTES
+                            ),
                         )
                     )
                 evaluated_at = datetime.now(UTC)

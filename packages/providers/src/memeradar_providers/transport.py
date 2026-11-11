@@ -233,11 +233,19 @@ class RateLimiter:
         clock: Clock | None = None,
         sleeper: Sleeper = asyncio.sleep,
         max_wait_seconds: float = 60.0,
+        min_interval_seconds: float = 0.0,
     ) -> None:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._sleeper = sleeper
         self._max_wait_seconds = _bounded_duration(max_wait_seconds, "max_wait_seconds")
         self._blocked_until: datetime | None = None
+        if min_interval_seconds < 0 or min_interval_seconds > self._max_wait_seconds:
+            raise ValueError("min_interval_seconds must be between zero and max_wait_seconds")
+        # Optional client-side pacing for providers that throttle bursts
+        # without advertising a reset (for example keyless free tiers).
+        self._min_interval = timedelta(seconds=min_interval_seconds)
+        self._next_allowed: datetime | None = None
+        self._pacing_lock: asyncio.Lock | None = None
 
     def update(self, snapshot: RateLimitSnapshot, *, now: datetime | None = None) -> None:
         if not isinstance(snapshot, RateLimitSnapshot):
@@ -253,14 +261,25 @@ class RateLimiter:
 
     async def acquire(self, *, now: datetime | None = None) -> None:
         effective_now = ensure_utc(now or self._clock(), "now")
-        if self._blocked_until is None or self._blocked_until <= effective_now:
-            self._blocked_until = None
-            return
-        wait_seconds = (self._blocked_until - effective_now).total_seconds()
-        if wait_seconds > self._max_wait_seconds:
-            raise RateLimitWaitExceeded("provider rate-limit wait exceeds local bound")
-        await self._sleeper(wait_seconds)
+        if self._blocked_until is not None and self._blocked_until > effective_now:
+            wait_seconds = (self._blocked_until - effective_now).total_seconds()
+            if wait_seconds > self._max_wait_seconds:
+                raise RateLimitWaitExceeded("provider rate-limit wait exceeds local bound")
+            await self._sleeper(wait_seconds)
         self._blocked_until = None
+        if self._min_interval <= timedelta(0):
+            return
+        if self._pacing_lock is None:
+            self._pacing_lock = asyncio.Lock()
+        async with self._pacing_lock:
+            paced_now = ensure_utc(self._clock(), "now")
+            if self._next_allowed is not None and paced_now < self._next_allowed:
+                wait_seconds = (self._next_allowed - paced_now).total_seconds()
+                if wait_seconds > self._max_wait_seconds:
+                    raise RateLimitWaitExceeded("provider pacing wait exceeds local bound")
+                await self._sleeper(wait_seconds)
+                paced_now = self._next_allowed
+            self._next_allowed = paced_now + self._min_interval
 
 
 class CircuitState(str, Enum):

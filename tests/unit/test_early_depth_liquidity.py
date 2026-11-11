@@ -100,3 +100,39 @@ def test_missing_sol_reference_leaves_liquidity_unknown_without_probing() -> Non
     assert liquidity is None
     assert depth_quotes == ()
     assert len(quotes.requests) == 1
+
+
+def test_quote_budget_gate_counts_distinct_tape_buyers_only() -> None:
+    from memeradar_domain import Observation, QualityState
+
+    now = datetime.now(UTC)
+
+    def tape(wallet: str, side: str, event_type: str = "trade_event") -> Observation:
+        return Observation(
+            kind="chain.event",
+            provenance=Provenance(
+                provider="chain.integrity",
+                source_id=f"{wallet}:{side}:{event_type}",
+                observed_at=now,
+                parser_version="fixture-v1",
+            ),
+            occurred_at=now,
+            observed_at=now,
+            ingested_at=now,
+            quality_state=QualityState.FRESH,
+            normalized_payload={
+                "event_type": event_type,
+                "side": side,
+                "buyer_wallet": wallet if side == "buy" else None,
+            },
+        )
+
+    observations = (
+        tape("w1", "buy"),
+        tape("w1", "buy"),
+        tape("w2", "buy"),
+        tape("w3", "sell"),
+        tape("w4", "buy", event_type="buy_v2"),
+    )
+
+    assert early_discovery._tape_unique_buyers(observations) == 2

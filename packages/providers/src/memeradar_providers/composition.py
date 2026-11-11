@@ -57,7 +57,12 @@ from .rugcheck import RugCheckRestAdapter
 from .social import SocialRestAdapter
 from .solana_rpc import SolanaRpcAdapter
 from .telegram import TelegramCallAdapter
-from .transport import CapabilityUnavailableError, ProviderError, ProviderTransport
+from .transport import (
+    CapabilityUnavailableError,
+    ProviderError,
+    ProviderTransport,
+    RateLimiter,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -212,6 +217,7 @@ class BoundedNarrativeFallback(_BoundedFallback, NarrativePort):
 # HTTPS URL on this exact host is accepted keyless; any other URL still
 # requires a key.
 JUPITER_KEYLESS_HOSTS = frozenset({"lite-api.jup.ag"})
+JUPITER_KEYLESS_MIN_INTERVAL = 1.1
 
 
 def _is_keyless_jupiter_url(url: str) -> bool:
@@ -553,12 +559,22 @@ def build_provider_bundle(
         else BoundedMarketDataFallback(market_providers)
     )
 
+    jupiter_keyless = jupiter_configured and not _configured(settings.paper_quote_api_key)
     jupiter = (
         JupiterAdapter(
             cast(str, settings.paper_quote_url),
             api_key=settings.paper_quote_api_key,
             client=client,
-            transport=transport,
+            # The keyless tier throttles bursts with 429s; pace requests
+            # client-side instead of retrying into the limit.
+            transport=(
+                ProviderTransport(
+                    rate_limiter=RateLimiter(min_interval_seconds=JUPITER_KEYLESS_MIN_INTERVAL),
+                    provider_name="jupiter-keyless",
+                )
+                if jupiter_keyless
+                else transport
+            ),
             clock=clock,
         )
         if jupiter_configured
