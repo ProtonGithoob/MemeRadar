@@ -167,3 +167,43 @@ def test_stale_or_reverted_first_block_evidence_cannot_improve_risk() -> None:
     assert snapshot.quality_state in {QualityState.STALE, QualityState.CONFLICTED}
     assert snapshot.risk_disposition is RiskDisposition.UNKNOWN
     assert snapshot.execution_eligible() is False
+
+
+def test_unassessed_creator_and_fresh_wallet_attributes_are_unknown_not_safe() -> None:
+    observations = tuple(
+        wallet_observation(
+            f"wallet-unassessed-{index}",
+            bundle=f"bundle-{index}",
+            funder=f"funder-{index}",
+            fresh=None,
+            slot=100 + index,
+            extra={},
+        )
+        for index in range(4)
+    )
+    for observation in observations:
+        observation.normalized_payload.pop("creator_related", None)  # type: ignore[attr-defined]
+
+    snapshot = LaunchRiskAnalyzer().evaluate(observations, as_of=NOW)
+
+    assert snapshot.creator_related_ratio is None
+    assert snapshot.fresh_wallet_ratio is None
+    assert snapshot.risk_disposition is RiskDisposition.UNKNOWN
+
+
+def test_partial_fresh_wallet_assessment_still_proves_a_block() -> None:
+    observations = tuple(
+        wallet_observation(
+            f"wallet-partial-{index}",
+            bundle=f"bundle-{index}",
+            funder=f"funder-{index}",
+            fresh=True if index < 4 else None,
+            slot=100 + index,
+        )
+        for index in range(5)
+    )
+
+    snapshot = LaunchRiskAnalyzer().evaluate(observations, as_of=NOW)
+
+    assert snapshot.fresh_wallet_ratio == Decimal("0.8")
+    assert "FRESH_WALLET_CONCENTRATION" in snapshot.hard_blocks

@@ -373,6 +373,8 @@ class LaunchRiskAnalyzer:
         funders: list[str] = []
         creator_count = 0
         fresh_count = 0
+        creator_assessed = 0
+        fresh_assessed = 0
         slots: list[tuple[int, str]] = []
         provenance: list[Provenance] = []
         evidence_refs: list[str] = []
@@ -411,8 +413,12 @@ class LaunchRiskAnalyzer:
                     bundles.append(str(bundle) if bundle is not _MISSING else "")
                     funder = _field(payload, "funder", "shared_funder", "funding_wallet")
                     funders.append(str(funder) if funder is not _MISSING else "")
+                    if "creator_related" in payload or "is_creator" in payload:
+                        creator_assessed += 1
                     if payload.get("creator_related") is True or payload.get("is_creator") is True:
                         creator_count += 1
+                    if "fresh_wallet" in payload or "wallet_age_seconds" in payload:
+                        fresh_assessed += 1
                     if payload.get("fresh_wallet") is True or payload.get("wallet_age_seconds") in {
                         0,
                         "0",
@@ -434,11 +440,21 @@ class LaunchRiskAnalyzer:
             "first_block_concentration": explicit.get("first_block_concentration")
             or self._first_block_concentration(slots, total),
             "creator_related_ratio": explicit.get("creator_related_ratio")
-            or (Decimal(creator_count) / Decimal(total) if total else None),
+            or self._assessed_ratio(
+                creator_count,
+                creator_assessed,
+                total,
+                self.policy.creator_related_ratio_block,
+            ),
             "shared_funder_ratio": explicit.get("shared_funder_ratio")
             or self._shared_ratio(funders),
             "fresh_wallet_ratio": explicit.get("fresh_wallet_ratio")
-            or (Decimal(fresh_count) / Decimal(total) if total else None),
+            or self._assessed_ratio(
+                fresh_count,
+                fresh_assessed,
+                total,
+                self.policy.fresh_wallet_ratio_block,
+            ),
         }
         # Explicit zero is meaningful; the expression above treats it as a
         # missing value, so restore all supplied metrics after fallback.
@@ -548,6 +564,24 @@ class LaunchRiskAnalyzer:
             return None
         counts = Counter(present)
         return Decimal(max(counts.values())) / Decimal(len(present))
+
+    @staticmethod
+    def _assessed_ratio(
+        positive: int, assessed: int, total: int, block_threshold: Decimal
+    ) -> Decimal | None:
+        """Return a ratio only when every actor was assessed for the attribute.
+
+        Actors without the attribute are UNKNOWN, not negative. A partial
+        assessment can still prove a block because ``positive / total`` is a
+        lower bound on the true ratio.
+        """
+
+        if total == 0:
+            return None
+        lower_bound = Decimal(positive) / Decimal(total)
+        if assessed == total or lower_bound >= block_threshold:
+            return lower_bound
+        return None
 
     @staticmethod
     def _shared_ratio(values: Sequence[str]) -> Decimal | None:
