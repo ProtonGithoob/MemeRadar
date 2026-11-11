@@ -170,7 +170,7 @@ Severity: **P0** — məqsədi və ya data bütövlüyünü birbaşa pozur; **P1
 
 | # | Sev | Yer | Defekt | Ssenari |
 | --- | --- | --- | --- | --- |
-| D1 ✔ | P1 | `packages/application/.../early_features.py:440-460` | `future_observations_excluded` sayılır, amma `bounded` yalnız event-time ilə filtrlənir. | occurred=T+20s, observed=T+300s, checkpoint T+30s halında müşahidə **istifadə olunur** (skriptlə reproduksiya edildi). Backfill/replay gələcəyi görür. |
+| D1 ✔ | P1 | `packages/application/.../early_features.py:440-460`, `early_runtime.py:747-764` | `future_observations_excluded` sayılır, amma `bounded` yalnız event-time ilə filtrlənir. | occurred=T+20s, observed=T+300s, checkpoint T+30s halında müşahidə **istifadə olunur** (skriptlə reproduksiya edildi). Backfill/replay gələcəyi görür. **Qeyd:** runtime checkpoint-i event-time-dır (max `occurred_at`), live-da isə `observed_at` həmişə ondan sonradır. `eligible_at` filtrini sadəcə əlavə etmək bütün live müşahidələri kəsir. Düzəliş checkpoint-in knowledge-time-a (max `observed_at`) keçirilməsini tələb edən dizayn dəyişikliyidir. |
 | D2 ✔ | P1 | `early_runtime.py:500-505`, `apps/worker/.../early_discovery.py:907` | `evidence.setdefault("protocol_identity_verified", False)` caller-in `True` dəyərini əvəz etmir. | `stream_gap=True` və ya provider down olduqda FastSafety yenə PASS verir. Invariant pozulur. |
 | D3 ✔ | P1 | `launch_risk.py:415-447` | `creator_related` və `fresh_wallet` sahələri yoxdursa nisbət `0/total` olur. | Heç qiymətləndirilməyən creator/fresh-wallet riski PASS verir (skriptlə reproduksiya edildi). |
 | D4 | P1 | `flow_analysis.py:1269, 1290` | Quality state-ə quote/sellability daxil deyil. `price_semantics` yoxlanmır. | Sell quote olmadıqda organic flow 100 və FRESH olur. |
@@ -331,3 +331,31 @@ Ardıcıllıq vacibdir: əvvəlcə **ölçmə aləti**, sonra **data bütövlüy
 - Agentlərin "medium" etibarlılıqla verdiyi tapıntılar (S4, S11, D8–D10, I10) düzəlişdən əvvəl reproduksiya testi
   ilə təsdiqlənməlidir.
 - Bu audit `ANALYSIS_ONLY` və `PAPER_TRADING` rejimlərini dəyişmir. Heç bir secret oxunmayıb və ya ötürülməyib.
+
+---
+
+## 9. Remediation statusu (eyni gün, `claude/exciting-brahmagupta-0k7pds`)
+
+Hər düzəliş regression testi ilə gəlir. Testlərin düzəlişdən əvvəl FAIL, sonra PASS etdiyi yoxlanıb.
+Sonda Ruff, mypy (187 fayl) və tam non-integration suite (1664 passed) keçir.
+
+| Tapıntı | Commit | Nə dəyişdi |
+| --- | --- | --- |
+| I1 | `18a44c4` | `aiosqlite==0.22.1` lock və dev qrupuna əlavə olundu. Secret scan Solana keypair array, `sk-ant-` və UUID `api-key` query-ni tutur. |
+| D2 | `107a888` | Gap, provider outage və non-direct detection zamanı `protocol_identity_verified` məcburi `False` olur. |
+| S3 | `1e2fc70` | Reconnect boundary yalnız yeni bağlantıdakı ilk event-də qalır. |
+| S2 | `ed9f4fc` | Backfill finalized tip-i (`getSlot finalized`) oxuyur. Tip-dən o tərəfə keçən aralıq `BACKFILL_UNAVAILABLE` olur və gap açıq qalır. |
+| P1 (paper) | `9f16c32` | Exit monitor açıq pozisiyanı executable exit-quote qiyməti ilə monoton mark edir (`save_position_mark`). Trailing stop və break-even işləyir, MFE/MAE yazılır. SQL yolu sqlite ilə yoxlandı, PostgreSQL integration testinə assert əlavə olundu. |
+| D3 | `5e2fd32` | Creator/fresh-wallet atributu olmayan aktorlar UNKNOWN sayılır. Qismən qiymətləndirmə yalnız aşağı sərhəd blok həddinə çatdıqda nəticə verir. |
+| S13 | `5c48fc7` | Jupiter quote-u `priceImpactPct` olmadan rədd edilir. `slippageBps` olmadıqda tələb olunan tolerans götürülür. |
+| D7 | `3e1c9d5` | Sıfır ilk qiymət `return=None` verir, feature hesabı çökmür. |
+| I2/I3 | `c8e90da` | Candidate və position read-ləri newest-first sıralanır (N+1 hələ qalır). |
+| S1 | `114be06` | Yeni mənbənin ilk event-i `PROCESS_START` boundary daşıyır. Coordinator restart downtime-ını durable cursor-a nisbətən gap kimi qeyd edir. |
+
+**Açıq qalanlar (növbəti prioritet):**
+- P2/P3 — zombi pozisiyalar və quote olmadıqda TIME_STOP. Bunun üçün unexecutable pozisiyanın hansı qiymətlə bağlanacağına dair policy qərarı lazımdır.
+- D1 — checkpoint semantikasının knowledge-time-a keçirilməsi.
+- §3.2/§3.3-dəki backtest və calibration bias-ları (P4–P12).
+- S4–S12 — stream recovery etibarlılığı. Xüsusilə gap-in ≤500 slotluq chunk-lara bölünməsi (S5) vacibdir: S1-dən sonra uzun downtime gap-ləri artıq görünür, amma 501 slotdan böyük olduqda bərpa oluna bilmir.
+- I4–I11 — API, CI və infra.
+- `ENTRY_READY` əlçatmazlığı (`OrganicFlowAcceleration` qoşulmayıb).

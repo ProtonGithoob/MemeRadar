@@ -4,7 +4,7 @@ Updated: 2026-11-11. This current checkpoint supersedes the chronological notes
 below; those entries remain as historical evidence.
 
 **CURRENT_PHASE:** P30 local verification and report reconciliation complete. Bounded stream-verification provenance is persisted and exposed; source completeness remains unknown.
-**BRANCH / HEAD:** `main` / `c0fbd2217b7e09e9afd93efc1f9ccb54a40e80f5` (dirty). The local `origin/main` tracking ref points to this HEAD; no remote was queried in this run.
+**BRANCH / HEAD:** P30 was recorded on `main` / `c0fbd2217b7e09e9afd93efc1f9ccb54a40e80f5` (dirty). The 2026-11-11 audit remediation (see `AUDIT_REMEDIATION_2026-11-11` below) is on `claude/exciting-brahmagupta-0k7pds` and is not yet merged to `main`.
 **SOURCE CHECKPOINT:** P30 fingerprint `97e36f90571212c774b8827a2672a4f1a3137f5c39cdfaf3c12f4a1f2cbfe6e8` covers 641 source/config/test files (8,385,898 bytes); manifest: [`source-fingerprint-p30.json`](../artifacts/verification/2026-11-11-final/source-fingerprint-p30.json). The manifest was rechecked: 641 present, zero hash mismatches, zero missing files.
 **LATEST TEST STATUS:** `COVERAGE_FILE=/tmp/memeradar-final-verify-p30.coverage make verify > artifacts/verification/2026-11-11-final/make-verify-p30.log 2>&1` exited 0: backend 1,650 passed / 34 integration deselected / 7 warnings in 406.61s; frontend 86 passed / 25 files; Ruff, mypy (187 files), CSS contract, frontend lint/typecheck, Compose config, secret scan, local security review and SBOM passed. Migration graph head `0015_stream_verification_provenance`, 27 ORM tables. Log SHA-256: `9ab4ced53531fc3a24b1e62c24e03d97bd4bf7a9fca566641a2f60168d352c15`.
 **PERSISTENCE:** Verification rows now preserve provider, program scope, commitment, verification method and recovery attempt; the operations projection exposes those fields and evidence-reference counts. Migration graph check passes at `0015_stream_verification_provenance`. This is local code/migration-graph validation, not a PostgreSQL migration run. PostgreSQL integration remains blocked: test URL unset, local binaries absent, Docker API denied.
@@ -15,6 +15,29 @@ below; those entries remain as historical evidence.
 **SAFETY:** `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`; no signing or real transaction submission was added.
 
 ## Historical status entries
+
+**AUDIT_REMEDIATION_2026-11-11:** Independent SWOT/defect audit recorded in
+[SWOT and defect audit](audits/SWOT_AND_DEFECT_AUDIT_2026-11-11.md). A clean
+bootstrap from `requirements.lock` failed the unit suite because `aiosqlite`
+was undeclared; it is now locked. Fixed with regression tests (each verified
+failing before the change):
+- protocol identity forced unverified during gaps and outages;
+- reconnect boundary cleared after the first event;
+- backfill refused beyond the finalized tip;
+- worker restart downtime recorded as a gap;
+- paper positions marked so trailing and break-even exits fire;
+- unassessed creator/fresh-wallet evidence is UNKNOWN;
+- Jupiter quotes without price impact are rejected;
+- zero first price no longer crashes features;
+- candidate and position reads are ordered.
+
+Ruff, mypy (187 files) and the non-integration suite (1,664 passed, 34
+deselected) passed. PostgreSQL integration, browser E2E and live providers
+were not run. Open P0/P1 items are listed in section 9 of the audit: zombie
+paper positions, knowledge-time checkpoints, backtest/calibration bias,
+oversized gap chunking and unreachable `ENTRY_READY`. Protected modes are
+unchanged.
+
 
 **OPEN_SOURCE_WATCH_2026-11-03:** MadeOnSol bundle-cluster completeness is now
 preserved and incomplete/unknown cluster shares remain null. Provider notes
