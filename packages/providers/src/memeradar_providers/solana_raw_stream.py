@@ -781,7 +781,11 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                             self._launch_observed_at.append(event.observed_at)
                         self._remember(notification.signature)
                         if events and reconnect_reason is not None:
+                            # Only the first emitted event on a new connection
+                            # carries the reconnect boundary; later launches on
+                            # the same connection are contiguous observations.
                             self._pending_reconnect_reason = None
+                            reconnect_reason = None
             except asyncio.CancelledError:
                 self._subscription_connected = False
                 raise

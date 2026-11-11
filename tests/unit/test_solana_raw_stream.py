@@ -558,3 +558,57 @@ def test_mapping_is_async_safe_for_worker_contracts() -> None:
         assert map_transaction_to_raw_events(_transaction(), notification, ingested_at=NOW)
 
     asyncio.run(scenario())
+
+
+def test_reconnect_reason_is_cleared_after_first_event_on_new_connection(monkeypatch) -> None:
+    class Session:
+        def __init__(self, messages: list[str]) -> None:
+            self.messages = messages
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+        async def send(self, _value: str) -> None:
+            pass
+
+        async def recv(self) -> str:
+            if self.messages:
+                return self.messages.pop(0)
+            raise ConnectionError("fixture websocket closed")
+
+    later = _notification()
+    later_result = later["params"]["result"]  # type: ignore[index]
+    later_result["value"]["signature"] = "6" * 88
+
+    class Connections:
+        calls = 0
+
+        def connect(self, *_args: object, **_kwargs: object) -> Session:
+            self.calls += 1
+            messages = [json.dumps({"jsonrpc": "2.0", "result": self.calls, "id": 1})]
+            if self.calls == 2:
+                messages.extend([json.dumps(_notification()), json.dumps(later)])
+            return Session(messages)
+
+    monkeypatch.setattr(solana_raw_stream.websockets, "connect", Connections().connect)
+    source = SolanaRawTransactionSource(
+        SolanaRpcAdapter("https://fixture.solana.example"),
+        stop_event=asyncio.Event(),
+    )
+
+    async def fetch(*_args: object, **_kwargs: object):
+        return _transaction()
+
+    async def scenario() -> None:
+        source.rpc.fetch_transaction_payload = fetch  # type: ignore[method-assign]
+        first = await asyncio.wait_for(source.__anext__(), 5)
+        second = await asyncio.wait_for(source.__anext__(), 5)
+        assert first.reconnect_reason == "ConnectionError"
+        assert second.connection_id == first.connection_id
+        assert second.reconnect_reason is None
+        await source.aclose()
+
+    asyncio.run(scenario())
