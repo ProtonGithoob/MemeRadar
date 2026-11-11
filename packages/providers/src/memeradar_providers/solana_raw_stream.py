@@ -394,10 +394,9 @@ def map_transaction_to_raw_events(
         tag = decoded[:8]
         name = _PUMP_INSTRUCTION_NAMES.get(tag.hex())
         if name is None:
-            if fail_on_unknown_create and create_logged:
-                raise UnsupportedPumpFunInstructionError(
-                    "unsupported Pump.fun create instruction"
-                )
+            # Unknown non-create instructions (for example new buy variants)
+            # are skipped; only an undecoded create is unsupported, checked
+            # after all instructions are seen.
             continue
         accounts = _instruction_accounts(instruction.get("accounts", ()), account_keys=account_keys)
         payload = _instruction_payload(
@@ -435,6 +434,14 @@ def map_transaction_to_raw_events(
                 reconnect_reason=reconnect_reason,
             )
         )
+    if (
+        fail_on_unknown_create
+        and create_logged
+        and not any(event.payload.get("instruction_type") in _CREATE_NAMES for event in events)
+    ):
+        # Pump.fun logged a create that no known create instruction decoded:
+        # the launch would be silently missing from recovered data.
+        raise UnsupportedPumpFunInstructionError("unsupported Pump.fun create instruction")
     return tuple(events)
 
 

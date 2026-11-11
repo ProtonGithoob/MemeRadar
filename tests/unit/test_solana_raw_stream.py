@@ -785,3 +785,23 @@ def test_zero_signature_notification_is_skipped_without_fetch_or_reconnect(monke
         await source.aclose()
 
     asyncio.run(scenario())
+
+
+def test_backfill_create_with_an_unknown_companion_instruction_is_supported() -> None:
+    transaction = _transaction()
+    message = transaction["transaction"]["message"]  # type: ignore[index]
+    unknown = dict(message["instructions"][0])  # type: ignore[index]
+    unknown["data"] = _base58_encode(bytes.fromhex("ee" * 8))
+    message["instructions"].append(unknown)  # type: ignore[index]
+    notification = parse_logs_notification(
+        _notification(), observed_at=NOW, commitment=CommitmentState.CONFIRMED
+    )
+
+    events = map_transaction_to_raw_events(
+        transaction,
+        notification,
+        ingested_at=NOW + timedelta(seconds=1),
+        fail_on_unknown_create=True,
+    )
+
+    assert [event.payload["instruction_type"] for event in events] == ["create_v2"]
