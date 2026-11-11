@@ -238,3 +238,41 @@ def test_no_pair_is_persisted_as_unknown_and_second_cycle_is_idempotent() -> Non
         await engine.dispose()
 
     asyncio.run(scenario())
+
+
+def test_dex_and_market_paths_do_not_rewrite_the_same_offset_snapshot() -> None:
+    pytest.importorskip("aiosqlite")
+
+    async def scenario() -> None:
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        launched_at = NOW - timedelta(seconds=40)
+        async with factory() as session:
+            session.add(_launch_row(launched_at))
+            session.add(_discovered_row(launched_at))
+            await session.commit()
+        collector = PumpFunForwardEvidenceCollector(engine, NoPairMarket(), clock=lambda: NOW)
+        # The market path reaches offset 30 while the dex path is still on
+        # 0, 5, 10 and 20; the dex path then reaches 30 in a later cycle.
+        for second in range(8):
+            await collector.collect_once(now=NOW + timedelta(seconds=second))
+        async with factory() as session:
+            snapshots = list(
+                (
+                    await session.scalars(
+                        select(ObservationRow).where(
+                            ObservationRow.kind == "market.market_snapshot"
+                        )
+                    )
+                ).all()
+            )
+        source_ids = [row.source_id for row in snapshots]
+        assert len(source_ids) == len(set(source_ids))
+        assert f"pumpfun-forward:market:{MINT}:30" in source_ids
+        await engine.dispose()
+
+    asyncio.run(scenario())

@@ -1012,9 +1012,15 @@ class PumpFunForwardEvidenceCollector:
                             offset_seconds=first_offset,
                         )
                     )
+                    # The market-offset path below may already have written
+                    # this offset's snapshot (both offset lists contain 0, 30,
+                    # 60, ...). Its ID is deterministic per offset, so writing
+                    # it again with new content raised an idempotency
+                    # conflict that aborted every later collection cycle.
+                    if snapshot.provenance.source_id not in existing:
+                        record_observations.append(snapshot)
                     record_observations.extend(
                         (
-                            snapshot,
                             _research_observation(
                                 kind="research.dex_forward",
                                 source_id=forward_observation_source_id(

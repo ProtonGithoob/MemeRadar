@@ -214,3 +214,13 @@ def test_jupiter_quote_without_price_impact_is_rejected_not_zero_impact() -> Non
             await client.aclose()
 
     asyncio.run(scenario())
+
+
+def test_quote_source_identity_is_keyed_by_response_content() -> None:
+    adapter = JupiterAdapter("https://lite-api.jup.ag/swap/v1")
+    first = adapter._provenance("/swap/v2/quote", NOW, {"outAmount": "1"})
+    repeat = adapter._provenance("/swap/v2/quote", NOW, {"outAmount": "1"})
+    changed = adapter._provenance("/swap/v2/quote", NOW, {"outAmount": "2"})
+
+    assert first.source_id == repeat.source_id
+    assert first.source_id != changed.source_id

@@ -190,12 +190,18 @@ class JupiterAdapter(QuotePort):
         return min(remaining, self._transport.timeouts.overall_seconds)
 
     def _provenance(self, source_id: str, observed_at: datetime, raw: object) -> Provenance:
+        payload_hash = _payload_hash(raw)
+        # Every quote is a distinct point-in-time response. A fixed endpoint
+        # path made the second quote for any token raise an idempotency
+        # conflict when persisted; the content hash keeps identical responses
+        # idempotent and gives changed responses their own identity.
+        content_key = payload_hash.removeprefix("sha256:")[:16]
         return Provenance(
             provider=JUPITER_PROVIDER,
-            source_id=source_id,
+            source_id=f"{source_id}@{content_key}",
             observed_at=observed_at,
             parser_version=JUPITER_PARSER_VERSION,
-            raw_payload_hash=_payload_hash(raw),
+            raw_payload_hash=payload_hash,
         )
 
     async def _request_json(
