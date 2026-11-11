@@ -16,6 +16,29 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**ALERT_PIPELINE_2026-11-11:** Owner decision recorded: bonding-curve
+liquidity is proven by executable Jupiter round-trip depth (USD 1000 within
+1000 bps); buying and selling stay manual and execution modes are unchanged.
+Added since the previous entry:
+- depth-liquidity evidence;
+- keyless Jupiter pacing (1.1 s);
+- quotes spent only on tokens with at least 5 distinct tape buyers;
+- backfill block concurrency and a size-scaled timeout;
+- undecoded-create-only backfill guard;
+- canonical chain rows win over stale re-saves.
+
+Final 9.5-minute live run (publicnode HTTP, mainnet-beta WebSocket, local
+SQLite): 39 launches, 1,003 trade events, 156/156 reevaluations executed
+with 0 errors, organic momentum differentiated on 42.
+
+No candidate reached PASS or an alert in this sandbox. Jupiter's keyless
+tier still answered 429 to 23 of 71 paced requests (the egress IP is
+shared), so sellability stayed UNKNOWN. Two of three gaps did not verify
+(one BACKFILL_TIMEOUT, one BACKFILL_UNAVAILABLE).
+
+Not yet verified: a real Telegram delivery, and behaviour on the operator's
+own IP or with a keyed RPC/WebSocket. Unit suite: 1,710 passed.
+
 **ALERT_READINESS_2026-11-11:** Goal is to find correct early tokens and send
 Telegram alerts, with buying and selling done manually (execution modes
 unchanged).
