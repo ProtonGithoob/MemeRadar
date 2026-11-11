@@ -882,3 +882,28 @@ def test_process_restart_boundary_records_downtime_gap_against_durable_cursor() 
     gaps = run(store.list_gaps())
     assert [(gap.from_slot, gap.to_slot) for gap in gaps] == [(1001, 1499)]
     assert gaps[0].reconnect_reason == "PROCESS_START"
+
+
+def test_backfill_timeout_scales_with_gap_size_within_the_recovery_lease() -> None:
+    service = coordinator(InMemoryStreamStateStore(), FixtureDecoder())
+
+    def gap(size: int) -> StreamGap:
+        return StreamGap(
+            chain=Chain.SOLANA,
+            transport=service.transport,
+            stream_id=service.stream_id,
+            from_slot=1000,
+            to_slot=1000 + size - 1,
+            detected_at=NOW,
+            detection_method="RECONNECT_BOUNDARY",
+        )
+
+    base = service.policy.backfill_timeout_seconds
+    limit = min(60.0, base * 3)
+    small = run(service.make_backfill_request(gap(2)))
+    medium = run(service.make_backfill_request(gap(30)))
+
+    assert small.timeout_seconds == min(limit, base + 1.0)
+    assert medium.timeout_seconds == min(limit, base + 15.0)
+    assert medium.timeout_seconds >= small.timeout_seconds
+    assert medium.timeout_seconds <= limit

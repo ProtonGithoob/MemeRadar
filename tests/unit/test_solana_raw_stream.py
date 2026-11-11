@@ -805,3 +805,38 @@ def test_backfill_create_with_an_unknown_companion_instruction_is_supported() ->
     )
 
     assert [event.payload["instruction_type"] for event in events] == ["create_v2"]
+
+
+def test_backfill_fetches_blocks_with_bounded_concurrency() -> None:
+    rpc = SolanaRpcAdapter("https://fixture.solana.example")
+    in_flight = 0
+    peak = 0
+
+    async def fetch_blocks(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            normalized_payload={"slots": tuple(range(100, 112))}, observed_at=NOW
+        )
+
+    async def fetch_block(slot: int, **_kwargs: object) -> SimpleNamespace:
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.01)
+        in_flight -= 1
+        return SimpleNamespace(
+            normalized_payload={"slot": slot, "transactions": ()},
+            observed_at=NOW,
+            occurred_at=NOW,
+        )
+
+    rpc.fetch_blocks = fetch_blocks  # type: ignore[method-assign]
+    rpc.fetch_block = fetch_block  # type: ignore[method-assign]
+    rpc.fetch_finalized_slot = _finalized_tip  # type: ignore[method-assign]
+    request = BackfillRequest(
+        chain="solana", stream_id="fixture", from_slot=100, to_slot=111, max_concurrency=3
+    )
+
+    result = asyncio.run(SolanaRpcBackfillAdapter(rpc).fetch(request))
+
+    assert result.produced_slots == tuple(range(100, 112))
+    assert 1 < peak <= 3

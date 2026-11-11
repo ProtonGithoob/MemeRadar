@@ -30,7 +30,7 @@ from memeradar_application.stream_integrity import (
     RawChainBlock,
     RawChainTransaction,
 )
-from memeradar_domain import Chain, CommitmentState
+from memeradar_domain import Chain, CommitmentState, Observation
 from memeradar_domain.common import ensure_ordered_timestamps, ensure_utc, require_text
 from memeradar_domain.identities import require_solana_address
 
@@ -495,6 +495,24 @@ class SolanaRpcBackfillAdapter:
         if any(slot < request.from_slot or slot > request.to_slot for slot in produced_slots):
             raise BackfillUnavailableError("getBlocks returned a slot outside the request")
         produced = set(produced_slots)
+        # Full blocks are large; fetching them one at a time made even a
+        # 30-slot gap exceed the recovery timeout. Fetch with the request's
+        # bounded concurrency, then decode in slot order.
+        semaphore = asyncio.Semaphore(max(1, request.max_concurrency))
+
+        async def fetch_one(block_slot: int) -> Observation:
+            async with semaphore:
+                return await self.rpc.fetch_block(
+                    block_slot, context=context, include_transactions=True
+                )
+
+        fetched = dict(
+            zip(
+                produced_slots,
+                await asyncio.gather(*(fetch_one(value) for value in produced_slots)),
+                strict=True,
+            )
+        )
         blocks: list[RawChainBlock] = []
         for slot in range(request.from_slot, request.to_slot + 1):
             if slot not in produced:
@@ -506,7 +524,7 @@ class SolanaRpcBackfillAdapter:
                     )
                 )
                 continue
-            block = await self.rpc.fetch_block(slot, context=context, include_transactions=True)
+            block = fetched[slot]
             if block.occurred_at is None:
                 raise BackfillUnavailableError(f"getBlock returned no block time for slot {slot}")
             raw_transactions = block.normalized_payload.get("transactions", ())

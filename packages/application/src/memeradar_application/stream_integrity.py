@@ -1581,7 +1581,14 @@ class StreamIntegrityCoordinator:
                 stream_id=self.stream_id,
                 from_slot=gap.from_slot,
                 to_slot=gap.to_slot,
-                timeout_seconds=self.policy.backfill_timeout_seconds,
+                # Scale with the gap size, bounded so the recovery lease
+                # (base timeout + 30 s) always outlives the attempt.
+                timeout_seconds=min(
+                    60.0,
+                    self.policy.backfill_timeout_seconds * 3,
+                    self.policy.backfill_timeout_seconds
+                    + 0.5 * (gap.to_slot - gap.from_slot + 1),
+                ),
                 max_concurrency=self.policy.max_backfill_concurrency,
                 max_range=self.policy.max_backfill_range,
                 max_retries=self.policy.max_backfill_retries,
