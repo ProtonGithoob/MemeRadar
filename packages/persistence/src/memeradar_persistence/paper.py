@@ -559,6 +559,23 @@ class SqlAlchemyPaperLedgerStore:
             ).all()
             return tuple(_ledger_from_row(row) for row in rows)
 
+    async def save_position_mark(
+        self, position_id: UUID, price: Decimal
+    ) -> Position | None:
+        async with self._session_factory() as session, session.begin():
+            row = await session.scalar(
+                select(PositionRow).where(PositionRow.id == position_id).with_for_update()
+            )
+            if row is None or row.state != PositionState.OPEN.value:
+                return None
+            position = _position_from_row(row)
+            position.mark_price(price)
+            assert position.high_watermark is not None
+            row.high_watermark = position.high_watermark
+            row.mfe = position.mfe
+            row.mae = position.mae
+            return position
+
     async def list_positions(self, portfolio_id: UUID) -> Sequence[Position]:
         async with self._session_factory() as session:
             rows = (

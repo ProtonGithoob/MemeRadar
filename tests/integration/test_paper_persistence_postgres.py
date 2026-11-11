@@ -365,6 +365,17 @@ async def _exercise(database_url: str) -> None:
         assert restored is not None
         assert restored.current_balance == first.portfolio.current_balance
         assert len(await resumed_store.list_fills(portfolio_id)) == 1
+        assert first.position is not None
+        entry = first.position.average_entry
+        marked = await resumed_store.save_position_mark(first.position.id, entry * 2)
+        assert marked is not None and marked.high_watermark == entry * 2
+        await resumed_store.save_position_mark(first.position.id, entry)
+        persisted = await resumed_store.get_position(portfolio_id, token_id)
+        assert persisted is not None
+        assert persisted.high_watermark is not None
+        # Numeric(36, 18) storage rounds the computed price.
+        assert abs(persisted.high_watermark - entry * 2) < Decimal("1e-15")
+        assert abs(persisted.mfe - entry) < Decimal("1e-15")
     finally:
         async with engine.begin() as connection:
             await connection.execute(

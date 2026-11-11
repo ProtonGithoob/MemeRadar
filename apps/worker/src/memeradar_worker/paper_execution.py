@@ -491,6 +491,19 @@ async def process_paper_exits_once(
             continue
         assert isinstance(quote, QuoteSnapshot)
 
+        # Mark the position with the executable exit-quote price so the
+        # trailing stop, break-even and MFE/MAE see the running peak rather
+        # than the entry price.
+        if position.state is PositionState.OPEN:
+            quote_input = quote.human_input_amount
+            quote_output = quote.human_output_amount
+            if quote_input and quote_output and quote_input > 0 and quote_output > 0:
+                marked = await ledger.save_position_mark(
+                    position.id, quote_output / quote_input
+                )
+                if marked is not None:
+                    position = marked
+
         evaluations = await exit_store.list(position.id)
         filled_exit_refs = {
             order.decision_ref

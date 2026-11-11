@@ -1087,6 +1087,12 @@ class PaperLedgerStore(Protocol):
 
     async def list_positions(self, portfolio_id: UUID) -> Sequence[Position]: ...
 
+    async def save_position_mark(
+        self, position_id: UUID, price: Decimal
+    ) -> Position | None:
+        """Monotonically update an open position's high-watermark, MFE and MAE."""
+        ...
+
 
 def _clone_result(result: PaperExecutionResult, *, duplicate: bool) -> PaperExecutionResult:
     return PaperExecutionResult(
@@ -1271,6 +1277,19 @@ class InMemoryPaperLedgerStore:
         return tuple(
             copy(value) for value in self._positions.values() if value.portfolio_id == portfolio_id
         )
+
+    async def save_position_mark(
+        self, position_id: UUID, price: Decimal
+    ) -> Position | None:
+        async with self._write_lock:
+            position = next(
+                (value for value in self._positions.values() if value.id == position_id),
+                None,
+            )
+            if position is None or position.state is not PositionState.OPEN:
+                return None
+            position.mark_price(price)
+            return copy(position)
 
     async def corrupt_current_balance(self, portfolio_id: UUID, value: Decimal) -> None:
         """Test-only corruption hook; production callers have no repair API."""

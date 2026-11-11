@@ -352,6 +352,7 @@ class _ExitQuotes:
         self.stale = stale
         self.fail = fail
         self.calls = 0
+        self.multiplier = Decimal("1.3")
 
     async def quote(self, request):
         self.calls += 1
@@ -360,7 +361,7 @@ class _ExitQuotes:
         quote_time = NOW - timedelta(seconds=60) if self.stale else NOW + timedelta(seconds=2)
         expiry = NOW - timedelta(seconds=30) if self.stale else quote_time + timedelta(seconds=30)
         token_quantity = Decimal(request.amount) / (Decimal(10) ** request.input_decimals)
-        sol_output = token_quantity * self.position.average_entry * Decimal("1.3")
+        sol_output = token_quantity * self.position.average_entry * self.multiplier
         raw_output = (sol_output * Decimal(10**9)).to_integral_value(rounding=ROUND_DOWN)
         return QuoteSnapshot(
             provenance=Provenance(
@@ -459,6 +460,51 @@ def test_paper_exit_cycle_does_not_fill_without_a_fresh_execution_quote(
         assert len(await ledger.list_orders(configured.portfolio_id)) == 1
         assert (await ledger.list_positions(configured.portfolio_id))[0].state.value == "OPEN"
         assert await evaluations.list(position.id) == ()
+
+    asyncio.run(scenario())
+
+
+def test_paper_exit_monitor_marks_peak_so_trailing_stop_can_fire() -> None:
+    async def scenario() -> None:
+        values = paper_values()
+        values["PAPER_AUTO_TAKE_PROFIT_BPS"] = "9000"
+        configured = Settings.from_env(values).paper_auto_policy
+        assert isinstance(configured, PaperAutoPolicy)
+        token_candidate = candidate()
+        ledger, execution, position = await _open_paper_fixture(configured, token_candidate)
+        quotes = _ExitQuotes(position)
+        evaluations = InMemoryExitEvaluationStore()
+        exit_engine = ExitEngine(build_paper_exit_policy(configured))
+
+        async def candidate_lookup(candidate_id):
+            return token_candidate if candidate_id == token_candidate.id else None
+
+        async def cycle(at):
+            return await process_paper_exits_once(
+                configured,
+                quote_port=quotes,
+                paper_engine=execution,
+                ledger=ledger,
+                exit_engine=exit_engine,
+                exit_store=evaluations,
+                candidate_lookup=candidate_lookup,
+                now=at,
+            )
+
+        quotes.multiplier = Decimal("1.15")
+        assert await cycle(NOW + timedelta(seconds=2)) == ()
+        marked = await ledger.get_position(position.portfolio_id, position.token_id)
+        assert marked is not None
+        assert marked.high_watermark is not None
+        assert marked.high_watermark > position.average_entry * Decimal("1.14")
+        assert marked.mfe > 0
+
+        quotes.multiplier = Decimal("1.05")
+        result = await cycle(NOW + timedelta(seconds=3))
+        assert len(result) == 1
+        assert result[0].order.side.value == "SELL"
+        exit_evaluations = await evaluations.list(position.id)
+        assert any("TRAILING" in rule for rule in exit_evaluations[-1].triggered_rules)
 
     asyncio.run(scenario())
 
