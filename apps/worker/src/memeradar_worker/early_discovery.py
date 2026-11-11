@@ -69,6 +69,7 @@ from memeradar_persistence import (
     SqlAlchemyUnitOfWork,
     create_database_engine,
 )
+from memeradar_persistence.stream import CHAIN_EVENT_KIND, CHAIN_EVENT_PROVIDER
 from memeradar_providers.composition import ProviderBundle, build_provider_bundle
 from memeradar_providers.protocol_registry import (
     DEFAULT_PROTOCOL_REGISTRY,
@@ -629,6 +630,17 @@ async def _run_early_alpha_shadow(
 def _observation_from_row(row: ObservationRow) -> Observation:
     """Rehydrate one persisted observation through the existing domain contract."""
 
+    payload = row.normalized_payload
+    if (
+        row.kind == CHAIN_EVENT_KIND
+        and row.provider == CHAIN_EVENT_PROVIDER
+        and "collection_mode" not in payload
+    ):
+        # Canonical chain events are production evidence; the live path adds
+        # this marker in ``NormalizedChainEvent.to_observation`` but the
+        # persisted row omits it, which made reevaluation discard every
+        # persisted chain event (including trade tape) as unclassified.
+        payload = {**payload, "collection_mode": "PRODUCTION"}
     return Observation(
         id=row.id,
         kind=row.kind,
@@ -644,7 +656,7 @@ def _observation_from_row(row: ObservationRow) -> Observation:
         observed_at=row.observed_at,
         ingested_at=row.ingested_at,
         quality_state=QualityState(row.quality_state),
-        normalized_payload=row.normalized_payload,
+        normalized_payload=payload,
         candidate_id=row.candidate_id,
         token_id=row.token_id,
     )

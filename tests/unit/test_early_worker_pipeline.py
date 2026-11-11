@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from uuid import uuid4
 
 from memeradar_application.early_worker import EarlyRuntimeStreamWorker
 from memeradar_application.provider_contracts import (
@@ -524,3 +525,40 @@ def test_one_failed_runtime_projection_does_not_stop_ingestion() -> None:
         100,
         101,
     }
+
+
+def test_persisted_chain_event_rows_rehydrate_as_production_evidence() -> None:
+    from memeradar_application.evidence_policy import is_production_evidence_eligible
+    from memeradar_persistence.models import ObservationRow
+    from memeradar_persistence.stream import CHAIN_EVENT_KIND, CHAIN_EVENT_PROVIDER
+
+    at = NOW + timedelta(days=90)
+    row = ObservationRow(
+        id=uuid4(),
+        kind=CHAIN_EVENT_KIND,
+        provider=CHAIN_EVENT_PROVIDER,
+        source_id="solana:sig:7",
+        occurred_at=at,
+        observed_at=at,
+        ingested_at=at,
+        parser_version="pumpfun-trade-event-log-v1",
+        quality_state="FRESH",
+        normalized_payload={"event_type": "trade_event", "side": "buy"},
+    )
+    foreign = ObservationRow(
+        id=uuid4(),
+        kind="market.market_snapshot",
+        provider="fixture-market",
+        source_id="market:7",
+        occurred_at=at,
+        observed_at=at,
+        ingested_at=at,
+        parser_version="fixture-v1",
+        quality_state="FRESH",
+        normalized_payload={"price": "1"},
+    )
+
+    assert is_production_evidence_eligible(early_discovery._observation_from_row(row))
+    assert "collection_mode" not in early_discovery._observation_from_row(
+        foreign
+    ).normalized_payload
