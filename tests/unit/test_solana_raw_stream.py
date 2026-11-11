@@ -640,3 +640,41 @@ def test_backfill_beyond_finalized_tip_is_not_verified_as_skipped_slots() -> Non
     with pytest.raises(BackfillUnavailableError, match="finalized tip"):
         asyncio.run(SolanaRpcBackfillAdapter(rpc).fetch(request))
     assert block_calls == 0
+
+
+def test_first_event_after_process_start_carries_restart_boundary(monkeypatch) -> None:
+    class Session:
+        def __init__(self) -> None:
+            self.messages = [json.dumps({"result": 7}), json.dumps(_notification())]
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args: object) -> bool:
+            return False
+
+        async def send(self, _value: str) -> None:
+            pass
+
+        async def recv(self) -> str:
+            if self.messages:
+                return self.messages.pop(0)
+            raise ConnectionError("fixture websocket closed")
+
+    monkeypatch.setattr(solana_raw_stream.websockets, "connect", lambda *_a, **_k: Session())
+    source = SolanaRawTransactionSource(
+        SolanaRpcAdapter("https://fixture.solana.example"),
+        stop_event=asyncio.Event(),
+    )
+
+    async def fetch(*_args: object, **_kwargs: object):
+        return _transaction()
+
+    async def scenario() -> None:
+        source.rpc.fetch_transaction_payload = fetch  # type: ignore[method-assign]
+        event = await asyncio.wait_for(source.__anext__(), 5)
+        assert event.connection_id == "solana-ws-1"
+        assert event.reconnect_reason == "PROCESS_START"
+        await source.aclose()
+
+    asyncio.run(scenario())

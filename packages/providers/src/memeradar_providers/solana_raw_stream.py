@@ -577,6 +577,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         stop_event: asyncio.Event | None = None,
         seen_signature_limit: int = 20_000,
         rejection_sink: Callable[[SolanaLogsNotification, str, str], Awaitable[None]] | None = None,
+        initial_reconnect_reason: str | None = "PROCESS_START",
     ) -> None:
         if not isinstance(rpc, SolanaRpcAdapter):
             raise TypeError("rpc must be a SolanaRpcAdapter")
@@ -598,7 +599,10 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
         self._subscription: int | None = None
         self._connection_sequence = 0
         self._connection_id: str | None = None
-        self._pending_reconnect_reason: str | None = None
+        # A process start is a reconnect relative to the durable cursor: the
+        # first emitted event carries a boundary so slots missed while the
+        # worker was down are recorded as a gap instead of being skipped.
+        self._pending_reconnect_reason: str | None = initial_reconnect_reason
         self._last_slot: int | None = None
         self._latency_samples_ms: deque[float] = deque(maxlen=10_000)
         self._launch_observed_at: deque[datetime] = deque(maxlen=10_000)

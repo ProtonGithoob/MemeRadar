@@ -863,3 +863,22 @@ def test_unknown_decoder_identity_is_observable_and_fails_closed() -> None:
     with pytest.raises(ValueError, match="not registered"):
         run(service.ingest_live(raw(100)))
     assert metrics.snapshot()["unsupported_protocol_events"] == 1
+
+
+def test_process_restart_boundary_records_downtime_gap_against_durable_cursor() -> None:
+    store = InMemoryStreamStateStore()
+    decoder = FixtureDecoder()
+    before_restart = coordinator(store, decoder, slot_continuity_expected=False)
+    run(before_restart.ingest_live(raw(1000, connection_id="ws-1")))
+
+    # A new coordinator over the same durable store models a worker restart.
+    after_restart = coordinator(store, decoder, slot_continuity_expected=False)
+    run(
+        after_restart.ingest_live(
+            raw(1500, connection_id="ws-1", reconnect_reason="PROCESS_START")
+        )
+    )
+
+    gaps = run(store.list_gaps())
+    assert [(gap.from_slot, gap.to_slot) for gap in gaps] == [(1001, 1499)]
+    assert gaps[0].reconnect_reason == "PROCESS_START"
