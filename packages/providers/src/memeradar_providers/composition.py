@@ -208,6 +208,19 @@ class BoundedNarrativeFallback(_BoundedFallback, NarrativePort):
                 await close()
 
 
+# Jupiter's documented free tier serves quotes without an API key. Only an
+# HTTPS URL on this exact host is accepted keyless; any other URL still
+# requires a key.
+JUPITER_KEYLESS_HOSTS = frozenset({"lite-api.jup.ag"})
+
+
+def _is_keyless_jupiter_url(url: str) -> bool:
+    parts = urlsplit(url)
+    return parts.scheme.lower() == "https" and (parts.hostname or "").lower() in (
+        JUPITER_KEYLESS_HOSTS
+    )
+
+
 def _configured(value: str | None) -> bool:
     return value is not None and bool(value.strip())
 
@@ -364,7 +377,10 @@ def build_provider_bundle(
     jupiter_configured = (
         settings.paper_quote_provider == "jupiter"
         and _configured(settings.paper_quote_url)
-        and _configured(settings.paper_quote_api_key)
+        and (
+            _configured(settings.paper_quote_api_key)
+            or _is_keyless_jupiter_url(cast(str, settings.paper_quote_url))
+        )
     )
     telegram_configured = (
         _configured(settings.telegram_api_url)

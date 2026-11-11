@@ -173,6 +173,30 @@ def test_jupiter_without_api_key_remains_unconfigured() -> None:
         asyncio.run(bundle.aclose())
 
 
+def test_keyless_jupiter_lite_api_is_configured_without_a_key() -> None:
+    settings = Settings.from_env(
+        {"PAPER_QUOTE_PROVIDER": "jupiter", "JUPITER_API_BASE_URL": "https://lite-api.jup.ag/swap/v1"}
+    )
+    bundle = build_provider_bundle(settings)
+    try:
+        assert bundle.jupiter is not None
+        assert bundle.optional["jupiter"] == "CONFIGURED"
+    finally:
+        asyncio.run(bundle.aclose())
+
+
+def test_keyless_jupiter_requires_the_exact_https_host() -> None:
+    for url in ("http://lite-api.jup.ag/swap/v1", "https://lite-api.jup.ag.evil.example/swap/v1"):
+        settings = Settings.from_env(
+            {"PAPER_QUOTE_PROVIDER": "jupiter", "JUPITER_API_BASE_URL": url}
+        )
+        bundle = build_provider_bundle(settings)
+        try:
+            assert bundle.jupiter is None
+        finally:
+            asyncio.run(bundle.aclose())
+
+
 def test_optional_robinhood_blockscout_enrichment_is_composed_without_trade_authority() -> None:
     settings = Settings.from_env(
         {"ROBINHOOD_BLOCKSCOUT_API_URL": "https://blockscout.robinhood.example"}
