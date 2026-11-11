@@ -16,6 +16,31 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**ALERT_READINESS_2026-11-11:** Goal is to find correct early tokens and send
+Telegram alerts, with buying and selling done manually (execution modes
+unchanged).
+
+Keyless Jupiter (`https://lite-api.jup.ag/swap/v1`) now supplies executable
+buy/sell quotes. It routes fresh Pump.fun bonding-curve tokens, and
+`priceImpactPct` was verified as a fraction. Stream gaps are scoped to a
+token's own slots. Fixed fixed-identity collisions:
+- Jupiter quotes failed 19/48 reevaluations;
+- forward research stalled every cycle (343 failures in 8 minutes).
+
+An 8-minute live run (publicnode HTTP, mainnet-beta WebSocket, local SQLite)
+had 0 failed reevaluations, 38 executable quotes and real safety decisions
+(28 BLOCK, 20 RISK_REJECTED).
+
+Blocker for alerts: `LIQUIDITY_UNKNOWN` on about 97% of snapshots, because
+DexScreener publishes no liquidity for Pump.fun bonding-curve pairs. The
+trade event's real SOL reserve field failed independent verification (3 of 7
+consistent) and is not used. An owner decision is needed: accept
+executable-quote depth as bonding-curve liquidity evidence, or alert only
+after migration.
+
+Jupiter's free tier returned 429 on 25 of 68 calls, so quote probes need
+gating to promising candidates.
+
 **PUMP_TRADE_TAPE_STAGE2_LIVE_2026-11-11:** Trade tape is wired end to end.
 The protocol registry routes the verified `trade_event`. The live source
 decodes trade events from logs for mints launched within 20 minutes (capped
