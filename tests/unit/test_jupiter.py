@@ -10,7 +10,12 @@ import pytest
 from memeradar_application.provider_contracts import ProviderRequestContext, QuoteRequest
 from memeradar_domain import PriceSemantics
 from memeradar_providers.jupiter import JupiterAdapter, JupiterNoRouteError
-from memeradar_providers.transport import ProviderTransport, RetryPolicy, TransportTimeouts
+from memeradar_providers.transport import (
+    ProviderSchemaError,
+    ProviderTransport,
+    RetryPolicy,
+    TransportTimeouts,
+)
 
 NOW = datetime(2026, 9, 24, tzinfo=UTC)
 INPUT = "So11111111111111111111111111111111111111112"
@@ -169,6 +174,40 @@ def test_jupiter_no_route_is_not_treated_as_provider_success() -> None:
                         output_mint=OUTPUT,
                         amount=100,
                         slippage_bps=100,
+                    )
+                )
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_jupiter_quote_without_price_impact_is_rejected_not_zero_impact() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        payload = quote_payload()
+        payload.pop("priceImpactPct")
+        return httpx.Response(200, json=payload)
+
+    async def scenario() -> None:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter = JupiterAdapter(
+            "https://fixture.jupiter.example/swap/v2",
+            api_key="fixture-key",
+            client=client,
+            transport=transport(),
+            clock=lambda: NOW,
+        )
+        try:
+            with pytest.raises(ProviderSchemaError, match="priceImpactPct"):
+                await adapter.quote(
+                    QuoteRequest(
+                        context=context(),
+                        input_mint=INPUT,
+                        output_mint=OUTPUT,
+                        amount=Decimal("1000000"),
+                        slippage_bps=100,
+                        input_decimals=6,
+                        output_decimals=6,
                     )
                 )
         finally:

@@ -283,12 +283,18 @@ class JupiterAdapter(QuotePort):
         in_amount = _amount(raw.get("inAmount"), "inAmount")
         out_amount = _amount(raw.get("outAmount"), "outAmount")
         minimum = _amount(raw.get("otherAmountThreshold", out_amount), "otherAmountThreshold")
-        impact = _impact_bps(raw.get("priceImpactPct", "0"), "priceImpactPct")
+        # A missing price impact is unknown, not zero impact; an executable
+        # quote without it cannot pass impact gates.
+        if raw.get("priceImpactPct") is None:
+            raise ProviderSchemaError("Jupiter quote omitted priceImpactPct")
+        impact = _impact_bps(raw.get("priceImpactPct"), "priceImpactPct")
         route = _route(raw.get("routePlan"))
         if not route:
             raise JupiterNoRouteError("Jupiter returned an empty route")
         observed_at = ensure_utc(self._clock(), "observed_at")
-        slippage_bps = to_decimal(raw.get("slippageBps", 0), "slippageBps")
+        slippage_bps = to_decimal(
+            raw.get("slippageBps", request.slippage_bps), "slippageBps"
+        )
         return QuoteSnapshot(
             provenance=self._provenance("/swap/v2/quote", observed_at, raw),
             input_mint=input_mint,
