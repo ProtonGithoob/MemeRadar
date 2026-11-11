@@ -1371,20 +1371,33 @@ class BacktestHarness:
             ),
             ("creator_dump", policy.exit_on_creator_dump, "CREATOR_DUMP_HORIZON"),
         )
+        # Safety labels are horizon-level booleans without an event time. They
+        # must not override a take-profit or stop that the label shows was hit
+        # earlier, so they only apply when no timed exit exists.
+        safety_exit_reason: str | None = None
         for field_name, enabled, reason in safety_fields:
             if not enabled:
                 continue
             value = getattr(horizon, field_name)
             if value is None:
                 return None, (ReasonCode("SAFETY_LABEL_UNKNOWN", detail=field_name),)
-            if value is True:
-                return self._horizon_exit(item, horizon, policy, reason)
+            if value is True and safety_exit_reason is None:
+                safety_exit_reason = reason
         if policy.exit_on_paper_exit:
             action = horizon.paper_exit_action
             if action is None:
                 return None, (ReasonCode("SAFETY_LABEL_UNKNOWN", detail="paper_exit_action"),)
-            if action not in _NO_EXIT_ACTIONS:
-                return self._horizon_exit(item, horizon, policy, "PAPER_EXIT_HORIZON")
+            if action not in _NO_EXIT_ACTIONS and safety_exit_reason is None:
+                safety_exit_reason = "PAPER_EXIT_HORIZON"
+        if (
+            policy.stop_loss_fraction is not None
+            and horizon.drawdown_fraction is not None
+            and horizon.drawdown_fraction != policy.stop_loss_fraction
+        ):
+            raise ValueError(
+                "stop_loss_fraction must equal the outcome label drawdown_fraction "
+                f"({horizon.drawdown_fraction}); time_to_drawdown was measured there"
+            )
 
         candidates: list[tuple[datetime, int, str, Decimal]] = []
         if policy.take_profit_multiple is not None:
@@ -1425,6 +1438,8 @@ class BacktestHarness:
                 ),
                 (),
             )
+        if safety_exit_reason is not None:
+            return self._horizon_exit(item, horizon, policy, safety_exit_reason)
         if not policy.allow_horizon_exit:
             return None, (ReasonCode("NO_EXIT_EVENT"),)
         return self._horizon_exit(item, horizon, policy, "HORIZON_CLOSE")

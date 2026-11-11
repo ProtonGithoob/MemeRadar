@@ -1,5 +1,6 @@
 """Unit tests for the provider-free Phase 10.2 backtesting projection."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -654,3 +655,62 @@ def test_calibration_split_embargo_purges_checkpoints_whose_labels_cross_a_bound
     assert split.partition(NOW + timedelta(days=4)) is CalibrationPartition.TEST
     assert split.partition(NOW + timedelta(days=5, hours=1)) is CalibrationPartition.OUT_OF_RANGE
     assert split.to_json_dict()["embargo_seconds"] == 86_400
+
+
+def _with_outcome(
+    checkpoint: ReplayCheckpointResult, outcome: OutcomeLabel
+) -> ReplayCheckpointResult:
+    return ReplayCheckpointResult(
+        checkpoint=checkpoint.checkpoint,
+        correlation=checkpoint.correlation,
+        feature_snapshots=checkpoint.feature_snapshots,
+        strategy_snapshot=checkpoint.strategy_snapshot,
+        outcome=outcome,
+        included_event_ids=checkpoint.included_event_ids,
+        excluded_future_event_ids=checkpoint.excluded_future_event_ids,
+        cohort=checkpoint.cohort,
+    )
+
+
+def test_earlier_take_profit_is_not_overridden_by_a_horizon_rug_label() -> None:
+    checkpoint = _checkpoint_result(
+        suffix="tp-before-rug", at=NOW, score="90", forward_return="-0.9"
+    )
+    outcome = _outcome(
+        checkpoint.checkpoint.id,
+        NOW,
+        forward_return="-0.9",
+        target_seconds="60",
+        rugged=True,
+    )
+
+    report = BacktestHarness().run(
+        _result(_with_outcome(checkpoint, outcome)),
+        policy=BacktestPolicy(
+            max_liquidity_fraction=None,
+            take_profit_multiple=Decimal("1.5"),
+            stop_loss_fraction=None,
+            exit_on_rug=True,
+        ),
+    )
+
+    assert report.metrics.executed_trade_count == 1
+    assert report.trades[0].exit_reason == "TAKE_PROFIT"
+    assert report.trades[0].net_return > 0
+
+
+def test_stop_loss_must_match_the_label_drawdown_fraction() -> None:
+    checkpoint = _checkpoint_result(
+        suffix="stop-mismatch", at=NOW, score="90", forward_return="-0.6"
+    )
+    outcome = _outcome(
+        checkpoint.checkpoint.id, NOW, forward_return="-0.6", drawdown_seconds="30"
+    )
+    horizon = replace(outcome.horizons[0], drawdown_fraction=Decimal("0.5"))
+    labelled = replace(outcome, horizons=(horizon,))
+
+    with pytest.raises(ValueError, match="drawdown_fraction"):
+        BacktestHarness().run(
+            _result(_with_outcome(checkpoint, labelled)),
+            policy=BacktestPolicy(max_liquidity_fraction=None, stop_loss_fraction=Decimal("0.2")),
+        )

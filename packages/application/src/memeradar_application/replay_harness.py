@@ -817,8 +817,17 @@ class OutcomeHorizonLabel:
     quality_state: QualityState
     reason_codes: tuple[ReasonCode, ...]
     evidence_refs: tuple[str, ...]
+    # Drawdown fraction that ``time_to_drawdown`` was measured at, so stop
+    # simulations can refuse a label measured at a different level.
+    drawdown_fraction: Decimal | None = None
 
     def __post_init__(self) -> None:
+        if self.drawdown_fraction is not None:
+            object.__setattr__(
+                self,
+                "drawdown_fraction",
+                to_decimal(self.drawdown_fraction, "drawdown_fraction"),
+            )
         object.__setattr__(self, "horizon", require_text(self.horizon, "horizon", max_length=16))
         for field_name in ("forward_return", "mfe", "mae"):
             value = getattr(self, field_name)
@@ -872,6 +881,11 @@ class OutcomeHorizonLabel:
             "quality_state": self.quality_state.value,
             "reason_codes": _json_safe(self.reason_codes),
             "evidence_refs": list(self.evidence_refs),
+            **(
+                {}
+                if self.drawdown_fraction is None
+                else {"drawdown_fraction": _json_safe(self.drawdown_fraction)}
+            ),
         }
 
 
@@ -1718,6 +1732,7 @@ class OutcomeLabeler:
             quality_state=quality,
             reason_codes=(reasons,),
             evidence_refs=tuple(dict.fromkeys(all_refs)),
+            drawdown_fraction=self.policy.drawdown_fraction,
         )
 
     @staticmethod
