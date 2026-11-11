@@ -314,6 +314,39 @@ def _feature_confidence(snapshot: EarlyFeatureSnapshot) -> Decimal:
     }[snapshot.quality_state]
 
 
+_MIN_ORGANIC_UNIQUE_BUYERS = 2
+
+
+def _tape_corroborated_organic_score(
+    metrics: Mapping[str, object],
+    organic: OrganicMomentumProjection | None,
+) -> Decimal | None:
+    """Return the organic momentum score only when real trade tape backs it.
+
+    A projection built without trades, or from a single buyer, would let a
+    mark move or a one-wallet burst count as organic momentum. Those cases
+    stay UNKNOWN so the component cannot raise the score.
+    """
+
+    if (
+        organic is None
+        or organic.score is None
+        or organic.quality_state is not QualityState.FRESH
+        or not organic.positive_evidence
+    ):
+        return None
+    try:
+        trades = _decimal(metrics.get("trade_count"), "trade_count")
+        buyers = _decimal(metrics.get("unique_buyers"), "unique_buyers")
+    except (TypeError, ValueError):
+        return None
+    if trades is None or buyers is None:
+        return None
+    if trades <= 0 or buyers < _MIN_ORGANIC_UNIQUE_BUYERS:
+        return None
+    return organic.score
+
+
 class EarlyRuntimeService:
     """Compose the fast launch path with append-only evidence and outbox ports."""
 
@@ -531,7 +564,7 @@ class EarlyRuntimeService:
             metrics,
             evidence_refs=feature_snapshot.evidence_refs,
         )
-        components = self._components(metrics, safety)
+        components = self._components(metrics, safety, organic)
         if score_components is not None:
             components.update(score_components)
         risk = self._risk_mapping(
@@ -1006,7 +1039,11 @@ class EarlyRuntimeService:
         )
 
     @staticmethod
-    def _components(metrics: Mapping[str, object], safety: FastSafetyResult) -> dict[str, object]:
+    def _components(
+        metrics: Mapping[str, object],
+        safety: FastSafetyResult,
+        organic: OrganicMomentumProjection | None = None,
+    ) -> dict[str, object]:
         acceleration = _decimal(metrics.get("volume_acceleration"), "volume_acceleration")
         momentum = (
             Decimal("50") + acceleration * Decimal("50")
@@ -1027,7 +1064,7 @@ class EarlyRuntimeService:
             FastSafetyStatus.UNKNOWN: None,
         }[safety.status]
         return {
-            "OrganicFlowAcceleration": None,
+            "OrganicFlowAcceleration": _tape_corroborated_organic_score(metrics, organic),
             "WalletQuality": smart_money,
             "OnChainSafety": safety_score,
             "LiquidityAndSellability": safety_score,

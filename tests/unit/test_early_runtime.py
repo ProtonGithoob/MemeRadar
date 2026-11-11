@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -541,3 +542,37 @@ def test_unavailable_provider_overrides_caller_supplied_verified_protocol_identi
 
     assert result.safety.protocol_identity_verified is False
     assert result.safety.status.value != "PASS"
+
+
+def _production(item: Observation) -> Observation:
+    return replace(
+        item,
+        normalized_payload={**item.normalized_payload, "collection_mode": "PRODUCTION"},
+    )
+
+
+def test_organic_flow_component_requires_multi_buyer_trade_tape() -> None:
+    first = _production(observation("sig-organic-1", NOW, wallet="wallet-a"))
+    second = _production(
+        observation("sig-organic-2", NOW + timedelta(seconds=1), wallet="wallet-b")
+    )
+    multi = run(
+        EarlyRuntimeService().process(
+            second,
+            observations=(first, second),
+            safety_evidence=BASE_SAFETY,
+        )
+    )
+    assert multi.organic_momentum.positive_evidence
+    assert multi.score.components["OrganicFlowAcceleration"] is not None
+    assert multi.score.components["OrganicFlowAcceleration"] == multi.organic_momentum.score
+
+    lone = _production(observation("sig-organic-lone", NOW, wallet="wallet-a"))
+    single = run(
+        EarlyRuntimeService().process(
+            lone,
+            observations=(lone,),
+            safety_evidence=BASE_SAFETY,
+        )
+    )
+    assert single.score.components["OrganicFlowAcceleration"] is None
