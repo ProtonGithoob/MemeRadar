@@ -759,9 +759,15 @@ class BacktestMetrics:
     max_drawdown: Decimal
     max_drawdown_amount: Decimal
     score_buckets: tuple[BacktestScoreBucket, ...]
+    # Survivorship-aware view: signals that passed entry but whose exit could
+    # not be resolved (missing forward price, unknown labels, dead pools) are
+    # booked as a total loss instead of being silently excluded.
+    unresolved_exit_count: int = 0
+    worst_case_expectancy: Decimal | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
+            "unresolved_exit_count",
             "checkpoint_count",
             "entry_rejected_count",
             "signal_count",
@@ -801,10 +807,13 @@ class BacktestMetrics:
             "expectancy",
             "expectancy_pnl",
             "profit_factor",
+            "worst_case_expectancy",
         ):
             value = getattr(self, field_name)
             if value is not None:
                 object.__setattr__(self, field_name, to_decimal(value, field_name))
+        if self.unresolved_exit_count > self.skipped_signal_count:
+            raise ValueError("unresolved exits cannot exceed skipped signals")
         buckets = tuple(self.score_buckets)
         if any(not isinstance(value, BacktestScoreBucket) for value in buckets):
             raise TypeError("score_buckets must contain BacktestScoreBucket values")
@@ -845,6 +854,10 @@ class BacktestMetrics:
             "max_drawdown": str(self.max_drawdown),
             "max_drawdown_amount": str(self.max_drawdown_amount),
             "score_buckets": [value.to_json_dict() for value in self.score_buckets],
+            "unresolved_exit_count": self.unresolved_exit_count,
+            "worst_case_expectancy": None
+            if self.worst_case_expectancy is None
+            else str(self.worst_case_expectancy),
         }
 
 
@@ -1686,6 +1699,8 @@ def _build_metrics(
         max_drawdown=max_drawdown_amount / policy.initial_capital,
         max_drawdown_amount=max_drawdown_amount,
         score_buckets=_build_score_buckets(trades, exit_skips),
+        unresolved_exit_count=len(exit_skips),
+        worst_case_expectancy=_mean(net_returns + [Decimal("-1")] * len(exit_skips)),
     )
 
 

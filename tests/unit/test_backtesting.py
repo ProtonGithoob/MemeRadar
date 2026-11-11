@@ -9,9 +9,11 @@ import pytest
 from memeradar_application.alpha_strategy import StrategySnapshot
 from memeradar_application.backtesting import (
     BacktestHarness,
+    BacktestMetrics,
     BacktestPolicy,
     BacktestReport,
 )
+from memeradar_application.calibration import ScoreCalibrationHarness
 from memeradar_application.correlation import CorrelationSnapshot, CorrelationWindowFeatures
 from memeradar_application.replay_harness import (
     OutcomeHorizonLabel,
@@ -401,6 +403,35 @@ def test_unknown_future_evidence_is_skipped_and_never_treated_as_a_loss_or_win()
     assert report.metrics.precision is None
     assert report.metrics.hit_rate == Decimal("0")
     assert report.skips[0].reason_codes[0].code == "OUTCOME_NOT_FRESH"
+    assert report.metrics.expectancy is None
+    assert report.metrics.unresolved_exit_count == 1
+    assert report.metrics.worst_case_expectancy == Decimal("-1")
+    assert report.metrics.to_json_dict()["worst_case_expectancy"] == "-1"
+
+
+def test_worst_case_expectancy_books_unresolved_exits_as_total_losses() -> None:
+    value = _result(
+        _checkpoint_result(
+            suffix="resolved-winner", at=NOW, score="90", forward_return="0.5"
+        ),
+        _checkpoint_result(
+            suffix="dead-pool",
+            at=NOW + timedelta(minutes=1),
+            score="90",
+            forward_return=None,
+            quality_state=QualityState.UNKNOWN,
+        ),
+    )
+
+    report = BacktestHarness().run(value, policy=BacktestPolicy(max_liquidity_fraction=None))
+
+    assert report.metrics.executed_trade_count == 1
+    assert report.metrics.unresolved_exit_count == 1
+    assert report.metrics.expectancy is not None
+    assert report.metrics.worst_case_expectancy == (
+        report.metrics.expectancy + Decimal("-1")
+    ) / 2
+    assert report.metrics.worst_case_expectancy < report.metrics.expectancy
 
 
 def test_safety_exit_requires_explicit_label_and_uses_known_horizon_price() -> None:
@@ -556,3 +587,48 @@ def test_policy_rejects_unsafe_modes_and_bad_assumptions() -> None:
         BacktestPolicy(fee_bps=Decimal("10000"))
     with pytest.raises(ValueError, match="position_notional"):
         BacktestPolicy(position_notional=Decimal("0"))
+
+
+def _metrics(trades: int, expectancy: str, unresolved: int = 0) -> BacktestMetrics:
+    value = Decimal(expectancy)
+    worst = (value * trades - unresolved) / (trades + unresolved) if trades + unresolved else None
+    return BacktestMetrics(
+        checkpoint_count=trades + unresolved,
+        entry_rejected_count=0,
+        signal_count=trades + unresolved,
+        executed_trade_count=trades,
+        skipped_signal_count=unresolved,
+        win_count=trades,
+        loss_count=0,
+        precision=Decimal("1") if trades else None,
+        hit_rate=None,
+        total_net_pnl=Decimal("0"),
+        average_net_pnl=None,
+        total_net_return=value * trades,
+        average_net_return=value if trades else None,
+        expectancy=value if trades else None,
+        expectancy_pnl=None,
+        gross_profit=Decimal("0"),
+        gross_loss=Decimal("0"),
+        profit_factor=None,
+        max_drawdown=Decimal("0"),
+        max_drawdown_amount=Decimal("0"),
+        score_buckets=(),
+        unresolved_exit_count=unresolved,
+        worst_case_expectancy=worst,
+    )
+
+
+def test_calibration_ranking_prefers_adequate_samples_and_worst_case_objective() -> None:
+    lucky_single = _metrics(1, "4")
+    broad = _metrics(25, "0.2")
+    survivorship = _metrics(25, "0.3", unresolved=25)
+
+    def key(metrics: BacktestMetrics, name: str) -> tuple[object, ...]:
+        return ScoreCalibrationHarness._ranking_key(metrics, name, minimum_trades=20)
+
+    ranked = sorted(
+        (("lucky", lucky_single), ("broad", broad), ("survivor", survivorship)),
+        key=lambda item: key(item[1], item[0]),
+    )
+    assert [name for name, _ in ranked] == ["broad", "survivor", "lucky"]

@@ -745,6 +745,13 @@ class PromotionEvidencePolicy:
                     reasons.append(ReasonCode(f"{label}_EXPECTANCY_UNKNOWN"))
                 elif metrics.expectancy < 0:
                     reasons.append(ReasonCode(f"{label}_EXPECTANCY_NEGATIVE"))
+                # Unresolved exits are booked as total losses so that dead
+                # pools cannot inflate out-of-sample evidence.
+                if (
+                    metrics.worst_case_expectancy is not None
+                    and metrics.worst_case_expectancy < 0
+                ):
+                    reasons.append(ReasonCode(f"{label}_WORST_CASE_EXPECTANCY_NEGATIVE"))
         for label, metrics in (
             ("VALIDATION", evaluation.validation.metrics),
             ("TEST", evaluation.test.metrics),
@@ -1394,11 +1401,15 @@ class ScoreCalibrationHarness:
             raw_evaluations[candidate.candidate_id] = (candidate, split_metrics)
 
         baseline_metrics = raw_evaluations[baseline_candidate_id][1]
+        evidence_policy = promotion_policy or PromotionEvidencePolicy()
+        if not isinstance(evidence_policy, PromotionEvidencePolicy):
+            raise TypeError("promotion_policy must be a PromotionEvidencePolicy")
         ranked_ids = sorted(
             identities,
             key=lambda candidate_id: self._ranking_key(
                 raw_evaluations[candidate_id][1][CalibrationPartition.TRAIN].metrics,
                 candidate_id,
+                minimum_trades=evidence_policy.minimum_train_trades,
             ),
         )
         evaluations: list[CalibrationCandidateEvaluation] = []
@@ -1422,7 +1433,9 @@ class ScoreCalibrationHarness:
                     train=metrics[CalibrationPartition.TRAIN],
                     validation=metrics[CalibrationPartition.VALIDATION],
                     test=metrics[CalibrationPartition.TEST],
-                    selection_objective=metrics[CalibrationPartition.TRAIN].metrics.expectancy,
+                    selection_objective=self._objective(
+                        metrics[CalibrationPartition.TRAIN].metrics
+                    ),
                     rank=rank,
                     deltas=deltas,
                 )
@@ -1437,9 +1450,6 @@ class ScoreCalibrationHarness:
             if value.candidate.candidate_id == selected_candidate_id
         )
         evidence = normalize_texts(evidence_refs, "evidence_refs")
-        evidence_policy = promotion_policy or PromotionEvidencePolicy()
-        if not isinstance(evidence_policy, PromotionEvidencePolicy):
-            raise TypeError("promotion_policy must be a PromotionEvidencePolicy")
         promotion = evidence_policy.assess(selected_evaluation, evidence_refs=evidence)
         attribution = None
         if attribution_samples:
@@ -1459,10 +1469,23 @@ class ScoreCalibrationHarness:
         )
 
     @staticmethod
-    def _ranking_key(metrics: BacktestMetrics, candidate_id: str) -> tuple[object, ...]:
-        objective = metrics.expectancy
+    def _objective(metrics: BacktestMetrics) -> Decimal | None:
+        """Survivorship-aware objective: unresolved exits count as total losses."""
+
+        if metrics.worst_case_expectancy is not None:
+            return metrics.worst_case_expectancy
+        return metrics.expectancy
+
+    @staticmethod
+    def _ranking_key(
+        metrics: BacktestMetrics, candidate_id: str, *, minimum_trades: int = 1
+    ) -> tuple[object, ...]:
+        objective = ScoreCalibrationHarness._objective(metrics)
         precision = metrics.precision
         return (
+            # A candidate below the minimum sample cannot outrank one that
+            # meets it, however large its in-sample expectancy.
+            metrics.executed_trade_count < minimum_trades,
             objective is None,
             Decimal("0") if objective is None else -objective,
             Decimal("1") if precision is None else -precision,
