@@ -581,6 +581,17 @@ class ObservationRepository:
                 return existing_by_id
             if (
                 existing_by_id.kind == mapped.kind == "chain.event"
+                and existing_by_id.provider == mapped.provider == "chain.integrity"
+                and existing_by_id.source_id == mapped.source_id
+            ):
+                # The stream store owns canonical chain events and applies its
+                # own conflict detection. A copy rehydrated earlier and saved
+                # again here may predate a later canonical update (for example
+                # finalization during gap recovery); it is a re-read, never a
+                # competing write, so the persisted row wins.
+                return existing_by_id
+            if (
+                existing_by_id.kind == mapped.kind == "chain.event"
                 and existing_by_id.provider == "chain.integrity"
                 and existing_by_id.token_id == mapped.token_id
                 and existing_by_id.occurred_at == mapped.occurred_at

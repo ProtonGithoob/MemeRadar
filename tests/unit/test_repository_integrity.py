@@ -293,3 +293,52 @@ def test_observation_replay_ignores_later_transport_times_but_rejects_mutation()
             )
 
     asyncio.run(exercise())
+
+
+def test_rehydrated_canonical_chain_event_never_conflicts_with_its_persisted_row() -> None:
+    pytest.importorskip("aiosqlite")
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from memeradar_persistence.models import Base
+
+    async def exercise() -> None:
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        stale = Observation(
+            kind="chain.event",
+            provenance=Provenance(
+                provider="chain.integrity",
+                source_id="solana:signature:7",
+                observed_at=NOW,
+                parser_version="pumpfun-trade-event-log-v1",
+            ),
+            occurred_at=NOW,
+            observed_at=NOW,
+            ingested_at=NOW,
+            quality_state=QualityState.FRESH,
+            normalized_payload={"event_type": "trade_event", "commitment": "CONFIRMED"},
+        )
+        async with factory() as session:
+            session.add(
+                ObservationRow(
+                    id=stale.id,
+                    kind="chain.event",
+                    provider="chain.integrity",
+                    source_id="solana:signature:7",
+                    occurred_at=NOW,
+                    observed_at=NOW,
+                    ingested_at=NOW,
+                    parser_version="pumpfun-trade-event-log-v1",
+                    quality_state="FRESH",
+                    normalized_payload={"event_type": "trade_event", "commitment": "FINALIZED"},
+                )
+            )
+            await session.commit()
+        async with factory() as session:
+            row = await ObservationRepository(session).add(stale)
+            assert row.normalized_payload["commitment"] == "FINALIZED"
+        await engine.dispose()
+
+    asyncio.run(exercise())
