@@ -334,8 +334,11 @@ def test_worker_preserves_open_gap_and_marks_downstream_evidence_unknown_path() 
     gaps = run(store.list_gaps())
     cursor = run(store.load_cursor(Chain.SOLANA, "fixture-live", "early-runtime"))
 
-    assert report.gap_affected_events == 1
-    assert processor.events[-1][1] is True
+    # The gap (slot 101) ends before the event at slot 102, so it cannot hide
+    # any of that launch's evidence; it is still preserved and blocks the
+    # contiguous cursor.
+    assert report.gap_affected_events == 0
+    assert processor.events[-1][1] is False
     assert len(gaps) == 1
     assert gaps[0].from_slot == 101 and gaps[0].to_slot == 101
     assert cursor is not None
@@ -562,3 +565,23 @@ def test_persisted_chain_event_rows_rehydrate_as_production_evidence() -> None:
     assert "collection_mode" not in early_discovery._observation_from_row(
         foreign
     ).normalized_payload
+
+
+def test_gap_affects_a_token_only_when_it_reaches_the_token_lifetime() -> None:
+    from memeradar_application.early_worker import gaps_affect_slot_range
+
+    gap = unresolved_gap(101)
+
+    def affects(from_slot: int, **overrides: object) -> bool:
+        identity: dict[str, object] = {
+            "chain": Chain.SOLANA,
+            "transport": "fixture-live",
+            "stream_id": "early-runtime",
+        }
+        identity.update(overrides)
+        return gaps_affect_slot_range((gap,), from_slot=from_slot, **identity)  # type: ignore[arg-type]
+
+    assert affects(100) is True
+    assert affects(101) is True
+    assert affects(102) is False
+    assert affects(100, stream_id="other-stream") is False

@@ -25,7 +25,11 @@ from memeradar_application.early_runtime import (
     EarlyRuntimeService,
     _observation_for_event,
 )
-from memeradar_application.early_worker import EarlyRuntimeStreamReport, EarlyRuntimeStreamWorker
+from memeradar_application.early_worker import (
+    EarlyRuntimeStreamReport,
+    EarlyRuntimeStreamWorker,
+    gaps_affect_slot_range,
+)
 from memeradar_application.historical_dataset import MADEONSOL_REAL_EVIDENCE_CLASS
 from memeradar_application.provider_contracts import (
     CandidateDiscoveryPort,
@@ -1264,8 +1268,16 @@ async def _run_early_lifecycle_reevaluation(
                     )
                 evaluated_at = datetime.now(UTC)
                 caller_token = _caller_research_token(launch_observation)
+                launch_slot = launch.slot if launch.slot is not None else 0
                 stream_gap = (
-                    coordinator is not None and bool(await coordinator.active_gaps())
+                    coordinator is not None
+                    and gaps_affect_slot_range(
+                        await coordinator.active_gaps(),
+                        chain=coordinator.chain,
+                        transport=coordinator.transport,
+                        stream_id=coordinator.stream_id,
+                        from_slot=launch_slot,
+                    )
                 )
                 try:
                     async with runtime_lock, SqlAlchemyUnitOfWork(engine) as unit_of_work:

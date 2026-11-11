@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterable, AsyncIterator
+from collections.abc import AsyncIterable, AsyncIterator, Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Protocol, cast
 
-from memeradar_domain import NormalizedChainEvent, StreamGapStatus
+from memeradar_domain import NormalizedChainEvent, StreamGap, StreamGapStatus
 
 from .early_runtime import EarlyRuntimeResult
 from .stream_integrity import (
@@ -44,6 +44,31 @@ class EarlyRuntimeStreamReport:
     stopped: bool
     persisted_only_events: int = 0
     failed_events: int = 0
+
+
+def gaps_affect_slot_range(
+    gaps: Iterable[StreamGap],
+    *,
+    chain: object,
+    transport: str,
+    stream_id: str,
+    from_slot: int,
+) -> bool:
+    """Return whether an unresolved gap overlaps slots at or after ``from_slot``.
+
+    A token's evidence starts at its launch slot, so a gap that ended before
+    it (for example the reconnect boundary just before the launch) cannot hide
+    any of its trades. Only gaps reaching the token's lifetime make its
+    evidence incomplete.
+    """
+
+    return any(
+        gap.chain is chain
+        and gap.transport == transport
+        and gap.stream_id == stream_id
+        and gap.to_slot >= from_slot
+        for gap in gaps
+    )
 
 
 # Trade tape events are persisted for later reevaluation but never trigger a
@@ -164,11 +189,12 @@ class EarlyRuntimeStreamWorker:
                     persisted_only += 1
                     continue
                 gaps = await self.coordinator.active_gaps()
-                stream_gap = any(
-                    gap.chain is self.coordinator.chain
-                    and gap.transport == self.coordinator.transport
-                    and gap.stream_id == self.coordinator.stream_id
-                    for gap in gaps
+                stream_gap = gaps_affect_slot_range(
+                    gaps,
+                    chain=self.coordinator.chain,
+                    transport=self.coordinator.transport,
+                    stream_id=self.coordinator.stream_id,
+                    from_slot=result.event.slot,
                 )
                 if stream_gap:
                     gap_affected += 1
@@ -219,4 +245,9 @@ class EarlyRuntimeStreamWorker:
         )
 
 
-__all__ = ["EarlyEventProcessor", "EarlyRuntimeStreamReport", "EarlyRuntimeStreamWorker"]
+__all__ = [
+    "EarlyEventProcessor",
+    "EarlyRuntimeStreamReport",
+    "EarlyRuntimeStreamWorker",
+    "gaps_affect_slot_range",
+]
