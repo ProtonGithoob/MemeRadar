@@ -10,15 +10,27 @@ COMPOSE_PATH = ROOT / "infra" / "compose" / "docker-compose.yml"
 def test_compose_defines_the_local_runtime_topology():
     compose = yaml.safe_load(COMPOSE_PATH.read_text())
 
-    assert set(compose["services"]) == {"api", "worker", "web", "postgres", "redis"}
-    assert compose["services"]["api"]["depends_on"] == {
+    assert set(compose["services"]) == {"api", "worker", "web", "postgres", "redis", "migrate"}
+    runtime_dependencies = {
         "postgres": {"condition": "service_healthy"},
         "redis": {"condition": "service_healthy"},
+        # The schema must be current before anything reads or writes it.
+        "migrate": {"condition": "service_completed_successfully"},
     }
-    assert compose["services"]["worker"]["depends_on"] == {
-        "postgres": {"condition": "service_healthy"},
-        "redis": {"condition": "service_healthy"},
-    }
+    assert compose["services"]["api"]["depends_on"] == runtime_dependencies
+    assert compose["services"]["worker"]["depends_on"] == runtime_dependencies
+
+
+def test_compose_migrates_the_schema_once_before_runtime_services():
+    migrate = yaml.safe_load(COMPOSE_PATH.read_text())["services"]["migrate"]
+    dockerfile = (COMPOSE_PATH.parents[1] / "docker" / "api.Dockerfile").read_text()
+
+    assert migrate["command"] == ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+    assert migrate["restart"] == "no"
+    assert migrate["depends_on"] == {"postgres": {"condition": "service_healthy"}}
+    assert "DATABASE_URL" in migrate["environment"]
+    assert "COPY alembic.ini ./alembic.ini" in dockerfile
+    assert "COPY infra/alembic ./infra/alembic" in dockerfile
 
 
 def test_compose_has_dependency_health_checks_and_safe_modes():

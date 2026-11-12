@@ -30,6 +30,20 @@ services:
       retries: 10
       start_period: 5s
 
+  # One-shot schema migration. Without it a fresh or older database has no
+  # current tables, the API answers 500 and the worker crash-loops.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    command: ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://memeradar:${POSTGRES_PASSWORD:-memeradar_local_only}@postgres:5432/memeradar}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: ../..
@@ -114,6 +128,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
@@ -199,6 +215,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   web:
     build:

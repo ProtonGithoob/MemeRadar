@@ -17,6 +17,10 @@ COPY packages/domain/src ./packages/domain/src
 COPY packages/persistence/src ./packages/persistence/src
 COPY packages/providers/src ./packages/providers/src
 COPY packages/telemetry/src ./packages/telemetry/src
+# Migration files, so the one-shot `migrate` service can bring a fresh or
+# older database to the current schema before the API and worker start.
+COPY alembic.ini ./alembic.ini
+COPY infra/alembic ./infra/alembic
 
 RUN addgroup --system memeradar && adduser --system --ingroup memeradar memeradar
 USER memeradar
