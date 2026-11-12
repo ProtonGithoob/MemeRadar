@@ -819,8 +819,13 @@ const MAX_PAGE_LIMIT = 100;
 const MAX_STRING_LENGTH = 512;
 const MAX_ARRAY_LENGTH = 64;
 const MAX_RUNTIME_SETTINGS = 128;
-const MAX_PAYLOAD_KEYS = 64;
-const MAX_PAYLOAD_DEPTH = 4;
+// The reliability counter group alone has 62 keys; leave headroom so adding
+// a counter does not invalidate the whole operations response.
+const MAX_PAYLOAD_KEYS = 128;
+// Operations metrics nest five levels deep (metrics > stream_coverage >
+// verification_ranges > range > reason_codes). A limit of four rejected the
+// whole operations payload as soon as a real recovery range was recorded.
+const MAX_PAYLOAD_DEPTH = 6;
 const RUNTIME_SETTING_GROUPS = new Set([
   "providers", "chains", "telegram", "x", "social", "website", "wallet", "security", "llm", "research"
 ]);

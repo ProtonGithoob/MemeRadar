@@ -479,6 +479,10 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .radar-filters label > span { color: var(--faint); font-size: 0.56rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .radar-filters select, .radar-filters input { background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); font-size: 0.72rem; min-height: 32px; padding: 0 8px; }
 
+.metric-strip + .preset-row { margin-top: 14px; }
+.control-row { align-items: center; display: inline-flex; gap: 8px; margin: 2px 0 12px; }
+.control-select { appearance: none; background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); cursor: pointer; font-size: 0.7rem; font-weight: 600; min-height: 30px; padding: 0 28px 0 10px; }
+.control-select:hover { border-color: var(--accent); }
 .preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .preset-chip { background: var(--panel); border: 1px solid var(--line-strong); border-radius: 999px; color: var(--muted); cursor: pointer; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em; padding: 5px 11px; }
 .preset-chip:hover { border-color: var(--accent); color: var(--accent); }

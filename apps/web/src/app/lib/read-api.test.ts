@@ -221,6 +221,33 @@ describe("server-side read gateway", () => {
     }
   });
 
+  it("accepts operations metrics as deep as real recovery verification ranges", async () => {
+    vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({
+      schema_version: "operations-overview-v1",
+      as_of: "2026-11-12T01:00:00.000Z",
+      overall_state: "UNKNOWN",
+      slo_state: "UNVERIFIED",
+      policy_version: "provider-slo-v1",
+      measurement_method: "runtime",
+      providers: [],
+      alerts: [],
+      metrics: {
+        // metrics > stream_coverage > verification_ranges > range > reason_codes
+        stream_coverage: {
+          verification_ranges: [{ from_slot: 90, to_slot: 90, reason_codes: ["STREAM_VERIFIED"] }]
+        },
+        counters: Object.fromEntries(Array.from({ length: 70 }, (_, index) => [`counter_${index}`, 0]))
+      },
+      modes: { analysis_only: true, paper_trading: true, manual_execution: false, auto_execution: false },
+      execution_eligible: false
+    })));
+
+    const result = await fetchOperations();
+
+    expect(result.ok).toBe(true);
+  });
+
   it("parses grouped runtime settings without allowing secret values into the web projection", async () => {
     vi.stubEnv("MEMERADAR_API_BASE_URL", "http://api.internal:8000");
     const fetchMock = vi.fn().mockResolvedValue(response({

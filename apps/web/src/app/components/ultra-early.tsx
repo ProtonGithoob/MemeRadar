@@ -43,8 +43,43 @@ function displayGate(value: boolean | null | undefined, pass: string, fail: stri
   return value == null ? "UNKNOWN" : value ? pass : fail;
 }
 
+/** Where a candidate stands against the backend's Telegram alert gate. */
+export type AlertGate = "ALERT_READY" | "WAITING" | "BLOCKED" | "UNKNOWN";
+
+const GATE_LABEL: Record<AlertGate, string> = {
+  ALERT_READY: "ALERT READY",
+  WAITING: "WAITING",
+  BLOCKED: "BLOCKED",
+  UNKNOWN: "UNKNOWN"
+};
+const GATE_TONE: Record<AlertGate, "low" | "medium" | "high" | "unknown"> = {
+  ALERT_READY: "low",
+  WAITING: "medium",
+  BLOCKED: "high",
+  UNKNOWN: "unknown"
+};
+
+/**
+ * Classify a candidate. Alert readiness is decided only by the backend
+ * (`qualifiedIds`); the browser never infers it from individual fields.
+ */
+export function alertGate(entry: EarlyRadarRecord, qualifiedIds: ReadonlySet<string> | null): AlertGate {
+  if (qualifiedIds?.has(entry.candidateId)) return "ALERT_READY";
+  if (entry.hardBlockReasons.length > 0 || entry.riskDisposition === "BLOCK" || entry.earlyState === "REJECT/LOW") {
+    return "BLOCKED";
+  }
+  return qualifiedIds === null ? "UNKNOWN" : "WAITING";
+}
+
+/** Evidence the backend reported as missing or unverified for this candidate. */
+export function missingEvidence(entry: EarlyRadarRecord): string[] {
+  return entry.reasonCodes.filter((code) => /(_UNKNOWN|_MISSING|_UNVERIFIED)$/.test(code));
+}
+
 type PresetKey =
   | "ALL"
+  | "ALERT_READY"
+  | "HAS_TAPE"
   | "FRESH_1M"
   | "FRESH_5M"
   | "HIGH_CONFLUENCE"
@@ -62,7 +97,10 @@ type SortKey =
   | "ORGANIC_MOMENTUM";
 
 const PRESETS: Array<{ key: PresetKey; label: string; match: (entry: EarlyRadarRecord) => boolean }> = [
-  { key: "ALL", label: "All", match: () => true },
+  { key: "ALL", label: "All tracked", match: () => true },
+  // Matched against the backend-qualified set in the workspace, not here.
+  { key: "ALERT_READY", label: "Alert ready", match: () => true },
+  { key: "HAS_TAPE", label: "Has trade tape", match: (entry) => (entry.tapeTradeCount ?? 0) > 0 },
   {
     key: "FRESH_1M",
     label: "Fresh <1m",
@@ -154,7 +192,8 @@ export function displayTape(trades: number | null | undefined, buyers: number | 
   return `${tradeText} · ${buyerText}`;
 }
 
-function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
+function UltraEarlyRow({ entry, gate }: { entry: EarlyRadarRecord; gate: AlertGate }) {
+  const missing = missingEvidence(entry);
   const displayName = entry.symbol || entry.name || shortIdentity(entry.mintAddress);
   return (
     <tr>
@@ -165,12 +204,13 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
         </div>
       </td>
       <td className="num">{entry.launchAgeSeconds === null ? "UNKNOWN" : formatAgeSeconds(entry.launchAgeSeconds)}</td>
+      <td><Pill label={GATE_LABEL[gate]} tone={GATE_TONE[gate]} /></td>
       <td><Pill label={entry.earlyState} tone="info" /></td>
       <td className="num">{entry.earlyScore === null ? "UNKNOWN" : formatScore(entry.earlyScore)}</td>
-      <td className="num">{formatConfidence(entry.earlyScoreConfidence)}</td>
+      <td className="num">{entry.organicMomentum == null ? "UNKNOWN" : formatScore(entry.organicMomentum)}</td>
+      <td className="num">{displayTape(entry.tapeTradeCount, entry.tapeUniqueBuyers)}</td>
       <td><Pill label={entry.riskDisposition} tone={riskTone(entry.riskDisposition)} /></td>
       <td className="num">{formatUsd(entry.liquidityUsd)}</td>
-      <td className="num">{formatUsd(entry.currentMarketCap)}</td>
       <td><Pill label={entry.sellability} tone={evidenceTone(entry.sellability)} /></td>
       <td className="num">{entry.priceImpactBps === null ? "UNKNOWN" : displayMetric(entry.priceImpactBps)}</td>
       <td><Pill label={displayAlert(entry.alerted)} tone={entry.alerted ? "low" : "unknown"} /></td>
@@ -179,6 +219,9 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
           <summary>Inspect</summary>
           <div className="early-evidence__panel">
             <dl>
+              <div><dt>Alert gate</dt><dd>{GATE_LABEL[gate]}</dd></div>
+              <div><dt>Score confidence</dt><dd>{formatConfidence(entry.earlyScoreConfidence)}</dd></div>
+              <div><dt>Decision market cap</dt><dd>{formatUsd(entry.currentMarketCap)}</dd></div>
               <div><dt>Protocol source</dt><dd>{entry.firstSeenSource}</dd></div>
               <div><dt>Venue</dt><dd>{entry.venue}</dd></div>
               <div><dt>Protocol identity</dt><dd>{displayGate(entry.protocolIdentityVerified, "VERIFIED", "UNVERIFIED")}</dd></div>
@@ -192,6 +235,14 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
               <div><dt>Trade tape</dt><dd>{displayTape(entry.tapeTradeCount, entry.tapeUniqueBuyers)}</dd></div>
               <div><dt>Evidence quality</dt><dd>{entry.firstSeenQuality}</dd></div>
             </dl>
+            {gate !== "ALERT_READY" && (
+              <>
+                <strong>Missing for an alert</strong>
+                {entry.hardBlockReasons.length + missing.length ? (
+                  <ul>{[...entry.hardBlockReasons, ...missing].map((reason) => <li key={reason}>{reason.replaceAll("_", " ")}</li>)}</ul>
+                ) : <p>No missing evidence was reported; the score or freshness gate has not passed.</p>}
+              </>
+            )}
             <strong>Decision reasons</strong>
             {entry.reasonCodes.length ? (
               <ul>{entry.reasonCodes.map((reason) => <li key={reason}>{reason.replaceAll("_", " ")}</li>)}</ul>
@@ -208,14 +259,27 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
 }
 
 const TABLE_HEAD = [
-  "Token", "Age at decision", "State", "Score", "Confidence", "Risk", "Liquidity",
-  "Decision MC", "Sellable", "Sell impact @ 0.01 SOL", "Telegram", "Evidence"
+  "Token", "Age at decision", "Alert gate", "State", "Score", "Momentum", "Trade tape", "Risk",
+  "Liquidity", "Sellable", "Sell impact (bps)", "Telegram", "Evidence"
 ];
 
+function SummaryCard({ label, value, note, tone }: { label: string; value: string; note: string; tone?: "ok" | "warn" | "danger" }) {
+  return (
+    <div className="metric-card">
+      <span className="metric-card__label">{label}</span>
+      <strong className={tone ? `metric-card__value metric-card__value--${tone}` : "metric-card__value"}>{value}</strong>
+      <small>{note}</small>
+    </div>
+  );
+}
+
 export function UltraEarlyWorkspace({
-  result
+  result,
+  qualified
 }: {
   result: ReadResult<ReadPage<EarlyRadarRecord>>;
+  /** Candidates the backend currently passes through the Telegram alert gate. */
+  qualified?: ReadResult<ReadPage<EarlyRadarRecord>>;
 }) {
   const [preset, setPreset] = useState<PresetKey>("ALL");
   const [sort, setSort] = useState<SortKey>("NEWEST");
@@ -223,7 +287,7 @@ export function UltraEarlyWorkspace({
   const heading = (
     <PageHeader
       eyebrow="Launch intelligence / read-only"
-      note="Only fresh candidates passing the Telegram gate are shown. When an executable quote provider is configured, buy and sell routes use a read-only 0.01 SOL probe; this is not an order-size recommendation. Auto execution: LOCKED."
+      note="Every tracked launch is listed; ALERT READY marks candidates the backend passes through the Telegram gate. Quotes are read-only probes, not order-size recommendations. Buying and selling are manual. Auto execution: LOCKED."
       title="Ultra-Early Detection"
     />
   );
@@ -242,12 +306,33 @@ export function UltraEarlyWorkspace({
   }
 
   const items = result.data.items;
+  const qualifiedIds = qualified?.ok
+    ? new Set(qualified.data.items.map((entry) => entry.candidateId))
+    : null;
+  const gates = new Map(items.map((entry) => [entry.candidateId, alertGate(entry, qualifiedIds)]));
+  const countGate = (gate: AlertGate) => items.filter((entry) => gates.get(entry.candidateId) === gate).length;
   const activePreset = PRESETS.find((candidate) => candidate.key === preset) ?? PRESETS[0];
-  const filtered = items.filter(activePreset.match);
+  const filtered = preset === "ALERT_READY"
+    ? items.filter((entry) => gates.get(entry.candidateId) === "ALERT_READY")
+    : items.filter(activePreset.match);
+  const withTape = items.filter((entry) => (entry.tapeTradeCount ?? 0) > 0).length;
 
   return (
     <>
       {heading}
+
+      <div className="metric-strip">
+        <SummaryCard label="TRACKED" note={result.data.hasMore ? "First page; more exist" : "Launches in this view"} value={String(items.length)} />
+        <SummaryCard
+          label="ALERT READY"
+          note={qualifiedIds === null ? "Gate status unavailable" : "Pass the Telegram gate now"}
+          tone={qualifiedIds !== null && countGate("ALERT_READY") > 0 ? "ok" : undefined}
+          value={qualifiedIds === null ? "UNKNOWN" : String(countGate("ALERT_READY"))}
+        />
+        <SummaryCard label="WAITING ON EVIDENCE" note="Not blocked, gate not passed" tone="warn" value={qualifiedIds === null ? "UNKNOWN" : String(countGate("WAITING"))} />
+        <SummaryCard label="BLOCKED" note="Hard block or rejected" tone={countGate("BLOCKED") > 0 ? "danger" : undefined} value={String(countGate("BLOCKED"))} />
+        <SummaryCard label="WITH TRADE TAPE" note="Decoded trades recorded" value={String(withTape)} />
+      </div>
 
       <div aria-label="Ultra-early presets" className="preset-row" role="group">
         {PRESETS.map((candidate) => (
@@ -263,20 +348,22 @@ export function UltraEarlyWorkspace({
         ))}
       </div>
 
-      <label>
-        <span>Sort launches</span>
-        <select aria-label="Sort launches" value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
+      <label className="control-row">
+        <span className="card-label">SORT</span>
+        <select aria-label="Sort launches" className="control-select" value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
           {SORTS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
         </select>
       </label>
 
       {filtered.length === 0 ? (
         <div className="read-state" role="status">
-          <strong>NO ULTRA-EARLY CANDIDATES</strong>
+          <strong>{items.length === 0 ? "NO TRACKED LAUNCHES" : "NO MATCHING CANDIDATES"}</strong>
           <p>
             {items.length === 0
-              ? "No fresh candidate currently passes the authority, liquidity, executable buy/sell quote and stream-integrity gates. Reference prices do not count as executable quotes."
-              : `No launch projection matches the ${activePreset.label} preset.`}
+              ? "No launch has been recorded yet. This does not confirm that scanning is active."
+              : preset === "ALERT_READY"
+                ? "No tracked candidate currently passes the authority, liquidity, executable buy/sell quote and stream-integrity gates. Reference prices do not count as executable quotes."
+                : `No launch projection matches the ${activePreset.label} preset.`}
           </p>
           {items.length === 0 && <Link href="/scan-monitor">OPEN SCAN MONITOR</Link>}
         </div>
@@ -287,7 +374,9 @@ export function UltraEarlyWorkspace({
               <tr>{TABLE_HEAD.map((head) => <th key={head} scope="col">{head}</th>)}</tr>
             </thead>
             <tbody>
-              {sortEntries(filtered, sort).map((entry) => <UltraEarlyRow entry={entry} key={entry.candidateId} />)}
+              {sortEntries(filtered, sort).map((entry) => (
+                <UltraEarlyRow entry={entry} gate={gates.get(entry.candidateId) ?? "UNKNOWN"} key={entry.candidateId} />
+              ))}
             </tbody>
           </table>
         </div>
@@ -335,7 +424,7 @@ export function UltraEarlyPanel({
               <tr>{TABLE_HEAD.map((head) => <th key={head} scope="col">{head}</th>)}</tr>
             </thead>
             <tbody>
-              {items.map((entry) => <UltraEarlyRow entry={entry} key={entry.candidateId} />)}
+              {items.map((entry) => <UltraEarlyRow entry={entry} gate={alertGate(entry, null)} key={entry.candidateId} />)}
             </tbody>
           </table>
         </div>

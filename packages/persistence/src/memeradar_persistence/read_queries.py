@@ -111,6 +111,8 @@ from .repositories import caller_identity_from_row, social_call_observation_from
 from .serialization import reason_codes_from_json
 
 MAX_STORAGE_ROWS = 5_000
+# Matches the web client's bounded-array limit for one early-radar row.
+MAX_EARLY_RADAR_EVIDENCE_REFS = 64
 
 
 def _count_or_none(value: object) -> int | None:
@@ -1375,9 +1377,11 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                         tape_unique_buyers=_count_or_none(payload.get("unique_buyers")),
                         raw_smart_wallet_count=payload.get("raw_smart_wallet_count"),
                         independent_smart_wallet_count=payload.get("independent_smart_wallet_count"),
+                        # Trade tape can attach hundreds of references; the
+                        # read contract is bounded, so keep the most recent.
                         evidence_refs=tuple(
                             x for x in payload.get("evidence_refs", ()) if isinstance(x, str)
-                        ),
+                        )[-MAX_EARLY_RADAR_EVIDENCE_REFS:],
                         venue=str(payload.get("venue") or "UNKNOWN"),
                         first_seen_market_cap=payload.get("first_seen_market_cap"),
                         current_market_cap=payload.get("market_cap"),

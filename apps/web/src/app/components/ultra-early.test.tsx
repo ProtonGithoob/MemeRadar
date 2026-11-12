@@ -1,7 +1,16 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { UltraEarlyPanel, UltraEarlyWorkspace, displayLiquiditySource, displayTape } from "./ultra-early";
+import { fireEvent } from "@testing-library/react";
+
+import {
+  UltraEarlyPanel,
+  UltraEarlyWorkspace,
+  alertGate,
+  displayLiquiditySource,
+  displayTape,
+  missingEvidence
+} from "./ultra-early";
 import type { EarlyRadarRecord, ReadPage, ReadResult } from "../lib/read-api";
 
 const entry: EarlyRadarRecord = {
@@ -86,7 +95,7 @@ describe("UltraEarlyPanel", () => {
     render(<UltraEarlyPanel result={result([entry])} />);
 
     expect(screen.getByText("Executable quote depth (round trip within impact limit)")).toBeInTheDocument();
-    expect(screen.getByText("122 trades · 72 unique buyers")).toBeInTheDocument();
+    expect(screen.getAllByText("122 trades · 72 unique buyers").length).toBe(2);
     expect(screen.getByText("Organic momentum")).toBeInTheDocument();
   });
 
@@ -127,5 +136,36 @@ describe("UltraEarlyWorkspace", () => {
     expect(screen.getByRole("combobox", { name: "Sort launches" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "MEME" })).toBeInTheDocument();
     expect(screen.getByText(/Auto execution: LOCKED/)).toBeInTheDocument();
+  });
+
+  it("lists every tracked launch and marks only backend-qualified ones alert ready", () => {
+    const waiting: EarlyRadarRecord = {
+      ...entry,
+      candidateId: "33333333-3333-4333-8333-333333333333",
+      symbol: "WAIT",
+      earlyState: "WATCH",
+      reasonCodes: ["SELLABILITY_UNKNOWN", "EARLY_SCORE_BELOW_ENTRY_THRESHOLD"]
+    };
+    render(<UltraEarlyWorkspace qualified={result([entry])} result={result([entry, waiting])} />);
+
+    expect(screen.getByRole("link", { name: "MEME" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "WAIT" })).toBeInTheDocument();
+    expect(screen.getAllByText("ALERT READY").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("WAITING").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SELLABILITY UNKNOWN").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Alert ready" }));
+    expect(screen.getByRole("link", { name: "MEME" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "WAIT" })).not.toBeInTheDocument();
+  });
+
+  it("never infers alert readiness in the browser", () => {
+    const strong: EarlyRadarRecord = { ...entry, hardBlockReasons: [], riskDisposition: "PASS" };
+    expect(alertGate(strong, new Set())).toBe("WAITING");
+    expect(alertGate(strong, null)).toBe("UNKNOWN");
+    expect(alertGate(strong, new Set([strong.candidateId]))).toBe("ALERT_READY");
+    expect(alertGate({ ...strong, hardBlockReasons: ["SELL_IMPACT_HIGH"] }, new Set())).toBe("BLOCKED");
+    expect(missingEvidence({ ...strong, reasonCodes: ["LIQUIDITY_UNKNOWN", "TOKEN_2022_PROGRAM"] }))
+      .toEqual(["LIQUIDITY_UNKNOWN"]);
   });
 });

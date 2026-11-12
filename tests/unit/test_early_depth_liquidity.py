@@ -136,3 +136,15 @@ def test_quote_budget_gate_counts_distinct_tape_buyers_only() -> None:
     )
 
     assert early_discovery._tape_unique_buyers(observations) == 2
+
+
+def test_early_radar_evidence_refs_stay_within_the_client_array_bound() -> None:
+    from memeradar_persistence import read_queries
+
+    refs = tuple(f"observation:{index}" for index in range(200))
+
+    bounded = refs[-read_queries.MAX_EARLY_RADAR_EVIDENCE_REFS:]
+
+    assert read_queries.MAX_EARLY_RADAR_EVIDENCE_REFS == 64
+    assert len(bounded) == 64
+    assert bounded[-1] == "observation:199"
