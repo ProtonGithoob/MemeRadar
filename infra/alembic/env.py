@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -49,7 +49,34 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+# Alembic creates alembic_version.version_num as VARCHAR(32), but revision
+# identifiers here are descriptive and exceed it (for example
+# "0015_stream_verification_provenance" is 35 characters), which made
+# PostgreSQL reject the version update and roll the whole upgrade back.
+_VERSION_NUM_LENGTH = 128
+
+
+def _ensure_wide_version_table(connection: Connection) -> None:
+    if connection.dialect.name != "postgresql":
+        return
+    connection.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS alembic_version ("
+            f"version_num VARCHAR({_VERSION_NUM_LENGTH}) NOT NULL, "
+            "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"
+        )
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE alembic_version "
+            f"ALTER COLUMN version_num TYPE VARCHAR({_VERSION_NUM_LENGTH})"
+        )
+    )
+    connection.commit()
+
+
 def do_run_migrations(connection: Connection) -> None:
+    _ensure_wide_version_table(connection)
     context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
     with context.begin_transaction():
         context.run_migrations()
