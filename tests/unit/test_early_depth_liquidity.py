@@ -75,11 +75,11 @@ def test_round_trip_within_impact_limit_proves_probe_depth() -> None:
 
     liquidity, depth_quotes = _depth(quotes)
 
-    assert liquidity == Decimal("1000")
+    assert liquidity == Decimal("50")
     assert len(depth_quotes) == 2
     buy_request = quotes.requests[1]
-    # $1000 at $150/SOL rounds up to 6.666666667 SOL in lamports.
-    assert buy_request.amount == Decimal("6666666667")
+    # The USD 50 trade size at $150/SOL rounds up to 0.333333334 SOL.
+    assert buy_request.amount == Decimal("333333334")
     sell_request = quotes.requests[2]
     assert sell_request.input_mint == MINT
     assert sell_request.amount == depth_quotes[0].output_amount
@@ -148,3 +148,53 @@ def test_early_radar_evidence_refs_stay_within_the_client_array_bound() -> None:
     assert read_queries.MAX_EARLY_RADAR_EVIDENCE_REFS == 64
     assert len(bounded) == 64
     assert bounded[-1] == "observation:199"
+
+
+def test_depth_liquidity_is_judged_against_the_trade_size_not_pool_minimum() -> None:
+    from memeradar_application.fast_safety import (
+        EARLY_TRADE_SIZE_USD,
+        EXECUTABLE_QUOTE_DEPTH_SOURCE,
+        FastSafetyGate,
+        required_liquidity,
+    )
+
+    assert Decimal("50") == EARLY_TRADE_SIZE_USD
+    assert required_liquidity(EXECUTABLE_QUOTE_DEPTH_SOURCE) == Decimal("50")
+    assert required_liquidity(None) == Decimal("1000")
+    assert required_liquidity("MARKET_DATA") == Decimal("1000")
+
+    base = {
+        "protocol_identity_verified": True,
+        "quote_semantics": "EXECUTION_QUOTE",
+        "mint_authority_safe": True,
+        "freeze_authority_safe": True,
+        "sellability": True,
+        "buy_impact_bps": Decimal("120"),
+        "sell_impact_bps": Decimal("140"),
+        "liquidity": Decimal("50"),
+    }
+    gate = FastSafetyGate()
+    proven = gate.evaluate({**base, "liquidity_source": EXECUTABLE_QUOTE_DEPTH_SOURCE})
+    pool = gate.evaluate(base)
+
+    assert "LIQUIDITY_TOO_LOW" not in proven.hard_blocks
+    assert proven.liquidity_source == EXECUTABLE_QUOTE_DEPTH_SOURCE
+    assert "LIQUIDITY_TOO_LOW" in pool.hard_blocks
+
+
+def test_alert_gate_accepts_trade_size_depth_but_not_a_small_pool() -> None:
+    from memeradar_persistence.read_queries import _qualified_early_safety
+
+    payload = {
+        "mint_authority_safe": True,
+        "freeze_authority_safe": True,
+        "protocol_identity_verified": True,
+        "sellability": True,
+        "quote_semantics": "EXECUTION_QUOTE",
+        "liquidity": "50",
+        "buy_impact_bps": "120",
+        "sell_impact_bps": "140",
+    }
+
+    assert _qualified_early_safety({**payload, "liquidity_source": "EXECUTABLE_QUOTE_DEPTH"})
+    assert not _qualified_early_safety(payload)

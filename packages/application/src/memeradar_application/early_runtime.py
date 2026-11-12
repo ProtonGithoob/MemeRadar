@@ -598,7 +598,8 @@ class EarlyRuntimeService:
             liquidity_ok=(
                 safety.status is FastSafetyStatus.PASS
                 and safety.liquidity is not None
-                and safety.liquidity >= self.safety_gate.minimum_liquidity
+                and safety.liquidity
+                >= self.safety_gate.required_liquidity(safety.liquidity_source)
             ),
             price_impact_bps=self._entry_impact(safety),
             candidate_id=candidate.id,

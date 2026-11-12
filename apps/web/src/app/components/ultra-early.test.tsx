@@ -94,7 +94,7 @@ describe("UltraEarlyPanel", () => {
   it("shows liquidity provenance, organic momentum and trade tape in the inspector", () => {
     render(<UltraEarlyPanel result={result([entry])} />);
 
-    expect(screen.getByText("Executable quote depth (round trip within impact limit)")).toBeInTheDocument();
+    expect(screen.getByText("Executable round trip at trade size (within impact limit)")).toBeInTheDocument();
     expect(screen.getAllByText("122 trades · 72 unique buyers").length).toBe(2);
     expect(screen.getByText("Organic momentum")).toBeInTheDocument();
   });

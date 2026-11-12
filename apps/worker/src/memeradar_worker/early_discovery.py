@@ -30,6 +30,10 @@ from memeradar_application.early_worker import (
     EarlyRuntimeStreamWorker,
     gaps_affect_slot_range,
 )
+from memeradar_application.fast_safety import (
+    EARLY_TRADE_SIZE_USD,
+    EXECUTABLE_QUOTE_DEPTH_SOURCE,
+)
 from memeradar_application.historical_dataset import MADEONSOL_REAL_EVIDENCE_CLASS
 from memeradar_application.provider_contracts import (
     CandidateDiscoveryPort,
@@ -730,10 +734,9 @@ def _quote_observation(
 
 
 # Bonding-curve tokens have no published pool liquidity, so liquidity is
-# proven by executable depth: a round trip of this USD value (buy, then sell
-# everything bought) must stay within the fast-safety impact limit. The value
-# equals the default FastSafetyGate minimum liquidity.
-_EARLY_DEPTH_PROBE_USD = Decimal("1000")
+# proven by executable depth: a round trip of the operator's trade size (buy,
+# then sell everything bought) must stay within the fast-safety impact limit.
+_EARLY_DEPTH_PROBE_USD = EARLY_TRADE_SIZE_USD
 _EARLY_DEPTH_MAX_IMPACT_BPS = Decimal("1000")
 _USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 _SOL_USD_CACHE_SECONDS = 60
@@ -1132,7 +1135,7 @@ async def _collect_early_candidate_evidence(
         )
         if depth_usd is not None:
             evidence["liquidity"] = depth_usd
-            evidence["liquidity_source"] = "EXECUTABLE_QUOTE_DEPTH"
+            evidence["liquidity_source"] = EXECUTABLE_QUOTE_DEPTH_SOURCE
     for quote in (buy_quote, sell_quote, *depth_quotes):
         if quote is None or quote.price_semantics is not PriceSemantics.EXECUTION_QUOTE:
             continue

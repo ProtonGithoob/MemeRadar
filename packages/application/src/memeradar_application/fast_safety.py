@@ -184,13 +184,36 @@ class FastSafetyResult:
         )
 
 
+# Operator trade size (owner decision 2026-11-12: USD 50 per token). When
+# liquidity is proven by an executable round trip of this size, the gate
+# requires that round trip rather than a pool-liquidity minimum, because
+# bonding-curve pairs publish no pool liquidity.
+EARLY_TRADE_SIZE_USD = Decimal("50")
+EXECUTABLE_QUOTE_DEPTH_SOURCE = "EXECUTABLE_QUOTE_DEPTH"
+DEFAULT_MINIMUM_LIQUIDITY_USD = Decimal("1000")
+
+
+def required_liquidity(
+    liquidity_source: object,
+    *,
+    minimum_liquidity: Decimal = DEFAULT_MINIMUM_LIQUIDITY_USD,
+    trade_size_usd: Decimal = EARLY_TRADE_SIZE_USD,
+) -> Decimal:
+    """The liquidity a candidate must show for the given evidence source."""
+
+    if liquidity_source == EXECUTABLE_QUOTE_DEPTH_SOURCE:
+        return trade_size_usd
+    return minimum_liquidity
+
+
 class FastSafetyGate:
     """Compose already-calculated evidence without doing deep enrichment."""
 
     def __init__(
         self,
         *,
-        minimum_liquidity: Decimal = Decimal("1000"),
+        minimum_liquidity: Decimal = DEFAULT_MINIMUM_LIQUIDITY_USD,
+        trade_size_usd: Decimal = EARLY_TRADE_SIZE_USD,
         maximum_impact_bps: Decimal = Decimal("1000"),
         bundle_block: Decimal = Decimal("0.70"),
         creator_block: Decimal = Decimal("0.50"),
@@ -198,6 +221,9 @@ class FastSafetyGate:
         coordinated_block: Decimal = Decimal("0.80"),
     ) -> None:
         self.minimum_liquidity = to_decimal(minimum_liquidity, "minimum_liquidity")
+        self.trade_size_usd = to_decimal(trade_size_usd, "trade_size_usd")
+        if self.trade_size_usd <= 0:
+            raise ValueError("trade_size_usd must be positive")
         self.maximum_impact_bps = to_decimal(maximum_impact_bps, "maximum_impact_bps")
         self.bundle_block = bounded_decimal(
             bundle_block, "bundle_block", Decimal("0"), Decimal("1")
@@ -210,6 +236,13 @@ class FastSafetyGate:
         )
         self.coordinated_block = bounded_decimal(
             coordinated_block, "coordinated_block", Decimal("0"), Decimal("1")
+        )
+
+    def required_liquidity(self, liquidity_source: object) -> Decimal:
+        return required_liquidity(
+            liquidity_source,
+            minimum_liquidity=self.minimum_liquidity,
+            trade_size_usd=self.trade_size_usd,
         )
 
     def evaluate(
@@ -319,7 +352,7 @@ class FastSafetyGate:
         )
         if liquidity is None:
             critical.append("LIQUIDITY_UNKNOWN")
-        elif liquidity < self.minimum_liquidity:
+        elif liquidity < self.required_liquidity(value("liquidity_source")):
             blocks.append("LIQUIDITY_TOO_LOW")
             reasons.append(ReasonCode("LIQUIDITY_TOO_LOW"))
 

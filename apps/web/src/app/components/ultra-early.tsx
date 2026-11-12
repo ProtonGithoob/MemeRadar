@@ -175,7 +175,7 @@ function sortEntries(entries: EarlyRadarRecord[], sort: SortKey): EarlyRadarReco
 }
 
 const LIQUIDITY_SOURCE_LABELS: Record<string, string> = {
-  EXECUTABLE_QUOTE_DEPTH: "Executable quote depth (round trip within impact limit)"
+  EXECUTABLE_QUOTE_DEPTH: "Executable round trip at trade size (within impact limit)"
 };
 
 /** Liquidity provenance; an unrecorded source is UNKNOWN, never assumed. */

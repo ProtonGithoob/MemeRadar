@@ -19,6 +19,7 @@ from memeradar_application.creator_graph import CreatorOutcomeGraph
 from memeradar_application.event_time import event_time_quality
 from memeradar_application.evidence_policy import LEGACY_MISSING_COLLECTION_MODE_CUTOFF
 from memeradar_application.exit_engine import ExitEvaluation
+from memeradar_application.fast_safety import required_liquidity
 from memeradar_application.historical_dataset import (
     COLLECTION_MODE_FIELD,
     EVIDENCE_ORIGIN_FIELD,
@@ -151,7 +152,6 @@ _RELATIONSHIP_OBSERVATION_KINDS = (
     "wallet.link",
 )
 _PRICE_KEYS = ("price", "price_usd", "token_price", "close")
-_EARLY_MINIMUM_LIQUIDITY_USD = Decimal("1000")
 _EARLY_MAXIMUM_QUOTE_IMPACT_BPS = Decimal("1000")
 
 
@@ -176,7 +176,7 @@ def _qualified_early_safety(payload: Mapping[str, object]) -> bool:
         return False
     return (
         liquidity.is_finite()
-        and liquidity >= _EARLY_MINIMUM_LIQUIDITY_USD
+        and liquidity >= required_liquidity(payload.get("liquidity_source"))
         and buy_impact.is_finite()
         and Decimal("0") <= buy_impact <= _EARLY_MAXIMUM_QUOTE_IMPACT_BPS
         and sell_impact.is_finite()
