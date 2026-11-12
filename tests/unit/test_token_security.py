@@ -36,6 +36,7 @@ def authority_observation(
     quality_state: QualityState = QualityState.FRESH,
     token_program: str | None = None,
     token_extensions: object = (),
+    token_extensions_reported: bool | None = None,
     source_id: str = SOURCE_ID,
 ) -> Observation:
     observed = observed_at.astimezone(UTC)
@@ -63,6 +64,11 @@ def authority_observation(
                 "address": AUTHORITY if freeze_state == "ACTIVE" else None,
             },
             "token_extensions": token_extensions,
+            **(
+                {}
+                if token_extensions_reported is None
+                else {"token_extensions_reported": token_extensions_reported}
+            ),
         },
         token_id=token_value.id,
     )
@@ -259,3 +265,42 @@ def test_provider_verification_is_informational_and_never_endorsement() -> None:
     assert result.hard_blocks == ()
     assert "VERIFICATION_STATUS_INFORMATIONAL" in {reason.code for reason in result.reason_codes}
     assert result.execution_eligible(NOW) is True
+
+
+def test_token_2022_mint_with_read_benign_extensions_is_not_warned_for_its_program() -> None:
+    token_value = token(token_program="spl-token-2022")
+
+    result = assess(
+        token_value,
+        (
+            authority_observation(
+                token_value,
+                token_program="spl-token-2022",
+                token_extensions=("metadata_pointer_immutable_self", "token_metadata"),
+                token_extensions_reported=True,
+            ),
+        ),
+    )
+
+    assert result.disposition is RiskDisposition.PASS
+    assert "TOKEN_2022_PROGRAM" not in result.warnings
+
+
+def test_token_2022_mint_with_unread_extensions_still_warns() -> None:
+    token_value = token(token_program="spl-token-2022")
+
+    result = assess(
+        token_value,
+        (
+            authority_observation(
+                token_value,
+                token_program="spl-token-2022",
+                token_extensions=(),
+                token_extensions_reported=False,
+            ),
+        ),
+    )
+
+    assert result.disposition is RiskDisposition.WARN
+    assert "TOKEN_2022_EXTENSIONS_NOT_REPORTED" in result.warnings
+    assert "TOKEN_2022_PROGRAM" in result.warnings

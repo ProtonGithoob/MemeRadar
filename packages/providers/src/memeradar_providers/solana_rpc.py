@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import json
 import math
+import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from types import TracebackType
@@ -60,6 +61,52 @@ def _mapping(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ProviderSchemaError(f"provider {field} response was invalid")
     return value
+
+
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+# jsonParsed extension names that differ from the security policy's names.
+_EXTENSION_ALIASES = {
+    "confidential_transfer_mint": "confidential_transfer",
+    "pausable_config": "pausable",
+}
+
+
+def _mint_extensions(
+    info: Mapping[str, object], *, mint_address: str, parsed_type: object
+) -> tuple[tuple[str, ...], bool]:
+    """Normalize a parsed mint's Token-2022 extensions.
+
+    Returns ``(names, reported)``. ``reported`` is True only when the node
+    returned a parsed mint, so an absent list means "no extensions" rather
+    than "not checked". A metadata pointer that points at the mint itself and
+    has no authority cannot be redirected; it is reported under a distinct
+    name so it is not treated like a mutable pointer.
+    """
+
+    if parsed_type != "mint":
+        return (), False
+    raw = info.get("extensions", ())
+    if raw is None:
+        raw = ()
+    if not isinstance(raw, Sequence) or isinstance(raw, str | bytes | bytearray):
+        return (), False
+    names: list[str] = []
+    for item in raw:
+        if not isinstance(item, Mapping) or not isinstance(item.get("extension"), str):
+            return (), False
+        name = _CAMEL_BOUNDARY.sub("_", cast(str, item["extension"])).lower()
+        name = _EXTENSION_ALIASES.get(name, name)
+        state = item.get("state")
+        if (
+            name == "metadata_pointer"
+            and isinstance(state, Mapping)
+            and state.get("metadataAddress") == mint_address
+            and state.get("authority") is None
+        ):
+            name = "metadata_pointer_immutable_self"
+        if name not in names:
+            names.append(name)
+    return tuple(names), True
 
 
 def _context_slot_suffix(result: Mapping[str, object]) -> str:
@@ -474,6 +521,9 @@ class SolanaRpcAdapter(OnChainPort):
             result,
         )
         payload_info = info if isinstance(info, Mapping) else {}
+        token_extensions, extensions_reported = _mint_extensions(
+            payload_info, mint_address=token.mint_address, parsed_type=parsed_type
+        )
         decimals = payload_info.get("decimals")
         supply = payload_info.get("supply")
         return Observation(
@@ -493,8 +543,8 @@ class SolanaRpcAdapter(OnChainPort):
                     else None
                 ),
                 "supply": supply,
-                "token_extensions": (),
-                "token_extensions_reported": False,
+                "token_extensions": token_extensions,
+                "token_extensions_reported": extensions_reported,
                 "collection_mode": "PRODUCTION",
             },
             token_id=token.id,

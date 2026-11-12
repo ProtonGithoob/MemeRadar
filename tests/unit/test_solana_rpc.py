@@ -390,3 +390,45 @@ def test_repeated_mint_metadata_reads_are_distinct_snapshots_by_slot() -> None:
     first, same_slot, later = asyncio.run(scenario())
     assert first == same_slot == f"getAccountInfo:mint-metadata:{MINT}:slot:100"
     assert later == f"getAccountInfo:mint-metadata:{MINT}:slot:101"
+
+
+def test_mint_extensions_distinguish_benign_self_pointer_from_risky_extensions() -> None:
+    from memeradar_providers.solana_rpc import _mint_extensions
+
+    benign = {
+        "extensions": [
+            {"extension": "metadataPointer", "state": {"authority": None, "metadataAddress": MINT}},
+            {"extension": "tokenMetadata", "state": {"updateAuthority": None}},
+        ]
+    }
+    risky = {
+        "extensions": [
+            {
+                "extension": "metadataPointer",
+                "state": {"authority": ACCOUNT, "metadataAddress": MINT},
+            },
+            {"extension": "permanentDelegate", "state": {}},
+            {"extension": "pausableConfig", "state": {}},
+            {"extension": "confidentialTransferMint", "state": {}},
+            {"extension": "transferHook", "state": {}},
+        ]
+    }
+
+    assert _mint_extensions(benign, mint_address=MINT, parsed_type="mint") == (
+        ("metadata_pointer_immutable_self", "token_metadata"),
+        True,
+    )
+    assert _mint_extensions(risky, mint_address=MINT, parsed_type="mint") == (
+        (
+            "metadata_pointer",
+            "permanent_delegate",
+            "pausable",
+            "confidential_transfer",
+            "transfer_hook",
+        ),
+        True,
+    )
+    assert _mint_extensions({}, mint_address=MINT, parsed_type="mint") == ((), True)
+    assert _mint_extensions({}, mint_address=MINT, parsed_type=None) == ((), False)
+    malformed = _mint_extensions({"extensions": "bad"}, mint_address=MINT, parsed_type="mint")
+    assert malformed == ((), False)

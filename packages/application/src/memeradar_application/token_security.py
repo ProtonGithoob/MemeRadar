@@ -349,8 +349,16 @@ class TokenSecurityEvaluator:
                 "TOKEN_2022_EXTENSIONS_NOT_REPORTED",
                 detail="Token-2022 extension metadata was not reported by the source",
             )
-        warning("TOKEN_2022_PROGRAM")
-        if _SECURITY_RELEVANT_EXTENSIONS.intersection(normalized_extensions):
+        relevant = _SECURITY_RELEVANT_EXTENSIONS.intersection(normalized_extensions)
+        extensions_known = (
+            raw_extensions is not _MISSING and payload.get("token_extensions_reported") is True
+        )
+        # Token-2022 is only a concern through its extensions. A mint whose
+        # extensions were read and contain nothing security-relevant is not
+        # warned merely for its program; unread or risky extensions still are.
+        if relevant or not extensions_known:
+            warning("TOKEN_2022_PROGRAM")
+        if relevant:
             warning(
                 "TOKEN_2022_SECURITY_EXTENSION",
                 detail=",".join(
