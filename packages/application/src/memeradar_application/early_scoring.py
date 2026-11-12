@@ -24,6 +24,11 @@ from memeradar_domain.common import (
 from memeradar_domain.events import normalize_reason_codes
 
 EARLY_SCORE_V1_VERSION = "early-score-v1"
+EARLY_SCORE_V2_VERSION = "early-score-v2"
+# No live source currently produces these; see LIVE_EARLY_SCORE_POLICY.
+EARLY_SCORE_CORROBORATING_COMPONENTS = frozenset(
+    {"WalletQuality", "SmartMoneyConfluence", "SocialCorroboration"}
+)
 EARLY_SCORE_COMPONENT_WEIGHTS: Mapping[str, Decimal] = MappingProxyType(
     {
         "OrganicFlowAcceleration": Decimal("0.25"),
@@ -152,6 +157,11 @@ class EarlyScorePolicy:
     warning_risk_penalty: Decimal = Decimal("15")
     incomplete_evidence_penalty: Decimal = Decimal("10")
     version: str = EARLY_SCORE_V1_VERSION
+    # Components that only corroborate. When one has no evidence its weight
+    # is redistributed over the components that do, and its absence neither
+    # incurs the incomplete-evidence penalty nor lowers confidence. When it
+    # has evidence it is scored normally. Empty keeps the v1 behaviour.
+    corroborating_components: frozenset[str] = frozenset()
     analysis_only: bool = True
     paper_trading: bool = True
     manual_execution: bool = False
@@ -174,6 +184,15 @@ class EarlyScorePolicy:
         if sum(normalized.values(), Decimal("0")) != Decimal("1"):
             raise ValueError("EarlyScore weights must sum to one")
         object.__setattr__(self, "weights", MappingProxyType(normalized))
+        corroborating = frozenset(self.corroborating_components)
+        if not corroborating <= set(self.component_names):
+            raise ValueError("corroborating_components must be EarlyScore component names")
+        if sum(
+            (normalized[name] for name in self.component_names if name not in corroborating),
+            Decimal("0"),
+        ) <= 0:
+            raise ValueError("at least one weighted component must be required")
+        object.__setattr__(self, "corroborating_components", corroborating)
         object.__setattr__(
             self,
             "minimum_confidence",
@@ -218,6 +237,9 @@ class EarlyScorePolicy:
             "manual_execution": self.manual_execution,
             "auto_execution": self.auto_execution,
         }
+        if self.corroborating_components:
+            # Added only when set so existing v1 configuration hashes hold.
+            material["corroborating_components"] = sorted(self.corroborating_components)
         object.__setattr__(
             self,
             "config_hash",
@@ -381,10 +403,25 @@ class EarlyScorer:
                     else f"{name.upper()}_EVIDENCE_MISSING"
                 )
                 reasons.append(_reason(code))
-        base_score = sum(
+        absent_corroboration = {
+            name
+            for name in scoring_policy.corroborating_components
+            if components.get(name) is None
+        }
+        active_weight = sum(
+            (
+                weight
+                for name, weight in scoring_policy.weights.items()
+                if name not in absent_corroboration
+            ),
+            Decimal("0"),
+        )
+        weighted = sum(
             (value or Decimal("0")) * scoring_policy.weights[name]
             for name, value in components.items()
+            if name not in absent_corroboration
         )
+        base_score = weighted / active_weight if active_weight > 0 else Decimal("0")
         penalties: dict[str, Decimal] = {}
         raw_penalties = _source_value(risk, "penalties")
         if isinstance(raw_penalties, Mapping):
@@ -405,11 +442,21 @@ class EarlyScorer:
             penalties["RISK_WARNING"] = scoring_policy.warning_risk_penalty
             reasons.append(_reason("EARLY_SCORE_RISK_WARNING"))
         missing_components = {name for name, value in components.items() if value is None}
-        if missing_components - {"SocialCorroboration"}:
+        if missing_components - {"SocialCorroboration"} - absent_corroboration:
             penalties["INCOMPLETE_EVIDENCE"] = scoring_policy.incomplete_evidence_penalty
         total_penalty = min(sum(penalties.values(), Decimal("0")), Decimal("100"))
         score = max(Decimal("0"), min(Decimal("100"), base_score - total_penalty))
-        confidence = self._confidence(snapshot, risk, confluence, social, components)
+        confidence = self._confidence(
+            snapshot,
+            risk,
+            confluence,
+            social,
+            {
+                name: value
+                for name, value in components.items()
+                if name not in absent_corroboration
+            },
+        )
         age = _source_value(snapshot, "launch_age_seconds")
         launch_age = None if age is None else to_decimal(age, "launch_age_seconds")
         handoff = launch_age is not None and launch_age >= scoring_policy.alpha_handoff_age_seconds
@@ -545,6 +592,19 @@ class EarlyScorer:
         if quality is not None and quality is not QualityState.FRESH:
             return Decimal("0")
         return source_confidence * coverage
+
+
+def live_early_score_policy() -> EarlyScorePolicy:
+    """Policy for live scoring, where wallet, smart-money and social evidence
+    have no producer. With v1 weights those three components (30% of the
+    score) were always missing, capping the score near 60 and confidence at
+    4/7, below every alert and entry threshold. Thresholds are unchanged.
+    """
+
+    return EarlyScorePolicy(
+        corroborating_components=EARLY_SCORE_CORROBORATING_COMPONENTS,
+        version=EARLY_SCORE_V2_VERSION,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -774,7 +834,10 @@ def build_asymmetric_alpha_projection(
 
 __all__ = [
     "EARLY_SCORE_COMPONENT_WEIGHTS",
+    "EARLY_SCORE_CORROBORATING_COMPONENTS",
     "EARLY_SCORE_V1_VERSION",
+    "EARLY_SCORE_V2_VERSION",
+    "live_early_score_policy",
     "AsymmetricAlphaProjection",
     "EarlyScorePolicy",
     "EarlyScoreSnapshot",

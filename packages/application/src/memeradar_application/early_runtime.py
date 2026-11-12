@@ -47,9 +47,11 @@ from .early_features import (
     EarlyFeatureWindow,
 )
 from .early_scoring import (
+    EarlyScorePolicy,
     EarlyScorer,
     EarlyScoreSnapshot,
     build_asymmetric_alpha_projection,
+    live_early_score_policy,
 )
 from .fast_safety import FastSafetyGate, FastSafetyResult, FastSafetyStatus
 from .organic_momentum import OrganicMomentumProjection
@@ -314,7 +316,8 @@ def _feature_confidence(snapshot: EarlyFeatureSnapshot) -> Decimal:
     }[snapshot.quality_state]
 
 
-_MIN_ORGANIC_UNIQUE_BUYERS = 2
+# Matches the quote-budget gate: fewer buyers cannot make a token alertable.
+_MIN_ORGANIC_UNIQUE_BUYERS = 5
 
 
 def _tape_corroborated_organic_score(
@@ -357,6 +360,7 @@ class EarlyRuntimeService:
         safety_gate: FastSafetyGate | None = None,
         feature_engine: EarlyFeatureEngine | None = None,
         scorer: EarlyScorer | None = None,
+        score_policy: EarlyScorePolicy | None = None,
         decision_engine: EarlyDecisionEngine | None = None,
         decision_policy: EarlyDecisionPolicy | None = None,
         observation_store: ObservationSink | None = None,
@@ -381,6 +385,7 @@ class EarlyRuntimeService:
             window_durations=EARLY_RUNTIME_WINDOW_DURATIONS
         )
         self.scorer = scorer or EarlyScorer()
+        self.score_policy = score_policy or live_early_score_policy()
         self.decision_engine = decision_engine or EarlyDecisionEngine(decision_policy)
         self.observation_store = observation_store
         self.candidate_store = candidate_store
@@ -581,6 +586,7 @@ class EarlyRuntimeService:
             risk,
             confluence=safety.to_mapping(),
             social=social,
+            policy=self.score_policy,
         )
         decision_started = perf_counter()
         decision = self.decision_engine.evaluate(

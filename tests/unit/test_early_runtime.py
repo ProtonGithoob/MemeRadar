@@ -551,15 +551,23 @@ def _production(item: Observation) -> Observation:
     )
 
 
-def test_organic_flow_component_requires_multi_buyer_trade_tape() -> None:
-    first = _production(observation("sig-organic-1", NOW, wallet="wallet-a"))
-    second = _production(
-        observation("sig-organic-2", NOW + timedelta(seconds=1), wallet="wallet-b")
+def _tape(prefix: str, buyers: int) -> tuple[Observation, ...]:
+    return tuple(
+        _production(
+            observation(
+                f"{prefix}-{index}", NOW + timedelta(seconds=index), wallet=f"wallet-{index}"
+            )
+        )
+        for index in range(buyers)
     )
+
+
+def test_organic_flow_component_requires_multi_buyer_trade_tape() -> None:
+    tape = _tape("sig-organic", 5)
     multi = run(
         EarlyRuntimeService().process(
-            second,
-            observations=(first, second),
+            tape[-1],
+            observations=tape,
             safety_evidence=BASE_SAFETY,
         )
     )
@@ -567,15 +575,35 @@ def test_organic_flow_component_requires_multi_buyer_trade_tape() -> None:
     assert multi.score.components["OrganicFlowAcceleration"] is not None
     assert multi.score.components["OrganicFlowAcceleration"] == multi.organic_momentum.score
 
-    lone = _production(observation("sig-organic-lone", NOW, wallet="wallet-a"))
-    single = run(
+    thin = _tape("sig-thin", 4)
+    few = run(
         EarlyRuntimeService().process(
-            lone,
-            observations=(lone,),
+            thin[-1],
+            observations=thin,
             safety_evidence=BASE_SAFETY,
         )
     )
-    assert single.score.components["OrganicFlowAcceleration"] is None
+    assert few.score.components["OrganicFlowAcceleration"] is None
+
+
+def test_live_runtime_scores_real_evidence_past_the_old_ceiling() -> None:
+    tape = _tape("sig-live-score", 6)
+    result = run(
+        EarlyRuntimeService().process(
+            tape[-1],
+            observations=tape,
+            safety_evidence=BASE_SAFETY,
+        )
+    )
+
+    assert result.score.version == "early-score-v2"
+    assert result.safety.status.value == "PASS"
+    assert "INCOMPLETE_EVIDENCE" not in result.score.penalties or (
+        result.score.components["LaunchMomentum"] is None
+    )
+    # v1 could not exceed 60 with these sources; alert bands are reachable now.
+    assert result.score.score >= Decimal("60")
+    assert result.score.confidence >= Decimal("0.60")
 
 
 def test_stage_snapshot_carries_liquidity_source_and_tape_counts() -> None:

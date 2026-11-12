@@ -7,9 +7,11 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from memeradar_application.early_scoring import (
+    EARLY_SCORE_V2_VERSION,
     EarlyScorePolicy,
     EarlyScorer,
     build_asymmetric_alpha_projection,
+    live_early_score_policy,
 )
 from memeradar_domain import QualityState, RiskDisposition
 
@@ -228,3 +230,78 @@ def test_policy_rejects_unsafe_modes_and_preserves_config_identity() -> None:
         pass
     else:  # pragma: no cover - assertion keeps the safety contract obvious
         raise AssertionError("auto execution must remain locked")
+
+
+def _live_components(**overrides: Decimal | None) -> dict[str, Decimal | None]:
+    values: dict[str, Decimal | None] = {
+        "OrganicFlowAcceleration": Decimal("65"),
+        "WalletQuality": None,
+        "OnChainSafety": Decimal("100"),
+        "LiquidityAndSellability": Decimal("100"),
+        "LaunchMomentum": Decimal("50"),
+        "SmartMoneyConfluence": None,
+        "SocialCorroboration": None,
+    }
+    values.update(overrides)
+    return values
+
+
+def test_live_policy_redistributes_absent_corroboration_without_penalty() -> None:
+    snapshot = {"components": _live_components(), "confidence": Decimal("1")}
+
+    v1 = EarlyScorer().score(snapshot, _risk(), None, None)
+    live = EarlyScorer().score(snapshot, _risk(), None, None, policy=live_early_score_policy())
+
+    # v1: 30% of the weight has no evidence and the incomplete penalty applies.
+    assert v1.score == Decimal("46.25")
+    assert v1.confidence == Decimal(4) / Decimal(7)
+    assert "INCOMPLETE_EVIDENCE" in v1.penalties
+    # live: the same evidence over the weight that actually has a source.
+    expected = (
+        Decimal("65") * Decimal("0.25")
+        + Decimal("100") * Decimal("0.20")
+        + Decimal("100") * Decimal("0.15")
+        + Decimal("50") * Decimal("0.10")
+    ) / Decimal("0.70")
+    assert live.score == expected
+    assert live.confidence == Decimal("1")
+    assert "INCOMPLETE_EVIDENCE" not in live.penalties
+    assert live.version == EARLY_SCORE_V2_VERSION
+
+
+def test_live_policy_still_penalizes_missing_required_evidence() -> None:
+    snapshot = {
+        "components": _live_components(OrganicFlowAcceleration=None),
+        "confidence": Decimal("1"),
+    }
+
+    live = EarlyScorer().score(snapshot, _risk(), None, None, policy=live_early_score_policy())
+
+    assert "INCOMPLETE_EVIDENCE" in live.penalties
+    assert live.confidence == Decimal(3) / Decimal(4)
+    # Missing tape contributes zero; it is never replaced by the other components.
+    assert live.score == (Decimal("40") / Decimal("0.70")) - Decimal("10")
+
+
+def test_live_policy_scores_corroboration_when_it_exists() -> None:
+    with_bad_wallets = {
+        "components": _live_components(WalletQuality=Decimal("0")),
+        "confidence": Decimal("1"),
+    }
+    without = {"components": _live_components(), "confidence": Decimal("1")}
+    policy = live_early_score_policy()
+
+    scored = EarlyScorer().score(with_bad_wallets, _risk(), None, None, policy=policy)
+    baseline = EarlyScorer().score(without, _risk(), None, None, policy=policy)
+
+    assert scored.score < baseline.score
+
+
+def test_corroborating_components_must_be_known_and_leave_required_weight() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="component names"):
+        EarlyScorePolicy(corroborating_components=frozenset({"Unknown"}))
+    with pytest.raises(ValueError, match="required"):
+        EarlyScorePolicy(corroborating_components=frozenset(EarlyScorePolicy.component_names))
+    assert EarlyScorePolicy().config_hash != live_early_score_policy().config_hash
