@@ -15,6 +15,7 @@ from memeradar_application.early_runtime import EarlyRuntimeService
 from memeradar_application.read_candidates import EarlyRadarQuery
 from memeradar_domain import Observation, Provenance, QualityState
 from memeradar_persistence import (
+    AlertRow,
     DomainEventRow,
     FeatureSnapshotRow,
     ObservationRow,
@@ -226,6 +227,30 @@ async def _exercise(database_url: str) -> None:
         projected = next(item for item in page.items if item.candidate_id == first.candidate.id)
         assert projected.early_state.value == "EARLY_WATCH"
         assert projected.early_score == first.score.score
+        assert projected.alerted is None
+        # A delivered alert for an earlier snapshot still marks the candidate
+        # as alerted on the general (not qualified-only) view.
+        async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+            unit_of_work._session.add(
+                AlertRow(
+                    type="EARLY_ALPHA",
+                    candidate_id=first.candidate.id,
+                    severity="INFO",
+                    payload={"snapshot_id": str(uuid4())},
+                    dedupe_key=f"fixture-alert:{first.candidate.id}",
+                    state="DELIVERED",
+                    requested_at=NOW,
+                    delivered_at=NOW + timedelta(seconds=1),
+                    attempts=1,
+                    reason_codes=[],
+                )
+            )
+            await unit_of_work.commit()
+        alerted_page = await reader.list_early_radar(EarlyRadarQuery(limit=100))
+        alerted = next(
+            item for item in alerted_page.items if item.candidate_id == first.candidate.id
+        )
+        assert alerted.alerted is True
         qualified_page = await reader.list_early_radar(
             EarlyRadarQuery(limit=100, qualified_only=True)
         )

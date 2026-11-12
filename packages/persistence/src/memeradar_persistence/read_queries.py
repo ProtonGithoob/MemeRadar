@@ -1229,6 +1229,7 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             )
             qualified: set[tuple[str, str]] = set()
             delivered: set[tuple[str, str]] = set()
+            delivered_candidates: set[str] = set()
             if query.qualified_only and eligible:
                 events = (await session.scalars(
                     select(DomainEventRow).where(
@@ -1246,6 +1247,9 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                         and isinstance(snapshot_id, str)
                     ):
                         qualified.add((event.aggregate_id, snapshot_id))
+            # Delivered alerts are shown on every view, not only the
+            # qualified one, so the Telegram column reflects real delivery.
+            if eligible:
                 alerts = (await session.scalars(
                     select(AlertRow).where(
                         AlertRow.candidate_id.in_(tuple(eligible)),
@@ -1257,6 +1261,10 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                     snapshot_id = alert.payload.get("snapshot_id")
                     if alert.candidate_id is not None and isinstance(snapshot_id, str):
                         delivered.add((str(alert.candidate_id), snapshot_id))
+                    if alert.candidate_id is not None:
+                        # The row shows the latest snapshot; an alert sent for
+                        # an earlier one is still a delivered alert.
+                        delivered_candidates.add(str(alert.candidate_id))
             rows = (
                 (
                     await session.scalars(
@@ -1338,7 +1346,11 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                         early_score_confidence=payload.get("confidence"),
                         early_state=early_state,
                         risk_disposition=risk,
-                        alerted=True if key in delivered else None,
+                        alerted=(
+                            True
+                            if key in delivered or str(candidate.id) in delivered_candidates
+                            else None
+                        ),
                         liquidity_usd=payload.get("liquidity"),
                         buy_impact_bps=payload.get("buy_impact_bps"),
                         price_impact_bps=payload.get("sell_impact_bps"),
