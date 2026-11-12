@@ -136,6 +136,24 @@ function sortEntries(entries: EarlyRadarRecord[], sort: SortKey): EarlyRadarReco
   });
 }
 
+const LIQUIDITY_SOURCE_LABELS: Record<string, string> = {
+  EXECUTABLE_QUOTE_DEPTH: "Executable quote depth (round trip within impact limit)"
+};
+
+/** Liquidity provenance; an unrecorded source is UNKNOWN, never assumed. */
+export function displayLiquiditySource(source: string | null | undefined): string {
+  if (!source) return "UNKNOWN";
+  return LIQUIDITY_SOURCE_LABELS[source] ?? source;
+}
+
+/** Decoded trade tape behind the momentum figures; missing counts stay UNKNOWN. */
+export function displayTape(trades: number | null | undefined, buyers: number | null | undefined): string {
+  if (trades == null && buyers == null) return "UNKNOWN";
+  const tradeText = trades == null ? "UNKNOWN trades" : `${trades} trades`;
+  const buyerText = buyers == null ? "UNKNOWN buyers" : `${buyers} unique buyers`;
+  return `${tradeText} · ${buyerText}`;
+}
+
 function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
   const displayName = entry.symbol || entry.name || shortIdentity(entry.mintAddress);
   return (
@@ -169,6 +187,9 @@ function UltraEarlyRow({ entry }: { entry: EarlyRadarRecord }) {
               <div><dt>Quote semantics</dt><dd>{entry.quoteSemantics ?? "UNKNOWN"}</dd></div>
               <div><dt>Input quote impact</dt><dd>{entry.buyImpactBps == null ? "UNKNOWN" : `${displayMetric(entry.buyImpactBps)} bps`}</dd></div>
               <div><dt>Exit quote impact</dt><dd>{entry.priceImpactBps == null ? "UNKNOWN" : `${displayMetric(entry.priceImpactBps)} bps`}</dd></div>
+              <div><dt>Liquidity evidence</dt><dd>{displayLiquiditySource(entry.liquiditySource)}</dd></div>
+              <div><dt>Organic momentum</dt><dd>{entry.organicMomentum == null ? "UNKNOWN" : formatScore(entry.organicMomentum)}</dd></div>
+              <div><dt>Trade tape</dt><dd>{displayTape(entry.tapeTradeCount, entry.tapeUniqueBuyers)}</dd></div>
               <div><dt>Evidence quality</dt><dd>{entry.firstSeenQuality}</dd></div>
             </dl>
             <strong>Decision reasons</strong>

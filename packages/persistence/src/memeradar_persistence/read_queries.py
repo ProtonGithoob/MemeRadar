@@ -111,6 +111,18 @@ from .repositories import caller_identity_from_row, social_call_observation_from
 from .serialization import reason_codes_from_json
 
 MAX_STORAGE_ROWS = 5_000
+
+
+def _count_or_none(value: object) -> int | None:
+    """A persisted non-negative count, or None when it was not recorded."""
+
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return None
+    try:
+        number = int(float(value))
+    except ValueError:
+        return None
+    return number if number >= 0 else None
 _POSITION_MARK_KINDS = (
     "market.snapshot",
     "market.market_data",
@@ -1354,6 +1366,13 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                             else None
                         ),
                         organic_momentum=payload.get("organic_momentum_score"),
+                        liquidity_source=(
+                            payload.get("liquidity_source")
+                            if isinstance(payload.get("liquidity_source"), str)
+                            else None
+                        ),
+                        tape_trade_count=_count_or_none(payload.get("trade_count")),
+                        tape_unique_buyers=_count_or_none(payload.get("unique_buyers")),
                         raw_smart_wallet_count=payload.get("raw_smart_wallet_count"),
                         independent_smart_wallet_count=payload.get("independent_smart_wallet_count"),
                         evidence_refs=tuple(

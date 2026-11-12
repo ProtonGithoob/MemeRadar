@@ -278,3 +278,34 @@ def test_operations_projects_persisted_coverage_as_unknown() -> None:
             await engine.dispose()
 
     asyncio.run(exercise())
+
+
+def test_ingestion_metrics_project_only_bounded_numeric_counters() -> None:
+    from memeradar_api.operations_store import _ingestion_metrics
+
+    now = datetime(2026, 11, 12, tzinfo=UTC)
+    payload = {
+        "create_observed": 1,
+        "create_v2_observed": 84,
+        "trade_events_emitted": 3851,
+        "decoder_failures": 0,
+        "stream_reconnects": 9,
+        "latency_p95_ms": 812.44,
+        "queue_depth": True,
+        "logs": ["must never be projected"],
+        "notifications_received": -5,
+    }
+
+    metrics = _ingestion_metrics(payload, observed_at=now - timedelta(seconds=20), now=now)
+
+    assert metrics["launches_observed"] == 85
+    assert metrics["trade_events_emitted"] == 3851
+    assert metrics["latency_p95_ms"] == 812.4
+    assert metrics["snapshot_age_seconds"] == 20
+    assert "logs" not in metrics
+    assert "queue_depth" not in metrics
+    assert "notifications_received" not in metrics
+    assert _ingestion_metrics(None, observed_at=None, now=now) == {
+        "snapshot_at": None,
+        "snapshot_age_seconds": None,
+    }

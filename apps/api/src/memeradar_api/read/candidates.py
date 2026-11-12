@@ -131,6 +131,9 @@ class EarlyRadarResponse(_StrictModel):
     raw_smart_wallet_count: int | None = None
     independent_smart_wallet_count: int | None = None
     organic_momentum: Decimal | None = None
+    liquidity_source: str | None = None
+    tape_trade_count: int | None = None
+    tape_unique_buyers: int | None = None
     alerted: bool | None = None
     alert_latency_ms: Decimal | None = None
     multiple_since_discovery: Decimal | None = None
@@ -219,6 +222,9 @@ def _early_radar_response(value: EarlyRadarView) -> EarlyRadarResponse:
         raw_smart_wallet_count=cast(int | None, value.raw_smart_wallet_count),
         independent_smart_wallet_count=cast(int | None, value.independent_smart_wallet_count),
         organic_momentum=cast(Decimal | None, value.organic_momentum),
+        liquidity_source=value.liquidity_source,
+        tape_trade_count=cast(int | None, value.tape_trade_count),
+        tape_unique_buyers=cast(int | None, value.tape_unique_buyers),
         alerted=value.alerted,
         alert_latency_ms=cast(Decimal | None, value.alert_latency_ms),
         multiple_since_discovery=cast(Decimal | None, value.multiple_since_discovery),

@@ -1239,6 +1239,12 @@ class EarlyRuntimeService:
             "token_age_seconds": age,
             "market_cap": metrics.get("market_cap", first_payload.get("market_cap_usd")),
             "liquidity": snapshot_liquidity,
+            "liquidity_source": (
+                safety.liquidity_source
+                if safety is not None and safety.liquidity is not None
+                else None
+            ),
+            "trade_count": metrics.get("trade_count"),
             "liquidity_cohort": liquidity_cohort(_decimal(snapshot_liquidity, "liquidity")),
             "contract": detection.mint_address,
             "volume_velocity": metrics.get("quote_inflow_per_second"),

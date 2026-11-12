@@ -43,7 +43,13 @@ describe("scan monitor", () => {
             program_scope: "UNKNOWN", commitment: "UNKNOWN"
           }]
         },
-        pre_identity: { recorded_rejections: 3, identity_linked_projections: 1 }
+        pre_identity: { recorded_rejections: 3, identity_linked_projections: 1 },
+        ingestion: {
+          launches_observed: 85, trade_events_emitted: 3851, trade_events_capped: 0,
+          decoder_failures: 0, trade_event_decode_failures: 0, stream_reconnects: 9,
+          transactions_unavailable: 0, launches_per_hour: 85, latency_p95_ms: 812.4,
+          snapshot_age_seconds: 20
+        }
       }
     } as never });
     vi.mocked(fetchRuntimeSettings).mockResolvedValue({ ok: true, data: { settings: [
@@ -51,6 +57,10 @@ describe("scan monitor", () => {
       { key: "telegram_chat_id", configuredState: "CONFIGURED" }
     ] } as never });
     render(await ScanMonitorPage());
+    expect(screen.getByText("Launches: 85")).toBeInTheDocument();
+    expect(screen.getByText(/Trade tape events: 3851 · capped: 0/)).toBeInTheDocument();
+    expect(screen.getByText(/Reconnects: 9 · unavailable transactions: 0/)).toBeInTheDocument();
+    expect(screen.getByText(/p95 latency: 812.4 ms/)).toBeInTheDocument();
     expect(screen.getByText("DEGRADED")).toBeInTheDocument();
     expect(screen.getByText("REJECT/LOW · BLOCK")).toBeInTheDocument();
     expect(screen.getByText("UNSAFE")).toBeInTheDocument();

@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
@@ -305,6 +306,11 @@ class PersistedStreamOperations:
             "verification_ranges": verification_ranges,
             "verification_ranges_truncated": len(verification_range_rows) > 100,
         }
+        metrics["ingestion"] = _ingestion_metrics(
+            None if row is None else row.normalized_payload,
+            observed_at=None if row is None else row.observed_at,
+            now=now,
+        )
         pre_identity_counts = {kind: count for kind, count in pre_identity_rows}
         metrics["pre_identity"] = {
             "recorded_rejections": pre_identity_counts.get("chain.pre_identity_rejection", 0),
@@ -313,3 +319,47 @@ class PersistedStreamOperations:
             ),
         }
         return replace(overview, overall_state=OperationalState.UNKNOWN, metrics=metrics)
+
+
+# Counters from the live source's health snapshot that are safe to project.
+_INGESTION_COUNTER_KEYS = (
+    "notifications_received",
+    "create_observed",
+    "create_v2_observed",
+    "trade_events_emitted",
+    "trade_events_capped",
+    "trade_event_decode_failures",
+    "trade_logs_truncated",
+    "decoder_failures",
+    "transactions_unavailable",
+    "zero_signature_notifications",
+    "stream_reconnects",
+    "launches_per_hour",
+    "queue_depth",
+)
+
+
+def _ingestion_metrics(
+    payload: object, *, observed_at: datetime | None, now: datetime
+) -> dict[str, object]:
+    """Project bounded live-ingestion counters; missing values stay absent."""
+
+    result: dict[str, object] = {
+        "snapshot_at": None if observed_at is None else observed_at.isoformat(),
+        "snapshot_age_seconds": (
+            None if observed_at is None else max(0, int((now - observed_at).total_seconds()))
+        ),
+    }
+    if not isinstance(payload, dict):
+        return result
+    for key in _INGESTION_COUNTER_KEYS:
+        value = payload.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            result[key] = value
+    launches = [result.get(key) for key in ("create_observed", "create_v2_observed")]
+    if all(isinstance(value, int) for value in launches):
+        result["launches_observed"] = sum(cast(list[int], launches))
+    latency = payload.get("latency_p95_ms")
+    if isinstance(latency, int | float) and not isinstance(latency, bool) and latency >= 0:
+        result["latency_p95_ms"] = round(float(latency), 1)
+    return result

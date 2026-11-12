@@ -576,3 +576,30 @@ def test_organic_flow_component_requires_multi_buyer_trade_tape() -> None:
         )
     )
     assert single.score.components["OrganicFlowAcceleration"] is None
+
+
+def test_stage_snapshot_carries_liquidity_source_and_tape_counts() -> None:
+    first = _production(observation("sig-tape-1", NOW, wallet="wallet-a"))
+    second = _production(
+        observation("sig-tape-2", NOW + timedelta(seconds=1), wallet="wallet-b")
+    )
+    result = run(
+        EarlyRuntimeService().process(
+            second,
+            observations=(first, second),
+            safety_evidence={**BASE_SAFETY, "liquidity_source": "EXECUTABLE_QUOTE_DEPTH"},
+        )
+    )
+
+    payload = result.stage_snapshot.normalized_payload
+    assert result.safety.liquidity_source == "EXECUTABLE_QUOTE_DEPTH"
+    assert payload["liquidity_source"] == "EXECUTABLE_QUOTE_DEPTH"
+    assert payload["trade_count"] == 2
+    assert payload["unique_buyers"] == 2
+
+    unlabelled = run(
+        EarlyRuntimeService().process(
+            first, observations=(first,), safety_evidence=BASE_SAFETY
+        )
+    )
+    assert unlabelled.stage_snapshot.normalized_payload["liquidity_source"] is None

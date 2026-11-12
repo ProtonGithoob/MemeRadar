@@ -135,6 +135,10 @@ export interface EarlyRadarRecord {
   rawSmartWalletCount: number | null;
   independentSmartWalletCount: number | null;
   organicMomentum: number | null;
+  /** How liquidity was established, e.g. EXECUTABLE_QUOTE_DEPTH; null when not recorded. */
+  liquiditySource: string | null;
+  tapeTradeCount: number | null;
+  tapeUniqueBuyers: number | null;
   alerted: boolean | null;
   alertLatencyMs: number | null;
   multipleSinceDiscovery: number | null;
@@ -1105,6 +1109,12 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
     1e6
   );
   const organicMomentum = optionalFiniteNumber(value.organic_momentum, 0, 100);
+  const liquiditySource =
+    typeof value.liquidity_source === "string" && value.liquidity_source.length <= 64
+      ? value.liquidity_source
+      : null;
+  const tapeTradeCount = optionalFiniteNumber(value.tape_trade_count, 0, 1e9);
+  const tapeUniqueBuyers = optionalFiniteNumber(value.tape_unique_buyers, 0, 1e9);
   const alerted = typeof value.alerted === "boolean" ? value.alerted : null;
   const alertLatencyMs = optionalFiniteNumber(value.alert_latency_ms, 0, 1e12);
   const multipleSinceDiscovery = optionalFiniteNumber(
@@ -1209,6 +1219,9 @@ function parseEarlyRadar(value: unknown): EarlyRadarRecord | null {
     rawSmartWalletCount: rawSmartWalletCount ?? null,
     independentSmartWalletCount: independentSmartWalletCount ?? null,
     organicMomentum: organicMomentum ?? null,
+    liquiditySource,
+    tapeTradeCount: tapeTradeCount ?? null,
+    tapeUniqueBuyers: tapeUniqueBuyers ?? null,
     alerted,
     alertLatencyMs: alertLatencyMs ?? null,
     multipleSinceDiscovery: multipleSinceDiscovery ?? null,

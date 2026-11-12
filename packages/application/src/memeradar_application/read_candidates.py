@@ -283,6 +283,11 @@ class EarlyRadarView:
     raw_smart_wallet_count: int | Decimal | str | None = None
     independent_smart_wallet_count: int | Decimal | str | None = None
     organic_momentum: Decimal | int | float | str | None = None
+    # How liquidity was established and how much decoded trade tape backs the
+    # momentum figure; None means the snapshot did not record it.
+    liquidity_source: str | None = None
+    tape_trade_count: int | Decimal | str | None = None
+    tape_unique_buyers: int | Decimal | str | None = None
     alerted: bool | None = None
     alert_latency_ms: Decimal | int | float | str | None = None
     multiple_since_discovery: Decimal | int | float | str | None = None
@@ -513,6 +518,18 @@ class EarlyRadarView:
                     else _optional_nonnegative_decimal(value, field_name)
                 ),
             )
+        for field_name in ("tape_trade_count", "tape_unique_buyers"):
+            object.__setattr__(
+                self,
+                field_name,
+                _optional_nonnegative_int(getattr(self, field_name), field_name),
+            )
+        if self.liquidity_source is not None:
+            object.__setattr__(
+                self,
+                "liquidity_source",
+                require_text(self.liquidity_source, "liquidity_source", max_length=64),
+            )
         if self.alerted is not None and not isinstance(self.alerted, bool):
             raise TypeError("alerted must be a boolean or None")
         object.__setattr__(
@@ -585,6 +602,9 @@ class EarlyRadarView:
                 "raw_smart_wallet_count": self.raw_smart_wallet_count,
                 "independent_smart_wallet_count": self.independent_smart_wallet_count,
                 "organic_momentum": self.organic_momentum,
+                "liquidity_source": self.liquidity_source,
+                "tape_trade_count": self.tape_trade_count,
+                "tape_unique_buyers": self.tape_unique_buyers,
                 "alerted": self.alerted,
                 "alert_latency_ms": self.alert_latency_ms,
                 "multiple_since_discovery": self.multiple_since_discovery,

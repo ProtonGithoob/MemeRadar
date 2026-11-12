@@ -81,6 +81,9 @@ class FastSafetyResult:
     creator_linked_smart_wallet_count: int | None = None
     coordinated_wallet_probability: Decimal | None = None
     version: str = FAST_SAFETY_VERSION
+    # How the liquidity figure was established (for example market data or
+    # EXECUTABLE_QUOTE_DEPTH); None when the evidence did not say.
+    liquidity_source: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", FastSafetyStatus(self.status))
@@ -431,6 +434,13 @@ class FastSafetyGate:
             mint_authority_safe=authority_flags["mint_authority_safe"],
             freeze_authority_safe=authority_flags["freeze_authority_safe"],
             protocol_identity_verified=protocol_verified,
+            liquidity_source=(
+                str(raw_liquidity_source)[:64]
+                if liquidity is not None
+                and isinstance(raw_liquidity_source := value("liquidity_source"), str)
+                and raw_liquidity_source.strip()
+                else None
+            ),
             buy_impact_bps=buy_impact,
             sell_impact_bps=sell_impact,
             quote_semantics=None if quote_semantics == "NONE" else quote_semantics,

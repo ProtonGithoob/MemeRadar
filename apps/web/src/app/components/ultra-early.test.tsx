@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { UltraEarlyPanel, UltraEarlyWorkspace } from "./ultra-early";
+import { UltraEarlyPanel, UltraEarlyWorkspace, displayLiquiditySource, displayTape } from "./ultra-early";
 import type { EarlyRadarRecord, ReadPage, ReadResult } from "../lib/read-api";
 
 const entry: EarlyRadarRecord = {
@@ -50,6 +50,9 @@ const entry: EarlyRadarRecord = {
   rawSmartWalletCount: 4,
   independentSmartWalletCount: 3,
   organicMomentum: 76,
+  liquiditySource: "EXECUTABLE_QUOTE_DEPTH",
+  tapeTradeCount: 122,
+  tapeUniqueBuyers: 72,
   alerted: true,
   alertLatencyMs: 240,
   multipleSinceDiscovery: 1.62,
@@ -77,6 +80,21 @@ describe("UltraEarlyPanel", () => {
     expect(screen.getByText("91")).toBeInTheDocument();
     expect(screen.getByText("$12.0K")).toBeInTheDocument();
     expect(screen.getByText("ENTRY_READY")).toBeInTheDocument();
+  });
+
+  it("shows liquidity provenance, organic momentum and trade tape in the inspector", () => {
+    render(<UltraEarlyPanel result={result([entry])} />);
+
+    expect(screen.getByText("Executable quote depth (round trip within impact limit)")).toBeInTheDocument();
+    expect(screen.getByText("122 trades · 72 unique buyers")).toBeInTheDocument();
+    expect(screen.getByText("Organic momentum")).toBeInTheDocument();
+  });
+
+  it("never presents missing liquidity provenance or tape as a value", () => {
+    expect(displayLiquiditySource(null)).toBe("UNKNOWN");
+    expect(displayLiquiditySource("MARKET_DATA")).toBe("MARKET_DATA");
+    expect(displayTape(null, null)).toBe("UNKNOWN");
+    expect(displayTape(5, null)).toBe("5 trades · UNKNOWN buyers");
   });
 
   it("keeps unknown and blocked evidence explicit", () => {

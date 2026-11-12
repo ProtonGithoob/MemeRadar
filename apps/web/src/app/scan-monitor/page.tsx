@@ -10,6 +10,14 @@ const objectRows = (value: unknown): Record<string, unknown>[] =>
     : [];
 const displayValue = (value: unknown) =>
   typeof value === "string" || typeof value === "number" ? String(value) : "UNKNOWN";
+/** One named metric group from the operations payload, or null when absent. */
+const metricGroup = (metrics: Record<string, unknown> | null, key: string): Record<string, unknown> | null => {
+  const value = metrics?.[key];
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+};
+/** A numeric counter as text; a missing or non-numeric value is UNKNOWN, never zero. */
+const counter = (group: Record<string, unknown> | null, key: string) =>
+  typeof group?.[key] === "number" ? String(group[key]) : "UNKNOWN";
 
 export default async function ScanMonitorPage() {
   const [candidates, early, operations, settings] = await Promise.all([
@@ -22,20 +30,17 @@ export default async function ScanMonitorPage() {
   const telegramReady = ["telegram_bot_token", "telegram_chat_id"].every((key) =>
     telegramSettings.some((item) => item.key === key && item.configuredState === "CONFIGURED")
   );
-  const rawDelivery = operations.ok ? operations.data.metrics.notification_delivery : null;
-  const delivery = rawDelivery && typeof rawDelivery === "object" && !Array.isArray(rawDelivery)
-    ? rawDelivery as Record<string, unknown> : null;
-  const rawCoverage = operations.ok ? operations.data.metrics.stream_coverage : null;
-  const coverage = rawCoverage && typeof rawCoverage === "object" && !Array.isArray(rawCoverage)
-    ? rawCoverage as Record<string, unknown> : null;
+  const metrics = operations.ok ? operations.data.metrics as Record<string, unknown> : null;
+  const delivery = metricGroup(metrics, "notification_delivery");
+  const coverage = metricGroup(metrics, "stream_coverage");
+  const ingestion = metricGroup(metrics, "ingestion");
   const unresolvedRanges = objectRows(coverage?.unresolved_ranges);
   const verificationRanges = objectRows(coverage?.verification_ranges);
-  const rawPreIdentity = operations.ok ? operations.data.metrics.pre_identity : null;
-  const preIdentity = rawPreIdentity && typeof rawPreIdentity === "object" && !Array.isArray(rawPreIdentity)
-    ? rawPreIdentity as Record<string, unknown> : null;
-  const deliveryCount = (key: string) => typeof delivery?.[key] === "number" ? String(delivery[key]) : "UNKNOWN";
-  const coverageCount = (key: string) => typeof coverage?.[key] === "number" ? String(coverage[key]) : "UNKNOWN";
-  const preIdentityCount = (key: string) => typeof preIdentity?.[key] === "number" ? String(preIdentity[key]) : "UNKNOWN";
+  const preIdentity = metricGroup(metrics, "pre_identity");
+  const deliveryCount = (key: string) => counter(delivery, key);
+  const coverageCount = (key: string) => counter(coverage, key);
+  const preIdentityCount = (key: string) => counter(preIdentity, key);
+  const ingestionCount = (key: string) => counter(ingestion, key);
   const unknownAge = typeof delivery?.delivery_unknown_oldest_age_seconds === "number"
     ? `${delivery.delivery_unknown_oldest_age_seconds} seconds`
     : "UNKNOWN";
@@ -67,6 +72,12 @@ export default async function ScanMonitorPage() {
               {unresolvedRanges.length > 0 ? <details><summary>Unresolved slot ranges ({unresolvedRanges.length})</summary><ul>{unresolvedRanges.map((range, index) => <li key={`${displayValue(range.gap_id)}:${index}`}>{displayValue(range.provider)} · {displayValue(range.stream_id)} · slots {displayValue(range.from_slot)}–{displayValue(range.to_slot)} · {displayValue(range.status)} · {displayValue(range.last_error_class)}</li>)}</ul>{coverage?.unresolved_ranges_truncated === true ? <small>Additional ranges are omitted from this bounded view.</small> : null}</details> : null}
               {verificationRanges.length > 0 ? <details><summary>Recovery verification ranges ({verificationRanges.length})</summary><ul>{verificationRanges.map((range, index) => <li key={`${displayValue(range.gap_id)}:${index}`}>slots {displayValue(range.from_slot)}–{displayValue(range.to_slot)} · {displayValue(range.verification_status)} · provider {displayValue(range.provider)} · program {displayValue(range.program_scope)} · commitment {displayValue(range.commitment)}</li>)}</ul>{coverage?.verification_ranges_truncated === true ? <small>Additional verification records are omitted from this bounded view.</small> : null}<small>Range verification does not establish complete program-subscription coverage.</small></details> : null}
             </div>
+            <div className="detail-panel"><span className="card-label">LIVE INGESTION</span><strong>Launches: {ingestionCount("launches_observed")}</strong>
+              <small>Trade tape events: {ingestionCount("trade_events_emitted")} · capped: {ingestionCount("trade_events_capped")}</small>
+              <small>Decode failures: {ingestionCount("decoder_failures")} launch · {ingestionCount("trade_event_decode_failures")} trade</small>
+              <small>Reconnects: {ingestionCount("stream_reconnects")} · unavailable transactions: {ingestionCount("transactions_unavailable")}</small>
+              <small>Launches in last hour: {ingestionCount("launches_per_hour")} · p95 latency: {typeof ingestion?.latency_p95_ms === "number" ? `${ingestion.latency_p95_ms} ms` : "UNKNOWN"}</small>
+              <small>Counters since worker start; snapshot age: {typeof ingestion?.snapshot_age_seconds === "number" ? `${ingestion.snapshot_age_seconds} seconds` : "UNKNOWN"}</small></div>
             <div className="detail-panel"><span className="card-label">PRE-IDENTITY DIAGNOSTICS</span><strong>Recorded: {preIdentityCount("recorded_rejections")}</strong><small>Identity-linked projections: {preIdentityCount("identity_linked_projections")}</small><small>Persisted fetch/decode failures only; this is not a complete source-event denominator.</small></div>
           </div>
           <p className="section-note">A provider state is a health snapshot; it does not by itself prove that a scan is running now.</p>
