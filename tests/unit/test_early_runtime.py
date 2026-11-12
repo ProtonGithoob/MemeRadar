@@ -631,3 +631,23 @@ def test_stage_snapshot_carries_liquidity_source_and_tape_counts() -> None:
         )
     )
     assert unlabelled.stage_snapshot.normalized_payload["liquidity_source"] is None
+
+
+def test_candidate_can_fall_back_and_return_without_idempotency_conflicts() -> None:
+    service = EarlyRuntimeService()
+    states = []
+    for index, value in enumerate(("70", "45", "70", "45")):
+        item = observation(f"sig-oscillate-{index}", NOW + timedelta(seconds=index))
+        result = run(
+            service.process(
+                item,
+                observations=(item,),
+                safety_evidence=BASE_SAFETY,
+                score_components=components(value),
+            )
+        )
+        states.append(result.candidate.state.value)
+
+    assert states == ["EARLY_WATCH", "WATCH", "EARLY_WATCH", "WATCH"]
+    keys = [item.idempotency_key for item in result.candidate.transitions]
+    assert len(keys) == len(set(keys))

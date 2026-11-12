@@ -320,6 +320,21 @@ def _feature_confidence(snapshot: EarlyFeatureSnapshot) -> Decimal:
 _MIN_ORGANIC_UNIQUE_BUYERS = 5
 
 
+def _transition_key(candidate: Candidate, target: CandidateState) -> str:
+    """Idempotency key for entering ``target``, distinct for each revisit.
+
+    A candidate can return to a state (for example EARLY_WATCH -> WATCH when
+    its score falls). Reusing the first visit's key made that transition fail
+    as an idempotency conflict, so every later evaluation of exactly the
+    alerted candidates failed. The first visit keeps its original key; later
+    visits are numbered from the persisted history, so replays stay stable.
+    """
+
+    base = f"early:{candidate.id}:{target.value}"
+    visits = sum(1 for item in candidate.transitions if item.to_state is target)
+    return base if visits == 0 else f"{base}:{visits + 1}"
+
+
 def _tape_corroborated_organic_score(
     metrics: Mapping[str, object],
     organic: OrganicMomentumProjection | None,
@@ -997,7 +1012,7 @@ class EarlyRuntimeService:
             reason_codes=reason_codes or ("EARLY_STAGE_PROJECTED",),
             occurred_at=at,
             correlation_id=f"early:{candidate.id}",
-            idempotency_key=f"early:{candidate.id}:{target.value}",
+            idempotency_key=_transition_key(candidate, target),
             score_snapshot_id=(
                 score.id
                 if target
