@@ -22,6 +22,7 @@ from uuid import UUID
 
 import httpx
 
+from memeradar_application.lifecycle_watch import LifecycleSample, normalize_venue
 from memeradar_application.provider_contracts import (
     MarketDataPort,
     MarketDataRequest,
@@ -149,6 +150,15 @@ def _optional_decimal(value: object, field: str) -> Decimal | None:
     except (TypeError, ValueError):
         return None
     return normalized if normalized >= 0 else None
+
+
+def _optional_signed_decimal(value: object, field: str) -> Decimal | None:
+    if value is _MISSING or value is None:
+        return None
+    try:
+        return to_decimal(value, field)
+    except (TypeError, ValueError):
+        return None
 
 
 def _optional_nonnegative_int(value: object, field: str) -> int | None:
@@ -281,8 +291,10 @@ def _parse_transactions(value: object) -> Mapping[str, Mapping[str, int | None]]
 def _parse_price_change(value: object) -> Mapping[str, Decimal | None]:
     if value is _MISSING or value is None or not isinstance(value, Mapping):
         return {}
+    # Price changes are signed; the non-negative amount parser would turn every
+    # decline into UNKNOWN and hide dumps from momentum and exit logic.
     return {
-        window: _optional_decimal(value.get(window, _MISSING), f"priceChange.{window}")
+        window: _optional_signed_decimal(value.get(window, _MISSING), f"priceChange.{window}")
         for window in ("m5", "h1", "h6", "h24")
         if window in value
     }
@@ -406,6 +418,49 @@ def _parse_pairs(
             if previous is None or _duplicate_pair_rank(pair) < _duplicate_pair_rank(previous):
                 pairs_by_address[pair.pair_address] = pair
     return tuple(pairs_by_address[address] for address in sorted(pairs_by_address))
+
+
+LIFECYCLE_BATCH_SIZE = 30
+
+
+def _lifecycle_rank(pair: DexScreenerPair) -> tuple[Decimal, Decimal, str]:
+    """Primary pair = deepest pool, then most traded; deterministic tie-break."""
+
+    return (
+        pair.liquidity_usd or Decimal("0"),
+        pair.volume_24h or Decimal("0"),
+        pair.pair_address,
+    )
+
+
+def _lifecycle_sample(pair: DexScreenerPair, *, observed_at: datetime) -> LifecycleSample:
+    m5 = pair.transactions.get("m5", {})
+    h1 = pair.transactions.get("h1", {})
+    content = _payload_hash(pair.raw)
+    return LifecycleSample(
+        mint=pair.base_mint,
+        observed_at=observed_at,
+        venue=normalize_venue(pair.dex_id),
+        source=DEXSCREENER_PROVIDER,
+        source_id=(
+            f"dexscreener:lifecycle:{pair.base_mint}:{int(observed_at.timestamp())}@{content}"
+        ),
+        pair_address=pair.pair_address,
+        price_usd=pair.price_usd,
+        market_cap_usd=pair.market_cap if pair.market_cap is not None else pair.fdv,
+        liquidity_usd=pair.liquidity_usd,
+        volume_m5_usd=pair.volume_5m,
+        volume_h1_usd=pair.volume_1h,
+        volume_h6_usd=pair.volume_6h,
+        buys_m5=m5.get("buys"),
+        sells_m5=m5.get("sells"),
+        buys_h1=h1.get("buys"),
+        sells_h1=h1.get("sells"),
+        price_change_m5_pct=pair.price_change.get("m5"),
+        price_change_h1_pct=pair.price_change.get("h1"),
+        pair_created_at=pair.pair_created_at,
+        symbol=pair.base_symbol,
+    )
 
 
 def _duplicate_pair_rank(pair: DexScreenerPair) -> tuple[object, ...]:
@@ -716,26 +771,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
             retry_after_seconds=retry_after,
         )
 
-    async def _get_pairs(
-        self,
-        mint: str,
-        *,
-        context: ProviderRequestContext,
-        chain: Chain = Chain.SOLANA,
-        use_metadata_cache: bool = False,
-    ) -> tuple[DexScreenerPair, ...]:
-        normalized_chain = normalize_chain(chain)
-        normalized_mint = require_chain_address(mint, normalized_chain, "mint")
-        cache_key = (normalized_chain.value, normalized_mint)
-        now = ensure_utc(self._clock(), "observed_at")
-        cached = self._metadata_cache.get(cache_key)
-        if use_metadata_cache and cached is not None and now < cached.expires_at:
-            self.metadata_cache_hits += 1
-            return cached.pairs
-        path = (
-            f"/token-pairs/v1/{DEXSCREENER_CHAIN_BY_DOMAIN[normalized_chain]}"
-            f"/{normalized_mint}"
-        )
+    async def _request_json(self, path: str, *, context: ProviderRequestContext) -> object:
         url = f"{self._base_url}{path}"
         headers = {
             "accept": "application/json",
@@ -781,10 +817,69 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
                 raise ProviderSchemaError("provider response was not valid JSON") from exc
 
         async with self._semaphore:
-            raw = await self._transport.execute(
+            return await self._transport.execute(
                 operation,
                 timeout_seconds=self._timeout_for(context),
             )
+
+    async def lifecycle_samples(
+        self,
+        mints: Sequence[str],
+        *,
+        context: ProviderRequestContext,
+    ) -> Mapping[str, LifecycleSample | None]:
+        """Batch up to 30 mints per request into normalized lifecycle samples.
+
+        A mint the provider does not return maps to ``None`` (UNKNOWN), never to
+        a zero-valued sample.
+        """
+
+        unique = list(dict.fromkeys(require_chain_address(m, Chain.SOLANA, "mint") for m in mints))
+        if not 1 <= len(unique) <= LIFECYCLE_BATCH_SIZE:
+            raise ValueError(f"lifecycle_samples takes 1..{LIFECYCLE_BATCH_SIZE} mints")
+        raw = await self._request_json(
+            f"/tokens/v1/{DEXSCREENER_CHAIN_BY_DOMAIN[Chain.SOLANA]}/{','.join(unique)}",
+            context=context,
+        )
+        observed_at = ensure_utc(self._clock(), "observed_at")
+        pairs = _parse_pairs(raw, observed_at=observed_at, chain=Chain.SOLANA)
+        best: dict[str, DexScreenerPair] = {}
+        for pair in pairs:
+            if pair.base_mint not in unique:
+                continue
+            current = best.get(pair.base_mint)
+            if current is None or _lifecycle_rank(pair) > _lifecycle_rank(current):
+                best[pair.base_mint] = pair
+        return {
+            mint: (
+                None
+                if mint not in best
+                else _lifecycle_sample(best[mint], observed_at=observed_at)
+            )
+            for mint in unique
+        }
+
+    async def _get_pairs(
+        self,
+        mint: str,
+        *,
+        context: ProviderRequestContext,
+        chain: Chain = Chain.SOLANA,
+        use_metadata_cache: bool = False,
+    ) -> tuple[DexScreenerPair, ...]:
+        normalized_chain = normalize_chain(chain)
+        normalized_mint = require_chain_address(mint, normalized_chain, "mint")
+        cache_key = (normalized_chain.value, normalized_mint)
+        now = ensure_utc(self._clock(), "observed_at")
+        cached = self._metadata_cache.get(cache_key)
+        if use_metadata_cache and cached is not None and now < cached.expires_at:
+            self.metadata_cache_hits += 1
+            return cached.pairs
+        path = (
+            f"/token-pairs/v1/{DEXSCREENER_CHAIN_BY_DOMAIN[normalized_chain]}"
+            f"/{normalized_mint}"
+        )
+        raw = await self._request_json(path, context=context)
         observed_at = ensure_utc(self._clock(), "observed_at")
         pairs = _parse_pairs(raw, observed_at=observed_at, chain=normalized_chain)
         if use_metadata_cache:
@@ -1090,6 +1185,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
 
 
 __all__ = [
+    "LIFECYCLE_BATCH_SIZE",
     "DEXSCREENER_CHAIN",
     "DEXSCREENER_CHAIN_BY_DOMAIN",
     "DEXSCREENER_PARSER_VERSION",

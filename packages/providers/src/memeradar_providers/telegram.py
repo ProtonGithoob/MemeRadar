@@ -7,6 +7,7 @@ import logging
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import TracebackType
 from typing import cast
@@ -205,6 +206,14 @@ def _telegram_update_payload(value: object) -> tuple[dict[str, object], int] | N
     if message_field.startswith("deleted_") and "deleted" not in payload:
         payload["deleted"] = True
     return payload, update_id
+
+
+@dataclass(frozen=True, slots=True)
+class TelegramInboundMessage:
+    update_id: int
+    chat_id: str
+    text: str
+    sent_at: datetime
 
 
 class TelegramNotificationAdapter(NotificationPort):
@@ -418,6 +427,67 @@ class TelegramNotificationAdapter(NotificationPort):
         )
 
 
+    async def fetch_commands(
+        self,
+        *,
+        offset: int | None,
+        context: ProviderRequestContext,
+        limit: int = 50,
+    ) -> tuple[tuple[TelegramInboundMessage, ...], int | None]:
+        """Read new direct messages for operator commands (bounded, no long poll).
+
+        Returns the messages and the next ``offset``.  Chat authorization is the
+        caller's job; this adapter only normalizes.
+        """
+
+        body: dict[str, object] = {
+            "limit": max(1, min(limit, 100)),
+            "timeout": 0,
+            "allowed_updates": ["message"],
+        }
+        if offset is not None:
+            if offset < 0:
+                raise ValueError("offset must be non-negative")
+            body["offset"] = offset
+        result = await self._request(TELEGRAM_GET_UPDATES_METHOD, context=context, payload=body)
+        if not isinstance(result, Mapping) or result.get("ok") is not True:
+            raise ProviderSchemaError("telegram updates response was invalid")
+        updates = result.get("result")
+        if not isinstance(updates, Sequence) or isinstance(updates, str | bytes | bytearray):
+            raise ProviderSchemaError("telegram updates result was invalid")
+        messages: list[TelegramInboundMessage] = []
+        next_offset = offset
+        for update in updates[:100]:
+            if not isinstance(update, Mapping):
+                continue
+            update_id = update.get("update_id")
+            if isinstance(update_id, bool) or not isinstance(update_id, int) or update_id < 0:
+                continue
+            next_offset = update_id + 1 if next_offset is None else max(next_offset, update_id + 1)
+            message = update.get("message")
+            if not isinstance(message, Mapping):
+                continue
+            chat = message.get("chat")
+            text = message.get("text")
+            sent = message.get("date")
+            if not isinstance(chat, Mapping) or not isinstance(text, str):
+                continue
+            try:
+                chat_id = str(_chat_id(chat.get("id")))
+            except (TypeError, ValueError):
+                continue
+            sent_at = (
+                datetime.fromtimestamp(sent, UTC)
+                if isinstance(sent, int) and not isinstance(sent, bool)
+                else ensure_utc(self._clock(), "sent_at")
+            )
+            messages.append(
+                TelegramInboundMessage(
+                    update_id=update_id, chat_id=chat_id, text=text[:512], sent_at=sent_at
+                )
+            )
+        return tuple(messages), next_offset
+
 class TelegramCallAdapter(TelegramNotificationAdapter, SocialCallPort):
     """Read-only Telegram Bot API polling adapter for normalized call evidence."""
 
@@ -547,6 +617,7 @@ __all__ = [
     "TELEGRAM_FIXTURE_PROVIDER",
     "TELEGRAM_HEALTH_METHOD",
     "TELEGRAM_GET_UPDATES_METHOD",
+    "TelegramInboundMessage",
     "TELEGRAM_PROVIDER",
     "TELEGRAM_SEND_MESSAGE_METHOD",
     "TelegramCallAdapter",

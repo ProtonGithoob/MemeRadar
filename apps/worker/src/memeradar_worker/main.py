@@ -11,6 +11,7 @@ from memeradar_application.config import Settings, validate_worker_runtime
 from memeradar_domain import Chain
 from memeradar_persistence import create_database_engine
 from memeradar_providers.composition import build_provider_bundle
+from memeradar_providers.telegram import TelegramNotificationAdapter
 
 from .early_discovery import _BoundRuntimeRepositories as _BoundRuntimeRepositories
 from .early_discovery import _collection_health as _collection_health
@@ -26,10 +27,12 @@ from .early_discovery import _run_early_alpha_shadow, _run_gmgn_shadow, _run_mad
 from .early_discovery import _run_early_lifecycle_reevaluation as _run_early_lifecycle_reevaluation
 from .early_discovery import _run_provider_shadow as _run_provider_shadow
 from .forward_evidence import PumpFunForwardEvidenceCollector
+from .lifecycle_watch import LifecycleWatchWorker
 from .operations_jobs import LOGGER, Sleep, _run_alert_outbox
 from .operations_jobs import _run_solana_ingestion_health as _run_solana_ingestion_health
 from .paper_execution import _run_paper_auto
 from .social_collection import run_social_collection
+from .telegram_commands import TelegramCommandWorker
 
 
 async def run_worker(
@@ -60,6 +63,10 @@ async def run_worker(
         workers.append(_run_pumpfun_forward_evidence(stop_event, settings, sleeper=sleeper))
     if _social_collection_is_configured(settings):
         workers.append(run_social_collection(stop_event, settings, sleeper=sleeper))
+    if _lifecycle_watch_is_configured(settings):
+        workers.append(_run_lifecycle_watch(stop_event, settings, sleeper=sleeper))
+    if _alert_delivery_is_configured(settings):
+        workers.append(_run_telegram_commands(stop_event, settings, sleeper=sleeper))
     if settings.paper_auto_policy is not None:
         workers.append(_run_paper_auto(stop_event, settings, sleeper=sleeper))
     if workers:
@@ -128,6 +135,68 @@ def _social_collection_is_configured(settings: Settings) -> bool:
         and settings.social_api_url and settings.social_api_key
         and Chain.SOLANA.value in settings.enabled_chains
     )
+
+
+def _lifecycle_watch_is_configured(settings: Settings) -> bool:
+    return bool(
+        settings.lifecycle_watch_enabled
+        and settings.database_url
+        and Chain.SOLANA.value in settings.enabled_chains
+        and settings.dexscreener_api_url
+    )
+
+
+async def _run_lifecycle_watch(
+    stop_event: asyncio.Event,
+    settings: Settings,
+    *,
+    sleeper: Sleep,
+) -> None:
+    """Track launches past the early window and monitor manual positions."""
+
+    assert settings.database_url is not None
+    engine = None
+    bundle = None
+    try:
+        engine = create_database_engine(settings.database_url)
+        bundle = build_provider_bundle(settings)
+        worker = LifecycleWatchWorker(engine, bundle.dexscreener)
+        await worker.run(stop_event, poll_interval_seconds=10.0, sleeper=sleeper)
+    except Exception as error:  # noqa: BLE001 - optional research/advisory loop.
+        LOGGER.warning(
+            "lifecycle_watch_setup_failed", extra={"error_class": type(error).__name__}
+        )
+    finally:
+        if bundle is not None:
+            await bundle.aclose()
+        if engine is not None:
+            await engine.dispose()
+
+
+async def _run_telegram_commands(
+    stop_event: asyncio.Event,
+    settings: Settings,
+    *,
+    sleeper: Sleep,
+) -> None:
+    """Accept /bought, /sold and /positions from the operator chat only."""
+
+    assert settings.database_url is not None
+    assert settings.telegram_api_url is not None
+    assert settings.telegram_bot_token is not None
+    assert settings.telegram_chat_id is not None
+    engine = create_database_engine(settings.database_url)
+    adapter = TelegramNotificationAdapter(
+        settings.telegram_api_url, bot_token=settings.telegram_bot_token
+    )
+    try:
+        worker = TelegramCommandWorker(
+            engine, adapter, operator_chat_id=settings.telegram_chat_id
+        )
+        await worker.run(stop_event, sleeper=sleeper)
+    finally:
+        await adapter.aclose()
+        await engine.dispose()
 
 
 async def _run_pumpfun_forward_evidence(

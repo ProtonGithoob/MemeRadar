@@ -16,6 +16,33 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**LIFECYCLE_WATCH_2026-11-19:** Owner goal: buy in time, sell 10x–100x
+before a rug. A critical review
+([EARLY_RADAR_CRITICAL_REVIEW_2026-11-19](audits/EARLY_RADAR_CRITICAL_REVIEW_2026-11-19.md))
+found that the radar stops watching 15 minutes after launch. In a live
+DexScreener snapshot the large moves were on graduated PumpSwap pairs 10–35 h
+old.
+
+Added:
+- post-launch lifecycle watch: tiered batch polling for 72 h;
+- sustained REVIVAL_WATCH advisories, gated on passed launch safety;
+- no-lookahead outcome labels at 1h, 6h, 24h and 72h;
+- manual-position exit advisories (ladder, trailing stop, hard stop,
+  liquidity collapse, dump pressure, stale data);
+- operator Telegram commands `/bought`, `/sold` and `/positions`, accepted
+  from the configured chat only;
+- delivery for REVIVAL_WATCH and MANUAL_EXIT alerts.
+
+Fixed: DexScreener `priceChange` declines were parsed as UNKNOWN.
+
+Live DexScreener batch reads verified (25/30 mints returned, reasons
+deterministic). Not yet verified: a real Telegram round trip for the commands,
+and on-chain graduation evidence (stream does not fetch `migrate`
+transactions; documented as next step).
+
+Blocked: the Codex SWOT file is on the owner's machine and is not in the repo,
+so the merge with it is still pending. Modes unchanged.
+
 **ALERT_PIPELINE_2026-11-11:** Owner decision recorded: bonding-curve
 liquidity is proven by executable Jupiter round-trip depth (USD 1000 within
 1000 bps); buying and selling stay manual and execution modes are unchanged.

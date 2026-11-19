@@ -42,6 +42,21 @@ def _is_relevant_token_alert(event: EventEnvelope, *, now: datetime | None = Non
     )
 
 
+LIFECYCLE_ALERT_TYPES = frozenset({AlertType.REVIVAL_WATCH.value, AlertType.MANUAL_EXIT.value})
+LIFECYCLE_ALERT_MAX_AGE = timedelta(minutes=10)
+
+
+def _is_relevant_lifecycle_alert(event: EventEnvelope, *, now: datetime) -> bool:
+    """Lifecycle watch and manual-exit advisories are time-sensitive too."""
+
+    age = now - event.ingested_at
+    return (
+        event.kind == "AlertRequested"
+        and event.payload.get("type") in LIFECYCLE_ALERT_TYPES
+        and timedelta(0) <= age <= LIFECYCLE_ALERT_MAX_AGE
+    )
+
+
 async def _handle_alert_event(
     event: EventEnvelope,
     service: AlertDeliveryService,
@@ -49,8 +64,12 @@ async def _handle_alert_event(
     now: datetime | None = None,
 ) -> None:
     checked_at = now or datetime.now(UTC)
-    if _is_relevant_token_alert(event, now=checked_at):
+    if _is_relevant_token_alert(event, now=checked_at) or _is_relevant_lifecycle_alert(
+        event, now=checked_at
+    ):
         await service.handle_event(event)
+    elif event.kind == "AlertRequested" and event.payload.get("type") in LIFECYCLE_ALERT_TYPES:
+        await service.suppress_event(event, "ALERT_EXPIRED")
     elif event.kind == "CandidateStateChanged":
         age = checked_at - event.ingested_at
         reason = (
@@ -187,6 +206,7 @@ async def _run_alert_outbox(
             enabled_types=frozenset({
                 AlertType.EARLY_WATCH, AlertType.STRONG_SETUP,
                 AlertType.HIGH_CONFLUENCE, AlertType.ENTRY_READY,
+                AlertType.REVIVAL_WATCH, AlertType.MANUAL_EXIT,
             }),
         ),
         destination=settings.telegram_chat_id,
