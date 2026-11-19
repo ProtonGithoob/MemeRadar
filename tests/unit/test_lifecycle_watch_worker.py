@@ -243,3 +243,71 @@ def test_rate_limit_stops_the_cycle_without_counting_misses() -> None:
             await engine.dispose()
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=30))
+
+
+class FixedHolders:
+    def __init__(self, top_amount: int | None) -> None:
+        self.top_amount = top_amount
+
+    async def fetch_holder_snapshot(
+        self, mint: str, *, context: ProviderRequestContext
+    ) -> object:
+        from memeradar_application.holder_concentration import HolderSnapshot, TokenAccountBalance
+
+        if self.top_amount is None:
+            raise ProviderRateLimitedError(1.0)
+        return HolderSnapshot(
+            mint=mint,
+            supply_raw=1_000_000,
+            largest=(
+                TokenAccountBalance("acct1", "WhaleOwner", self.top_amount),
+                TokenAccountBalance("acct2", "SmallOwner", 1_000),
+            ),
+            source="fixture",
+        )
+
+
+async def _run_revival(holders: FixedHolders) -> tuple[AsyncEngine, list[dict[str, object]]]:
+    engine = await _engine(_launch(T0), _safety(T0 + timedelta(seconds=30)))
+    market = ScriptedMarket()
+    market.prices[MINT] = Decimal("0.00003")
+    market.revival = True
+    worker = LifecycleWatchWorker(engine, market, clock=lambda: market.now, holders=holders)
+    for minute in (120, 121.5):
+        market.now = T0 + timedelta(minutes=minute)
+        if MINT in worker.states:
+            worker.states[MINT].next_due_at = market.now
+        await worker.collect_once(now=market.now)
+    return engine, await _alerts(engine)
+
+
+def test_whale_concentration_suppresses_the_revival_alert() -> None:
+    pytest.importorskip("aiosqlite")
+
+    async def scenario() -> None:
+        engine, alerts = await _run_revival(FixedHolders(400_000))
+        try:
+            assert alerts == []
+            signals = await _kinds(engine, "lifecycle.signal")
+            payload = signals[-1].normalized_payload
+            assert "LIFECYCLE_HOLDER_CONCENTRATION_HIGH" in payload["reason_codes"]
+            assert payload["holder_concentration"]["risk"] == "HIGH"
+        finally:
+            await engine.dispose()
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=30))
+
+
+def test_unavailable_holder_source_alerts_with_explicit_unknown() -> None:
+    pytest.importorskip("aiosqlite")
+
+    async def scenario() -> None:
+        engine, alerts = await _run_revival(FixedHolders(None))
+        try:
+            assert [alert["type"] for alert in alerts] == ["REVIVAL_WATCH"]
+            lines = alerts[0]["payload"]["advisory_lines"]  # type: ignore[index]
+            assert any("Holder concentration: UNKNOWN" in line for line in lines)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=30))

@@ -29,6 +29,13 @@ from uuid import NAMESPACE_URL, uuid5
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
+from memeradar_application.holder_concentration import (
+    ConcentrationRisk,
+    HolderConcentration,
+    HolderSnapshot,
+    assess_concentration,
+    unknown_concentration,
+)
 from memeradar_application.lifecycle_watch import (
     LIFECYCLE_WATCH_VERSION,
     LifecycleOutcome,
@@ -75,6 +82,12 @@ _LAUNCH_NAMES = frozenset({"create", "create_v2"})
 _POSITION_POLL = timedelta(seconds=20)
 # Re-armable advisories may legitimately recur; bucket their delivery identity.
 _REARMABLE_KEYS = frozenset({"stale", "sell_pressure"})
+
+
+class HolderSnapshotPort(Protocol):
+    async def fetch_holder_snapshot(
+        self, mint: str, *, context: ProviderRequestContext
+    ) -> HolderSnapshot: ...
 
 
 class LifecycleMarketPort(Protocol):
@@ -200,8 +213,20 @@ def _money(value: object) -> str:
     return f"${parsed:.2f}"
 
 
+def _holder_line(concentration: HolderConcentration) -> str:
+    if concentration.risk is ConcentrationRisk.UNKNOWN:
+        return "Holder concentration: UNKNOWN (" + ", ".join(concentration.reason_codes) + ")"
+    return (
+        f"Holders ex-pool: top1 {concentration.top1_pct}% / top10 {concentration.top10_pct}%"
+        f" [{concentration.risk.value}]"
+    )
+
+
 def revival_alert_lines(
-    state: MintLifecycle, assessment: RevivalAssessment, safety: Mapping[str, object]
+    state: MintLifecycle,
+    assessment: RevivalAssessment,
+    safety: Mapping[str, object],
+    concentration: HolderConcentration | None = None,
 ) -> list[str]:
     metrics = assessment.metrics
     age_hours = Decimal(str(metrics.get("age_seconds", 0))) / 3600
@@ -221,7 +246,12 @@ def revival_alert_lines(
         f"{metrics.get('sustained_seconds')}s",
         f"Launch safety: {safety.get('safety_status')}"
         f" (mint/freeze authority revoked)",
-        "Unknown: holder concentration, insider distribution, deployer exits",
+        (
+            _holder_line(concentration)
+            if concentration is not None
+            else "Holder concentration: UNKNOWN (no holder source configured)"
+        ),
+        "Unknown: insider distribution, deployer exits",
         f"https://dexscreener.com/solana/{state.mint}",
     ]
     return lines
@@ -252,11 +282,13 @@ class LifecycleWatchWorker:
         exit_policy: ExitPolicy | None = None,
         clock: Clock | None = None,
         max_requests_per_cycle: int = 20,
+        holders: HolderSnapshotPort | None = None,
     ) -> None:
         if not 1 <= max_requests_per_cycle <= 200:
             raise ValueError("max_requests_per_cycle must be between 1 and 200")
         self.engine = engine
         self.market = market
+        self.holders = holders
         self.policy = policy or LifecyclePolicy()
         self.exit_policy = exit_policy or ExitPolicy()
         self.clock = clock or (lambda: datetime.now(UTC))
@@ -564,6 +596,7 @@ class LifecycleWatchWorker:
         counts: Counter[str],
     ) -> None:
         payload = assessment.to_payload()
+        reasons = list(assessment.reason_codes)
         if assessment.signal is RevivalSignal.REVIVAL:
             counts["revivals"] += 1
         alert = assessment.should_alert
@@ -581,12 +614,19 @@ class LifecycleWatchWorker:
             )
             if not safe:
                 alert = False
-                payload["reason_codes"] = [
-                    *assessment.reason_codes,
+                reasons.append(
                     "LIFECYCLE_LAUNCH_SAFETY_UNKNOWN"
                     if safety is None
-                    else "LIFECYCLE_LAUNCH_SAFETY_NOT_PASSED",
-                ]
+                    else "LIFECYCLE_LAUNCH_SAFETY_NOT_PASSED"
+                )
+        concentration: HolderConcentration | None = None
+        if alert:
+            concentration = await self._concentration(state, now)
+            payload["holder_concentration"] = concentration.to_payload()
+            if concentration.risk is ConcentrationRisk.HIGH:
+                alert = False
+                reasons.append("LIFECYCLE_HOLDER_CONCENTRATION_HIGH")
+        payload["reason_codes"] = reasons
         payload["alert_requested"] = alert
         observations.append(
             _observation(
@@ -610,13 +650,36 @@ class LifecycleWatchWorker:
                         "mint": state.mint,
                         "symbol": state.symbol,
                         "state": "REVIVAL_WATCH",
-                        "advisory_lines": revival_alert_lines(state, assessment, safety),
-                        "reason_codes": payload["reason_codes"],
+                        "advisory_lines": revival_alert_lines(
+                            state, assessment, safety, concentration
+                        ),
+                        "reason_codes": reasons,
                         "config_hash": assessment.config_hash,
                     },
                 )
             )
             counts["alerts"] += 1
+
+    async def _concentration(self, state: MintLifecycle, now: datetime) -> HolderConcentration:
+        """Holder evidence for an alert candidate; any failure is UNKNOWN."""
+
+        if self.holders is None:
+            return unknown_concentration(state.mint, "HOLDER_SOURCE_NOT_CONFIGURED")
+        context = ProviderRequestContext(
+            correlation_id=f"lifecycle-holders:{state.mint}",
+            requested_at=now,
+            deadline_at=now + timedelta(seconds=10),
+        )
+        try:
+            snapshot = await self.holders.fetch_holder_snapshot(state.mint, context=context)
+        except (ProviderError, ValueError) as error:
+            LOGGER.info(
+                "lifecycle_holder_snapshot_unavailable",
+                extra={"error_class": type(error).__name__},
+            )
+            return unknown_concentration(state.mint, "HOLDER_SNAPSHOT_UNAVAILABLE")
+        pool = None if state.last_sample is None else state.last_sample.pair_address
+        return assess_concentration(snapshot, liquidity_owners=() if pool is None else (pool,))
 
     async def _handle_position(
         self,

@@ -35,6 +35,11 @@ Added:
 
 Fixed: DexScreener `priceChange` declines were parsed as UNKNOWN.
 
+Added holder-concentration evidence for revival alerts (top 20 accounts,
+pool/curve excluded). HIGH concentration suppresses the alert. An unavailable
+source alerts with an explicit UNKNOWN. Public keyless RPC refuses
+`getTokenLargestAccounts`, so live values need a keyed `SOLANA_RPC_URL`.
+
 Live DexScreener batch reads verified (25/30 mints returned, reasons
 deterministic). Not yet verified: a real Telegram round trip for the commands,
 and on-chain graduation evidence (stream does not fetch `migrate`

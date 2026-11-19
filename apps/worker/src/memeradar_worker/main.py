@@ -160,7 +160,9 @@ async def _run_lifecycle_watch(
     try:
         engine = create_database_engine(settings.database_url)
         bundle = build_provider_bundle(settings)
-        worker = LifecycleWatchWorker(engine, bundle.dexscreener)
+        worker = LifecycleWatchWorker(
+            engine, bundle.dexscreener, holders=bundle.solana_rpc
+        )
         await worker.run(stop_event, poll_interval_seconds=10.0, sleeper=sleeper)
     except Exception as error:  # noqa: BLE001 - optional research/advisory loop.
         LOGGER.warning(

@@ -20,6 +20,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 
+from memeradar_application.holder_concentration import HolderSnapshot, TokenAccountBalance
 from memeradar_application.provider_contracts import (
     OnChainPort,
     OnChainRequest,
@@ -124,6 +125,29 @@ def _context_slot_suffix(result: Mapping[str, object]) -> str:
         if isinstance(slot, int) and not isinstance(slot, bool) and slot >= 0:
             return f":slot:{slot}"
     return ""
+
+
+def _raw_amount(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _parsed_token_owner(account: object) -> str | None:
+    if not isinstance(account, Mapping):
+        return None
+    data = account.get("data")
+    parsed = data.get("parsed") if isinstance(data, Mapping) else None
+    info = parsed.get("info") if isinstance(parsed, Mapping) else None
+    owner = info.get("owner") if isinstance(info, Mapping) else None
+    try:
+        return require_solana_address(owner, "owner") if isinstance(owner, str) else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _nonnegative_int(value: object, field: str) -> int | None:
@@ -721,6 +745,62 @@ class SolanaRpcAdapter(OnChainPort):
                 "signatures": tuple(entries),
                 "collection_mode": "PRODUCTION",
             },
+        )
+
+    async def fetch_holder_snapshot(
+        self,
+        mint: str,
+        *,
+        context: ProviderRequestContext,
+    ) -> HolderSnapshot:
+        """Largest token accounts (top 20), supply and owners for concentration.
+
+        Public keyless RPC nodes commonly refuse ``getTokenLargestAccounts``;
+        callers must treat any provider error as UNKNOWN concentration.
+        """
+
+        normalized = require_solana_address(mint, "mint")
+        commitment = {"commitment": "confirmed"}
+        supply_result = await self._rpc("getTokenSupply", (normalized, commitment), context=context)
+        supply_value = supply_result.get("value") if isinstance(supply_result, Mapping) else None
+        supply_raw = _raw_amount(
+            supply_value.get("amount") if isinstance(supply_value, Mapping) else None
+        )
+        if supply_raw is None:
+            raise ProviderSchemaError("getTokenSupply response was invalid")
+        largest_result = await self._rpc(
+            "getTokenLargestAccounts", (normalized, commitment), context=context
+        )
+        entries = largest_result.get("value") if isinstance(largest_result, Mapping) else None
+        if not isinstance(entries, Sequence) or isinstance(entries, str | bytes | bytearray):
+            raise ProviderSchemaError("getTokenLargestAccounts response was invalid")
+        accounts: list[tuple[str, int]] = []
+        for entry in entries[:20]:
+            if not isinstance(entry, Mapping):
+                continue
+            address = entry.get("address")
+            amount = _raw_amount(entry.get("amount"))
+            if isinstance(address, str) and amount is not None:
+                accounts.append((require_solana_address(address, "token_account"), amount))
+        owners: dict[str, str | None] = {address: None for address, _ in accounts}
+        if accounts:
+            multiple = await self._rpc(
+                "getMultipleAccounts",
+                ([address for address, _ in accounts], {**commitment, "encoding": "jsonParsed"}),
+                context=context,
+            )
+            values = multiple.get("value") if isinstance(multiple, Mapping) else None
+            if isinstance(values, Sequence) and not isinstance(values, str | bytes | bytearray):
+                for (address, _amount), account in zip(accounts, values, strict=False):
+                    owners[address] = _parsed_token_owner(account)
+        return HolderSnapshot(
+            mint=normalized,
+            supply_raw=supply_raw,
+            largest=tuple(
+                TokenAccountBalance(token_account=address, owner=owners[address], amount_raw=amount)
+                for address, amount in accounts
+            ),
+            source=f"{SOLANA_RPC_PROVIDER}:getTokenLargestAccounts",
         )
 
     async def fetch_finalized_slot(self, *, context: ProviderRequestContext) -> int:

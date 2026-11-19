@@ -73,6 +73,13 @@ DexScreener-də SOL token-lərin çoxu qalxır, onları vaxtında necə tapaq?
    - `/help`.
 6. **Alert çatdırılması:** yeni `REVIVAL_WATCH` və `MANUAL_EXIT` tipləri; 10 dəqiqəlik təravət pəncərəsi. Renderer mesaja bu qeydləri əlavə edir: "WATCH EVIDENCE ONLY - NOT ENTRY_READY" və "ADVISORY ONLY - YOU EXECUTE MANUALLY".
 7. **Bug fix:** imzalı `priceChange` (C6).
+8. **Holder konsentrasiyası** (`holder_concentration.py`, `SolanaRpcAdapter.fetch_holder_snapshot`).
+   Revival alert namizədi üçün ən böyük 20 token hesabı oxunur. Hesablar sahibə görə toplanır. Pool və ya curve hesabı (DexScreener pair ünvanı) holder sayılmır.
+   - top10 ≥ 50% və ya top1 ≥ 15% olarsa risk `HIGH`-dır və alert göndərilmir. Siqnal isə səbəb kodu ilə yazılır.
+   - Mənbə əlçatmazdırsa, alert göndərilir, amma mətndə "Holder concentration: UNKNOWN" yazılır. UNKNOWN heç vaxt "paylanmış" kimi şərh olunmur.
+   - Sahibi oxunmayan hesab holder sayılır (konservativ yanaşma).
+
+   **Məhdudiyyət:** publicnode `getTokenLargestAccounts`-ı token olmadan rədd edir. mainnet-beta isə bu metod üçün 429 qaytarır (2026-11-19, bu sessiyanın IP-si). Real dəyər almaq üçün `SOLANA_RPC_URL`-də açarlı RPC lazımdır (məs. Helius free tier).
 
 Konfiqurasiya: `LIFECYCLE_WATCH_ENABLED=true` (açarsız DexScreener). Qorunan
 rejimlər dəyişməyib.
@@ -95,7 +102,7 @@ rejimlər dəyişməyib.
 1. **Kalibrasiya.** 1–2 həftəlik `lifecycle.outcome` məlumatından sonra T anındakı xüsusiyyətlər 10x və rug ilə müqayisə edilsin. Embargo/no-lookahead split mövcud `calibration.py`-da var.
 2. **Zəncir əsaslı graduation.** Pump `CompleteEvent` / `migrate` logları stream-də decode olunsun (C2). Bunun üçün əvvəlcə discriminator mainnet fixture ilə yoxlanmalıdır (`TODO_VERIFY`).
 3. **PumpSwap tape.** Graduation-dan sonra on-chain trade-lər decode olunsun ki, revival DexScreener aqreqatlarından asılı qalmasın. Bunun üçün PumpSwap program ID-si və event layout-u yoxlanmalıdır.
-4. **Holder və insider sübutu.** `getTokenLargestAccounts` ilə top10 konsentrasiyası, həmçinin creator və bundle cüzdanlarının satışı (çıxış triggeri kimi).
+4. **Insider sübutu.** Creator və bundle cüzdanlarının satışı çıxış triggeri kimi istifadə olunsun. Holder konsentrasiyası §3.8-də edilib; açarlı RPC ilə canlı yoxlama gözləyir.
 5. **Forward collector-un miqyaslanması (C7).** Lifecycle outcome-ları təsdiqlənəndən sonra collector ya batch-ə keçirilsin, ya da ləğv edilsin.
 6. **Web.** Ultra-Early səhifəsinə lifecycle siqnalları və manual pozisiyalar paneli.
 7. **Narrativ klasterləmə** (məs. 2026-11-19-da Çin adlı meme klasteri).
