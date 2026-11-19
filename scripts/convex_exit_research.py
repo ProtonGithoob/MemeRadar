@@ -46,6 +46,25 @@ def _json_serialize(obj: Any) -> Any:
     return obj
 
 
+_DECLARED_EVIDENCE_CLASSES = frozenset(
+    {"HISTORICAL_REAL", "PAPER_FORWARD", "REPLAY_SIMULATED", "SYNTHETIC_FIXTURE"}
+)
+
+
+def _evidence_class(path: Path) -> str:
+    """Use the dataset's declared ``evidence_class``; never infer "real"."""
+
+    if not path.exists():
+        return "SYNTHETIC_FIXTURE"
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return "UNKNOWN"
+    declared = data.get("evidence_class") if isinstance(data, dict) else None
+    return declared if declared in _DECLARED_EVIDENCE_CLASSES else "UNDECLARED"
+
+
 def load_trade_dataset(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         # Provide representative research trade samples for calibration
@@ -176,9 +195,9 @@ def main() -> int:
     output_payload = report.to_json_dict()
     output_payload.update(
         {
-            "evidence_class": (
-                "SYNTHETIC_FIXTURE" if not args.dataset.exists() else "HISTORICAL_REAL"
-            ),
+            # A file existing does not make it real history: the label comes
+            # from the dataset's own declared provenance, UNKNOWN otherwise.
+            "evidence_class": _evidence_class(args.dataset),
             "trade_count": len(trades),
             "best_synthetic_candidate": report.selected_policy_version,
             "best_policy_version": report.selected_policy_version,

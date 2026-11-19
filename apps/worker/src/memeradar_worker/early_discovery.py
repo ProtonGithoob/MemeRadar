@@ -776,6 +776,23 @@ async def _sol_usd_reference(
     return price
 
 
+_EARLY_DEPTH_MIN_ROUND_TRIP_RATIO = Decimal("0.80")
+
+
+def _depth_failure_reason(error: BaseException) -> str:
+    """Keep provider failure classes distinct from genuinely thin depth."""
+
+    from memeradar_providers.jupiter import JupiterNoRouteError
+
+    if isinstance(error, ProviderRateLimitedError):
+        return "DEPTH_RATE_LIMITED"
+    if isinstance(error, JupiterNoRouteError):
+        return "DEPTH_NO_ROUTE"
+    if isinstance(error, ProviderTimeoutError | TimeoutError):
+        return "DEPTH_PROVIDER_TIMEOUT"
+    return "DEPTH_PROVIDER_ERROR"
+
+
 async def _executable_depth_liquidity(
     quote_port: QuotePort,
     *,
@@ -784,20 +801,33 @@ async def _executable_depth_liquidity(
     context: ProviderRequestContext,
     probe_usd: Decimal = _EARLY_DEPTH_PROBE_USD,
     max_impact_bps: Decimal = _EARLY_DEPTH_MAX_IMPACT_BPS,
-) -> tuple[Decimal | None, tuple[QuoteSnapshot, ...]]:
+    min_round_trip_ratio: Decimal = _EARLY_DEPTH_MIN_ROUND_TRIP_RATIO,
+) -> tuple[Decimal | None, tuple[QuoteSnapshot, ...], Mapping[str, object]]:
     """Prove ``probe_usd`` of executable round-trip depth, or return None.
 
     Returns the proven USD depth only when both the buy and the full sell-back
-    are fresh execution quotes within ``max_impact_bps``; anything else leaves
-    liquidity UNKNOWN instead of estimating it.
+    are fresh execution quotes within ``max_impact_bps`` *and* selling back
+    everything bought returns at least ``min_round_trip_ratio`` of the SOL
+    spent.  Anything else leaves liquidity UNKNOWN; the third element carries a
+    distinct reason code (rate limit, no route, stale, impact, round-trip
+    loss, ...) plus the measured net round-trip ratio.
     """
+
+    probe: dict[str, object] = {"probe_usd": str(probe_usd)}
+
+    def fail(reason: str, quotes: tuple[QuoteSnapshot, ...] = ()) -> tuple[
+        None, tuple[QuoteSnapshot, ...], Mapping[str, object]
+    ]:
+        probe["status"] = reason
+        return None, quotes, probe
 
     sol_usd = await _sol_usd_reference(quote_port, context)
     if sol_usd is None:
-        return None, ()
+        return fail("DEPTH_SOL_REFERENCE_UNAVAILABLE")
     probe_lamports = (probe_usd / sol_usd * Decimal(1_000_000_000)).to_integral_value(
         rounding=ROUND_CEILING
     )
+    probe["probe_lamports"] = str(probe_lamports)
     try:
         buy = await quote_port.quote(
             QuoteRequest(
@@ -811,7 +841,7 @@ async def _executable_depth_liquidity(
             )
         )
         if not isinstance(buy, QuoteSnapshot) or cast(Decimal, buy.output_amount) <= 0:
-            return None, ()
+            return fail("DEPTH_EMPTY_BUY_OUTPUT")
         sell = await quote_port.quote(
             QuoteRequest(
                 context=context,
@@ -823,19 +853,37 @@ async def _executable_depth_liquidity(
                 output_decimals=9,
             )
         )
-    except Exception:  # noqa: BLE001 - unproven depth is UNKNOWN liquidity.
-        return None, ()
+    except Exception as error:  # noqa: BLE001 - unproven depth is UNKNOWN liquidity.
+        return fail(_depth_failure_reason(error))
     now = datetime.now(UTC)
-    quotes = (buy, sell) if isinstance(sell, QuoteSnapshot) else (buy,)
-    if not isinstance(sell, QuoteSnapshot) or any(
-        quote.price_semantics is not PriceSemantics.EXECUTION_QUOTE
-        or not quote.is_fresh_at(now)
-        or quote.price_impact_bps is None
-        or Decimal(str(quote.price_impact_bps)) > max_impact_bps
-        for quote in quotes
-    ):
-        return None, quotes
-    return probe_usd, quotes
+    if not isinstance(sell, QuoteSnapshot):
+        return fail("DEPTH_EMPTY_SELL_OUTPUT", (buy,))
+    quotes = (buy, sell)
+    probe["buy_impact_bps"] = None if buy.price_impact_bps is None else str(buy.price_impact_bps)
+    probe["sell_impact_bps"] = (
+        None if sell.price_impact_bps is None else str(sell.price_impact_bps)
+    )
+    if any(quote.price_semantics is not PriceSemantics.EXECUTION_QUOTE for quote in quotes):
+        return fail("DEPTH_NOT_EXECUTION_QUOTE", quotes)
+    if any(not quote.is_fresh_at(now) for quote in quotes):
+        return fail("DEPTH_QUOTE_STALE", quotes)
+    if any(quote.price_impact_bps is None for quote in quotes):
+        return fail("DEPTH_IMPACT_UNKNOWN", quotes)
+    if any(Decimal(str(quote.price_impact_bps)) > max_impact_bps for quote in quotes):
+        return fail("DEPTH_IMPACT_TOO_HIGH", quotes)
+    returned = Decimal(str(sell.output_amount))
+    ratio = (returned / probe_lamports).quantize(Decimal("0.0001"))
+    probe["round_trip_ratio"] = str(ratio)
+    if sell.minimum_output_amount is not None:
+        probe["round_trip_min_ratio"] = str(
+            (Decimal(str(sell.minimum_output_amount)) / probe_lamports).quantize(
+                Decimal("0.0001")
+            )
+        )
+    if ratio < min_round_trip_ratio:
+        return fail("DEPTH_ROUND_TRIP_LOSS_TOO_HIGH", quotes)
+    probe["status"] = "DEPTH_PROVEN"
+    return probe_usd, quotes, probe
 
 
 _MIN_TAPE_BUYERS_FOR_QUOTES = 5
@@ -1127,11 +1175,18 @@ async def _collect_early_candidate_evidence(
         and depth_port is not None
         and token_decimals is not None
     ):
-        depth_usd, depth_quotes = await _executable_depth_liquidity(
+        depth_usd, depth_quotes, depth_probe = await _executable_depth_liquidity(
             depth_port,
             mint=mint,
             token_decimals=token_decimals,
             context=quote_context,
+        )
+        LOGGER.info(
+            "early_depth_probe",
+            extra={
+                "status": depth_probe.get("status"),
+                "round_trip_ratio": depth_probe.get("round_trip_ratio"),
+            },
         )
         if depth_usd is not None:
             evidence["liquidity"] = depth_usd

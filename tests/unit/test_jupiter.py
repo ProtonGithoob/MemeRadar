@@ -224,3 +224,53 @@ def test_quote_source_identity_is_keyed_by_response_content() -> None:
 
     assert first.source_id == repeat.source_id
     assert first.source_id != changed.source_id
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected_bps"),
+    [
+        # Live /swap/v2/order shape (2026-11-19): priceImpact is a percentage,
+        # priceImpactPct is a fraction. Prefer the fraction.
+        ({"priceImpact": 1.25, "priceImpactPct": "0.0125"}, Decimal("125")),
+        ({"priceImpact": 1.25}, Decimal("125")),
+        # A favourable (negative) impact is not a cost and must not reject.
+        ({"priceImpact": -0.0307, "priceImpactPct": "-0.000307"}, Decimal("0")),
+    ],
+)
+def test_order_price_impact_units_match_the_live_contract(
+    fields: dict[str, object], expected_bps: Decimal
+) -> None:
+    payload = {k: v for k, v in quote_payload().items() if k != "priceImpactPct"}
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={**payload, **fields, "requestId": "req-2"})
+
+    async def scenario() -> Decimal:
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        adapter = JupiterAdapter(
+            "https://fixture.jupiter.example/swap/v2",
+            client=client,
+            transport=transport(),
+            clock=lambda: NOW,
+        )
+        try:
+            order = await adapter.order(
+                input_mint=INPUT,
+                output_mint=OUTPUT,
+                amount=1000000,
+                taker=TAKER,
+                slippage_bps=100,
+                context=context(),
+            )
+            return order.price_impact_bps
+        finally:
+            await client.aclose()
+
+    assert asyncio.run(scenario()) == expected_bps
+
+
+def test_negative_quote_impact_is_zero_cost_not_rejected() -> None:
+    from memeradar_providers.jupiter import _impact_bps
+
+    assert _impact_bps("-0.0001", "priceImpactPct") == Decimal("0")
+    assert _impact_bps("0.0125", "priceImpactPct") == Decimal("125")

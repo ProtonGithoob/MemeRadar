@@ -25,6 +25,30 @@ PUMP_FUN_CREATION_DOC_SOURCE = (
     f"{PUMP_FUN_IDL_REVISION}/docs/instructions/COIN_CREATION.md"
 )
 
+# Official IDL drift observed 2026-11-19 (pump-public-docs 639b87f, 56
+# instructions vs 47 at the pinned revision).  These instructions are NOT
+# routed by instruction identity: account layouts are unverified, so routing
+# stays TODO_VERIFY.  Trade coverage does not depend on them: every Pump trade
+# emits the unchanged ``TradeEvent`` (discriminator bddb7fd34ee661ee, one new
+# trailing field) which the log decoder reads, verified against finalized
+# mainnet v3 transactions (fixtures/providers/pump_fun_v3_trades_mainnet.json).
+PUMP_FUN_LATEST_IDL_REVISION = "639b87fb45c3adeffa6f7c4a1bf0cb85e392bf22"
+PUMP_FUN_LATEST_IDL_SHA256 = "7616681ea557975f9f623ac211080f22a93060781eaf4765b0a488d980997207"
+PUMP_FUN_UNROUTED_INSTRUCTIONS: dict[str, tuple[str, str]] = {
+    # name: (discriminator hex, coverage status)
+    "buy_v3": ("07051dc4f5176550", "TRADE_EVENT_TAPE_VERIFIED_ROUTING_TODO_VERIFY"),
+    "sell_v3": ("1c92de7726c469d5", "TRADE_EVENT_TAPE_VERIFIED_ROUTING_TODO_VERIFY"),
+    "buy_exact_quote_in_v3": (
+        "e1f7501ed5b38488",
+        "TRADE_EVENT_TAPE_VERIFIED_ROUTING_TODO_VERIFY",
+    ),
+    "multi_hop_curve_swap": ("e19a7516d756f667", "TRADE_EVENT_TAPE_EXPECTED_TODO_VERIFY"),
+    "set_max_curve_depth": ("209a98db8e6cdaa5", "ADMIN_NOT_TRADE"),
+    "set_quote_control_mint_reserves": ("74dc6b53bf2c2049", "ADMIN_NOT_TRADE"),
+    "set_quote_control_reserves_admin": ("a1c3dea5e165c03e", "ADMIN_NOT_TRADE"),
+    "sweep_creator_fee": ("20f6bf3408c949ba", "FEE_NOT_TRADE"),
+    "sweep_protocol_fee": ("0830be07b644b7e5", "FEE_NOT_TRADE"),
+}
 PUMP_FUN_CREATE_TAG = bytes((24, 30, 200, 40, 5, 28, 7, 119))
 PUMP_FUN_CREATE_V2_TAG = bytes((214, 144, 76, 236, 95, 139, 49, 180))
 PUMP_FUN_SOL_MINT = "So11111111111111111111111111111111111111112"

@@ -301,6 +301,11 @@ class LifecycleOutcome:
         payload["peak_multiple"] = _json_value(self.peak_multiple)
         payload["last_multiple"] = _json_value(self.last_multiple)
         payload["label"] = self.label
+        # Market-cap marks only: a chart multiple, not a sellable peak and not
+        # a realized fill.  Sellable/realized outcomes need size-aware quotes.
+        payload["outcome_semantics"] = "MARK_MARKET_CAP"
+        payload["sellable_peak_multiple"] = None
+        payload["realized_multiple"] = None
         return payload
 
 

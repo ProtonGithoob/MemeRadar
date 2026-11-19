@@ -18,9 +18,18 @@ MINT = "EmPFPGkyubTyCtsSJWQKEggxXfxVCHradPpKMuoTpump"
 
 
 class FakeQuotes:
-    def __init__(self, *, sell_impact_bps: str = "300", sol_usd: str | None = "150") -> None:
+    def __init__(
+        self,
+        *,
+        sell_impact_bps: str = "300",
+        sol_usd: str | None = "150",
+        sell_divisor: int = 1000,
+        sell_error: BaseException | None = None,
+    ) -> None:
         self.sell_impact_bps = sell_impact_bps
         self.sol_usd = sol_usd
+        self.sell_divisor = sell_divisor
+        self.sell_error = sell_error
         self.requests = []
 
     async def quote(self, request):
@@ -35,7 +44,9 @@ class FakeQuotes:
             output = Decimal(request.amount) * 1000
             impact = "250"
         else:
-            output = Decimal(request.amount) / 1000
+            if self.sell_error is not None:
+                raise self.sell_error
+            output = Decimal(request.amount) / self.sell_divisor
             impact = self.sell_impact_bps
         return QuoteSnapshot(
             provenance=Provenance(
@@ -73,9 +84,12 @@ def _depth(quotes: FakeQuotes):
 def test_round_trip_within_impact_limit_proves_probe_depth() -> None:
     quotes = FakeQuotes()
 
-    liquidity, depth_quotes = _depth(quotes)
+    liquidity, depth_quotes, probe = _depth(quotes)
 
     assert liquidity == Decimal("50")
+    assert probe["status"] == "DEPTH_PROVEN"
+    # buy: lamports * 1000 tokens, sell: tokens / 1000 lamports -> ratio 1.
+    assert probe["round_trip_ratio"] == "1.0000"
     assert len(depth_quotes) == 2
     buy_request = quotes.requests[1]
     # The USD 50 trade size at $150/SOL rounds up to 0.333333334 SOL.
@@ -86,18 +100,20 @@ def test_round_trip_within_impact_limit_proves_probe_depth() -> None:
 
 
 def test_sell_back_beyond_impact_limit_leaves_liquidity_unknown() -> None:
-    liquidity, depth_quotes = _depth(FakeQuotes(sell_impact_bps="1500"))
+    liquidity, depth_quotes, probe = _depth(FakeQuotes(sell_impact_bps="1500"))
 
     assert liquidity is None
+    assert probe["status"] == "DEPTH_IMPACT_TOO_HIGH"
     assert len(depth_quotes) == 2
 
 
 def test_missing_sol_reference_leaves_liquidity_unknown_without_probing() -> None:
     quotes = FakeQuotes(sol_usd=None)
 
-    liquidity, depth_quotes = _depth(quotes)
+    liquidity, depth_quotes, probe = _depth(quotes)
 
     assert liquidity is None
+    assert probe["status"] == "DEPTH_SOL_REFERENCE_UNAVAILABLE"
     assert depth_quotes == ()
     assert len(quotes.requests) == 1
 
@@ -198,3 +214,26 @@ def test_alert_gate_accepts_trade_size_depth_but_not_a_small_pool() -> None:
 
     assert _qualified_early_safety({**payload, "liquidity_source": "EXECUTABLE_QUOTE_DEPTH"})
     assert not _qualified_early_safety(payload)
+
+
+def test_round_trip_loss_beyond_limit_is_not_depth() -> None:
+    # Selling everything back returns only 70% of the SOL spent.
+    liquidity, _quotes, probe = _depth(FakeQuotes(sell_divisor=1429))
+
+    assert liquidity is None
+    assert probe["status"] == "DEPTH_ROUND_TRIP_LOSS_TOO_HIGH"
+    assert Decimal(str(probe["round_trip_ratio"])) < Decimal("0.80")
+
+
+def test_provider_failures_keep_distinct_reason_codes() -> None:
+    from memeradar_providers.jupiter import JupiterNoRouteError
+    from memeradar_providers.transport import ProviderRateLimitedError
+
+    for error, reason in (
+        (ProviderRateLimitedError(1.0), "DEPTH_RATE_LIMITED"),
+        (JupiterNoRouteError("no route"), "DEPTH_NO_ROUTE"),
+        (RuntimeError("boom"), "DEPTH_PROVIDER_ERROR"),
+    ):
+        liquidity, _quotes, probe = _depth(FakeQuotes(sell_error=error))
+        assert liquidity is None
+        assert probe["status"] == reason

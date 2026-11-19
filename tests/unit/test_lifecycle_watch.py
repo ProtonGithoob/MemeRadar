@@ -187,3 +187,13 @@ def test_unindexed_new_mint_is_not_retired_for_missing_samples() -> None:
         record_missing(state, POLICY, T0 + timedelta(minutes=2))
     assert state.missing_samples == 0
     assert tier_for(state, POLICY, T0 + timedelta(minutes=3)) is Tier.HOT
+
+
+def test_outcome_payload_declares_mark_semantics_not_sellable() -> None:
+    state = MintLifecycle(mint=MINT, discovered_at=T0)
+    apply_sample(state, _sample(5, market_cap_usd=Decimal("5000")), POLICY)
+    (outcome,) = finalize(state, POLICY, T0 + timedelta(minutes=61))
+    payload = outcome.to_payload()
+    assert payload["outcome_semantics"] == "MARK_MARKET_CAP"
+    assert payload["sellable_peak_multiple"] is None
+    assert payload["realized_multiple"] is None

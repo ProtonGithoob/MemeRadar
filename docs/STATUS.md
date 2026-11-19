@@ -16,6 +16,34 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**CODEX_SWOT_MERGE_2026-11-19:** The Codex SWOT
+([CODEX_SWOT_2026-11-19](audits/CODEX_SWOT_2026-11-19.md)) was merged into
+[EARLY_RADAR_CRITICAL_REVIEW_2026-11-19 §6](audits/EARLY_RADAR_CRITICAL_REVIEW_2026-11-19.md).
+All five checkout findings were confirmed and fixed:
+- **Pump IDL drift.** Nine new instructions are classified with routing
+  `TODO_VERIFY`. Trade-tape coverage of the v3 variants was verified on
+  30 finalized mainnet transactions (27/27 trade instructions decoded, 0
+  mismatches). Added a fixture, a regression test and
+  `scripts/pump_idl_drift.py`.
+- **DEX lead time.** Each request now records its own start and response
+  times. First-seen is stored as interval bounds. A successful empty
+  DexScreener response now reads `NO_PAIR_YET`; previously it read
+  `REQUEST_FAILED`. Timeouts get their own status.
+- **Jupiter.** The `/order` field `priceImpact` was being read as a fraction
+  when it is a percentage, confirmed live. Negative (favourable) impact no
+  longer rejects a valid quote. The USD 50 depth probe now returns distinct
+  reason codes and a net round-trip ratio, and requires a ratio of at least
+  0.80.
+- **Convex exit.** Policies without their own simulated exits are no longer
+  ranked. The CLI evidence class now comes from the dataset's declared
+  provenance.
+- **Forward report.** Sample sufficiency now counts unique mints per horizon
+  instead of outcome rows.
+
+Lifecycle outcomes now declare `MARK_MARKET_CAP` semantics.
+
+No upstream code was copied. Modes unchanged.
+
 **LIFECYCLE_WATCH_2026-11-19:** Owner goal: buy in time, sell 10x–100x
 before a rug. A critical review
 ([EARLY_RADAR_CRITICAL_REVIEW_2026-11-19](audits/EARLY_RADAR_CRITICAL_REVIEW_2026-11-19.md))

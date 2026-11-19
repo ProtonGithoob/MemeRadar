@@ -184,3 +184,52 @@ def test_convex_candidate_outcomes_cannot_mutate_call_time_fields() -> None:
 
     with pytest.raises(ValueError, match="outcome fields only"):
         ConvexExitEvaluator().replay_candidates(trades, split=split)
+
+
+def test_policies_without_their_own_simulated_exits_are_not_ranked() -> None:
+    trades = _candidate_replay_trades()
+    for trade in trades:
+        trade["candidate_exits"].pop("aggressive-runner-v1")  # type: ignore[attr-defined]
+    split = CalibrationTimeSplit(
+        train_end=BASE + timedelta(hours=2),
+        validation_end=BASE + timedelta(hours=5),
+        test_end=BASE + timedelta(hours=8),
+    )
+    report = ConvexExitEvaluator().replay_candidates(trades, split=split)
+    assert report.selected_policy_version != "aggressive-runner-v1"
+    aggressive = next(
+        e for e in report.evaluations if e.candidate.version == "aggressive-runner-v1"
+    )
+    assert aggressive.selection_objective is None
+    assert "CONVEX_EXIT_POLICY_OUTCOMES_MISSING" in [r.code for r in report.reason_codes]
+
+    shared_only = [
+        {key: value for key, value in trade.items() if key != "candidate_exits"}
+        for trade in _candidate_replay_trades()
+    ]
+    for trade in shared_only:
+        trade["pnl"] = "1"
+        trade["exit_price"] = "2.0"
+    empty = ConvexExitEvaluator().replay_candidates(shared_only, split=split)
+    assert empty.selected_policy_version is None
+    assert empty.status == "INSUFFICIENT_POLICY_OUTCOMES"
+
+
+def test_cli_evidence_class_comes_from_declared_provenance(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import importlib.util
+    import json as _json
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "convex_exit_research",
+        Path(__file__).resolve().parents[2] / "scripts" / "convex_exit_research.py",
+    )
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    undeclared = tmp_path / "trades.json"
+    undeclared.write_text(_json.dumps({"trades": []}))
+    declared = tmp_path / "paper.json"
+    declared.write_text(_json.dumps({"evidence_class": "PAPER_FORWARD", "trades": []}))
+    assert module._evidence_class(tmp_path / "missing.json") == "SYNTHETIC_FIXTURE"
+    assert module._evidence_class(undeclared) == "UNDECLARED"
+    assert module._evidence_class(declared) == "PAPER_FORWARD"

@@ -423,6 +423,14 @@ def _parse_pairs(
 LIFECYCLE_BATCH_SIZE = 30
 
 
+class DexScreenerNoPairError(ProviderSchemaError):
+    """A successful response that contained no eligible pair for the mint.
+
+    This is an observation ("not listed yet"), not a transport failure; lead
+    time measurement must distinguish it from 429s and timeouts.
+    """
+
+
 def _lifecycle_rank(pair: DexScreenerPair) -> tuple[Decimal, Decimal, str]:
     """Primary pair = deepest pool, then most traded; deterministic tie-break."""
 
@@ -923,7 +931,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
             and _market_price_usd(pair, token_mint, chain) is not None
         ]
         if not eligible:
-            raise ProviderSchemaError("provider returned no eligible market pair")
+            raise DexScreenerNoPairError("provider returned no eligible market pair")
         return min(
             eligible,
             key=lambda pair: _pair_rank(pair, token_mint=token_mint, chain=chain),
@@ -1186,6 +1194,7 @@ class DexScreenerAdapter(MarketDataPort, QuotePort, SocialMetadataPort):
 
 __all__ = [
     "LIFECYCLE_BATCH_SIZE",
+    "DexScreenerNoPairError",
     "DEXSCREENER_CHAIN",
     "DEXSCREENER_CHAIN_BY_DOMAIN",
     "DEXSCREENER_PARSER_VERSION",

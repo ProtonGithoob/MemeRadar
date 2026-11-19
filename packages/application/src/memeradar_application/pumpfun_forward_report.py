@@ -782,6 +782,17 @@ def build_forward_report(
         row for row in outcomes.values() if _outcome_evidence_available(row)
     ]
     measured_outcome_count = len(outcome_evidence_rows)
+    # One mint yields a row per horizon; sufficiency must count independent
+    # mints, not rows, or 25 tokens x 4 horizons would read as 100 samples.
+    unique_outcome_mints_by_horizon: dict[str, set[str]] = {}
+    for (outcome_mint, outcome_horizon), row in outcomes.items():
+        if _outcome_evidence_available(row):
+            unique_outcome_mints_by_horizon.setdefault(str(outcome_horizon), set()).add(
+                str(outcome_mint)
+            )
+    max_unique_outcome_mints = max(
+        (len(values) for values in unique_outcome_mints_by_horizon.values()), default=0
+    )
     eligible_matured_count = sum(_bool(_value(row, "matured")) for row in outcomes.values())
     outcome_target_stats: dict[str, dict[str, int]] = {}
     for target in target_mints:
@@ -1058,9 +1069,13 @@ def build_forward_report(
             "api_url_name": "TELEGRAM_API_URL",
         },
         "OUTCOME_STATUS": "MEASURED" if measured_outcome_count else "INSUFFICIENT_EVIDENCE",
+        "OUTCOME_UNIQUE_MINTS_BY_HORIZON": {
+            horizon: len(values)
+            for horizon, values in sorted(unique_outcome_mints_by_horizon.items())
+        },
         "STATISTICAL_SAMPLE_SUFFICIENT": (
             "YES"
-            if len(launches) >= 100 and measured_outcome_count >= 100
+            if len(launches) >= 100 and max_unique_outcome_mints >= 100
             else "NO"
         ),
         "ENGINEERING_READY": "YES",

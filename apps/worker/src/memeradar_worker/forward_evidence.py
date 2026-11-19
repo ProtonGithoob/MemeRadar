@@ -71,8 +71,13 @@ from memeradar_application.replay_harness import ReplayCheckpoint, ReplayEventRe
 from memeradar_domain import Observation, Provenance, QualityState, TokenIdentity
 from memeradar_domain.common import ensure_utc
 from memeradar_persistence import ObservationRow, SqlAlchemyUnitOfWork
+from memeradar_providers.dexscreener import DexScreenerNoPairError
 from memeradar_providers.pump_fun_idl import PUMP_FUN_PROGRAM_ID
-from memeradar_providers.transport import ProviderError, ProviderRateLimitedError
+from memeradar_providers.transport import (
+    ProviderError,
+    ProviderRateLimitedError,
+    ProviderTimeoutError,
+)
 
 Clock = Callable[[], datetime]
 Sleep = Callable[[float], Awaitable[None]]
@@ -306,6 +311,9 @@ def _forward_payload(
     market: Observation | None,
     error: BaseException | None,
     first_observed_at: datetime | None,
+    started_at: datetime | None = None,
+    responded_at: datetime | None = None,
+    last_empty_check_at: datetime | None = None,
 ) -> dict[str, object]:
     market_payload = {} if market is None else dict(market.normalized_payload)
     pair_found = market is not None and market_payload.get("pair_address") is not None
@@ -313,11 +321,15 @@ def _forward_payload(
         poll_status = "PAIR_FOUND"
     elif isinstance(error, ProviderRateLimitedError):
         poll_status = "RATE_LIMITED"
+    elif isinstance(error, ProviderTimeoutError):
+        poll_status = "TIMEOUT"
+    elif isinstance(error, DexScreenerNoPairError) or (error is None and market is not None):
+        poll_status = "NO_PAIR_YET"
     elif error is not None:
         poll_status = "REQUEST_FAILED"
     else:
         poll_status = "NO_PAIR_YET"
-    first = first_observed_at or (query_at if pair_found else None)
+    first = first_observed_at or ((responded_at or query_at) if pair_found else None)
     payload: dict[str, object] = {
         "mint": record.mint,
         "mint_address": record.mint,
@@ -355,8 +367,31 @@ def _forward_payload(
         "provider_freshness": (
             QualityState.UNKNOWN.value if market is None else market.quality_state.value
         ),
+        "dex_query_started_at": None if started_at is None else started_at.isoformat(),
+        "dex_query_responded_at": None if responded_at is None else responded_at.isoformat(),
+        # First DEX visibility is only known as an interval: after the last
+        # successful empty poll and no later than the first positive response.
+        # If the very first poll is positive, only the upper bound is known.
+        "dex_first_seen_lower_bound_at": (
+            None
+            if not pair_found or last_empty_check_at is None
+            else last_empty_check_at.isoformat()
+        ),
+        "dex_first_seen_upper_bound_at": None if first is None else first.isoformat(),
+        "dex_first_seen_bound_kind": (
+            None
+            if not pair_found
+            else "INTERVAL"
+            if last_empty_check_at is not None
+            else "UPPER_BOUND_ONLY"
+        ),
         "dex_api_first_observed_at": None if first is None else first.isoformat(),
         "memeradar_to_dex_api_lead_seconds": lead_seconds(record.discovered_at, first),
+        "memeradar_to_dex_api_lead_lower_bound_seconds": (
+            None
+            if not pair_found or last_empty_check_at is None
+            else lead_seconds(record.discovered_at, last_empty_check_at)
+        ),
         "collection_mode": "LIVE_SHADOW",
         "research_version": PUMPFUN_FORWARD_VERSION,
     }
@@ -479,30 +514,71 @@ def _dex_horizon_exhausted(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _MarketQuery:
+    observation: Observation | None
+    error: BaseException | None
+    started_at: datetime
+    responded_at: datetime
+
+
 async def _query_market(
     market: MarketDataPort,
     record: LaunchRecord,
     *,
     query_at: datetime,
-) -> tuple[Observation | None, BaseException | None]:
+    clock: Clock | None = None,
+) -> _MarketQuery:
+    """One exact-mint poll with its own request start and response times.
+
+    The cycle start (``query_at``) is shared by every launch processed in the
+    cycle; using it as the first-seen time understated lead time for later
+    launches in the loop.
+    """
+
+    tick = clock or (lambda: datetime.now(UTC))
+    started_at = max(ensure_utc(tick(), "started_at"), query_at)
     token = TokenIdentity(mint_address=record.mint, id=_token_id(record))
     register = getattr(market, "register_token", None)
     if callable(register):
         register(token)
     context = ProviderRequestContext(
         correlation_id=f"pumpfun-forward:{record.mint}:{query_at.timestamp()}",
-        requested_at=query_at,
-        deadline_at=query_at + timedelta(seconds=15),
+        requested_at=started_at,
+        deadline_at=started_at + timedelta(seconds=15),
     )
     try:
         observations = await market.snapshot(
             MarketDataRequest(context=context, token_ids=(token.id,))
         )
     except (ProviderError, ValueError) as error:
-        return None, error
+        return _MarketQuery(None, error, started_at, max(ensure_utc(tick(), "now"), started_at))
+    responded_at = max(ensure_utc(tick(), "responded_at"), started_at)
     if not observations:
-        return None, RuntimeError("DexScreener returned no normalized observation")
-    return observations[0], None
+        return _MarketQuery(
+            None,
+            DexScreenerNoPairError("DexScreener returned no normalized observation"),
+            started_at,
+            responded_at,
+        )
+    return _MarketQuery(observations[0], None, started_at, responded_at)
+
+
+def _last_empty_check(rows: Sequence[ObservationRow], mint: str) -> datetime | None:
+    """Latest successful poll that found no pair: the lower first-seen bound."""
+
+    values = [
+        _datetime(
+            row.normalized_payload.get("dex_query_responded_at"),
+            _datetime(row.normalized_payload.get("dex_query_at")),
+        )
+        for row in rows
+        if row.kind == "research.dex_forward"
+        and _mint(row) == mint
+        and row.normalized_payload.get("poll_status") == "NO_PAIR_YET"
+    ]
+    valid = [value for value in values if value is not None]
+    return max(valid) if valid else None
 
 
 def _creator_outcome_rows(rows: Sequence[ObservationRow]) -> dict[str, list[ObservationRow]]:
@@ -993,11 +1069,13 @@ class PumpFunForwardEvidenceCollector:
                     query_now,
                 )
                 if first_offset is not None:
-                    first_market, first_error = await _query_market(
+                    first_query = await _query_market(
                         self.market,
                         record,
                         query_at=query_now,
+                        clock=self.clock,
                     )
+                    first_market, first_error = first_query.observation, first_query.error
                     snapshot = (
                         unknown_market_snapshot(
                             record,
@@ -1034,7 +1112,7 @@ class PumpFunForwardEvidenceCollector:
                                     market=first_market,
                                     error=first_error,
                                     first_observed_at=(
-                                        query_now
+                                        first_query.responded_at
                                         if (
                                             first_market is not None
                                             and first_market.normalized_payload.get(
@@ -1044,6 +1122,9 @@ class PumpFunForwardEvidenceCollector:
                                         )
                                         else None
                                     ),
+                                    started_at=first_query.started_at,
+                                    responded_at=first_query.responded_at,
+                                    last_empty_check_at=_last_empty_check(rows, record.mint),
                                 ),
                                 quality_state=(
                                     QualityState.UNKNOWN
@@ -1102,13 +1183,15 @@ class PumpFunForwardEvidenceCollector:
             )
             if market_offset is not None:
                 if market_offset == first_offset:
-                    market_observation, market_error = first_market, first_error
+                    market_observation = first_market
                 else:
-                    market_observation, market_error = await _query_market(
+                    market_query = await _query_market(
                         self.market,
                         record,
                         query_at=query_now,
+                        clock=self.clock,
                     )
+                    market_observation = market_query.observation
                 snapshot = (
                     unknown_market_snapshot(
                         record,

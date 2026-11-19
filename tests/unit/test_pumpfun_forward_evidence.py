@@ -276,3 +276,87 @@ def test_dex_and_market_paths_do_not_rewrite_the_same_offset_snapshot() -> None:
         await engine.dispose()
 
     asyncio.run(scenario())
+
+
+def _record() -> LaunchRecord:
+    return LaunchRecord(
+        row=SimpleNamespace(candidate_id=None, token_id=None),  # type: ignore[arg-type]
+        mint=MINT,
+        discovered_at=NOW,
+        payload={"instruction_type": "create_v2"},
+    )
+
+
+def test_poll_status_separates_empty_listing_from_failures() -> None:
+    from memeradar_providers.dexscreener import DexScreenerNoPairError
+    from memeradar_providers.transport import ProviderRateLimitedError, ProviderTimeoutError
+    from memeradar_worker.forward_evidence import _forward_payload
+
+    def status(error: BaseException) -> object:
+        return _forward_payload(
+            _record(),
+            query_at=NOW,
+            offset_seconds=30,
+            market=None,
+            error=error,
+            first_observed_at=None,
+        )["poll_status"]
+
+    assert status(DexScreenerNoPairError("none")) == "NO_PAIR_YET"
+    assert status(ProviderRateLimitedError(1.0)) == "RATE_LIMITED"
+    assert status(ProviderTimeoutError("slow")) == "TIMEOUT"
+    assert status(ProviderSchemaError("broken")) == "REQUEST_FAILED"
+
+
+def test_first_seen_is_an_interval_from_per_request_times() -> None:
+    from memeradar_worker.forward_evidence import _forward_payload
+
+    pair = SimpleNamespace(
+        normalized_payload={"pair_address": "pair", "price_usd": "0.1"},
+        quality_state=QualityState.FRESH,
+    )
+    responded = NOW + timedelta(seconds=42)
+    empty_check = NOW + timedelta(seconds=20)
+    payload = _forward_payload(
+        _record(),
+        query_at=NOW + timedelta(seconds=30),
+        offset_seconds=30,
+        market=pair,  # type: ignore[arg-type]
+        error=None,
+        first_observed_at=responded,
+        started_at=NOW + timedelta(seconds=41),
+        responded_at=responded,
+        last_empty_check_at=empty_check,
+    )
+    assert payload["dex_first_seen_bound_kind"] == "INTERVAL"
+    assert payload["dex_first_seen_upper_bound_at"] == responded.isoformat()
+    assert payload["dex_first_seen_lower_bound_at"] == empty_check.isoformat()
+    assert payload["memeradar_to_dex_api_lead_seconds"] == 42.0
+    assert payload["memeradar_to_dex_api_lead_lower_bound_seconds"] == 20.0
+    first_poll = _forward_payload(
+        _record(),
+        query_at=NOW,
+        offset_seconds=0,
+        market=pair,  # type: ignore[arg-type]
+        error=None,
+        first_observed_at=responded,
+        responded_at=responded,
+    )
+    assert first_poll["dex_first_seen_bound_kind"] == "UPPER_BOUND_ONLY"
+    assert first_poll["dex_first_seen_lower_bound_at"] is None
+
+
+def test_query_market_records_its_own_response_time() -> None:
+    from memeradar_worker.forward_evidence import _query_market
+
+    ticks = iter([NOW + timedelta(seconds=5), NOW + timedelta(seconds=7)])
+
+    async def scenario():  # type: ignore[no-untyped-def]
+        return await _query_market(
+            NoPairMarket(), _record(), query_at=NOW, clock=lambda: next(ticks)
+        )
+
+    result = asyncio.run(scenario())
+    assert result.started_at == NOW + timedelta(seconds=5)
+    assert result.responded_at == NOW + timedelta(seconds=7)
+    assert isinstance(result.error, ProviderSchemaError)

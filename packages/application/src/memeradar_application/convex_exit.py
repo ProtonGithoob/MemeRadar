@@ -369,6 +369,13 @@ class ConvexExitEvaluator:
         return require_text(str(raw_value), "trade_id", max_length=128)
 
     @staticmethod
+    def _has_policy_exit(trade: Mapping[str, Any], policy: ConvexExitPolicy) -> bool:
+        raw_candidates = trade.get("candidate_exits")
+        return isinstance(raw_candidates, Mapping) and isinstance(
+            raw_candidates.get(policy.version), Mapping
+        )
+
+    @staticmethod
     def _candidate_trade(
         trade: Mapping[str, Any],
         policy: ConvexExitPolicy,
@@ -457,11 +464,26 @@ class ConvexExitEvaluator:
         metrics_by_version = {
             policy.version: metrics for policy, metrics in candidate_results
         }
+        # A policy can only be ranked on outcomes simulated *for that policy*.
+        # Falling back to the shared trade outcome gives every policy the same
+        # numbers and turns the ranking into an artefact of sort order.
+        covered = {
+            policy.version: all(
+                self._has_policy_exit(trade, policy)
+                for _, _, trade in ordered_partitions[selection_partition]
+            )
+            for policy in policies
+        }
         ranked_policies = sorted(
             policies,
-            key=lambda policy: -selection_metrics[policy.version].expectancy_per_trade,
+            key=lambda policy: (
+                not covered[policy.version],
+                -selection_metrics[policy.version].expectancy_per_trade,
+            ),
         )
-        selection_available = bool(ordered_partitions[selection_partition])
+        selection_available = bool(ordered_partitions[selection_partition]) and any(
+            covered.values()
+        )
         selected_version = ranked_policies[0].version if selection_available else None
         evaluations = tuple(
             ConvexExitReplayEvaluation(
@@ -473,7 +495,7 @@ class ConvexExitEvaluator:
                 test=metrics_by_version[policy.version][CalibrationPartition.TEST.value],
                 selection_objective=(
                     selection_metrics[policy.version].expectancy_per_trade
-                    if selection_available
+                    if selection_available and covered[policy.version]
                     else None
                 ),
                 rank=rank,
@@ -487,6 +509,15 @@ class ConvexExitEvaluator:
         ]
         if not sufficient_partitions:
             reasons.insert(0, ReasonCode("INSUFFICIENT_SAMPLES"))
+        uncovered = sorted(version for version, ok in covered.items() if not ok)
+        if uncovered:
+            reasons.insert(
+                0,
+                ReasonCode(
+                    "CONVEX_EXIT_POLICY_OUTCOMES_MISSING",
+                    detail=",".join(uncovered)[:256],
+                ),
+            )
         report_material = {
             "version": CONVEX_EXIT_RESEARCH_VERSION,
             "split": split.to_json_dict(),
@@ -504,7 +535,13 @@ class ConvexExitEvaluator:
             selection_partition=selection_partition.value,
             evaluations=evaluations,
             excluded_trade_ids=tuple(excluded),
-            status="EVALUATED" if sufficient_partitions else "INSUFFICIENT_SAMPLES",
+            status=(
+                "INSUFFICIENT_POLICY_OUTCOMES"
+                if not any(covered.values())
+                else "EVALUATED"
+                if sufficient_partitions
+                else "INSUFFICIENT_SAMPLES"
+            ),
             reason_codes=tuple(reasons),
             config_hash=_research_hash(report_material),
         )

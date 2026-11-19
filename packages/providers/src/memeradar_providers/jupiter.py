@@ -80,16 +80,32 @@ def _amount(value: object, field: str = "amount") -> str:
     return str(int(normalized))
 
 
-def _impact_bps(value: object, field: str) -> Decimal:
+def _impact_bps(value: object, field: str, *, percent: bool = False) -> Decimal:
+    """Convert a Jupiter impact to adverse basis points.
+
+    ``priceImpactPct`` is a fraction (0.01 == 1%); the v2 ``/order`` field
+    ``priceImpact`` is already a percentage (1 == 1%), verified live on
+    2026-11-19.  A negative impact means a better-than-mid fill; it is not a
+    cost, so it maps to zero instead of rejecting a valid quote.
+    """
+
     parsed = to_decimal(value, field)
     if parsed < 0:
-        raise ProviderSchemaError(f"{field} must not be negative")
+        parsed = Decimal("0")
     return bounded_decimal(
-        parsed * Decimal("10000"),
+        parsed * (Decimal("100") if percent else Decimal("10000")),
         f"{field}_bps",
         Decimal("0"),
         Decimal("1000000"),
     )
+
+
+def _order_impact_bps(raw: Mapping[str, object]) -> Decimal:
+    if raw.get("priceImpactPct") is not None:
+        return _impact_bps(raw.get("priceImpactPct"), "priceImpactPct")
+    if raw.get("priceImpact") is not None:
+        return _impact_bps(raw.get("priceImpact"), "priceImpact", percent=True)
+    raise ProviderSchemaError("Jupiter order omitted price impact")
 
 
 def _route(raw: object) -> tuple[str, ...]:
@@ -395,7 +411,7 @@ class JupiterAdapter(QuotePort):
             minimum_output_amount=to_decimal(
                 raw.get("otherAmountThreshold"), "otherAmountThreshold"
             ),
-            price_impact_bps=_impact_bps(raw.get("priceImpact", "0"), "priceImpact"),
+            price_impact_bps=_order_impact_bps(raw),
             route=_route(raw.get("routePlan")),
             transaction=(
                 None

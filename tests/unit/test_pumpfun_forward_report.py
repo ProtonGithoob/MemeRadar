@@ -303,3 +303,36 @@ def test_report_labels_matured_shadow_tokens_and_calculates_early_recall() -> No
     recall = report["EARLY_WINNER_RECALL"]["thresholds"]["2X"]
     assert recall["status"] == "IMPLEMENTED"
     assert recall["before_20_pct"]["recall"] == 1.0
+
+
+def test_sample_sufficiency_counts_unique_mints_not_horizon_rows() -> None:
+    rows: list[dict[str, object]] = []
+    for index in range(100):
+        mint = f"mint-{index}"
+        rows.append(
+            {
+                "kind": "chain.event",
+                "mint": mint,
+                "event_type": "launch",
+                "instruction_type": "create_v2",
+                "discovered_at": "2026-01-01T00:00:00+00:00",
+            }
+        )
+        # Only 25 mints have outcomes, but each at four horizons = 100 rows.
+        if index < 25:
+            for horizon in ("1h", "6h", "24h", "72h"):
+                rows.append(
+                    {
+                        "kind": "research.outcome",
+                        "mint": mint,
+                        "horizon": horizon,
+                        "matured": True,
+                        "observed_peak_multiple": 2,
+                    }
+                )
+
+    report = build_forward_report(rows, generated_at="2026-01-05T00:00:00+00:00")
+
+    assert report["OUTCOME_EVIDENCE_AVAILABLE_COUNT"] == 100
+    assert report["OUTCOME_UNIQUE_MINTS_BY_HORIZON"]["1h"] == 25
+    assert report["STATISTICAL_SAMPLE_SUFFICIENT"] == "NO"
