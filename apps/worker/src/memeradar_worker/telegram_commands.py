@@ -35,6 +35,7 @@ from memeradar_domain import Observation, Provenance, QualityState
 from memeradar_persistence import ObservationRow, SqlAlchemyUnitOfWork
 from memeradar_providers.telegram import TelegramInboundMessage
 from memeradar_providers.transport import ProviderError
+from memeradar_worker.operations_jobs import sleep_until_stopped
 
 LOGGER = logging.getLogger(__name__)
 COMMAND_KIND = "telegram.command"
@@ -288,7 +289,7 @@ class TelegramCommandWorker:
                     "telegram_command_cycle_failed", extra={"error_class": type(error).__name__}
                 )
             if not stop_event.is_set():
-                await sleeper(poll_interval_seconds)
+                await sleep_until_stopped(stop_event, poll_interval_seconds, sleeper)
 
 
 __all__ = ["COMMAND_KIND", "CommandTransport", "TelegramCommandWorker"]

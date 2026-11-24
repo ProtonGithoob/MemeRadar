@@ -28,6 +28,16 @@ pytestmark = pytest.mark.integration
 NOW = datetime(2026, 8, 31, 16, 0, tzinfo=UTC)
 
 
+
+def _base58_encode(value: bytes) -> str:
+    alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    number = int.from_bytes(value, "big")
+    encoded = ""
+    while number:
+        number, remainder = divmod(number, 58)
+        encoded = alphabet[remainder] + encoded
+    return "1" * (len(value) - len(value.lstrip(b"\0"))) + encoded
+
 def test_sqlalchemy_position_projection_round_trip() -> None:
     database_url = os.environ.get("MEMERADAR_TEST_DATABASE_URL")
     if not database_url:
@@ -45,7 +55,9 @@ async def _exercise(database_url: str) -> None:
     token = TokenRow(
         id=token_id,
         chain="solana",
-        mint_address="So11111111111111111111111111111111111111112",
+        # A per-run mint keeps the test repeatable on a reused database; a
+        # fixed mint collided with the unique (chain, mint) token constraint.
+        mint_address=_base58_encode(token_id.bytes + portfolio_id.bytes),
         token_program="spl-token",
         symbol="POS",
         name="Position fixture",

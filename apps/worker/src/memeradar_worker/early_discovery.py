@@ -99,7 +99,7 @@ from memeradar_providers.transport import (
 )
 
 from .caller_conduct_research import process_with_caller_conduct_research
-from .operations_jobs import LOGGER, Sleep, _run_solana_ingestion_health
+from .operations_jobs import LOGGER, Sleep, _run_solana_ingestion_health, sleep_until_stopped
 from .pre_identity_rejection import (
     build_pre_identity_rejection_observation,
     reconcile_pre_identity_page,
@@ -449,7 +449,7 @@ async def _run_pre_identity_reconciliation(
             LOGGER.warning(
                 "pre_identity_reconciliation_failed", extra={"error_class": type(error).__name__}
             )
-        await sleeper(30.0)
+        await sleep_until_stopped(stop_event, 30.0, sleeper)
 
 
 async def _run_early_alpha_shadow(

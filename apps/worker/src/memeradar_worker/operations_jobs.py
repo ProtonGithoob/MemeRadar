@@ -28,6 +28,27 @@ LOGGER = logging.getLogger(__name__)
 Sleep = Callable[[float], Awaitable[None]]
 
 
+async def sleep_until_stopped(stop_event: asyncio.Event, seconds: float, sleeper: Sleep) -> None:
+    """Sleep ``seconds`` but wake immediately when shutdown is requested.
+
+    Long optional loops (pre-identity reconciliation, lifecycle watch, command
+    intake) previously slept through ``SIGTERM`` for up to 30 s, outliving the
+    container stop grace period and stalling worker recreation.
+    """
+
+    if stop_event.is_set():
+        return
+    sleep_task = asyncio.ensure_future(sleeper(seconds))
+    stop_task = asyncio.ensure_future(stop_event.wait())
+    try:
+        await asyncio.wait({sleep_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in (sleep_task, stop_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(sleep_task, stop_task, return_exceptions=True)
+
+
 def _is_relevant_token_alert(event: EventEnvelope, *, now: datetime | None = None) -> bool:
     checked_at = now or datetime.now(UTC)
     age = checked_at - event.ingested_at

@@ -70,6 +70,8 @@ from memeradar_persistence import (
 )
 from memeradar_providers.composition import ProviderBundle, build_provider_bundle
 
+from .operations_jobs import sleep_until_stopped
+
 LOGGER = logging.getLogger(__name__)
 SOLANA_WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112"
 
@@ -695,7 +697,7 @@ async def _run_paper_exit_monitor(
             )
         except Exception:
             LOGGER.exception("paper_exit_cycle_failed")
-        await sleeper(poll_interval)
+        await sleep_until_stopped(stop_event, poll_interval, sleeper)
 
 
 async def _run_paper_auto(
