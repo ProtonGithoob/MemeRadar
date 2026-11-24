@@ -16,6 +16,35 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**M0_RUNTIME_POSTGRES_2026-11-24:** This is the first milestone of the
+[Early Alpha Intelligence plan](superpowers/plans/2026-11-25-memeradar-early-alpha-intelligence.md).
+Evidence: [M0 report](audits/M0_RUNTIME_POSTGRES_2026-11-24.md), bundle
+`artifacts/verification/2026-11-24-m0/`.
+
+Results at `7a1e8eb` (isolated PostgreSQL 16.15 and Redis 7.0.15):
+
+| Check | Exit | Result |
+| --- | --- | --- |
+| `make verify` | 0 | Backend 1,789 passed; frontend 91 |
+| `make migration-check` | 0 | Single head `0015` |
+| Fresh upgrade | 0 | Reached head |
+| Seeded `0014` → head upgrade | 0 | Reached head; legacy row readable |
+| `make integration-test` | 0 | 34/34, repeated twice on a reused database |
+| `make backup-restore-drill` | 0 | PASS |
+| Readiness drill | n/a | PostgreSQL and Redis outages each report 503 and recover to 200 |
+
+Fixed:
+- Worker loops slept through shutdown for up to 30 s. This was the cause of
+  the long-standing paper-worker recreation failure.
+- A PostgreSQL test failed on a reused database.
+
+G0 local scope: PASS. Still open:
+- a bounded-traffic worker interruption drill with stream-gap, latency and
+  queue metrics, which needs the Compose host;
+- an upgrade of the operator's deployed database.
+
+Next: M1 bounded finalized launch-inventory window. Modes unchanged.
+
 **CODEX_SWOT_MERGE_2026-11-19:** The Codex SWOT
 ([CODEX_SWOT_2026-11-19](audits/CODEX_SWOT_2026-11-19.md)) was merged into
 [EARLY_RADAR_CRITICAL_REVIEW_2026-11-19 §6](audits/EARLY_RADAR_CRITICAL_REVIEW_2026-11-19.md).
