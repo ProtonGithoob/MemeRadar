@@ -260,7 +260,7 @@ def test_untracked_wallets_produce_no_tracked_signal_and_migration_is_censored()
         data_end=T0 + timedelta(hours=3), policy=CopyPolicy(),
     )
     assert reports["tracked_wallets"].signals == 0
-    copy_all = reports["copy_all_buyers"].trades[0]
+    copy_all = reports["copy_first_non_creator_buyer"].trades[0]
     assert copy_all.status is FillStatus.UNPRICED_MIGRATION
     assert copy_all.net_multiple is None
 
@@ -278,3 +278,18 @@ def test_dead_token_after_entry_is_a_real_loss_not_a_skip() -> None:
     trade = reports["tracked_wallets"].trades[0]
     assert trade.status is FillStatus.FILLED
     assert trade.net_multiple is not None and trade.net_multiple < Decimal("0.5")
+
+
+
+def test_baselines_skip_the_creator_and_random_runs_without_tracked_signals() -> None:
+    tape = Tape("E1", creator="Dev")
+    tape.buy("Dev", 1, 0.5)
+    tape.buy("First", 0.5, 5)
+    tape.buy("x", 1, 30)
+    reports = backtest(
+        tape.events, tracked_at=lambda _t: frozenset(),
+        data_end=T0 + timedelta(hours=3), policy=CopyPolicy(),
+    )
+    naive = reports["copy_first_non_creator_buyer"].trades
+    assert [t.source for t in naive] == ["First"]
+    assert reports["random_same_time"].signals == 1

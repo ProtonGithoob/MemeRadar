@@ -295,14 +295,20 @@ def backtest(
         for b in first_buys
         if b.wallet in tracked_at(b.block_time)
     )
+    creators = {e.mint: e.wallet for e in ordered if e.kind is ActivityKind.CREATE}
+    # Naive baseline: the first non-creator buyer of each token.  Copying the
+    # creator's own dev buy would be following a manipulation-risk actor.
     copy_all = first_per_mint(
         (b.wallet, b.mint, b.block_time, next_sell.get((b.wallet, b.mint, b.block_time)))
         for b in first_buys
+        if creators.get(b.mint) != b.wallet
     )
     rng = random.Random(random_seed)
     mints = sorted(tapes)
     random_signals: list[Signal] = []
-    for _source, _mint, at, _exit in tracked_signals:
+    # Random picks happen at the same moments as the strategy under test, or
+    # at the naive baseline's moments when nothing was tracked.
+    for _source, _mint, at, _exit in tracked_signals or copy_all:
         live = [m for m in mints if tapes[m] and tapes[m][0].block_time <= at
                 and (migrated.get(m) is None or migrated[m] > at)]
         if live:
@@ -319,7 +325,7 @@ def backtest(
                 break
     return {
         "tracked_wallets": run("tracked_wallets", tracked_signals),
-        "copy_all_buyers": run("copy_all_buyers", copy_all),
+        "copy_first_non_creator_buyer": run("copy_first_non_creator_buyer", copy_all),
         "random_same_time": run("random_same_time", random_signals),
         "momentum": run("momentum", momentum_signals),
     }
