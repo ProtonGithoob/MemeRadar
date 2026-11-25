@@ -55,10 +55,30 @@ log "Redis host port: ${REDIS_HOST_PORT} (container: 6379)"
 log "API host port: ${API_HOST_PORT} (container: 8000)"
 log "Web host port: ${WEB_HOST_PORT} (container: 3000)"
 
+PROJECT_NAME="$(docker compose -f "${COMPOSE_FILE}" config --format json 2>/dev/null | sed -n 's/^ *"name": *"\([^"]*\)".*/\1/p' | head -n1)"
+port_conflicts=0
+for port in "${POSTGRES_HOST_PORT}" "${REDIS_HOST_PORT}" "${API_HOST_PORT}" "${WEB_HOST_PORT}"; do
+  holders="$(docker ps --filter "publish=${port}" --format '{{.Names}} ({{.Label "com.docker.compose.project"}})' 2>/dev/null || true)"
+  foreign="$(printf '%s\n' "${holders}" | grep -v "(${PROJECT_NAME:-compose})\$" | grep -v '^$' || true)"
+  if [[ -n "${foreign}" ]]; then
+    log "Host port ${port} is already published by another container: ${foreign}"
+    port_conflicts=1
+  elif [[ -z "${holders}" ]] && command -v ss >/dev/null 2>&1 \
+      && ss -ltnH "( sport = :${port} )" 2>/dev/null | grep -q .; then
+    log "Host port ${port} is already in use by a non-Docker process (check: sudo ss -ltnp 'sport = :${port}')."
+    port_conflicts=1
+  fi
+done
+if (( port_conflicts )); then
+  fail "Free the port(s) above (stop that container/process) or override, e.g. POSTGRES_HOST_PORT=55442 ./scripts/start.sh"
+fi
+
 if ! docker compose -f "${COMPOSE_FILE}" up -d --build --remove-orphans; then
   log "Build/start failed. If the error mentions a missing snapshot (\"parent snapshot ... does not exist\"),"
   log "the Docker build cache is corrupted. Clear it (named volumes are kept) and retry:"
   log "  docker builder prune -f && ./scripts/start.sh"
+  log "If it says \"port is already allocated\", another container/process holds that host port:"
+  log "  docker ps --filter publish=<port>"
   fail "docker compose up failed."
 fi
 
