@@ -702,13 +702,17 @@ class SolanaRpcAdapter(OnChainPort):
         *,
         context: ProviderRequestContext,
         limit: int = 100,
+        before: str | None = None,
     ) -> Observation:
         normalized_address = require_solana_address(address, "address")
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
+        options: dict[str, object] = {"limit": limit, "commitment": "finalized"}
+        if before is not None:
+            options["before"] = require_text(before, "before", max_length=128)
         result = await self._rpc(
             "getSignaturesForAddress",
-            (normalized_address, {"limit": limit, "commitment": "finalized"}),
+            (normalized_address, options),
             context=context,
         )
         if not isinstance(result, Sequence) or isinstance(result, str | bytes | bytearray):

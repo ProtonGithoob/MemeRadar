@@ -288,6 +288,28 @@ def _instruction_payload(
     return payload
 
 
+
+def _references_program(transaction: Mapping[str, object], program_id: str) -> bool:
+    """Whether a jsonParsed transaction lists ``program_id`` among its keys."""
+
+    body = transaction.get("transaction")
+    message = body.get("message") if isinstance(body, Mapping) else None
+    keys = message.get("accountKeys") if isinstance(message, Mapping) else None
+    if not isinstance(keys, Sequence) or isinstance(keys, str | bytes | bytearray):
+        return True  # unknown shape: assume it might, so callers fail closed
+    for key in keys:
+        value = key.get("pubkey") if isinstance(key, Mapping) else key
+        if value == program_id:
+            return True
+    meta = transaction.get("meta")
+    loaded = meta.get("loadedAddresses") if isinstance(meta, Mapping) else None
+    if isinstance(loaded, Mapping):
+        for group in ("writable", "readonly"):
+            values = loaded.get(group)
+            if isinstance(values, Sequence) and program_id in values:
+                return True
+    return False
+
 def _event_index(parent_index: int | None, child_index: int) -> int:
     if parent_index is None:
         return child_index
@@ -537,6 +559,16 @@ class SolanaRpcBackfillAdapter:
                 transaction = _mapping(raw_transaction, "backfill transaction")
                 transaction_meta = _mapping(transaction.get("meta"), "backfill transaction meta")
                 raw_logs = transaction_meta.get("logMessages", ())
+                if raw_logs is None:
+                    # Some RPC nodes omit logs for individual transactions. A
+                    # transaction that does not reference the Pump program
+                    # cannot hold a Pump event; one that does is unverifiable
+                    # and must fail the range closed.
+                    if not _references_program(transaction, PUMP_FUN_PROGRAM_ID):
+                        continue
+                    raise BackfillUnavailableError(
+                        "backfill Pump.fun transaction had no logs"
+                    )
                 if not isinstance(raw_logs, Sequence) or isinstance(
                     raw_logs, str | bytes | bytearray
                 ):

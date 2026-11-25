@@ -49,6 +49,11 @@ PUMP_FUN_UNROUTED_INSTRUCTIONS: dict[str, tuple[str, str]] = {
     "sweep_creator_fee": ("20f6bf3408c949ba", "FEE_NOT_TRADE"),
     "sweep_protocol_fee": ("0830be07b644b7e5", "FEE_NOT_TRADE"),
 }
+# Global mint-authority PDA: account index 1 of create and create_v2.  Verified
+# 2026-11-25 on 5/5 finalized mainnet create_v2 transactions in slots
+# 473545600-473545629 (canonical block-scan decode).  Used only as an address
+# index for the independent M1 launch inventory, never for routing.
+PUMP_FUN_MINT_AUTHORITY = "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM"
 PUMP_FUN_CREATE_TAG = bytes((24, 30, 200, 40, 5, 28, 7, 119))
 PUMP_FUN_CREATE_V2_TAG = bytes((214, 144, 76, 236, 95, 139, 49, 180))
 PUMP_FUN_SOL_MINT = "So11111111111111111111111111111111111111112"
