@@ -214,12 +214,14 @@ def wallet_activities(
     # PumpSwap (post-graduation AMM) trades: only for a pool that holds this
     # mint and a WSOL quote, both proven by the transaction's own balances.
     pools = _pool_owners(meta, mint)
-    for swap in extract_pump_swap_events(logs):
-        if swap.pool not in pools:
-            continue
+    swaps = [s for s in extract_pump_swap_events(logs) if s.pool in pools]
+    # Aggregate first: several swaps by one user in a transaction reconcile
+    # against the user's total delta, like the curve trades above.
+    for swap in swaps:
+        expected[swap.user] += swap.base_amount if swap.is_buy else -swap.base_amount
+    for swap in swaps:
         signed = swap.base_amount if swap.is_buy else -swap.base_amount
         user_delta = None if deltas is None else deltas.get(swap.user, 0)
-        expected[swap.user] += signed
         reconciliation = (
             Reconciliation.UNKNOWN if user_delta is None
             else Reconciliation.MATCHED if user_delta == expected[swap.user]

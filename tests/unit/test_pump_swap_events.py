@@ -87,3 +87,31 @@ def test_truncated_or_foreign_payload_fails_closed() -> None:
         decode_pump_swap_event(raw[:100])
     with pytest.raises(ProviderSchemaError):
         decode_pump_swap_event(b"\x00" * 300)
+
+
+def test_two_swaps_by_one_user_reconcile_against_the_total_delta() -> None:
+    import copy
+
+    tx, signature = _tx("buy")
+    tx = copy.deepcopy(tx)
+    (event,) = extract_pump_swap_events(tx["meta"]["logMessages"])
+    logs = tx["meta"]["logMessages"]
+    data_index = next(
+        i for i, line in enumerate(logs)
+        if line.startswith("Program data: ")
+        and base64.b64decode(line[len("Program data: "):])[:8]
+        == bytes.fromhex("67f4521f2cf57777")
+    )
+    logs.insert(data_index + 1, logs[data_index])  # same AMM frame, second BuyEvent
+    for entry in tx["meta"]["postTokenBalances"]:
+        if entry.get("mint") != MINT:
+            continue
+        amount = int(entry["uiTokenAmount"]["amount"])
+        if entry.get("owner") == event.user:
+            entry["uiTokenAmount"]["amount"] = str(amount + event.base_amount)
+        elif entry.get("owner") == event.pool:
+            entry["uiTokenAmount"]["amount"] = str(amount - event.base_amount)
+    swaps = [a for a in wallet_activities(tx, mint=MINT, signature=signature)
+             if a.venue == "PUMPSWAP"]
+    assert len(swaps) == 2
+    assert {s.reconciliation for s in swaps} == {Reconciliation.MATCHED}

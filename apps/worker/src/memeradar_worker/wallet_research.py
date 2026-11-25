@@ -181,6 +181,9 @@ class WalletResearchWorker:
                     .where(
                         ObservationRow.kind == "chain.event",
                         ObservationRow.program_id == PUMP_FUN_PROGRAM_ID,
+                        # filter in SQL: the 24-48 h window holds far more trades
+                        # than the row cap, which would hide later launches.
+                        ObservationRow.event_type.in_(("create", "create_v2")),
                         ObservationRow.occurred_at >= now - timedelta(hours=48),
                         ObservationRow.occurred_at <= now - timedelta(hours=24),
                     )
@@ -231,8 +234,16 @@ class WalletResearchWorker:
         due = await self._due_launches(now)
         new_histories: list[Observation] = []
         complete = 0
+        failed_tokens = 0
         for mint, signature, launched_at in due:
-            history = await self.collector.collect(mint, signature, self.max_tx)
+            try:
+                history = await self.collector.collect(mint, signature, self.max_tx)
+            except Exception as error:  # noqa: BLE001 - retried next cycle
+                failed_tokens += 1
+                LOGGER.warning(
+                    "wallet_history_failed", extra={"error_class": type(error).__name__}
+                )
+                continue
             complete += history.history_complete
             kept = [encode_event(e) for e in history.events if e.kind in _STORED_KINDS]
             new_histories.append(
@@ -260,6 +271,7 @@ class WalletResearchWorker:
         funded = await self._funding_rows(now)
         known = {str(f.get("to_address")) for f in funded}
         lookups: list[str] = []
+        wallet_mints: dict[str, set[str]] = {}
         for observation in new_histories:
             payload = observation.normalized_payload
             raw = payload.get("events")
@@ -272,6 +284,7 @@ class WalletResearchWorker:
                 if e.kind is ActivityKind.SWAP_BUY and e.wallet != creator
             ]
             for wallet in list(dict.fromkeys(early))[:_EARLY_BUYERS_PER_TOKEN]:
+                wallet_mints.setdefault(wallet, set()).add(str(payload["mint"]))
                 if wallet not in known and wallet not in lookups:
                     lookups.append(wallet)
         funding_rows: list[Observation] = []
@@ -299,6 +312,15 @@ class WalletResearchWorker:
                 decode_event(row) for row in raw_events if isinstance(row, dict)
             ] if isinstance(raw_events, list) else []
             events.extend(token_events)
+            history_creator = next(
+                (e.wallet for e in token_events if e.kind is ActivityKind.CREATE), None
+            )
+            early_buyers = [
+                e.wallet for e in sorted(token_events, key=lambda e: (e.slot, e.event_index))
+                if e.kind is ActivityKind.SWAP_BUY and e.wallet != history_creator
+            ]
+            for wallet in list(dict.fromkeys(early_buyers))[:_EARLY_BUYERS_PER_TOKEN]:
+                wallet_mints.setdefault(wallet, set()).add(str(stored_history["mint"]))
             migrated = next(
                 (e.block_time for e in token_events if e.kind is ActivityKind.LIQUIDITY_MIGRATION),
                 None,
@@ -319,14 +341,16 @@ class WalletResearchWorker:
         events = list(deduplicate(events))
         creators = {r.creator for r in records if r.creator}
         clusters = co_buy_clusters(events, as_of=now, exclude=creators)
-        for wallet, cluster_id in shared_funder_clusters(funded).items():
+        for wallet, cluster_id in shared_funder_clusters(
+            funded, wallet_mints=wallet_mints
+        ).items():
             clusters.setdefault(wallet, cluster_id)
         profiles = build_profiles(
             events, {r.mint: r for r in records}, as_of=now, policy=self.policy,
             cluster_members=clusters,
         )
         bucket = int(now.timestamp() // 3600)
-        lines = digest_lines(records, profiles, len(due), complete)
+        lines = digest_lines(records, profiles, len(due) - failed_tokens, complete)
         async with SqlAlchemyUnitOfWork(self.engine) as unit_of_work:
             for record in records:
                 await unit_of_work.observations.add(
@@ -361,7 +385,8 @@ class WalletResearchWorker:
                 )
             await unit_of_work.commit()
         report: dict[str, object] = {
-            "researched": len(due),
+            "researched": len(due) - failed_tokens,
+            "history_failures": failed_tokens,
             "complete": complete,
             "tokens_in_lookback": len(records),
             "wallets_profiled": len(profiles),

@@ -139,12 +139,19 @@ async def earliest_funding(
 
 
 def shared_funder_clusters(
-    fundings: Sequence[Mapping[str, object]], *, min_wallets: int = 3, hub_cutoff: int = 50
+    fundings: Sequence[Mapping[str, object]],
+    *,
+    min_wallets: int = 3,
+    hub_cutoff: int = 50,
+    wallet_mints: Mapping[str, set[str]] | None = None,
 ) -> dict[str, str]:
     """Wallets funded by the same source; very high-degree sources are hubs.
 
     A source that funded more than ``hub_cutoff`` observed wallets is treated
-    as an exchange/router hub and produces no cluster.
+    as an exchange/router hub and produces no cluster.  With ``wallet_mints``
+    (wallet -> mints it bought early), a cluster also needs ``min_wallets`` of
+    those funded wallets to have bought the same mint early: a shared CEX hot
+    wallet funding unrelated retail traders is not coordination.
     """
 
     by_source: dict[str, set[str]] = {}
@@ -154,9 +161,19 @@ def shared_funder_clusters(
             by_source.setdefault(source, set()).add(target)
     clusters: dict[str, str] = {}
     for source, wallets in sorted(by_source.items()):
-        if min_wallets <= len(wallets) <= hub_cutoff:
+        if not min_wallets <= len(wallets) <= hub_cutoff:
+            continue
+        members = set(wallets)
+        if wallet_mints is not None:
+            per_mint: dict[str, set[str]] = {}
             for wallet in wallets:
-                clusters.setdefault(wallet, f"funder:{source[:8]}:{len(wallets)}")
+                for mint in wallet_mints.get(wallet, ()):
+                    per_mint.setdefault(mint, set()).add(wallet)
+            members = set().union(
+                *(group for group in per_mint.values() if len(group) >= min_wallets)
+            )
+        for wallet in sorted(members):
+            clusters.setdefault(wallet, f"funder:{source[:8]}:{len(wallets)}")
     return clusters
 
 
