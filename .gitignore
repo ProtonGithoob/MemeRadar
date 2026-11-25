@@ -33,3 +33,6 @@ scripts/nohup.out
 /.codex/logs/
 /.codex/runtime/
 /.codex/telegram.env
+
+# test byproduct (tests/unit/test_paper_*worker*.py)
+paper-worker-fixture.db
