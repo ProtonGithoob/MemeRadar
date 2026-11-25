@@ -648,6 +648,15 @@ def _config_view(row: ConfigVersionRow) -> ConfigVersionView:
     )
 
 
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return Decimal(str(value))
+    except (ArithmeticError, ValueError):
+        return None
+
 class SqlAlchemyReadQueryService(ReadQueryPort):
     """Read-only query service backed by the existing normalized tables."""
 
@@ -1688,10 +1697,71 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
             timelines={token_id: normalized_entries}
         ).list_timeline(token_id, query)
 
+    async def _profile_wallet_views(self, address: str | None = None) -> list[WalletView]:
+        """Latest persisted point-in-time wallet profile per wallet.
+
+        Profiles are heuristic research classifications: the view carries no
+        score, says so in its reason codes, and maps risk categories to the
+        BLOCKED tier so they can never be read as copy candidates.
+        """
+
+        query = select(ObservationRow).where(ObservationRow.kind == "wallet.profile")
+        if address is not None:
+            query = query.where(
+                ObservationRow.normalized_payload["wallet"].as_string() == address
+            )
+        query = query.order_by(ObservationRow.observed_at.desc()).limit(5000)
+        async with self._session_factory() as session:
+            rows = (await session.scalars(query)).all()
+        now = ensure_utc(self._clock(), "wallet read")
+        views: dict[str, WalletView] = {}
+        for row in rows:
+            payload = row.normalized_payload
+            wallet = payload.get("wallet")
+            if not isinstance(wallet, str) or wallet in views:
+                continue
+            categories = [str(c) for c in payload.get("categories") or ()]
+            as_of = ensure_utc(row.observed_at, "profile as_of")
+            risk = bool(payload.get("risk_only"))
+            tier = (
+                "BLOCKED" if risk
+                else "CANDIDATE" if "EARLY_SMART_MONEY_CANDIDATE" in categories
+                else "CANDIDATE"
+            )
+            try:
+                views[wallet] = WalletView(
+                    address=wallet,
+                    label=", ".join(categories)[:256] or "UNKNOWN",
+                    registry_tier="CANDIDATE",
+                    recommended_tier=tier,
+                    as_of=as_of,
+                    expires_at=as_of + timedelta(hours=24),
+                    score=None,
+                    sample_count=int(payload.get("tokens_traded") or 0),
+                    known_outcome_count=int(payload.get("observable_outcome_tokens") or 0),
+                    win_rate=_decimal_or_none(payload.get("win_rate")),
+                    realized_pnl=_decimal_or_none(payload.get("realized_pnl_sol")),
+                    quality_state=(
+                        QualityState.FRESH if now - as_of <= timedelta(hours=24)
+                        else QualityState.STALE
+                    ),
+                    reason_codes=(*categories, "HEURISTIC_CLASSIFICATION_NOT_CALIBRATED"),
+                    evidence_refs=(row.source_id,),
+                )
+            except (TypeError, ValueError):
+                continue
+        return list(views.values())
+
     async def list_wallets(self, query: WalletQuery) -> Page[WalletView]:
-        return await self._catalog.list_wallets(query)
+        profile_views = await self._profile_wallet_views()
+        if not profile_views:
+            return await self._catalog.list_wallets(query)
+        return await InMemoryReadQueryService(wallets=profile_views).list_wallets(query)
 
     async def get_wallet(self, address: str) -> WalletView | None:
+        views = await self._profile_wallet_views(address)
+        if views:
+            return views[0]
         return await self._catalog.get_wallet(address)
 
     async def find_tokens_by_address(

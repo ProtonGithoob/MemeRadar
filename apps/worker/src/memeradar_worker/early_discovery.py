@@ -58,6 +58,7 @@ from memeradar_application.stream_integrity import (
     StreamIntegrityCoordinator,
 )
 from memeradar_application.token_security import TokenSecurityEvaluator
+from memeradar_application.wallet_intelligence import signal_features_from_categories
 from memeradar_domain import (
     Candidate,
     Chain,
@@ -103,6 +104,11 @@ from .operations_jobs import LOGGER, Sleep, _run_solana_ingestion_health, sleep_
 from .pre_identity_rejection import (
     build_pre_identity_rejection_observation,
     reconcile_pre_identity_page,
+)
+from .wallet_profile_store import (
+    load_profile_categories,
+    signal_features_observation,
+    tape_buyers,
 )
 
 _EARLY_QUOTE_PROBE_LAMPORTS = Decimal("10000000")  # 0.01 SOL; read-only route probe.
@@ -1400,6 +1406,27 @@ def _is_trade_tape_row(row: ObservationRow) -> bool:
     )
 
 
+async def _wallet_signal_features(
+    engine: AsyncEngine,
+    market_observations: Sequence[Observation],
+    *,
+    as_of: datetime,
+) -> dict[str, object] | None:
+    """Point-in-time wallet features for the tape buyers, or None if unavailable."""
+
+    buyers = tape_buyers(market_observations)
+    if not buyers:
+        return None
+    try:
+        categories = await load_profile_categories(engine, buyers, as_of=as_of)
+    except Exception as error:  # noqa: BLE001 - optional research evidence
+        LOGGER.warning("wallet_profile_lookup_failed", extra={"error_class": type(error).__name__})
+        return None
+    if not categories:
+        return None
+    return signal_features_from_categories(categories, buyers)
+
+
 async def _run_early_lifecycle_reevaluation(
     stop_event: asyncio.Event,
     settings: Settings,
@@ -1480,6 +1507,16 @@ async def _run_early_lifecycle_reevaluation(
                             ),
                         )
                     )
+                wallet_features = await _wallet_signal_features(
+                    engine, market_observations, as_of=scheduled_at
+                )
+                if wallet_features is not None and settings.wallet_intelligence_scoring_enabled:
+                    # Opt-in only: heuristic wallet counts reach the scorer
+                    # after the owner enables them; otherwise they are shadow
+                    # evidence recorded below for ablation.
+                    for key in ("raw_smart_wallet_count", "independent_smart_wallet_count"):
+                        if key in wallet_features:
+                            safety_evidence[key] = wallet_features[key]
                 evaluated_at = datetime.now(UTC)
                 caller_token = _caller_research_token(launch_observation)
                 launch_slot = launch.slot if launch.slot is not None else 0
@@ -1535,6 +1572,20 @@ async def _run_early_lifecycle_reevaluation(
                                 result=result,
                             )
                             await unit_of_work.observations.add(reevaluation)
+                            if wallet_features is not None:
+                                await unit_of_work.observations.add(
+                                    signal_features_observation(
+                                        mint=mint,
+                                        offset_seconds=offset,
+                                        at=scheduled_at,
+                                        features={
+                                            **wallet_features,
+                                            "applied_to_scoring": (
+                                                settings.wallet_intelligence_scoring_enabled
+                                            ),
+                                        },
+                                    )
+                                )
                             await unit_of_work.commit()
                         finally:
                             stores.clear()
