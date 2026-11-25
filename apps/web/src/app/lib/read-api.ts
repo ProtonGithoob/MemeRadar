@@ -3049,6 +3049,100 @@ export function isValidWalletAddress(address: string): boolean {
     : /^0x[0-9a-fA-F]{40}$/.test(raw);
 }
 
+export interface RegistryOutcomeRecord {
+  horizon: string;
+  outcome: string;
+  peakMultiple: number | null;
+  censorReason: string | null;
+}
+
+export interface WinnerRegistryRecord {
+  mint: string;
+  launchAt: string;
+  migratedAt: string | null;
+  tradeCount: number;
+  uniqueBuyers: number;
+  initialMarketCapSol: number | null;
+  peakMarketCapSol: number | null;
+  historyComplete: boolean | null;
+  ammTradesDecoded: boolean | null;
+  outcomes: RegistryOutcomeRecord[];
+  asOf: string;
+}
+
+const REGISTRY_OUTCOMES = new Set([
+  "NO_MOVE", "2x", "5x", "10x", "20x", "50x", "100x+", "CENSORED", "PENDING"
+]);
+
+function parseRegistryOutcome(value: unknown): RegistryOutcomeRecord | null {
+  if (!isRecord(value)) return null;
+  const horizon = boundedString(value.horizon, 16);
+  const outcome = boundedString(value.outcome, 16);
+  const peak = value.peak_multiple === null || value.peak_multiple === undefined
+    ? null : Number(value.peak_multiple);
+  const censor = value.censor_reason === null || value.censor_reason === undefined
+    ? null : boundedString(value.censor_reason, 64);
+  if (horizon === null || outcome === null || !REGISTRY_OUTCOMES.has(outcome)) return null;
+  if (peak !== null && (!Number.isFinite(peak) || peak < 0)) return null;
+  return { horizon, outcome, peakMultiple: peak, censorReason: censor };
+}
+
+function optionalSol(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+export function parseWinnerRegistryRecord(value: unknown): WinnerRegistryRecord | null {
+  if (!isRecord(value)) return null;
+  const mint = boundedString(value.mint, 64);
+  const launchAt = timestamp(value.launch_at);
+  const asOf = timestamp(value.as_of);
+  const migratedRaw = value.migrated_at;
+  const migratedAt = migratedRaw === null || migratedRaw === undefined ? null : timestamp(migratedRaw);
+  const migratedInvalid = migratedRaw !== null && migratedRaw !== undefined && migratedAt === null;
+  const tradeCount = integer(value.trade_count, 0, 10_000_000);
+  const uniqueBuyers = integer(value.unique_buyers, 0, 10_000_000);
+  const rawOutcomes = Array.isArray(value.outcomes) ? value.outcomes.slice(0, 16) : null;
+  const outcomes = rawOutcomes?.map(parseRegistryOutcome) ?? null;
+  const completeness = isRecord(value.data_completeness) ? value.data_completeness : {};
+  if (
+    mint === null || !SOLANA_ADDRESS_PATTERN.test(mint) || launchAt === null || asOf === null ||
+    migratedInvalid || tradeCount === null || uniqueBuyers === null ||
+    outcomes === null || outcomes.some((o) => o === null)
+  ) {
+    return null;
+  }
+  return {
+    mint,
+    launchAt,
+    migratedAt,
+    tradeCount,
+    uniqueBuyers,
+    initialMarketCapSol: optionalSol(value.initial_market_cap_sol),
+    peakMarketCapSol: optionalSol(value.peak_market_cap_sol),
+    historyComplete: typeof completeness.history_complete === "boolean"
+      ? completeness.history_complete : null,
+    ammTradesDecoded: typeof completeness.amm_trades_decoded === "boolean"
+      ? completeness.amm_trades_decoded : null,
+    outcomes: outcomes as RegistryOutcomeRecord[],
+    asOf
+  };
+}
+
+function parseWinnerRegistry(value: unknown): WinnerRegistryRecord[] | null {
+  if (!isRecord(value) || !Array.isArray(value.items)) return null;
+  const items = value.items.slice(0, 500).map(parseWinnerRegistryRecord);
+  return items.some((item) => item === null) ? null : (items as WinnerRegistryRecord[]);
+}
+
+export async function fetchWinnerRegistry(): Promise<ReadResult<WinnerRegistryRecord[]>> {
+  const query = singleQuery();
+  query.set("limit", "200");
+  const url = endpoint("/v1/research/extreme-winner-registry", query);
+  return url === null ? configuredFailure() : request(url, parseWinnerRegistry);
+}
+
 export async function fetchWallets(
   filters: WalletFilters = {}
 ): Promise<ReadResult<ReadPage<WalletRecord>>> {

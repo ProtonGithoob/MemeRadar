@@ -421,6 +421,21 @@ def build_read_router(
         page = await _call(_require_service(service).list_timeline(token_id, query))
         return _page_response(page, _timeline_response)
 
+    @router.get("/research/extreme-winner-registry")
+    async def list_winner_registry(
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    ) -> dict[str, object]:
+        items = await _call(_require_service(service).list_winner_registry(limit))
+        return {
+            "items": [dict(item) for item in items],
+            "semantics": {
+                "price": "CURVE_OR_POOL_RESERVE_REFERENCE_SOL",
+                "population": "ALL_RESEARCHED_LAUNCHES_INCLUDING_NON_MOVERS",
+                "outcome_status": "PENDING and CENSORED are not outcomes",
+                "evidence": "VERIFIED_ONCHAIN_TRADES",
+            },
+        }
+
     @router.get("/wallets", response_model=PageResponse[WalletResponse])
     async def list_wallets(
         params: Annotated[WalletQueryParams, Query()],

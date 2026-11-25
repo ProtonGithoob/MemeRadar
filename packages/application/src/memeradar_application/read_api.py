@@ -157,6 +157,8 @@ class ReadQueryPort(Protocol):
 
     async def get_shortest_path(self, query: ShortestPathQuery) -> Mapping[str, object] | None: ...
 
+    async def list_winner_registry(self, limit: int = 100) -> tuple[Mapping[str, object], ...]: ...
+
 
 def _candidate_cursor(value: CandidateView) -> tuple[str, ...]:
     return (
@@ -905,6 +907,11 @@ class InMemoryReadQueryService:
                 else datetime.now(UTC)
             ),
         )
+
+    async def list_winner_registry(self, limit: int = 100) -> tuple[Mapping[str, object], ...]:
+        """No research registry is held in memory."""
+
+        return ()
 
     async def get_shortest_path(self, query: ShortestPathQuery) -> Mapping[str, object] | None:
         if not isinstance(query, ShortestPathQuery):

@@ -114,3 +114,39 @@ def test_wallet_read_api_serves_persisted_profiles_with_risk_blocked_and_no_scor
             await engine.dispose()
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=30))
+
+
+def test_winner_registry_read_returns_latest_record_per_token() -> None:
+    pytest.importorskip("aiosqlite")
+    from memeradar_domain import Observation, Provenance, QualityState
+    from memeradar_persistence import SqlAlchemyUnitOfWork
+    from memeradar_persistence.read_queries import SqlAlchemyReadQueryService
+
+    def row(mint: str, at: datetime, outcome: str) -> Observation:
+        return Observation(
+            kind="wallet.registry",
+            provenance=Provenance(provider="fixture", source_id=f"{mint}:{at.isoformat()}",
+                                  observed_at=at, parser_version="fixture"),
+            occurred_at=at, observed_at=at, ingested_at=at, quality_state=QualityState.FRESH,
+            normalized_payload={"mint": mint, "outcomes": [{"horizon": "1h", "outcome": outcome}]},
+        )
+
+    async def scenario() -> None:
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            async with SqlAlchemyUnitOfWork(engine) as unit_of_work:
+                for observation in (row("A", T0, "PENDING"),
+                                    row("A", T0 + timedelta(hours=2), "NO_MOVE"),
+                                    row("B", T0, "10x")):
+                    await unit_of_work.observations.add(observation)
+                await unit_of_work.commit()
+            items = await SqlAlchemyReadQueryService(engine).list_winner_registry(10)
+            by_mint = {item["mint"]: item for item in items}
+            assert set(by_mint) == {"A", "B"}  # non-movers are part of the registry
+            assert by_mint["A"]["outcomes"][0]["outcome"] == "NO_MOVE"
+        finally:
+            await engine.dispose()
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=30))

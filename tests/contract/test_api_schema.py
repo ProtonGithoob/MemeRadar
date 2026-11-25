@@ -61,6 +61,7 @@ def test_business_routes_use_v1_and_mutations_are_explicitly_allow_listed() -> N
         "/v1/wallet-graph/shortest-path",
         "/v1/wallet-graph/tokens/{mint}",
         "/v1/wallet-graph/wallets/{address}",
+        "/v1/research/extreme-winner-registry",
         "/v1/wallets",
         "/v1/wallets/{address}",
     }

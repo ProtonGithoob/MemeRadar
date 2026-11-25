@@ -81,6 +81,16 @@ export const PARITY_MANIFEST: Record<string, ParityManifestEntry> = {
     frontendFields: ["chain", "address", "tiers", "score", "confidence", "samples", "outcomes", "freshness"],
     omissions: [{ field: "external_label_authority", reason: "labels remain corroborating evidence", status: "INTENTIONALLY_OMITTED" }]
   },
+  "/wallet-research": {
+    backendRoutes: ["/research/extreme-winner-registry", "/wallets"],
+    owner: "WalletResearchDashboard",
+    apiFields: ["mint", "launch_at", "migrated_at", "trade_count", "unique_buyers", "initial_market_cap_sol", "peak_market_cap_sol", "data_completeness", "outcomes"],
+    frontendFields: ["token", "caps", "trades", "migrated", "history", "outcomes", "categories"],
+    omissions: [
+      { field: "copyability_report", reason: "copy backtests are research artifacts, not a live read model", status: "INTENTIONALLY_OMITTED" },
+      { field: "execution_authority", reason: "wallet research cannot authorize execution", status: "EXECUTION_OUT_OF_SCOPE" }
+    ]
+  },
   "/wallets/[address]": {
     backendRoutes: ["/wallets/{address}"],
     owner: "WalletDetailView",

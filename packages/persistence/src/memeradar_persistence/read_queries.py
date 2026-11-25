@@ -1752,6 +1752,31 @@ class SqlAlchemyReadQueryService(ReadQueryPort):
                 continue
         return list(views.values())
 
+    async def list_winner_registry(self, limit: int = 100) -> tuple[Mapping[str, object], ...]:
+        """Latest on-chain registry record per token (all outcomes, not only winners)."""
+
+        bounded = max(1, min(int(limit), 500))
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(ObservationRow)
+                    .where(ObservationRow.kind == "wallet.registry")
+                    .order_by(ObservationRow.observed_at.desc())
+                    .limit(bounded * 10)
+                )
+            ).all()
+        latest: dict[str, Mapping[str, object]] = {}
+        for row in rows:
+            mint = row.normalized_payload.get("mint")
+            if isinstance(mint, str) and mint not in latest:
+                latest[mint] = {
+                    **row.normalized_payload,
+                    "as_of": ensure_utc(row.observed_at, "registry as_of").isoformat(),
+                }
+            if len(latest) >= bounded:
+                break
+        return tuple(latest.values())
+
     async def list_wallets(self, query: WalletQuery) -> Page[WalletView]:
         profile_views = await self._profile_wallet_views()
         if not profile_views:

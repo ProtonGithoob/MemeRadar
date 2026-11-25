@@ -127,6 +127,7 @@ def test_read_api_route_surface_is_bounded_get_only_and_provider_free_at_applica
         "/v1/candidates/{candidate_id}",
         "/v1/tokens/{token_id}",
         "/v1/tokens/{token_id}/timeline",
+        "/v1/research/extreme-winner-registry",
         "/v1/wallets",
         "/v1/wallets/{address}",
         "/v1/creator-reputation/{address}",
