@@ -94,7 +94,9 @@ async def _collect_mint(
     signatures: list[dict[str, object]] = []
     before: str | None = None
     reached_launch = False
-    for _page in range(max(1, max_tx // 1000) + 2):
+    # Page back until the launch signature: the earliest trades are the ones
+    # that identify early buyers, so the cap applies to fetching, not paging.
+    for _page in range(60):
         page = None
         for attempt in range(4):
             try:
@@ -115,12 +117,13 @@ async def _collect_mint(
             reached_launch = True
             break
         before = str(entries[-1]["signature"])
-        if len(signatures) >= max_tx:
-            break
         await asyncio.sleep(0.4)
-    ordered = sorted(signatures, key=lambda e: (int(e["slot"]), str(e["signature"])))[-max_tx:]
-    if len(signatures) > max_tx:
-        reached_launch = False
+    full = sorted(signatures, key=lambda e: (int(e["slot"]), str(e["signature"])))
+    ordered = full[:max_tx]  # launch-forward: oldest first
+    truncated = len(full) > len(ordered)
+    complete_until = (
+        None if not ordered or not truncated else str(ordered[-1].get("block_time"))
+    )
     events: list[OnChainWalletEvent] = []
     missing = 0
     for entry in ordered:
@@ -146,10 +149,13 @@ async def _collect_mint(
             handle.write(json.dumps(_encode(event)) + "\n")
     meta = {
         "mint": mint,
+        "signatures_total": len(full),
         "signatures": len(ordered),
+        "truncated_after_cap": truncated,
+        "complete_until": complete_until,
         "transactions_missing": missing,
         "reached_launch_signature": reached_launch,
-        "history_complete": reached_launch and missing == 0,
+        "history_complete": reached_launch and missing == 0 and not truncated,
         "events": len(events),
     }
     meta_path.write_text(json.dumps(meta))
