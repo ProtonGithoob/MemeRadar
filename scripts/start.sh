@@ -55,7 +55,12 @@ log "Redis host port: ${REDIS_HOST_PORT} (container: 6379)"
 log "API host port: ${API_HOST_PORT} (container: 8000)"
 log "Web host port: ${WEB_HOST_PORT} (container: 3000)"
 
-docker compose -f "${COMPOSE_FILE}" up -d --build --remove-orphans
+if ! docker compose -f "${COMPOSE_FILE}" up -d --build --remove-orphans; then
+  log "Build/start failed. If the error mentions a missing snapshot (\"parent snapshot ... does not exist\"),"
+  log "the Docker build cache is corrupted. Clear it (named volumes are kept) and retry:"
+  log "  docker builder prune -f && ./scripts/start.sh"
+  fail "docker compose up failed."
+fi
 
 log "Waiting up to ${START_TIMEOUT_SECONDS}s for API liveness and readiness..."
 if ! wait_for_health "${API_URL}/health/live" "API liveness" || \
