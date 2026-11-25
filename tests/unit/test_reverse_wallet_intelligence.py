@@ -293,3 +293,22 @@ def test_baselines_skip_the_creator_and_random_runs_without_tracked_signals() ->
     naive = reports["copy_first_non_creator_buyer"].trades
     assert [t.source for t in naive] == ["First"]
     assert reports["random_same_time"].signals == 1
+
+
+def test_decoded_amm_trades_extend_the_path_past_migration() -> None:
+    from dataclasses import replace
+
+    tape = Tape("AMM")
+    tape.buy("A", 0.1, 5)
+    for i in range(20):
+        tape.buy(f"B{i}", 2, 60 + i)
+    late = tape.buy("C", 5, 1200)
+    amm = replace(late, venue="PUMPSWAP", signature="amm-1")
+    events = [*tape.events[:-1], amm]
+    record = build_registry_record(
+        mint="AMM", launch_at=T0, activities=events, now=T0 + timedelta(days=2),
+        history_complete=True, migrated_at=T0 + timedelta(minutes=10),
+    )
+    one_hour = next(o for o in record.outcomes if o.horizon == "1h")
+    assert one_hour.censor_reason is None  # path continues on the decoded AMM
+    assert record.data_completeness["amm_trades_decoded"] is True

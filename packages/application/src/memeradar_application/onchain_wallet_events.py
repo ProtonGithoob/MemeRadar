@@ -316,17 +316,22 @@ def build_registry_record(
     ) / LAMPORTS_PER_SOL
     initial = priced[0][1] if priced else None
     path_end = priced[-1][0] if priced else None
-    if migrated_at is not None:
+    amm_decoded = any(a.venue == "PUMPSWAP" for a in tape)
+    if migrated_at is not None and not amm_decoded:
+        # Without decoded AMM trades the observable path ends at migration.
         migrated = ensure_utc(migrated_at, "migrated_at")
         path_end = migrated if path_end is None else min(path_end, migrated)
     observable_until = (
-        checked_at if history_complete and migrated_at is None else path_end
+        checked_at if history_complete and (migrated_at is None or amm_decoded) else path_end
     )
     outcomes: list[HorizonOutcome] = []
     for name, duration in horizons:
         end = launch + duration
         window = [(t, cap) for t, cap in priced if t <= end]
-        if checked_at < end and (migrated_at is None or ensure_utc(migrated_at, "m") > checked_at):
+        path_cut = migrated_at is not None and not amm_decoded and ensure_utc(
+            migrated_at, "migrated_at"
+        ) <= checked_at
+        if checked_at < end and not path_cut:
             outcomes.append(HorizonOutcome(name, end, OutcomeClass.PENDING, None, None, None,
                                            "HORIZON_NOT_MATURE"))
             continue
@@ -346,7 +351,10 @@ def build_registry_record(
             # a non-move can't be confirmed.
             if outcome is OutcomeClass.NO_MOVE:
                 outcome = OutcomeClass.CENSORED
-            censor = "PATH_ENDS_AT_MIGRATION" if migrated_at else "HISTORY_INCOMPLETE"
+            censor = (
+                "PATH_ENDS_AT_MIGRATION" if migrated_at and not amm_decoded
+                else "HISTORY_INCOMPLETE"
+            )
         outcomes.append(
             HorizonOutcome(
                 horizon=name,
@@ -384,7 +392,7 @@ def build_registry_record(
             "unreconciled_swaps": sum(
                 1 for a in tape if a.reconciliation is not Reconciliation.MATCHED
             ),
-            "amm_trades_decoded": False,
+            "amm_trades_decoded": amm_decoded,
         },
     )
 

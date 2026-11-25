@@ -249,6 +249,11 @@ def backtest(
     tapes: dict[str, list[OnChainWalletEvent]] = defaultdict(list)
     for event in ordered:
         tapes[event.mint].append(event)
+    # Once AMM trades are decoded for a mint, its post-migration path is priced
+    # from pool state; only mints without them keep migration censoring.
+    for mint in list(migrated):
+        if any(e.venue == "PUMPSWAP" for e in tapes.get(mint, ())):
+            migrated.pop(mint)
     first_buys: list[OnChainWalletEvent] = []
     seen: set[tuple[str, str]] = set()
     next_sell: dict[tuple[str, str, datetime], datetime] = {}

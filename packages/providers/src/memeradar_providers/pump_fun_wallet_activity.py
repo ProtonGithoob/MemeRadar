@@ -31,7 +31,9 @@ from .pump_fun_idl import (
     PUMP_FUN_CREATE_V2_ACCOUNT_NAMES,
     PUMP_FUN_PROGRAM_ID,
 )
+from .pump_swap_events import extract_pump_swap_events
 
+_WSOL = "So11111111111111111111111111111111111111112"
 _BENIGN_PROGRAMS = frozenset(
     {
         "11111111111111111111111111111111",
@@ -71,6 +73,19 @@ def _instructions(transaction: Mapping[str, object]) -> list[Mapping[str, object
             if isinstance(values, list):
                 found.extend(i for i in values if isinstance(i, Mapping))
     return found
+
+
+def _pool_owners(meta: Mapping[str, object], mint: str) -> set[str]:
+    """Owners holding both ``mint`` and WSOL in this transaction (AMM pools)."""
+
+    owners: dict[str, set[str]] = defaultdict(set)
+    for key in ("preTokenBalances", "postTokenBalances"):
+        entries = meta.get(key)
+        if isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, Mapping) and isinstance(entry.get("owner"), str):
+                    owners[str(entry["owner"])].add(str(entry.get("mint")))
+    return {owner for owner, mints in owners.items() if mint in mints and _WSOL in mints}
 
 
 def _owner_deltas(meta: Mapping[str, object], mint: str) -> dict[str, int] | None:
@@ -194,6 +209,37 @@ def wallet_activities(
                 evidence=(f"PUMP_TRADE_EVENT:{event.ix_name}",),
             )
         )
+        index += 1
+
+    # PumpSwap (post-graduation AMM) trades: only for a pool that holds this
+    # mint and a WSOL quote, both proven by the transaction's own balances.
+    pools = _pool_owners(meta, mint)
+    for swap in extract_pump_swap_events(logs):
+        if swap.pool not in pools:
+            continue
+        signed = swap.base_amount if swap.is_buy else -swap.base_amount
+        user_delta = None if deltas is None else deltas.get(swap.user, 0)
+        expected[swap.user] += signed
+        reconciliation = (
+            Reconciliation.UNKNOWN if user_delta is None
+            else Reconciliation.MATCHED if user_delta == expected[swap.user]
+            else Reconciliation.MISMATCH
+        )
+        base_after, quote_after = swap.post_trade_reserves
+        activities.append(
+            OnChainWalletEvent(
+                wallet=swap.user, mint=mint, signature=signature, slot=slot,
+                event_index=index, block_time=at,
+                kind=ActivityKind.SWAP_BUY if swap.is_buy else ActivityKind.SWAP_SELL,
+                token_delta_raw=signed,
+                quote_delta_lamports=-swap.quote_amount if swap.is_buy else swap.quote_amount,
+                reconciliation=reconciliation, venue="PUMPSWAP",
+                virtual_sol_reserves=quote_after, virtual_token_reserves=base_after,
+                evidence=(f"PUMPSWAP_TRADE_EVENT:pool={swap.pool}",),
+            )
+        )
+        # The pool's own token movement mirrors the trade.
+        expected.setdefault(swap.pool, 0)
         index += 1
 
     if deltas:
