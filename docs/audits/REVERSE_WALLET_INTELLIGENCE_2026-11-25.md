@@ -218,3 +218,44 @@ None of these numbers is a performance claim. The cohort is a single ~3-minute l
     2e450033d73e206d5ace70f062bb50d8dc97647ed77952550f032341b25e03ab  profiles.json
     de8ff427263e9d41f847116c85fc36a2c8d3667595e3f09da9ba27fee57c5db3  clusters.json
 ```
+
+### 13.1 Re-run after PumpSwap decoding (commit `68c77eb`), supersedes the table above
+
+**What changed:** PumpSwap trade decoding was added in `68c77eb`. The two migrated tokens were re-collected with a 3,000-transaction cap. The originals are kept under `pre-pumpswap-decode/`.
+
+**Collection and classification:**
+
+| Metric | Value |
+| --- | --- |
+| Complete histories | 31 / 45 |
+| Verified swaps | 3,018 (1,643 buys, 1,375 sells) |
+| Swap reconciliation | 2,987 `MATCHED` (98.97 %), 31 `MISMATCH` |
+| `UNVERIFIED_VENUE` | 507 (down from 654) |
+
+**Graduated tokens:**
+- **`2P4qGGkK…`**: the history is complete and AMM trades are decoded. The 1h outcome is now **20x (20.30), uncensored**, where before it was a lower bound. The 6h, 24h, 7d and 30d horizons are correctly `PENDING`.
+- **`GmRqAzvf…`**: the history is truncated after 3,000 transactions, so its 1h result of 2x (2.78) is still censored as `HISTORY_INCOMPLETE`.
+
+**Wallets:**
+- 427 profiled: 412 `LOW_EVIDENCE`, 36 `CREATOR_LINKED`, 30 `POTENTIAL_WASH_TRADER`, 16 `POTENTIAL_MANIPULATION_CLUSTER`, 2 `POTENTIAL_INSIDER`, 1 `MOMENTUM_TRADER`, 2 `UNKNOWN`.
+- **0** `EARLY_SMART_MONEY_CANDIDATE`.
+
+**Copyability.** Same assumptions as above. No trade is censored any more, because exits after migration are now priced from pool state.
+
+| Strategy | Signals | Priced | No fill | Mean net × | Median net × | ≥2x | ~Total loss | Net PnL (SOL) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tracked wallets | 0 | 0 | 0 | — | — | — | — | 0 |
+| copy first non-creator buyer | 39 | 32 | 7 | 0.894 | 0.939 | 0 % | 0 % | −1.13 |
+| random at the same moments | 39 | 29 | 10 | 0.759 | 0.932 | 0 % | 3.4 % | −2.33 |
+| momentum (≥10 buys in 60 s) | 24 | 21 | 3 | 0.532 | 0.279 | 0 % | 19.0 % | −3.27 |
+
+Momentum's median net multiple fell from 0.56 to 0.28 once post-migration exits were priced instead of censored. Censoring had hidden part of the loss.
+
+### Digests after the re-run (sha256)
+
+```
+    ef97f76f6309af8f1a98ac2b1c20347d1d2dbd34e394d24e8a762f95712798e4  summary.json
+    af7b96832b3ad3ac441efedf7d32724969c006ef0aa99b15ce2ecebee711c760  registry.json
+    5fd3c824351c3363e5947da129bbdd55eaa35abcdac3ad2312aba34ade571dd3  profiles.json
+    d0d2c232f8be3754885f028dcc7658e80b273bdb74519bddb7041f3da85aad5a  clusters.json
+```

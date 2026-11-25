@@ -16,6 +16,26 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**PUMPSWAP_DECODE_2026-11-25:** PumpSwap (`pump_amm`) trades are now
+decoded (commit `68c77eb`).
+
+How it works:
+- `BuyEvent` and `SellEvent` are read from the official IDL `639b87f`, only
+  while `pAMMBay6…` is the executing program.
+- Event reserves are pre-trade. This was verified against pool balances.
+- AMM trades become reconciled swaps, and pool reserves give the reference
+  price.
+
+Effect on registry outcomes and copy exits:
+- They are no longer censored at migration.
+- The graduated pilot token `2P4qGGkK…` now has an uncensored 1h outcome of
+  20.30x.
+- In the pilot re-run, momentum's median copy net multiple fell from 0.56 to
+  0.28 once post-migration exits were priced; censoring had hidden part of the
+  loss.
+
+Real buy and sell fixtures are covered by 6 tests. Unit suite: 1,868 passed.
+
 **REVERSE_WALLET_INTELLIGENCE_2026-11-25:** Goal:
 [REVERSE_WALLET_INTELLIGENCE_GOAL](goals/REVERSE_WALLET_INTELLIGENCE_GOAL.md).
 Report: [REVERSE_WALLET_INTELLIGENCE_2026-11-25](audits/REVERSE_WALLET_INTELLIGENCE_2026-11-25.md).
