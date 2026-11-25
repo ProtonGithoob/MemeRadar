@@ -473,6 +473,7 @@ class Settings:
     social_collection_enabled: bool = False
     lifecycle_watch_enabled: bool = True
     wallet_intelligence_scoring_enabled: bool = False
+    wallet_research_enabled: bool = False
     narrative_provider: str = "ollama"
     narrative_api_url: str = "http://host.docker.internal:11434"
     narrative_api_key: str | None = None
@@ -748,6 +749,9 @@ class Settings:
             wallet_intelligence_scoring_enabled=_parse_bool(
                 "WALLET_INTELLIGENCE_SCORING_ENABLED",
                 values.get("WALLET_INTELLIGENCE_SCORING_ENABLED", "false"),
+            ),
+            wallet_research_enabled=_parse_bool(
+                "WALLET_RESEARCH_ENABLED", values.get("WALLET_RESEARCH_ENABLED", "false")
             ),
             narrative_provider=configured_narrative_provider,
             narrative_api_url=legacy_narrative_url or "http://host.docker.internal:11434",

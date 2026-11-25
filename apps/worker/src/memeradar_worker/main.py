@@ -33,6 +33,7 @@ from .operations_jobs import _run_solana_ingestion_health as _run_solana_ingesti
 from .paper_execution import _run_paper_auto
 from .social_collection import run_social_collection
 from .telegram_commands import TelegramCommandWorker
+from .wallet_research import HistoryCollector, WalletResearchWorker
 
 
 async def run_worker(
@@ -67,6 +68,8 @@ async def run_worker(
         workers.append(_run_lifecycle_watch(stop_event, settings, sleeper=sleeper))
     if _alert_delivery_is_configured(settings):
         workers.append(_run_telegram_commands(stop_event, settings, sleeper=sleeper))
+    if settings.wallet_research_enabled and settings.database_url and settings.solana_rpc_url:
+        workers.append(_run_wallet_research(stop_event, settings, sleeper=sleeper))
     if settings.paper_auto_policy is not None:
         workers.append(_run_paper_auto(stop_event, settings, sleeper=sleeper))
     if workers:
@@ -173,6 +176,29 @@ async def _run_lifecycle_watch(
             await bundle.aclose()
         if engine is not None:
             await engine.dispose()
+
+
+async def _run_wallet_research(
+    stop_event: asyncio.Event,
+    settings: Settings,
+    *,
+    sleeper: Sleep,
+) -> None:
+    """Daily, opt-in reverse wallet research over 24-48 h old launches."""
+
+    assert settings.database_url is not None
+    engine = create_database_engine(settings.database_url)
+    bundle = None
+    try:
+        bundle = build_provider_bundle(settings)
+        worker = WalletResearchWorker(engine, HistoryCollector(bundle.solana_rpc))
+        await worker.run(stop_event, interval_seconds=24 * 3600, sleeper=sleeper)
+    except Exception as error:  # noqa: BLE001 - optional research loop
+        LOGGER.warning("wallet_research_setup_failed", extra={"error_class": type(error).__name__})
+    finally:
+        if bundle is not None:
+            await bundle.aclose()
+        await engine.dispose()
 
 
 async def _run_telegram_commands(

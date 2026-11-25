@@ -811,11 +811,17 @@ class AlertRenderer:
             pnl = _safe_display(pnl_value)
             if pnl:
                 lines.append(f"PnL: {pnl}")
-        if alert.type in {AlertType.REVIVAL_WATCH, AlertType.MANUAL_EXIT}:
+        if alert.type in {
+            AlertType.REVIVAL_WATCH,
+            AlertType.MANUAL_EXIT,
+            AlertType.WALLET_RESEARCH,
+        }:
             advisory = _safe_lines(payload.get("advisory_lines"), max_items=12)
             lines.extend(advisory)
             if alert.type is AlertType.REVIVAL_WATCH:
                 lines.append("WATCH EVIDENCE ONLY - NOT ENTRY_READY")
+            elif alert.type is AlertType.WALLET_RESEARCH:
+                lines.append("HEURISTIC RESEARCH - NOT CALIBRATED")
             else:
                 lines.append("ADVISORY ONLY - YOU EXECUTE MANUALLY")
         if alert.type is AlertType.EARLY_WATCH:

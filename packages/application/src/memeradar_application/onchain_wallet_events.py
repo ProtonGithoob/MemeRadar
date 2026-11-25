@@ -123,6 +123,44 @@ class OnChainWalletEvent:
         return price * PUMP_FUN_TOTAL_SUPPLY_RAW / LAMPORTS_PER_SOL
 
 
+def encode_event(event: OnChainWalletEvent) -> dict[str, object]:
+    return {
+        "wallet": event.wallet, "mint": event.mint, "signature": event.signature,
+        "slot": event.slot, "event_index": event.event_index,
+        "block_time": event.block_time.isoformat(), "kind": event.kind.value,
+        "token_delta_raw": event.token_delta_raw,
+        "quote_delta_lamports": event.quote_delta_lamports,
+        "reconciliation": event.reconciliation.value, "venue": event.venue,
+        "virtual_sol_reserves": event.virtual_sol_reserves,
+        "virtual_token_reserves": event.virtual_token_reserves,
+        "evidence": list(event.evidence),
+    }
+
+
+def _evidence_tuple(value: object) -> tuple[str, ...]:
+    if isinstance(value, list | tuple):
+        return tuple(str(item) for item in value)
+    return ()
+
+
+def decode_event(row: Mapping[str, object]) -> OnChainWalletEvent:
+    def optional_int(value: object) -> int | None:
+        return None if value is None else int(str(value))
+
+    return OnChainWalletEvent(
+        wallet=str(row["wallet"]), mint=str(row["mint"]), signature=str(row["signature"]),
+        slot=int(str(row["slot"])), event_index=int(str(row["event_index"])),
+        block_time=datetime.fromisoformat(str(row["block_time"])),
+        kind=ActivityKind(str(row["kind"])), token_delta_raw=int(str(row["token_delta_raw"])),
+        quote_delta_lamports=optional_int(row.get("quote_delta_lamports")),
+        reconciliation=Reconciliation(str(row["reconciliation"])),
+        venue=str(row.get("venue") or "UNKNOWN"),
+        virtual_sol_reserves=optional_int(row.get("virtual_sol_reserves")),
+        virtual_token_reserves=optional_int(row.get("virtual_token_reserves")),
+        evidence=_evidence_tuple(row.get("evidence")),
+    )
+
+
 def deduplicate(activities: Iterable[OnChainWalletEvent]) -> tuple[OnChainWalletEvent, ...]:
     """Provider overlap and replays must not double-count a trade."""
 
@@ -419,5 +457,7 @@ __all__ = [
     "assumption_hash",
     "build_registry_record",
     "curve_state_before",
+    "decode_event",
     "deduplicate",
+    "encode_event",
 ]

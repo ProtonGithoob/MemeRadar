@@ -37,6 +37,7 @@ class AlertType(str, Enum):
     EARLY_ALPHA = "EARLY_ALPHA"
     REVIVAL_WATCH = "REVIVAL_WATCH"
     MANUAL_EXIT = "MANUAL_EXIT"
+    WALLET_RESEARCH = "WALLET_RESEARCH"
 
 
 class AlertSeverity(str, Enum):

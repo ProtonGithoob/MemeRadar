@@ -63,7 +63,9 @@ def _is_relevant_token_alert(event: EventEnvelope, *, now: datetime | None = Non
     )
 
 
-LIFECYCLE_ALERT_TYPES = frozenset({AlertType.REVIVAL_WATCH.value, AlertType.MANUAL_EXIT.value})
+LIFECYCLE_ALERT_TYPES = frozenset(
+    {AlertType.REVIVAL_WATCH.value, AlertType.MANUAL_EXIT.value, AlertType.WALLET_RESEARCH.value}
+)
 LIFECYCLE_ALERT_MAX_AGE = timedelta(minutes=10)
 
 
@@ -227,7 +229,7 @@ async def _run_alert_outbox(
             enabled_types=frozenset({
                 AlertType.EARLY_WATCH, AlertType.STRONG_SETUP,
                 AlertType.HIGH_CONFLUENCE, AlertType.ENTRY_READY,
-                AlertType.REVIVAL_WATCH, AlertType.MANUAL_EXIT,
+                AlertType.REVIVAL_WATCH, AlertType.MANUAL_EXIT, AlertType.WALLET_RESEARCH,
             }),
         ),
         destination=settings.telegram_chat_id,

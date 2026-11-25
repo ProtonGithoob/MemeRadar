@@ -35,7 +35,9 @@ from memeradar_application.onchain_wallet_events import (
     OnChainWalletEvent,
     Reconciliation,
     build_registry_record,
+    decode_event,
     deduplicate,
+    encode_event,
 )
 from memeradar_application.provider_contracts import ProviderRequestContext
 from memeradar_application.wallet_copyability import CopyPolicy, backtest
@@ -45,8 +47,8 @@ from memeradar_application.wallet_intelligence import (
     build_profiles,
     co_buy_clusters,
 )
-from memeradar_providers.pump_fun_wallet_activity import wallet_activities
 from memeradar_providers.solana_rpc import SolanaRpcAdapter
+from memeradar_providers.token_history_collector import collect_token_history
 
 
 def _ctx(label: str) -> ProviderRequestContext:
@@ -56,32 +58,8 @@ def _ctx(label: str) -> ProviderRequestContext:
     )
 
 
-def _encode(event: OnChainWalletEvent) -> dict[str, object]:
-    return {
-        "wallet": event.wallet, "mint": event.mint, "signature": event.signature,
-        "slot": event.slot, "event_index": event.event_index,
-        "block_time": event.block_time.isoformat(), "kind": event.kind.value,
-        "token_delta_raw": event.token_delta_raw,
-        "quote_delta_lamports": event.quote_delta_lamports,
-        "reconciliation": event.reconciliation.value, "venue": event.venue,
-        "virtual_sol_reserves": event.virtual_sol_reserves,
-        "virtual_token_reserves": event.virtual_token_reserves,
-        "evidence": list(event.evidence),
-    }
-
-
-def _decode(row: dict[str, object]) -> OnChainWalletEvent:
-    return OnChainWalletEvent(
-        wallet=str(row["wallet"]), mint=str(row["mint"]), signature=str(row["signature"]),
-        slot=int(row["slot"]), event_index=int(row["event_index"]),  # type: ignore[arg-type]
-        block_time=datetime.fromisoformat(str(row["block_time"])),
-        kind=ActivityKind(row["kind"]), token_delta_raw=int(row["token_delta_raw"]),  # type: ignore[arg-type]
-        quote_delta_lamports=row["quote_delta_lamports"],  # type: ignore[arg-type]
-        reconciliation=Reconciliation(row["reconciliation"]), venue=str(row["venue"]),
-        virtual_sol_reserves=row["virtual_sol_reserves"],  # type: ignore[arg-type]
-        virtual_token_reserves=row["virtual_token_reserves"],  # type: ignore[arg-type]
-        evidence=tuple(row.get("evidence") or ()),  # type: ignore[arg-type]
-    )
+_encode = encode_event
+_decode = decode_event
 
 
 async def _collect_mint(
@@ -91,73 +69,13 @@ async def _collect_mint(
     meta_path = out / f"{mint}.meta.json"
     if meta_path.exists():
         return json.loads(meta_path.read_text())
-    signatures: list[dict[str, object]] = []
-    before: str | None = None
-    reached_launch = False
-    # Page back until the launch signature: the earliest trades are the ones
-    # that identify early buyers, so the cap applies to fetching, not paging.
-    for _page in range(60):
-        page = None
-        for attempt in range(4):
-            try:
-                page = await rpc.fetch_signatures_for_address(
-                    mint, context=_ctx("sigs"), limit=1000, before=before
-                )
-                break
-            except Exception:  # noqa: BLE001 - retried, then recorded
-                await asyncio.sleep(2 * (attempt + 1))
-        if page is None:
-            break
-        entries = list(page.normalized_payload.get("signatures") or ())
-        if not entries:
-            reached_launch = True
-            break
-        signatures.extend(entries)
-        if any(entry["signature"] == launch_signature for entry in entries):
-            reached_launch = True
-            break
-        before = str(entries[-1]["signature"])
-        await asyncio.sleep(0.4)
-    full = sorted(signatures, key=lambda e: (int(e["slot"]), str(e["signature"])))
-    ordered = full[:max_tx]  # launch-forward: oldest first
-    truncated = len(full) > len(ordered)
-    complete_until = (
-        None if not ordered or not truncated else str(ordered[-1].get("block_time"))
+    history = await collect_token_history(
+        rpc, mint, launch_signature=launch_signature, max_tx=max_tx
     )
-    events: list[OnChainWalletEvent] = []
-    missing = 0
-    for entry in ordered:
-        signature = str(entry["signature"])
-        transaction = None
-        for attempt in range(4):
-            try:
-                transaction = await rpc.fetch_transaction_payload(
-                    signature, context=_ctx("tx"), commitment="finalized"
-                )
-                if transaction is not None:
-                    break
-            except Exception:  # noqa: BLE001 - retried, then counted missing
-                pass
-            await asyncio.sleep(1.5 * (attempt + 1))
-        if transaction is None:
-            missing += 1
-            continue
-        events.extend(wallet_activities(transaction, mint=mint, signature=signature))
-        await asyncio.sleep(0.12)
     with cache.open("w") as handle:
-        for event in events:
+        for event in history.events:
             handle.write(json.dumps(_encode(event)) + "\n")
-    meta = {
-        "mint": mint,
-        "signatures_total": len(full),
-        "signatures": len(ordered),
-        "truncated_after_cap": truncated,
-        "complete_until": complete_until,
-        "transactions_missing": missing,
-        "reached_launch_signature": reached_launch,
-        "history_complete": reached_launch and missing == 0 and not truncated,
-        "events": len(events),
-    }
+    meta = history.meta()
     meta_path.write_text(json.dumps(meta))
     return meta
 
