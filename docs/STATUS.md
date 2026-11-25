@@ -16,6 +16,46 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**REVERSE_WALLET_INTELLIGENCE_2026-11-25:** Goal:
+[REVERSE_WALLET_INTELLIGENCE_GOAL](goals/REVERSE_WALLET_INTELLIGENCE_GOAL.md).
+Report: [REVERSE_WALLET_INTELLIGENCE_2026-11-25](audits/REVERSE_WALLET_INTELLIGENCE_2026-11-25.md).
+
+Implemented:
+- verified on-chain wallet events: swaps reconciled to balances; a token
+  receipt is never treated as a buy;
+- an on-chain extreme-winner registry that includes non-movers and censors
+  at migration;
+- point-in-time wallet profiles with UNKNOWN cost basis;
+- evidence-based categories, where risk categories exclude smart-money
+  status;
+- co-buy clusters;
+- a walk-forward copyability backtest against baselines;
+- shadow-mode runtime features (`WALLET_INTELLIGENCE_SCORING_ENABLED=false`);
+- risk tightening (`WALLET_MANIPULATION_EVIDENCE` → CAUTION);
+- `/wallets` now served from persisted profiles.
+
+Real pilot on the 45-launch M1 cohort:
+
+| Metric | Result |
+| --- | --- |
+| Verified swaps | 2,811 |
+| Reconciled to balances | 99.2 % |
+| Wallets profiled | 395 |
+| Validated smart-money candidates | 0 (one window cannot show repeatability) |
+| Naive copy-first-buyer, mean net × | 0.894 |
+| Random, mean net × | 0.800 |
+| Momentum, mean net × | 0.575 |
+
+The copy results are after 17 s of delay and costs. This is a small,
+immature sample, not a performance claim.
+
+Tests: unit 1,860, PostgreSQL integration 35/35. No migration. Modes
+unchanged.
+
+Open: daily cohort collection on the host, label maturation, PumpSwap
+decoding, a funding-graph crawl, dashboard pages for the registry and
+copyability.
+
 **EARLY_ALPHA_PLAN_2026-11-25:** Progress and gate ledger:
 [EARLY_ALPHA_PLAN_PROGRESS_2026-11-25](audits/EARLY_ALPHA_PLAN_PROGRESS_2026-11-25.md).
 

@@ -114,3 +114,107 @@ No PAPER fills were produced from wallet signals, because no candidate qualifies
 - **Helius, Bitquery, Yellowstone.** Not added. There is no measured incremental value yet, and Bitquery and Helius history need keys.
 - **Dashboard.** The existing `/wallets` pages now have data. A registry page and copyability reports in the web app are not built.
 - **Robinhood Chain.** No verified launchpad or factory addresses exist yet.
+
+## 13. Pilot run on real mainnet data (`HISTORICAL_REAL_PILOT_SMALL_SAMPLE`)
+
+**Run:** `artifacts/research/2026-11-25-reverse-wallet-pilot`
+
+**Command:**
+```
+scripts/reverse_wallet_research.py --cohort artifacts/research/2026-11-25-m1-window2 --max-tx-per-mint 1500 --outcome-horizon 1h
+```
+
+**Source:** public publicnode RPC, finalized commitment. Collection exit 0, analysis exit 0.
+
+**Analysis:** 2026-11-25 ≈ 03:30 UTC, about 3 h after the launches.
+
+### Collection and classification
+
+| Metric | Value |
+| --- | --- |
+| Cohort | 45 all-observed launches (M1 window2, digest `sha256:14b06713…`) |
+| Complete histories | 30 / 45 |
+| Truncated | 15. Each has more than 1,500 transactions; the launch-forward part was kept and the cutoff recorded. |
+| Migrations seen on-chain | 2 |
+| Events / verified swaps | 23,457 / 2,811 (1,529 buys, 1,282 sells) |
+| Swap reconciliation | 2,789 `MATCHED` (99.2 %), 22 `MISMATCH`, 0 `UNKNOWN` |
+| Non-swap kinds | 19,898 `FAILED` transactions, 43 `TRANSFER_IN`, 5 `TRANSFER_OUT`, 654 `UNVERIFIED_VENUE`, 44 `CREATE`, 2 `LIQUIDITY_MIGRATION` |
+
+**Failed transactions.** 85 % of fetched transactions failed. They are mostly failed snipe and bot attempts. None of them was counted as a trade.
+
+**Undecoded venues.** The 654 `UNVERIFIED_VENUE` balance moves are post-migration AMM trades and router legs. They were not counted as buys.
+
+### Registry outcomes, 1h after launch
+
+- 19 `NO_MOVE`
+- 6 at 2x, 1 at 5x, 1 at 10x, 1 at 20x
+- 17 `CENSORED` (incomplete or truncated history, or the path ended)
+
+Horizons of 6h and longer are `PENDING` for 43 tokens. The other 2 tokens migrated, so their path ended early: one is a 20x lower bound and one a 2x lower bound. Both are censored, not final.
+
+### Wallets
+
+**Profiled:** 395 wallets with point-in-time profiles. The profiles use the 1h outcome horizon because that is the only mature one.
+
+| Category | Wallets |
+| --- | --- |
+| `LOW_EVIDENCE` | 381 |
+| `CREATOR_LINKED` | 36 |
+| `POTENTIAL_WASH_TRADER` | 23 |
+| `POTENTIAL_MANIPULATION_CLUSTER` | 6 (same-slot co-buying on ≥2 mints) |
+| `POTENTIAL_INSIDER` | 2 |
+| `MOMENTUM_TRADER` | 1 |
+| `UNKNOWN` | 3 |
+| `EARLY_SMART_MONEY_CANDIDATE` | **0** |
+
+One cohort window cannot show cross-token repeatability. A candidate needs at least 3 tokens with an observable outcome, and almost every wallet traded one token in this window. That is the expected result, not a defect.
+
+### Copyability backtest (walk-forward)
+
+Assumptions:
+- delay: 2 s provider latency + 15 s decision delay;
+- size: 0.333 SOL;
+- costs: 125 bps fee and 100 bps slippage per side;
+- exit: follow the wallet's sell, or after a 30-minute hold;
+- assumption hash: `sha256:8594db3a…`.
+
+| Strategy | Signals | Priced fills | No fill | Censored | Mean net × | Median net × | ≥2x | ~Total loss | Net PnL (SOL) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tracked wallets | 0 | 0 | 0 | 0 | — | — | — | — | 0 |
+| copy first non-creator buyer | 39 | 32 | 7 | 0 | 0.894 | 0.939 | 0 % | 0 % | −1.13 |
+| random at the same moments | 39 | 27 | 10 | 2 | 0.800 | 0.932 | 0 % | 3.7 % | −1.79 |
+| momentum (≥10 buys in 60 s) | 24 | 19 | 3 | 2 | 0.575 | 0.564 | 0 % | 15.8 % | −2.69 |
+
+### Interpretation (scope: this pilot only)
+
+- After realistic delay and costs, none of the three naive strategies is profitable on this cohort.
+- Momentum, which buys after a visible burst, does worst. That is consistent with late entry into dumps.
+- There is no validated wallet signal, so the tracked-wallet strategy produced no trades.
+
+None of these numbers is a performance claim. The cohort is a single ~3-minute launch window, and most horizons are immature.
+
+### Before and after
+
+| | Before | After |
+| --- | --- | --- |
+| Live wallet features | UNKNOWN in 100 % of decisions | Recorded as shadow evidence when profiles exist |
+| `/wallets` | Empty | Serves profiles |
+| Manipulation-risk wallets | Not detected | Detected; they demote a launch to CAUTION when they are at least 50 % of profiled buyers |
+| Wallet precision and coverage | — | Not measurable yet: 0 validated candidates and no mature labels |
+
+### Next steps to reach real evidence
+
+1. Run the collector daily on new M1 windows from the operator host.
+2. Persist profiles with `persist_profiles`.
+3. Re-run profiles at 24h and 7d maturity.
+4. Decode PumpSwap trades so post-graduation paths and exits stop being censored.
+5. Only then evaluate `WALLET_INTELLIGENCE_SCORING_ENABLED` by ablation.
+
+### Artifact digests (sha256)
+
+```
+    2a1cd7b658ade16da261c7137d8934153c1ddd3a5ec936503999df08cae93d96  summary.json
+    3a480358180b71f9e863505b542a07421152404e94bae47b6856a42a52effa6c  registry.json
+    2e450033d73e206d5ace70f062bb50d8dc97647ed77952550f032341b25e03ab  profiles.json
+    de8ff427263e9d41f847116c85fc36a2c8d3667595e3f09da9ba27fee57c5db3  clusters.json
+```
