@@ -17,7 +17,7 @@ below; those entries remain as historical evidence.
 **REVERSE_WALLET_INTELLIGENCE (2026-11-25):**
 - **Done:** daily `WalletResearchWorker` (off by default); `WALLET_RESEARCH` Telegram digest; `/wallet-research` registry page and API; PumpSwap decoding; a bounded funding graph that feeds risk-only clusters.
 - **Verification:** `make verify` exit 0; PostgreSQL integration 35/35.
-- **Open:** cohort outcomes mature through 2026-12-25; wallet precision is `NOT_PROVEN`; Robinhood Chain is blocked (no verified addresses); GOAL.md has not been pushed. Details are in `docs/audits/REVERSE_WALLET_INTELLIGENCE_2026-11-25.md` §14.
+- **Open:** cohort outcomes mature through 2026-12-25; wallet precision is `NOT_PROVEN`; Robinhood Chain is blocked (no verified addresses); the operator confirmed that GOAL.md has the same text as `docs/goals/REVERSE_WALLET_INTELLIGENCE_GOAL.md`. Details are in `docs/audits/REVERSE_WALLET_INTELLIGENCE_2026-11-25.md` §14.
 
 ## Historical status entries
 
