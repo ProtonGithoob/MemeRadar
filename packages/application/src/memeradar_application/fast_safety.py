@@ -412,6 +412,16 @@ class FastSafetyGate:
                 blocks.append(code)
                 reasons.append(ReasonCode(code))
 
+        # Heuristic wallet-intelligence evidence can only tighten: when most
+        # profiled buyers carry manipulation-risk categories (creator-linked,
+        # insider, wash, co-buy cluster) the launch drops to CAUTION, which
+        # the alert path already refuses.  It never adds to the score.
+        manipulation_share = _decimal(
+            value("wallet_manipulation_share"), "wallet_manipulation_share"
+        )
+        if manipulation_share is not None and manipulation_share >= Decimal("0.5"):
+            noncritical.append("WALLET_MANIPULATION_EVIDENCE")
+
         social_quality = (
             value("social_quality_state", "quality_state")
             if social is not None

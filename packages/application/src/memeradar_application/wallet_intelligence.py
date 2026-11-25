@@ -577,6 +577,9 @@ def signal_features_from_categories(
     if ordered and coverage >= min_coverage:
         features["raw_smart_wallet_count"] = len(candidates)
         features["independent_smart_wallet_count"] = len(candidates)
+        features["wallet_manipulation_share"] = str(
+            (Decimal(len(risk_buyers)) / Decimal(len(profiled))).quantize(Decimal("0.0001"))
+        )
     return features
 
 

@@ -1510,6 +1510,11 @@ async def _run_early_lifecycle_reevaluation(
                 wallet_features = await _wallet_signal_features(
                     engine, market_observations, as_of=scheduled_at
                 )
+                if wallet_features is not None and "wallet_manipulation_share" in wallet_features:
+                    # Risk tightening is always applied (it can only demote).
+                    safety_evidence["wallet_manipulation_share"] = wallet_features[
+                        "wallet_manipulation_share"
+                    ]
                 if wallet_features is not None and settings.wallet_intelligence_scoring_enabled:
                     # Opt-in only: heuristic wallet counts reach the scorer
                     # after the owner enables them; otherwise they are shadow

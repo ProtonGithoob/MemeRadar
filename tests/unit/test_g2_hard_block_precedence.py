@@ -149,3 +149,12 @@ def test_alert_relevance_rejects_blocked_and_unknown_safety_states() -> None:
                      "safety_status": safety_status},
         )
         assert _is_relevant_token_alert(event, now=NOW) is False
+
+
+def test_wallet_manipulation_evidence_only_demotes_to_caution() -> None:
+    safety, decision, eligible = _decide({**PASSING, "wallet_manipulation_share": "0.6"})
+    assert safety.status is FastSafetyStatus.CAUTION
+    assert "WALLET_MANIPULATION_EVIDENCE" in safety.noncritical_unknowns
+    assert decision.entry_ready is False and eligible is False
+    unaffected, _, still_eligible = _decide({**PASSING, "wallet_manipulation_share": "0.2"})
+    assert unaffected.status is FastSafetyStatus.PASS and still_eligible is True
