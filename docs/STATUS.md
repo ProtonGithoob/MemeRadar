@@ -16,6 +16,25 @@ below; those entries remain as historical evidence.
 
 ## Historical status entries
 
+**EARLY_ALPHA_PLAN_2026-11-25:** Progress and gate ledger:
+[EARLY_ALPHA_PLAN_PROGRESS_2026-11-25](audits/EARLY_ALPHA_PLAN_PROGRESS_2026-11-25.md).
+
+Done:
+
+| Item | Result |
+| --- | --- |
+| M1 two-source bounded launch inventory | Windows of 120 and 400 slots: 12/12 and 45/45 launches agree; 0 unresolved slots; manifest digests rebuild identically |
+| M2 decision-anchored labels | Market mark, size-qualified executable quote peak, and PAPER outcome |
+| M5 graduation | Verified mainnet launch → migrate → PumpSwap case; live stream now fetches Migrate; HOT promotion bug fixed |
+| G2 hard-block precedence | 21/21 fixtures |
+
+Fixed: backfill rejected a whole range when one non-Pump transaction had
+null logs.
+
+Unit suite at `daf629b`: 1,838 passed. G1 partial; G3–G6 pending until mature
+forward evidence exists. The named shadow run must be started on the operator
+host with the frozen hashes listed in the report. Modes unchanged.
+
 **M0_RUNTIME_POSTGRES_2026-11-24:** This is the first milestone of the
 [Early Alpha Intelligence plan](superpowers/plans/2026-11-25-memeradar-early-alpha-intelligence.md).
 Evidence: [M0 report](audits/M0_RUNTIME_POSTGRES_2026-11-24.md), bundle
