@@ -73,7 +73,9 @@ def gaps_affect_slot_range(
 
 # Trade tape events are persisted for later reevaluation but never trigger a
 # runtime pass of their own.
-DEFAULT_PERSIST_ONLY_EVENT_TYPES = frozenset({"trade_event"})
+# Durable evidence consumed by later readers, not by the per-launch early
+# runtime: trade tape (lifecycle reevaluation) and graduation (lifecycle watch).
+DEFAULT_PERSIST_ONLY_EVENT_TYPES = frozenset({"trade_event", "migrate"})
 
 
 class EarlyRuntimeStreamWorker:

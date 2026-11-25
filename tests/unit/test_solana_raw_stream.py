@@ -724,6 +724,20 @@ def test_launch_classification_ignores_create_named_instructions_of_other_progra
     assert source._is_launch_notification(_logs_notification(ordinary_buy)) is False
     assert source._is_launch_notification(_logs_notification(fee_config)) is False
     assert source._is_launch_notification(_logs_notification(aggregated_launch)) is True
+    # Graduation is fetched (rare, needed for the on-chain PumpSwap handoff);
+    # a Migrate logged by another program is not.
+    pump_migrate = [
+        f"Program {PUMP_FUN_PROGRAM_ID} invoke [1]",
+        "Program log: Instruction: Migrate",
+        f"Program {PUMP_FUN_PROGRAM_ID} success",
+    ]
+    foreign_migrate = [
+        f"Program {aggregator} invoke [1]",
+        "Program log: Instruction: Migrate",
+        f"Program {aggregator} success",
+    ]
+    assert source._is_launch_notification(_logs_notification(pump_migrate)) is True
+    assert source._is_launch_notification(_logs_notification(foreign_migrate)) is False
 
 
 def test_reconnect_is_immediate_after_a_healthy_connection_and_backs_off_otherwise() -> None:

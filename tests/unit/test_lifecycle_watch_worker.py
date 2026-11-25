@@ -311,3 +311,33 @@ def test_unavailable_holder_source_alerts_with_explicit_unknown() -> None:
             await engine.dispose()
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=30))
+
+
+def test_on_chain_migration_row_marks_graduation_and_promotes_to_hot() -> None:
+    pytest.importorskip("aiosqlite")
+    from memeradar_application.early_worker import DEFAULT_PERSIST_ONLY_EVENT_TYPES
+    from memeradar_application.lifecycle_watch import Tier
+
+    assert "migrate" in DEFAULT_PERSIST_ONLY_EVENT_TYPES  # stored, not re-scored as launch
+    migrate = _row(
+        "chain.event",
+        T0 + timedelta(hours=3),
+        {"mint_address": MINT, "event_type": "migrate", "instruction_type": "migrate"},
+        program_id=PUMP_FUN_PROGRAM_ID,
+        event_type="migrate",
+    )
+
+    async def scenario() -> None:
+        engine = await _engine(_launch(T0), migrate)
+        try:
+            market = ScriptedMarket()
+            worker = LifecycleWatchWorker(engine, market, clock=lambda: market.now)
+            await worker.collect_once(now=T0 + timedelta(hours=3, minutes=1))
+            state = worker.states[MINT]
+            assert state.migration_seen_at == T0 + timedelta(hours=3)
+            assert state.graduated_at == T0 + timedelta(hours=3)
+            assert state.tier is Tier.HOT
+        finally:
+            await engine.dispose()
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=30))

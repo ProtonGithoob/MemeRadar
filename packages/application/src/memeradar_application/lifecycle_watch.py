@@ -315,6 +315,10 @@ def tier_for(state: MintLifecycle, policy: LifecyclePolicy, now: datetime) -> Ti
     age = state.age(now)
     if age > policy.horizon or state.missing_samples >= policy.retire_after_missing_samples:
         return Tier.RETIRED
+    if state.migration_seen_at is not None and now - state.migration_seen_at < timedelta(hours=1):
+        # Graduation is the PumpSwap handoff; watch it closely even before the
+        # provider has indexed the new pool.
+        return Tier.HOT
     sample = state.last_sample
     if sample is None:
         return Tier.HOT if age < policy.revival_min_age else Tier.WARM

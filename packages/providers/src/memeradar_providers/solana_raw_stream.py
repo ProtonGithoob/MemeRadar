@@ -73,6 +73,9 @@ class UnsupportedPumpFunInstructionError(ProviderSchemaError):
 SOLANA_RAW_TRANSPORT = "solana-public-rpc"
 # Anchor instruction log names Pump.fun emits for a launch.
 _LAUNCH_LOG_NAMES = frozenset({"Create", "CreateV2"})
+# Graduation is rare (a few per hour) and is the Pump.fun -> PumpSwap handoff
+# the lifecycle watch needs on-chain, so its transaction is fetched too.
+_FETCH_LOG_NAMES = _LAUNCH_LOG_NAMES | frozenset({"Migrate"})
 _ZERO_SIGNATURE = "1" * 64
 _HEALTHY_CONNECTION_SECONDS = 5.0
 _MAX_RECONNECT_DELAY_SECONDS = 5.0
@@ -718,6 +721,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
             "raw_events_emitted": 0,
             "create_observed": 0,
             "create_v2_observed": 0,
+            "migrate_observed": 0,
             "get_transaction_retries": 0,
             "rate_limit_responses": 0,
             "decoder_failures": 0,
@@ -940,12 +944,15 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
                                 self.metrics["create_observed"] += 1
                             elif event_type == "create_v2":
                                 self.metrics["create_v2_observed"] += 1
+                            elif event_type == "migrate":
+                                self.metrics["migrate_observed"] += 1
                             latency_ms = (
                                 event.ingested_at - event.observed_at
                             ).total_seconds() * 1000
                             if latency_ms >= 0:
                                 self._latency_samples_ms.append(latency_ms)
-                            self._launch_observed_at.append(event.observed_at)
+                            if event_type in {"create", "create_v2"}:
+                                self._launch_observed_at.append(event.observed_at)
                         self._remember(notification.signature)
                         if events and reconnect_reason is not None:
                             # Only the first emitted event on a new connection
@@ -1069,7 +1076,7 @@ class SolanaRawTransactionSource(AsyncIterator[RawChainTransaction]):
             )
         except ProviderSchemaError:
             return False
-        return any(name in _LAUNCH_LOG_NAMES for name in logged)
+        return any(name in _FETCH_LOG_NAMES for name in logged)
 
     def _track_mint(self, mint: object, observed_at: datetime) -> None:
         if not isinstance(mint, str) or not mint:

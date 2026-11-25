@@ -326,6 +326,7 @@ _INGESTION_COUNTER_KEYS = (
     "notifications_received",
     "create_observed",
     "create_v2_observed",
+    "migrate_observed",
     "trade_events_emitted",
     "trade_events_capped",
     "trade_event_decode_failures",
