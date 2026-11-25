@@ -14,6 +14,11 @@ below; those entries remain as historical evidence.
 **READINESS:** Local declared verification scope PASS; overall engineering/product readiness PARTIAL; operational acceptance BLOCKED where noted; predictive validation `NOT_PROVEN`. See [final readiness](audits/FINAL_PRODUCT_READINESS.md).
 **SAFETY:** `ANALYSIS_ONLY=true`, `PAPER_TRADING=true`, `MANUAL_EXECUTION=false`, `AUTO_EXECUTION=false`; no signing or real transaction submission was added.
 
+**REVERSE_WALLET_INTELLIGENCE (2026-11-25):**
+- **Done:** daily `WalletResearchWorker` (off by default); `WALLET_RESEARCH` Telegram digest; `/wallet-research` registry page and API; PumpSwap decoding; a bounded funding graph that feeds risk-only clusters.
+- **Verification:** `make verify` exit 0; PostgreSQL integration 35/35.
+- **Open:** cohort outcomes mature through 2026-12-25; wallet precision is `NOT_PROVEN`; Robinhood Chain is blocked (no verified addresses); GOAL.md has not been pushed. Details are in `docs/audits/REVERSE_WALLET_INTELLIGENCE_2026-11-25.md` §14.
+
 ## Historical status entries
 
 **PUMPSWAP_DECODE_2026-11-25:** PumpSwap (`pump_amm`) trades are now

@@ -28,6 +28,12 @@ MINTS = ("So11111111111111111111111111111111111111112",
 class FakeCollector:
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.funding_calls: list[str] = []
+
+    async def funding(self, wallet: str) -> dict[str, object]:
+        self.funding_calls.append(wallet)
+        return {"chain": "solana", "from_address": "SharedFunder", "to_address": wallet,
+                "coverage": "FIRST_TRANSACTIONS", "ownership_asserted": False}
 
     async def collect(self, mint: str, launch_signature: str | None, max_tx: int) -> TokenHistory:
         self.calls.append(mint)
@@ -75,6 +81,17 @@ def test_daily_run_researches_each_launch_once_and_queues_one_digest() -> None:
                                                         OutboxRow.event_id == DomainEventRow.id)
                 )).all()]
             assert kinds.count("wallet.token_history") == 2
+            # first 10 non-creator buyers per token, each looked up once
+            assert len(collector.funding_calls) == len(set(collector.funding_calls)) == 19
+            assert kinds.count("wallet.funding") == 19
+            async with factory() as session:
+                profiles = [
+                    r.normalized_payload for r in (await session.scalars(
+                        select(ObservationRow).where(ObservationRow.kind == "wallet.profile")
+                    )).all()
+                ]
+            early = next(p for p in profiles if p["wallet"] == "Early")
+            assert "POTENTIAL_MANIPULATION_CLUSTER" in early["categories"]
             assert kinds.count("wallet.registry") == 2
             assert "wallet.profile" in kinds
             assert [p["type"] for p in payloads] == ["WALLET_RESEARCH"]

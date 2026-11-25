@@ -109,10 +109,10 @@ No PAPER fills were produced from wallet signals, because no candidate qualifies
 ## 12. Remaining blockers
 
 - **Cohort maturity and size.** 24h/7d/30d outcomes for the pilot cohort mature from 2026-11-26 to 2026-12-25. Statistically meaningful wallet precision needs many more cohorts. An M9-style forward run on the operator host should collect histories daily.
-- **PumpSwap trade decoding.** It is not implemented. Post-graduation paths, and therefore most 10x+ moves, are censored, and copy exits after migration are unpriced.
-- **Funding graph.** Collecting a wallet's funding history needs a per-wallet history crawl. On public RPC this is rate-limited, so it is not collected yet. `co_buy_clusters` is the only coordination evidence so far.
+- **PumpSwap trade decoding.** Resolved in §13.1: PumpSwap `BuyEvent`/`SellEvent` are decoded, so post-migration paths are no longer censored when AMM trades are present.
+- **Funding graph.** Partially resolved (§14): a bounded lookup of the earliest observed inbound SOL transfer runs for the first 10 non-creator buyers per new token (max 100 per run). Coverage is `FIRST_TRANSACTIONS` or `PARTIAL`; deep multi-hop funding paths are not crawled.
 - **Helius, Bitquery, Yellowstone.** Not added. There is no measured incremental value yet, and Bitquery and Helius history need keys.
-- **Dashboard.** The existing `/wallets` pages now have data. A registry page and copyability reports in the web app are not built.
+- **Dashboard.** `/wallet-research` shows the extreme-winner registry (§14). Copyability backtest reports are still produced as research artifacts, not as a web page.
 - **Robinhood Chain.** No verified launchpad or factory addresses exist yet.
 
 ## 13. Pilot run on real mainnet data (`HISTORICAL_REAL_PILOT_SMALL_SAMPLE`)
@@ -259,3 +259,16 @@ Momentum's median net multiple fell from 0.56 to 0.28 once post-migration exits 
     5fd3c824351c3363e5947da129bbdd55eaa35abcdac3ad2312aba34ade571dd3  profiles.json
     d0d2c232f8be3754885f028dcc7658e80b273bdb74519bddb7041f3da85aad5a  clusters.json
 ```
+
+## 14. Daily worker, Telegram digest, dashboard, funding graph
+
+- **Daily worker** (`apps/worker/src/memeradar_worker/wallet_research.py`, `WALLET_RESEARCH_ENABLED=false` by default). It selects launches that are 24–48 h old, with no filter on outcome. It collects finalized history, stores `wallet.token_history`, rebuilds registry records and point-in-time profiles, and persists `wallet.profile` and `wallet.registry`.
+- **Telegram digest.** A `WALLET_RESEARCH` alert goes out through the existing outbox and is headed "HEURISTIC RESEARCH - NOT CALIBRATED". It is informational only and does not authorize entry.
+- **Dashboard.** `GET /v1/research/extreme-winner-registry` and the web page `/wallet-research` (registry table).
+- **Funding graph** (`packages/providers/src/memeradar_providers/wallet_funding.py`):
+  - Only System Program `transfer`, `transferWithSeed` and `createAccount` into the wallet, in successful transactions, count as funding.
+  - A source that funded 3–50 observed wallets forms a `funder:` cluster, which feeds `co_buy_clusters` and therefore `POTENTIAL_MANIPULATION_CLUSTER` (risk only).
+  - A source that funded more than 50 wallets is treated as an exchange or router hub and forms no cluster.
+  - `ownership_asserted` is always `false`.
+- **Tests.** `tests/unit/test_wallet_funding.py` and `tests/unit/test_wallet_research_worker.py`: funding rows are stored and a shared funder applies the manipulation category. `make verify` exits 0, and PostgreSQL integration passes 35/35.
+- **Not yet measured.** No real-network funding run has been executed, so no funding-cluster rates are reported.

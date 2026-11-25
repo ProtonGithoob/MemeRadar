@@ -50,6 +50,7 @@ from memeradar_domain import EventEnvelope, Observation, Provenance, QualityStat
 from memeradar_persistence import ObservationRow, SqlAlchemyUnitOfWork
 from memeradar_providers.pump_fun_idl import PUMP_FUN_PROGRAM_ID
 from memeradar_providers.token_history_collector import TokenHistory, collect_token_history
+from memeradar_providers.wallet_funding import earliest_funding, shared_funder_clusters
 
 from .operations_jobs import sleep_until_stopped
 from .wallet_profile_store import profile_observation
@@ -57,6 +58,8 @@ from .wallet_profile_store import profile_observation
 LOGGER = logging.getLogger(__name__)
 HISTORY_KIND = "wallet.token_history"
 REGISTRY_KIND = "wallet.registry"
+FUNDING_KIND = "wallet.funding"
+_EARLY_BUYERS_PER_TOKEN = 10
 _STORED_KINDS = frozenset(ActivityKind) - {ActivityKind.FAILED}
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -71,6 +74,9 @@ class HistoryCollector:
         return await collect_token_history(
             self.rpc, mint, launch_signature=launch_signature, max_tx=max_tx  # type: ignore[arg-type]
         )
+
+    async def funding(self, wallet: str) -> dict[str, object]:
+        return await earliest_funding(self.rpc, wallet)  # type: ignore[arg-type]
 
 
 def _text_or_none(value: object) -> str | None:
@@ -144,6 +150,7 @@ class WalletResearchWorker:
         clock: Callable[[], datetime] | None = None,
         max_tokens_per_run: int = 30,
         max_tx_per_token: int = 800,
+        max_funding_lookups_per_run: int = 100,
         lookback: timedelta = timedelta(days=30),
         policy: ProfilePolicy | None = None,
     ) -> None:
@@ -152,6 +159,7 @@ class WalletResearchWorker:
         self.clock = clock or (lambda: datetime.now(UTC))
         self.max_tokens = max_tokens_per_run
         self.max_tx = max_tx_per_token
+        self.max_funding = max_funding_lookups_per_run
         self.lookback = lookback
         self.policy = policy or ProfilePolicy()
         self._factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -193,6 +201,18 @@ class WalletResearchWorker:
             if len(due) >= self.max_tokens:
                 break
         return due
+
+    async def _funding_rows(self, now: datetime) -> list[dict[str, object]]:
+        async with self._factory() as session:
+            rows = (
+                await session.scalars(
+                    select(ObservationRow).where(
+                        ObservationRow.kind == FUNDING_KIND,
+                        ObservationRow.observed_at >= now - self.lookback,
+                    )
+                )
+            ).all()
+        return [dict(row.normalized_payload) for row in rows]
 
     async def _stored_histories(self, now: datetime) -> list[dict[str, object]]:
         async with self._factory() as session:
@@ -237,6 +257,39 @@ class WalletResearchWorker:
                 for observation in new_histories:
                     await unit_of_work.observations.add(observation)
                 await unit_of_work.commit()
+        funded = await self._funding_rows(now)
+        known = {str(f.get("to_address")) for f in funded}
+        lookups: list[str] = []
+        for observation in new_histories:
+            payload = observation.normalized_payload
+            raw = payload.get("events")
+            token_events = [decode_event(r) for r in raw if isinstance(r, dict)] if isinstance(
+                raw, list
+            ) else []
+            creator = next((e.wallet for e in token_events if e.kind is ActivityKind.CREATE), None)
+            early = [
+                e.wallet for e in sorted(token_events, key=lambda e: (e.slot, e.event_index))
+                if e.kind is ActivityKind.SWAP_BUY and e.wallet != creator
+            ]
+            for wallet in list(dict.fromkeys(early))[:_EARLY_BUYERS_PER_TOKEN]:
+                if wallet not in known and wallet not in lookups:
+                    lookups.append(wallet)
+        funding_rows: list[Observation] = []
+        for wallet in lookups[: self.max_funding]:
+            try:
+                funding = await self.collector.funding(wallet)
+            except Exception as error:  # noqa: BLE001 - coverage stays explicit
+                LOGGER.info("wallet_funding_failed", extra={"error_class": type(error).__name__})
+                continue
+            funding_rows.append(
+                _observation(FUNDING_KIND, f"wallet:funding:{wallet}", now, funding)
+            )
+        if funding_rows:
+            async with SqlAlchemyUnitOfWork(self.engine) as unit_of_work:
+                for observation in funding_rows:
+                    await unit_of_work.observations.add(observation)
+                await unit_of_work.commit()
+        funded = [*funded, *(dict(o.normalized_payload) for o in funding_rows)]
         stored = await self._stored_histories(now)
         events: list[OnChainWalletEvent] = []
         records: list[RegistryRecord] = []
@@ -266,6 +319,8 @@ class WalletResearchWorker:
         events = list(deduplicate(events))
         creators = {r.creator for r in records if r.creator}
         clusters = co_buy_clusters(events, as_of=now, exclude=creators)
+        for wallet, cluster_id in shared_funder_clusters(funded).items():
+            clusters.setdefault(wallet, cluster_id)
         profiles = build_profiles(
             events, {r.mint: r for r in records}, as_of=now, policy=self.policy,
             cluster_members=clusters,
@@ -311,6 +366,7 @@ class WalletResearchWorker:
             "tokens_in_lookback": len(records),
             "wallets_profiled": len(profiles),
             "cluster_wallets": len(clusters),
+            "funding_lookups": len(funding_rows),
         }
         LOGGER.info("wallet_research_cycle", extra=report)
         return report
